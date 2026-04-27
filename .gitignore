@@ -1,0 +1,35 @@
+.venv/
+.pytest_cache/
+.hypothesis/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local/editor state
+.idea/
+.vscode/
+*.swp
+*.tmp
+
+# Local credentials
+tradingbotsuite_v1_legacy/hyperliquidtestnet.txt
+
+# Generated Python/package metadata
+build/
+dist/
+*.egg-info/
+
+# Large regenerated market/cache artifacts
+*.log
+*.csv
+*.sqlite3
+state/
+data/cache/
+data/parity/
+lc_parity*.md
+lc_ui_server*.log
+data/parity/**/btc_python_parity_dump.csv
+data/parity/**/btc_parity_merged.csv
+data/parity/**/*_python_dump.csv
+data/parity/reports_*/
+!tests/fixtures/**/*.csv

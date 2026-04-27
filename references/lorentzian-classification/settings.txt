@@ -1,0 +1,22 @@
+Data- closing price
+Neighbors count - 8
+max bars back - 4000
+color compression - 1
+show default exits - true
+use dynamic exits - true
+show trade stats - true
+Use worst case estimates - true
+Feature count - 5
+feature 1 - RSI Parameter A - 14 Parameter B - 1 
+feature 2 - WT Parameter A - 10 Parameter B - 11 
+feature 3 - CCI Parameter A - 23 Parameter B - 1 
+feature 4 - ADX Parameter A - 27 Parameter B - 1 
+feature 5 - RSI Parameter A - 8 Parameter B - 1 
+Use volatility Filter - true
+all other filters - false
+Trade with Kernel - true
+Show kernel estimate - true
+Lookback window - 20
+Relative weighting - 8
+Regression level - 10 
+Enhance Kerrnel smoothing Lag - 2

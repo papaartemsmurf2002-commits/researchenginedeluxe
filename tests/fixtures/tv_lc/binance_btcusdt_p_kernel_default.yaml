@@ -1,0 +1,49 @@
+fixture: binance_btcusdt_p_kernel_default
+indicator: Lorentzian Classification
+tradingview_script: https://www.tradingview.com/script/WhBzgfDu-Machine-Learning-Lorentzian-Classification/
+instrument: BINANCE:BTCUSDT.P
+symbol: BTC
+timeframe: 15m
+source: close
+tv_export_path: ../../../BINANCE_BTCUSDT.P.csv
+base_csv_path: ../../../data/parity/binance_btcusdt_p_off_base_with_prehistory.csv
+chart_export_start: "2026-03-19T00:00:00Z"
+chart_export_end: "2026-04-16T18:15:00Z"
+base_history_start: "2025-12-23T20:00:00Z"
+base_history_end: "2026-04-16T18:15:00Z"
+include_last_bar: false
+expected_warmup_skip_rows: 26
+tolerance: 0.01
+export_columns:
+  ohlc: [open, high, low, close]
+  kernel: [Kernel Regression Estimate]
+  shape_markers: [Buy, Sell, StopBuy, StopSell]
+marker_contract:
+  shape_markers: "Buy/Sell/StopBuy/StopSell are price-or-blank columns; any numeric price is a marker."
+  diagnostic_booleans: "startLongTrade/startShortTrade/endLongTrade/endShortTrade are 0/1 booleans when exported with plot(condition ? 1 : 0)."
+settings:
+  feature_count: 5
+  feature_definitions:
+    - [RSI, 14, 1]
+    - [WT, 10, 11]
+    - [CCI, 23, 1]
+    - [ADX, 21, 1]
+    - [RSI, 9, 1]
+  neighbors_count: 10
+  max_bars_back: 3000
+  use_dynamic_exits: true
+  use_volatility_filter: false
+  use_regime_filter: false
+  use_adx_filter: false
+  use_ema_filter: false
+  use_sma_filter: false
+  use_kernel_filter: true
+  use_kernel_smoothing: false
+  kernel_lookback: 8
+  kernel_relative_weight: 8.0
+  kernel_regression_level: 25
+  kernel_lag: 2
+  use_worst_case: false
+validation_scope:
+  kernel: "Expected to pass after expected_warmup_skip_rows."
+  markers: "Not a parity source until full feature and ANN diagnostics are regenerated for this exact settings snapshot."

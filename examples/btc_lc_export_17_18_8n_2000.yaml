@@ -1,0 +1,112 @@
+strategies:
+  BTC:
+    symbol: BTC
+    source: close
+    neighbors_count: 8
+    max_bars_back: 2000
+    feature_count: 5
+    feature_definitions:
+    - - RSI
+      - 14
+      - 1
+    - - WT
+      - 10
+      - 11
+    - - CCI
+      - 20
+      - 1
+    - - ADX
+      - 20
+      - 2
+    - - RSI
+      - 9
+      - 1
+    color_compression: 1
+    use_dynamic_exits: false
+    use_volatility_filter: false
+    use_regime_filter: false
+    use_adx_filter: false
+    regime_threshold: -0.1
+    adx_threshold: 20
+    use_ema_filter: false
+    ema_period: 200
+    use_sma_filter: false
+    sma_period: 200
+    use_kernel_filter: true
+    show_kernel_estimate: true
+    use_kernel_smoothing: false
+    kernel_lookback: 8
+    kernel_relative_weight: 8.0
+    kernel_regression_level: 25
+    kernel_lag: 2
+    use_order_block_exits: false
+    internal_lookback: 5
+    swing_lookback: 50
+    market_structure_mode: manual
+    order_block_filter: None
+    order_block_mitigation: Absolute
+    order_block_position: Precise
+    order_block_overlap: true
+    order_block_overlap_method: Previous
+    order_block_relevance_pct: 10.0
+    use_swing_order_blocks: false
+    base_timeframe: 15m
+    confirm_timeframe: 5m
+    allow_long: true
+    allow_short: true
+    fee_bps: 2.5
+    slippage_bps: 1.0
+    funding_rate_per_bar: 0.0
+    lc_parity_mode: pine_exact
+    parity_neighbor_diagnostics: 10
+    min_prediction_magnitude: 0.0
+    min_signal_persistence_bars: 1
+    min_bars_between_entries: 0
+    block_early_signal_flips: false
+risk:
+  initial_equity: 10000.0
+  risk_per_trade: 0.01
+  leverage_cap: 3.0
+  use_fixed_stop_loss: false
+  fixed_stop_loss_pct: 0.0055
+  atr_stop_period: 14
+  atr_stop_multiplier: 1.5
+  min_stop_distance_pct: 0.003
+execution:
+  rest_base_url: https://api.hyperliquid.xyz
+  websocket_url: wss://api.hyperliquid.xyz/ws
+  testnet: false
+  account_address: null
+  secret_key: null
+  state_path: state/live_state.json
+  enable_live_trading: false
+  dead_mans_switch_secs: 30
+  poll_seconds: 5
+backtest:
+  use_worst_case: false
+  use_subcandle_execution: false
+  execution_timeframe_primary: 5m
+  execution_timeframe_fallback: 5m
+  execution_timeframe_policy: best_effort
+  slow_reference_mode: false
+  enforce_close_only_entries: true
+  allow_same_bar_flip: false
+  min_trades: 5
+data:
+  cache_dir: data/cache
+  validate_reference_exchange: true
+  max_close_deviation_pct: 0.75
+  min_validation_overlap_rows: 100
+optimization:
+  objective: net_profit
+  train_days: 60
+  validation_days: 14
+  step_days: 14
+  prescreen_bars: 500
+  shortlist_size: 10
+  minimum_trades: 10
+  max_drawdown_pct: 25.0
+  max_consecutive_losses: 6
+  max_candidates_per_stage: 0
+  parallel_workers: 0
+  search_space: {}

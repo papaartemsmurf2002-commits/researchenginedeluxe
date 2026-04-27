@@ -1,0 +1,121 @@
+// LC parity export helper.
+//
+// Usage:
+// 1. Paste these plot statements near the end of the original Lorentzian
+//    Classification Pine script, after all variables below have been defined.
+// 2. Use the exact same chart symbol, exchange, timeframe, visible history,
+//    and UI settings as the Python config.
+// 3. Export chart data from TradingView. The exported CSV can be passed to:
+//    tradingbot parity-check --config examples/default.yaml --symbol BTC --tv-export <export.csv>
+//
+// TradingView can only export plotted series, so array diagnostics are exposed
+// as compact scalar snapshots: last stored neighbor label/index/distance plus
+// current prediction-window counters.
+//
+// To export neighborIndexTail* values, add this diagnostic array beside the
+// original predictions/distances arrays:
+//
+//     var neighborIndexes = array.new_int(0)
+//
+// Then immediately before the ANN `for i = 0 to sizeLoop` loop:
+//
+//     int annAcceptedCount = 0
+//
+// Then inside the ANN acceptance branch, immediately after pushing predictions:
+//
+//     array.push(neighborIndexes, i)
+//     annAcceptedCount += 1
+//
+// And inside the pruning branch, immediately after array.shift(predictions):
+//
+//     array.shift(neighborIndexes)
+
+plot(featureSeries.f1, "f1", display=display.data_window)
+plot(featureSeries.f2, "f2", display=display.data_window)
+plot(featureSeries.f3, "f3", display=display.data_window)
+plot(featureSeries.f4, "f4", display=display.data_window)
+plot(featureSeries.f5, "f5", display=display.data_window)
+plot(y_train_series, "y_train", display=display.data_window)
+plot(yhat1, "yhat1", display=display.data_window)
+plot(yhat2, "yhat2", display=display.data_window)
+plot(prediction, "prediction", display=display.data_window)
+plot(signal, "signal", display=display.data_window)
+plot(barsHeld, "barsHeld", display=display.data_window)
+plot(bar_index, "barIndex", display=display.data_window)
+plot(last_bar_index, "lastBarIndex", display=display.data_window)
+plot(maxBarsBackIndex, "maxBarsBackIndex", display=display.data_window)
+plot(isNewBuySignal ? 1 : 0, "isNewBuySignal", display=display.data_window)
+plot(isNewSellSignal ? 1 : 0, "isNewSellSignal", display=display.data_window)
+plot(startLongTrade ? 1 : 0, "startLongTrade", display=display.data_window)
+plot(startShortTrade ? 1 : 0, "startShortTrade", display=display.data_window)
+plot(endLongTrade ? 1 : 0, "endLongTrade", display=display.data_window)
+plot(endShortTrade ? 1 : 0, "endShortTrade", display=display.data_window)
+plot(isEarlySignalFlip ? 1 : 0, "isEarlySignalFlip", display=display.data_window)
+plot(isBullish ? 1 : 0, "isBullish", display=display.data_window)
+plot(isBearish ? 1 : 0, "isBearish", display=display.data_window)
+plot(alertBullish ? 1 : 0, "alertBullish", display=display.data_window)
+plot(alertBearish ? 1 : 0, "alertBearish", display=display.data_window)
+plot(filter.volatility ? 1 : 0, "volatilityFilter", display=display.data_window)
+plot(filter.regime ? 1 : 0, "regimeFilter", display=display.data_window)
+plot(filter.adx ? 1 : 0, "adxFilter", display=display.data_window)
+plot(filter_all ? 1 : 0, "filterAll", display=display.data_window)
+plot(totalWins, "totalWins", display=display.data_window)
+plot(totalLosses, "totalLosses", display=display.data_window)
+plot(totalTrades, "totalTrades", display=display.data_window)
+plot(totalEarlySignalFlips, "totalEarlySignalFlips", display=display.data_window)
+plot(winLossRatio, "winLossRatio", display=display.data_window)
+plot(winRate, "winRate", display=display.data_window)
+
+int lastPredictionIndex = array.size(predictions) > 0 ? array.size(predictions) - 1 : na
+plot(not na(lastPredictionIndex) ? array.get(predictions, lastPredictionIndex) : na, "neighborLabelLast", display=display.data_window)
+plot(not na(lastPredictionIndex) ? array.get(distances, lastPredictionIndex) : na, "distanceLast", display=display.data_window)
+plot(0, "annWindowStart", display=display.data_window)
+plot(sizeLoop, "annWindowEnd", display=display.data_window)
+plot(sizeLoop + 1, "annConsideredCount", display=display.data_window)
+plot(annAcceptedCount, "annAcceptedCount", display=display.data_window)
+
+neighborIndexFromEnd(int offset) =>
+    int idx = array.size(neighborIndexes) - 1 - offset
+    idx >= 0 ? array.get(neighborIndexes, idx) : na
+
+neighborLabelFromEnd(int offset) =>
+    int idx = array.size(predictions) - 1 - offset
+    idx >= 0 ? array.get(predictions, idx) : na
+
+neighborDistanceFromEnd(int offset) =>
+    int idx = array.size(distances) - 1 - offset
+    idx >= 0 ? array.get(distances, idx) : na
+
+// Export the active neighbor tail. These columns are required when marker parity
+// fails but kernel parity is exact, because Buy/Sell markers alone cannot
+// distinguish feature drift from ANN window/index drift.
+plot(neighborIndexFromEnd(0), "neighborIndexTail0", display=display.data_window)
+plot(neighborIndexFromEnd(1), "neighborIndexTail1", display=display.data_window)
+plot(neighborIndexFromEnd(2), "neighborIndexTail2", display=display.data_window)
+plot(neighborIndexFromEnd(3), "neighborIndexTail3", display=display.data_window)
+plot(neighborIndexFromEnd(4), "neighborIndexTail4", display=display.data_window)
+plot(neighborIndexFromEnd(5), "neighborIndexTail5", display=display.data_window)
+plot(neighborIndexFromEnd(6), "neighborIndexTail6", display=display.data_window)
+plot(neighborIndexFromEnd(7), "neighborIndexTail7", display=display.data_window)
+plot(neighborIndexFromEnd(8), "neighborIndexTail8", display=display.data_window)
+plot(neighborIndexFromEnd(9), "neighborIndexTail9", display=display.data_window)
+plot(neighborLabelFromEnd(0), "neighborLabelTail0", display=display.data_window)
+plot(neighborLabelFromEnd(1), "neighborLabelTail1", display=display.data_window)
+plot(neighborLabelFromEnd(2), "neighborLabelTail2", display=display.data_window)
+plot(neighborLabelFromEnd(3), "neighborLabelTail3", display=display.data_window)
+plot(neighborLabelFromEnd(4), "neighborLabelTail4", display=display.data_window)
+plot(neighborLabelFromEnd(5), "neighborLabelTail5", display=display.data_window)
+plot(neighborLabelFromEnd(6), "neighborLabelTail6", display=display.data_window)
+plot(neighborLabelFromEnd(7), "neighborLabelTail7", display=display.data_window)
+plot(neighborLabelFromEnd(8), "neighborLabelTail8", display=display.data_window)
+plot(neighborLabelFromEnd(9), "neighborLabelTail9", display=display.data_window)
+plot(neighborDistanceFromEnd(0), "neighborDistanceTail0", display=display.data_window)
+plot(neighborDistanceFromEnd(1), "neighborDistanceTail1", display=display.data_window)
+plot(neighborDistanceFromEnd(2), "neighborDistanceTail2", display=display.data_window)
+plot(neighborDistanceFromEnd(3), "neighborDistanceTail3", display=display.data_window)
+plot(neighborDistanceFromEnd(4), "neighborDistanceTail4", display=display.data_window)
+plot(neighborDistanceFromEnd(5), "neighborDistanceTail5", display=display.data_window)
+plot(neighborDistanceFromEnd(6), "neighborDistanceTail6", display=display.data_window)
+plot(neighborDistanceFromEnd(7), "neighborDistanceTail7", display=display.data_window)
+plot(neighborDistanceFromEnd(8), "neighborDistanceTail8", display=display.data_window)
+plot(neighborDistanceFromEnd(9), "neighborDistanceTail9", display=display.data_window)
