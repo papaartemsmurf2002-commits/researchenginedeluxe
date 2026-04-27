@@ -13,6 +13,9 @@ __pycache__/
 
 # Local credentials
 tradingbotsuite_v1_legacy/hyperliquidtestnet.txt
+hyperliquidtestnet.txt
+.env
+.env.*
 
 # Generated Python/package metadata
 build/
@@ -23,9 +26,14 @@ dist/
 *.log
 *.csv
 *.sqlite3
+*.db
 state/
+data/
 data/cache/
 data/parity/
+data/research/
+data/imports/
+data/operator_console.sqlite3
 lc_parity*.md
 lc_ui_server*.log
 data/parity/**/btc_python_parity_dump.csv

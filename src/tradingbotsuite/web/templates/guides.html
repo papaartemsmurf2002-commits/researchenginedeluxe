@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Guides</h1>
+<p class="muted">This page combines current recommendations with the operator and research docs already stored in the repo, so you can work from the browser instead of jumping between markdown files.</p>
+<div class="grid">
+  <div class="card wide">
+    <h3>Current Recommendations</h3>
+    <div id="guide-recommendations"></div>
+  </div>
+  {% for document in guide_documents %}
+  <div class="card wide">
+    <h3>{{ document.title }}</h3>
+    <div class="grid">
+      {% for section in document.sections %}
+      <div class="card alt">
+        <h4>{{ section.title }}</h4>
+        <div class="stack">
+          {% for item in section["items"] %}
+            {% if item.type == "bullet" %}
+              <div class="list-item">{{ item.text }}</div>
+            {% else %}
+              <div>{{ item.text }}</div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  async function refreshGuides() {
+    const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
+    document.getElementById("guide-recommendations").innerHTML = (snapshot.recommendations || []).map(item =>
+      `<div class="banner"><strong>${window.TBS.escapeHtml(item.title)}</strong><br>${window.TBS.escapeHtml(item.message)}</div>`
+    ).join("");
+  }
+  refreshGuides();
+  setInterval(refreshGuides, 5000);
+</script>
+{% endblock %}

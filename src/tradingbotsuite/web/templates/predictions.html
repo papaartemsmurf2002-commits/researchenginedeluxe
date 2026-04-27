@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Live Predictions</h1>
+<p class="muted">Microstructure-derived short-horizon pressure. This page visualizes live Binance order-flow inputs only; it is not a calibrated model and does not change live gating.</p>
+<div class="stat-grid" id="prediction-headline"></div>
+<div class="grid">
+  <div class="card wide">
+    <h3>Movement Probabilities</h3>
+    <div id="prediction-bars" class="grid"></div>
+  </div>
+  <div class="card">
+    <h3>Inputs</h3>
+    <div id="prediction-inputs" class="kv"></div>
+  </div>
+  <div class="card">
+    <h3>Health Boundary</h3>
+    <div id="prediction-health" class="kv"></div>
+  </div>
+  <div class="card wide">
+    <h3>Component Contributions</h3>
+    <div id="prediction-components" class="list"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function pct(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "n/a";
+    return `${(numeric * 100).toFixed(1)}%`;
+  }
+
+  function bar(label, value, colorClass) {
+    const numeric = Number(value);
+    const percent = Number.isFinite(numeric) ? Math.max(0, Math.min(100, numeric * 100)) : 0;
+    return `
+      <div class="card alt">
+        <div class="split"><strong>${window.TBS.escapeHtml(label)}</strong><span>${Number.isFinite(numeric) ? percent.toFixed(1) + "%" : "n/a"}</span></div>
+        <div style="height:14px; background:#0f1620; border:1px solid var(--border); border-radius:999px; overflow:hidden; margin-top:10px;">
+          <div class="${colorClass}" style="height:100%; width:${percent.toFixed(1)}%; background:currentColor;"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  async function refreshPredictions() {
+    const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
+    const micro = snapshot.microstructure || {};
+    const prediction = snapshot.microstructure_prediction || {};
+    const probabilities = prediction.probabilities || {};
+    const inputs = prediction.inputs || {};
+
+    document.getElementById("prediction-headline").innerHTML = [
+      ["Status", prediction.status === "scored" ? window.TBS.pill("Scored", "ok") : window.TBS.pill("Unavailable", "warn")],
+      ["Direction", window.TBS.escapeHtml(String(prediction.direction || "n/a"))],
+      ["Confidence", window.TBS.escapeHtml(pct(prediction.confidence))],
+      ["Coverage", window.TBS.escapeHtml(pct(prediction.coverage))],
+      ["Boundary", prediction.calibrated ? window.TBS.pill("Calibrated", "ok") : window.TBS.pill("Heuristic / Observe-Only", "warn")],
+    ].map(([label, value]) => `<div class="stat"><div class="label">${label}</div><div class="value">${value}</div></div>`).join("");
+
+    if (prediction.status !== "scored") {
+      document.getElementById("prediction-bars").innerHTML = `<div class="empty">Prediction unavailable: ${window.TBS.escapeHtml(prediction.reason || "unknown")}</div>`;
+    } else {
+      document.getElementById("prediction-bars").innerHTML = [
+        bar("Up Pressure", probabilities.up, "ok"),
+        bar("Neutral / No Edge", probabilities.neutral, "muted"),
+        bar("Down Pressure", probabilities.down, "bad"),
+      ].join("");
+    }
+
+    document.getElementById("prediction-inputs").innerHTML = window.TBS.renderKv([
+      ["Signed Ratio 20s", window.TBS.toMono(inputs.signed_ratio || "n/a")],
+      ["Sqrt Signed Ratio 20s", window.TBS.toMono(inputs.sqrt_signed_ratio || "n/a")],
+      ["Flow / Price Alignment Bps", window.TBS.toMono(inputs.flow_price_alignment_bps || "n/a")],
+      ["Top Of Book Imbalance", window.TBS.toMono(inputs.top_of_book_imbalance || "n/a")],
+      ["Queue Imbalance", window.TBS.toMono(inputs.queue_imbalance || "n/a")],
+      ["Depth Depletion Bias", window.TBS.toMono(inputs.depth_depletion_bias || "n/a")],
+      ["Spread Bps", window.TBS.toMono(inputs.spread_bps || "n/a")],
+      ["Directional Score", window.TBS.toMono(prediction.directional_score || "n/a")],
+      ["Pressure Strength", window.TBS.toMono(pct(prediction.pressure_strength))],
+      ["Spread Penalty", window.TBS.toMono(pct(prediction.spread_penalty))],
+    ]);
+
+    document.getElementById("prediction-health").innerHTML = window.TBS.renderKv([
+      ["Microstructure", window.TBS.boolPill(Boolean(micro.healthy))],
+      ["Entry Ready", window.TBS.boolPill(Boolean(micro.entry_ready))],
+      ["Trade Flow", window.TBS.boolPill(Boolean(micro.trade_flow_available))],
+      ["Top Of Book", window.TBS.boolPill(Boolean(micro.top_of_book_available))],
+      ["Queue Depth", window.TBS.boolPill(Boolean(micro.queue_imbalance_available))],
+      ["Depth State", window.TBS.escapeHtml(String(micro.depth_sync_state || "n/a"))],
+      ["Warning", window.TBS.escapeHtml(String(prediction.warning || "n/a"))],
+    ]);
+
+    const components = prediction.components || [];
+    document.getElementById("prediction-components").innerHTML = components.length
+      ? components.map(component => `
+          <div class="list-item">
+            <div class="split">
+              <strong>${window.TBS.escapeHtml(component.name)}</strong>
+              <span>${component.available ? window.TBS.pill("available", "ok") : window.TBS.pill("missing", "warn")}</span>
+            </div>
+            <div class="muted">${window.TBS.escapeHtml(component.description || "")}</div>
+            <div class="mono">value=${window.TBS.escapeHtml(component.value ?? "n/a")} weight=${window.TBS.escapeHtml(component.weight ?? "n/a")}</div>
+          </div>
+        `).join("")
+      : '<div class="empty">No component data.</div>';
+  }
+
+  refreshPredictions();
+  setInterval(refreshPredictions, 2000);
+</script>
+{% endblock %}

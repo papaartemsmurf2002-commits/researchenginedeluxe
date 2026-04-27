@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Timeline</h1>
+<p class="muted">This is the structured activity feed: decisions, execution, supervision, health changes, operator commands, jobs, and traces.</p>
+<div class="card wide">
+  <h3>Recent Feed</h3>
+  <div class="inline-buttons" style="margin-bottom:0.8rem;">
+    <label><input id="timeline-show-health" type="checkbox"> Show Health</label>
+    <label><input id="timeline-show-metrics" type="checkbox"> Show Metrics</label>
+    <label><input id="timeline-pause" type="checkbox"> Pause Refresh</label>
+    <button class="secondary" onclick="refreshTimeline(true)">Refresh Now</button>
+  </div>
+  <div id="timeline-rows" class="list"><div class="empty">Loading...</div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  document.getElementById("timeline-show-health").checked = false;
+  document.getElementById("timeline-show-metrics").checked = false;
+
+  function kindBadge(kind) {
+    const mapping = {
+      health_event: ["Health", "warn"],
+      supervision_snapshot: ["Supervision", "neutral"],
+      execution_metric: ["Metric", "neutral"],
+      trade_event: ["Trade", "ok"],
+      decision_packet: ["Packet", "ok"],
+      action_ticket: ["Ticket", "neutral"],
+      operator_command: ["Command", "neutral"],
+      operator_job: ["Job", "neutral"],
+      trace: ["Trace", "neutral"],
+    };
+    const pair = mapping[kind] || [kind || "item", "neutral"];
+    return window.TBS.pill(pair[0], pair[1]);
+  }
+
+  function itemSummary(item) {
+    if (item.kind === "operator_command") {
+      return `${item.summary} ${(item.payload || {}).success === false ? "(failed)" : ""}`.trim();
+    }
+    if (item.kind === "operator_job") {
+      return `${(item.payload || {}).job_type || item.summary} / ${(item.payload || {}).status || "unknown"}`;
+    }
+    if (item.kind === "health_event") {
+      return `${item.summary} (${item.reason_code || "no reason"})`;
+    }
+    if (item.kind === "execution_metric") {
+      return `${item.summary} ${(item.reason_code ? `(${item.reason_code})` : "")}`.trim();
+    }
+    return item.summary || item.kind || "item";
+  }
+
+  async function refreshTimeline(force = false) {
+    if (!force && document.getElementById("timeline-pause").checked) {
+      return;
+    }
+    const showHealth = document.getElementById("timeline-show-health").checked;
+    const showMetrics = document.getElementById("timeline-show-metrics").checked;
+    const feed = await window.TBS.getJson(
+      `/api/operator/feed?limit=120&include_health_events=${showHealth ? "true" : "false"}&include_execution_metrics=${showMetrics ? "true" : "false"}`
+    );
+    const items = feed.items || [];
+    document.getElementById("timeline-rows").innerHTML = items.length ? items.map(item => `
+      <div class="list-item">
+        <div class="split">
+          <div>${kindBadge(item.kind)}</div>
+          <div class="muted">${window.TBS.formatTime(item.time_ms)}</div>
+        </div>
+        <div><strong>${window.TBS.escapeHtml(itemSummary(item))}</strong></div>
+        <div class="muted">${window.TBS.escapeHtml(item.symbol || "")}</div>
+        <details class="details">
+          <summary>Inspect</summary>
+          <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.payload || {}))}</pre>
+        </details>
+      </div>
+    `).join("") : '<div class="empty">No recent feed items.</div>';
+  }
+  refreshTimeline();
+  document.getElementById("timeline-show-health").addEventListener("change", () => refreshTimeline(true));
+  document.getElementById("timeline-show-metrics").addEventListener("change", () => refreshTimeline(true));
+  setInterval(refreshTimeline, 2000);
+</script>
+{% endblock %}

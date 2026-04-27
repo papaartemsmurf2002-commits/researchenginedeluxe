@@ -58,6 +58,40 @@ Owns:
 
 Live trading must remain disabled by default.
 
+## TradingBotSuite Runtime Agent
+
+Owns:
+
+- `src/tradingbotsuite/core/`
+- `src/tradingbotsuite/adapters/`
+- `src/tradingbotsuite/persistence.py`
+- `src/tradingbotsuite/config.py`
+- runtime tests in `tests/tradingbotsuite/`
+- runtime docs in `docs/tradingbotsuite_runtime/`
+
+Keep Binance market-data, Hyperliquid execution, persistence, and engine safety changes on the canonical runtime path. Do not let UI or manual-shell code duplicate strategy or safety logic.
+
+## TradingBotSuite Operator UI Agent
+
+Owns:
+
+- `src/tradingbotsuite/web/`
+- `src/tradingbotsuite/operator_console.py`
+- operator UI tests in `tests/tradingbotsuite/test_operator_ui.py`
+- `docs/tradingbotsuite_runtime/OPERATOR_CONSOLE.md`
+
+The operator UI is a thin localhost control/visibility layer. It must not become a separate strategy implementation path, bypass authentication/CSRF, or trigger heavy market-data repair work through passive polling.
+
+## Archived Runtime Research Agent
+
+Owns only when explicitly reactivated:
+
+- `src/tradingbotsuite/research/`
+- research commands exposed through `src/tradingbotsuite/main.py`
+- research docs copied into `docs/tradingbotsuite_runtime/`
+
+TradingView chart-export importing, dataset-building, model training, and filter optimization are preserved for reference but are out of the active workstream. Do not expand them in parallel with runtime/signal-generator work unless the operator reopens that scope.
+
 ## Documentation Agent
 
 Owns:

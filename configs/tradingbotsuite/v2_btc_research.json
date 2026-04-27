@@ -1,0 +1,71 @@
+{
+  "version": "v2-btc-research-1",
+  "symbol": "BTCUSDT",
+  "dataset": {
+    "bar_lookback": 384,
+    "future_bar_limit": 30,
+    "premium_interval": "5m",
+    "open_interest_period": "5m",
+    "open_interest_lookback_points": 13,
+    "funding_history_limit": 8,
+    "agg_trade_window_seconds": 60
+  },
+  "features": {
+    "realized_vol_window_bars": 20,
+    "atr_percentile_window_bars": 96,
+    "volatility_shock_window_bars": 20,
+    "volatility_shock_zscore_threshold": 2.0
+  },
+  "acceptance_filter": {
+    "core_score_threshold": 5.0,
+    "perp_score_floor": -15.0,
+    "total_score_threshold": 0.0,
+    "slope_minimum": 0.35,
+    "er_minimum": 0.20,
+    "di_spread_minimum": 10.0,
+    "chop_maximum": 55.0,
+    "corridor_width_minimum": 0.005,
+    "basis_soft_bps": 5.0,
+    "basis_hard_bps": 15.0,
+    "premium_soft_rate": 0.0002,
+    "funding_adverse_threshold": 0.0001,
+    "near_funding_minutes": 60,
+    "liquidity_soft_spread_bps": 5.0,
+    "liquidity_hard_spread_bps": 12.0,
+    "signed_support_threshold": 0.05,
+    "book_support_threshold": 0.05
+  },
+  "model": {
+    "probability_threshold": 0.55,
+    "confidence_bucket_thresholds": [0.40, 0.60, 0.80],
+    "size_multiplier_thresholds": [0.55, 0.70, 0.85],
+    "size_multiplier_values": [0.50, 0.75, 1.00],
+    "random_state": 17,
+    "max_iter": 2000
+  },
+  "evaluation": {
+    "walk_forward_splits": 3,
+    "train_fraction": 0.70,
+    "calibration_fraction": 0.15,
+    "min_training_rows": 50,
+    "min_calibration_rows": 25,
+    "fee_bps": 5.0,
+    "slippage_bps": 5.0
+  },
+  "exit_supervision": {
+    "adverse_selection_enabled": false,
+    "adverse_selection_window_bars": 2,
+    "adverse_selection_min_favorable_excursion_atr": 0.25,
+    "adverse_selection_signed_imbalance_flip_threshold": 0.15,
+    "adverse_selection_book_imbalance_flip_threshold": 0.10,
+    "alpha_decay_enabled": false,
+    "alpha_decay_recheck_bars": 1,
+    "alpha_decay_viability_threshold": 0.45
+  },
+  "promotion": {
+    "min_expectancy_improvement": 0.0,
+    "min_trade_count": 25,
+    "max_mean_absolute_calibration_error": 0.20,
+    "min_improved_split_ratio": 0.50
+  }
+}

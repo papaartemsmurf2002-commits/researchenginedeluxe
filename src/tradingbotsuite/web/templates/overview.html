@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Overview</h1>
+<p class="muted">This page is the fastest read on system health, current position state, and whether the engine is safe to trust right now.</p>
+<div id="recommendations"></div>
+<div class="stat-grid" id="headline-stats"></div>
+<div class="grid">
+  <div class="card">
+    <h3>Position</h3>
+    <div id="position-card" class="kv"></div>
+  </div>
+  <div class="card">
+    <h3>Safety</h3>
+    <div id="safety-card" class="kv"></div>
+  </div>
+  <div class="card">
+    <h3>Market Data</h3>
+    <div id="market-card" class="kv"></div>
+  </div>
+  <div class="card">
+    <h3>Execution</h3>
+    <div id="execution-card" class="kv"></div>
+  </div>
+  <div class="card">
+    <h3>Runtime State</h3>
+    <div id="runtime-card" class="kv"></div>
+  </div>
+  <div class="card wide">
+    <h3>Microstructure</h3>
+    <div id="microstructure-card" class="kv"></div>
+  </div>
+  <div class="card wide">
+    <h3>Microstructure Movement Probabilities</h3>
+    <p class="muted">Heuristic short-horizon order-flow pressure. This is for visualization only, not live gating.</p>
+    <div id="microstructure-prediction-card"></div>
+  </div>
+  <div class="card wide">
+    <h3>Supervision</h3>
+    <div id="supervision-card" class="kv"></div>
+  </div>
+  <div class="card wide">
+    <h3>Attribution</h3>
+    <div id="attribution-card" class="kv"></div>
+  </div>
+  <div class="card wide">
+    <h3>Recent Health Events</h3>
+    <div id="health-events" class="list"></div>
+  </div>
+  <div class="card wide">
+    <h3>Fresh Stream Events</h3>
+    <div id="stream-events" class="list"></div>
+  </div>
+  <div class="card wide">
+    <h3>Recent Traces</h3>
+    <div id="recent-traces" class="list"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function renderEventList(items, targetId) {
+    const target = document.getElementById(targetId);
+    if (!items || !items.length) {
+      target.innerHTML = '<div class="empty">No recent items.</div>';
+      return;
+    }
+    target.innerHTML = items.map(item => `
+      <div class="list-item">
+        <div class="split">
+          <strong>${window.TBS.escapeHtml(item.event_type || item.summary || item.kind || "event")}</strong>
+          <span class="muted">${window.TBS.formatTime(item.time_ms || item.event_time_ms)}</span>
+        </div>
+        <div class="muted">${window.TBS.escapeHtml(item.symbol || "BTCUSDT")}</div>
+        <details class="details">
+          <summary>Show details</summary>
+          <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.payload || item))}</pre>
+        </details>
+      </div>
+    `).join("");
+  }
+
+  function asPct(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return "n/a";
+    return `${(numeric * 100).toFixed(1)}%`;
+  }
+
+  function predictionBar(label, value, cls) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      return `<div class="list-item"><div class="split"><strong>${window.TBS.escapeHtml(label)}</strong><span class="empty">n/a</span></div></div>`;
+    }
+    const pct = Math.max(0, Math.min(100, numeric * 100));
+    return `
+      <div class="list-item">
+        <div class="split"><strong>${window.TBS.escapeHtml(label)}</strong><span>${pct.toFixed(1)}%</span></div>
+        <div style="height:10px; background:#0f1620; border:1px solid var(--border); border-radius:999px; overflow:hidden; margin-top:8px;">
+          <div class="${cls}" style="height:100%; width:${pct.toFixed(1)}%; background:currentColor;"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderPrediction(prediction) {
+    if (!prediction || prediction.status !== "scored") {
+      const reason = prediction ? prediction.reason : "missing prediction";
+      return `<div class="empty">Prediction unavailable: ${window.TBS.escapeHtml(reason || "unknown")}</div>`;
+    }
+    const probabilities = prediction.probabilities || {};
+    const components = prediction.components || [];
+    return `
+      <div class="grid">
+        <div class="card alt">
+          <h4>Probability</h4>
+          <div class="stack">
+            ${predictionBar("Up", probabilities.up, "ok")}
+            ${predictionBar("Neutral", probabilities.neutral, "muted")}
+            ${predictionBar("Down", probabilities.down, "bad")}
+          </div>
+        </div>
+        <div class="card alt">
+          <h4>Interpretation</h4>
+          ${window.TBS.renderKv([
+            ["Mode", window.TBS.escapeHtml(String(prediction.direction || "neutral"))],
+            ["Confidence", window.TBS.toMono(asPct(prediction.confidence))],
+            ["Coverage", window.TBS.toMono(asPct(prediction.coverage))],
+            ["Directional Score", window.TBS.toMono(prediction.directional_score || "n/a")],
+            ["Method", window.TBS.escapeHtml(String(prediction.method || "n/a"))],
+            ["Boundary", prediction.calibrated ? window.TBS.pill("Calibrated", "ok") : window.TBS.pill("Heuristic / Observe-Only", "warn")],
+          ])}
+        </div>
+      </div>
+      <div class="list" style="margin-top:12px;">
+        ${components.map(component => `
+          <div class="list-item">
+            <div class="split">
+              <strong>${window.TBS.escapeHtml(component.name)}</strong>
+              <span>${component.available ? window.TBS.pill("available", "ok") : window.TBS.pill("missing", "warn")}</span>
+            </div>
+            <div class="muted">${window.TBS.escapeHtml(component.description || "")}</div>
+            <div class="mono">value=${window.TBS.escapeHtml(component.value ?? "n/a")} weight=${window.TBS.escapeHtml(component.weight ?? "n/a")}</div>
+          </div>
+        `).join("")}
+      </div>
+    `;
+  }
+
+  async function refreshOverview() {
+    const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
+    const position = snapshot.position || {};
+    const safety = snapshot.safety || {};
+    const safetyState = snapshot.safety_state || {};
+    const market = snapshot.market_data_health || {};
+    const execution = snapshot.execution_health || {};
+    const micro = snapshot.microstructure || {};
+    const supervision = snapshot.supervision || {};
+    const attribution = snapshot.attribution || {};
+    const feedHealth = market.feed_health || {};
+    const prediction = snapshot.microstructure_prediction || {};
+
+    document.getElementById("headline-stats").innerHTML = [
+      ["Mode", window.TBS.escapeHtml(String(snapshot.mode || "n/a"))],
+      ["Position", window.TBS.escapeHtml(String(position.status || "flat"))],
+      ["Safety", safety.in_safe_mode ? window.TBS.pill("Safe Mode", "bad") : window.TBS.pill("Normal", "ok")],
+      ["Runtime", window.TBS.escapeHtml(String(safetyState.state || "healthy"))],
+      ["Market", window.TBS.boolPill(Boolean(market.healthy))],
+      ["Execution", window.TBS.boolPill(Boolean(execution.healthy))],
+      ["Symbol", window.TBS.escapeHtml(String(snapshot.symbol || "BTCUSDT"))],
+    ].map(([label, value]) => `
+      <div class="stat">
+        <div class="label">${label}</div>
+        <div class="value">${value}</div>
+      </div>
+    `).join("");
+
+    document.getElementById("position-card").innerHTML = window.TBS.renderKv([
+      ["Status", window.TBS.escapeHtml(String(position.status || "flat"))],
+      ["Direction", window.TBS.escapeHtml(String(position.direction || "n/a"))],
+      ["Size", window.TBS.toMono(position.position_size || "0")],
+      ["Entry Price", window.TBS.toMono(position.entry_price || "n/a")],
+      ["TP / SL", `${window.TBS.toMono(position.tp_price || "n/a")} / ${window.TBS.toMono(position.sl_price || "n/a")}`],
+      ["Updated", window.TBS.formatTime(position.last_updated_ms)],
+    ]);
+    document.getElementById("safety-card").innerHTML = window.TBS.renderKv([
+      ["In Safe Mode", safety.in_safe_mode ? window.TBS.pill("Yes", "bad") : window.TBS.pill("No", "ok")],
+      ["Reason", window.TBS.escapeHtml(String(safety.reason || "none"))],
+      ["Detail", window.TBS.escapeHtml(String(safety.detail || "No active safety block"))],
+      ["Updated", window.TBS.formatTime(safety.updated_time_ms)],
+    ]);
+    document.getElementById("market-card").innerHTML = window.TBS.renderKv([
+      ["Health", window.TBS.boolPill(Boolean(market.healthy))],
+      ["State", window.TBS.escapeHtml(String(market.state || "healthy"))],
+      ["Reason", window.TBS.escapeHtml(String(market.reason_code || market.reason || "ok"))],
+      ["Latest Closed Bar", window.TBS.formatTime(market.latest_bar_time_ms)],
+      ["Stale Threshold", window.TBS.toMono(market.stale_after_ms || "n/a")],
+      ["Bars / Entry Streams / Queue Depth", `${window.TBS.boolPill(Boolean((feedHealth.bars || {}).healthy))} / ${window.TBS.boolPill(Boolean((feedHealth.trades || {}).healthy) && Boolean((feedHealth.book_ticker || {}).healthy))} / ${window.TBS.boolPill(Boolean((feedHealth.depth || {}).healthy))}`],
+      ["Trades / BookTicker", `${window.TBS.boolPill(Boolean((feedHealth.trades || {}).healthy))} / ${window.TBS.boolPill(Boolean((feedHealth.book_ticker || {}).healthy))}`],
+      ["Depth Health State", window.TBS.escapeHtml(String((feedHealth.depth || {}).order_book_health_state || "n/a"))],
+      ["Depth Sync / Repair", `${window.TBS.escapeHtml(String((feedHealth.depth || {}).depth_sync_state || "n/a"))} / ${window.TBS.boolPill(Boolean((feedHealth.depth || {}).repair_in_flight), "In Flight", "Idle")}`],
+      ["Depth Buffer / Backoff", `${window.TBS.toMono((feedHealth.depth || {}).buffered_event_count || 0)} / ${window.TBS.formatTime((feedHealth.depth || {}).backoff_until_ms)}`],
+      ["Planned Reconnect ETA", window.TBS.formatTime((feedHealth.depth || {}).next_planned_reconnect_time_ms)],
+      ["Validity Issue", window.TBS.escapeHtml(String((feedHealth.depth || {}).book_validity_issue || "none"))],
+    ]);
+    document.getElementById("execution-card").innerHTML = window.TBS.renderKv([
+      ["Health", window.TBS.boolPill(Boolean(execution.healthy))],
+      ["Reason", window.TBS.escapeHtml(String(execution.reason || "ok"))],
+      ["Reconcile Gap", window.TBS.toMono((((execution.reconcile_health || {}).gap_ms) ?? "n/a"))],
+      ["Basis Health", window.TBS.boolPill(Boolean(((execution.basis_health || {}).healthy) ?? true), "Healthy", "Dislocated")],
+      ["Last Execution WS", window.TBS.formatTime((((execution.status || {}).last_ws_message_ms) ?? null))],
+    ]);
+    document.getElementById("runtime-card").innerHTML = window.TBS.renderKv([
+      ["State", window.TBS.escapeHtml(String(safetyState.state || "healthy"))],
+      ["Reason", window.TBS.escapeHtml(String(safetyState.reason_code || "none"))],
+      ["Detail", window.TBS.escapeHtml(String(safetyState.detail || "No active runtime issue"))],
+      ["Recommended Action", window.TBS.escapeHtml(String(safetyState.recommended_action || "None"))],
+    ]);
+    document.getElementById("microstructure-card").innerHTML = window.TBS.renderKv([
+      ["Health", window.TBS.boolPill(Boolean(micro.healthy))],
+      ["Reasons", window.TBS.escapeHtml((micro.reasons || []).join(", ") || "ok")],
+      ["Warnings", window.TBS.escapeHtml((micro.warnings || []).join(", ") || "none")],
+      ["Order Book Mode", window.TBS.escapeHtml(String(micro.order_book_mode || "n/a"))],
+      ["Order Book State", window.TBS.escapeHtml(String(micro.order_book_health_state || "n/a"))],
+      ["Depth Sync State", window.TBS.escapeHtml(String(micro.depth_sync_state || "n/a"))],
+      ["Entry Ready / Depth Ready", `${window.TBS.boolPill(Boolean(micro.entry_ready))} / ${window.TBS.boolPill(Boolean(micro.depth_healthy))}`],
+      ["Availability", `Trades ${window.TBS.boolPill(Boolean(micro.trade_flow_available))} / Top ${window.TBS.boolPill(Boolean(micro.top_of_book_available))} / Queue ${window.TBS.boolPill(Boolean(micro.queue_imbalance_available))}`],
+      ["Queue Status", window.TBS.escapeHtml(String(micro.queue_feature_status || "n/a"))],
+      ["Top Of Book Imbalance", window.TBS.toMono(micro.top_of_book_imbalance || "n/a")],
+      ["Queue Imbalance L1 / L5 / L10", `${window.TBS.toMono(micro.queue_imbalance_l1 || "n/a")} / ${window.TBS.toMono(micro.queue_imbalance_l5 || "n/a")} / ${window.TBS.toMono(micro.queue_imbalance_l10 || "n/a")}`],
+      ["Signed Imbalance 20s", window.TBS.toMono((((micro.windows || {})["20"] || {}).signed_ratio) || "n/a")],
+      ["Sqrt Signed / Flow Alignment 20s", `${window.TBS.toMono((((micro.windows || {})["20"] || {}).sqrt_signed_ratio) || "n/a")} / ${window.TBS.toMono((((micro.windows || {})["20"] || {}).flow_price_alignment_bps) || "n/a")}`],
+      ["Aggressive Trades 20s", `${window.TBS.toMono((((micro.windows || {})["20"] || {}).buy_trade_count) || 0)} / ${window.TBS.toMono((((micro.windows || {})["20"] || {}).sell_trade_count) || 0)}`],
+      ["Gap / Resync / Reconnect / Rate Limit", `${window.TBS.toMono(micro.depth_gap_count || 0)} / ${window.TBS.toMono(micro.depth_resync_count || 0)} / ${window.TBS.toMono(micro.depth_reconnect_resync_count || 0)} / ${window.TBS.toMono(micro.depth_rate_limit_count || 0)}`],
+      ["Detailed Counters", `gap-resync ${window.TBS.toMono(micro.depth_gap_resync_count || 0)} / planned ${window.TBS.toMono(micro.depth_planned_reconnect_count || 0)} / error ${window.TBS.toMono(micro.depth_error_reconnect_count || 0)} / align ${window.TBS.toMono(micro.depth_alignment_mismatch_count || 0)} / invalid ${window.TBS.toMono(micro.depth_invalid_book_count || 0)}`],
+      ["Repair / Buffered Events", `${window.TBS.boolPill(Boolean(micro.repair_in_flight), "Running", "Idle")} / ${window.TBS.toMono(micro.buffered_event_count || 0)}`],
+      ["Buffer High-Water / Dropped", `${window.TBS.toMono(micro.depth_buffer_high_watermark || 0)} / ${window.TBS.toMono(micro.depth_dropped_buffered_event_count || 0)}`],
+      ["Depth Depletion L5 / L10", `${window.TBS.toMono((((micro.depth_depletion || {}).bid_l5) || "n/a"))}/${window.TBS.toMono((((micro.depth_depletion || {}).ask_l5) || "n/a"))} / ${window.TBS.toMono((((micro.depth_depletion || {}).bid_l10) || "n/a"))}/${window.TBS.toMono((((micro.depth_depletion || {}).ask_l10) || "n/a"))}`],
+      ["Depth Speed / Snapshot / Required", `${window.TBS.toMono(micro.depth_update_speed_ms || "n/a")} ms / ${window.TBS.toMono(micro.depth_snapshot_limit || "n/a")} / ${window.TBS.toMono(micro.depth_required_levels || "n/a")}`],
+      ["Last Good Depth / Retry", `${window.TBS.formatTime(micro.last_good_depth_time_ms)} / ${window.TBS.formatTime(micro.backoff_until_ms)}`],
+      ["Planned Reconnect ETA", window.TBS.formatTime(micro.next_planned_reconnect_time_ms)],
+      ["Book Validity", window.TBS.escapeHtml(String(micro.book_validity_issue || "ok"))],
+      ["Bootstrap Error", micro.bootstrap_error ? `<span class="bad">${window.TBS.escapeHtml(micro.bootstrap_error)}</span>` : '<span class="empty">none</span>'],
+    ]);
+    document.getElementById("microstructure-prediction-card").innerHTML = renderPrediction(prediction);
+    document.getElementById("supervision-card").innerHTML = window.TBS.renderKv([
+      ["Latest Snapshot", window.TBS.formatTime(supervision.time_ms)],
+      ["Candidate Exit", window.TBS.escapeHtml(String(supervision.candidate_exit_reason || "hold"))],
+      ["Bars Since Entry", window.TBS.toMono(supervision.bars_since_entry || "n/a")],
+      ["Elapsed", window.TBS.toMono(supervision.elapsed_ms || "n/a")],
+      ["MFE / MAE ATR", `${window.TBS.toMono(supervision.mfe_atr || "n/a")} / ${window.TBS.toMono(supervision.mae_atr || "n/a")}`],
+      ["Basis / Signed Imbalance", `${window.TBS.toMono(supervision.basis_bps || "n/a")} / ${window.TBS.toMono(supervision.signed_imbalance_ratio || "n/a")}`],
+    ]);
+    document.getElementById("attribution-card").innerHTML = window.TBS.renderKv([
+      ["Trade Closes", window.TBS.toMono(attribution.trade_close_count || 0)],
+      ["Decision Latency Mean / Median", `${window.TBS.toMono(attribution.decision_latency_ms_mean || "n/a")} / ${window.TBS.toMono(attribution.decision_latency_ms_median || "n/a")}`],
+      ["Holding Mean / Median", `${window.TBS.toMono(attribution.holding_time_ms_mean || "n/a")} / ${window.TBS.toMono(attribution.holding_time_ms_median || "n/a")}`],
+      ["Entry Slippage Mean", window.TBS.toMono(attribution.entry_slippage_bps_mean || "n/a")],
+      ["Basis Incidents", window.TBS.toMono(attribution.basis_dislocation_incidents || 0)],
+      ["Reconcile Mismatches", window.TBS.toMono(attribution.reconcile_mismatch_count || 0)],
+    ]);
+
+    document.getElementById("recommendations").innerHTML = (snapshot.recommendations || []).map(item =>
+      `<div class="banner"><strong>${window.TBS.escapeHtml(item.title)}</strong><br>${window.TBS.escapeHtml(item.message)}</div>`
+    ).join("");
+
+    renderEventList((snapshot.recent_health_events || []).map(item => ({
+      event_type: `${item.scope}:${item.state}`,
+      summary: item.summary,
+      symbol: item.symbol,
+      time_ms: item.event_time_ms,
+      payload: item,
+    })), "health-events");
+    renderEventList(snapshot.fresh_stream_events || [], "stream-events");
+    renderEventList(snapshot.recent_traces || [], "recent-traces");
+  }
+
+  refreshOverview();
+  setInterval(refreshOverview, 3000);
+</script>
+{% endblock %}

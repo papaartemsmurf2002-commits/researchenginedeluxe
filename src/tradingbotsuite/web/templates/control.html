@@ -1,0 +1,267 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Control</h1>
+<p class="muted">These buttons use the same engine path as the shell. Nothing here bypasses safety checks.</p>
+<div class="grid">
+  <div class="card wide">
+    <h3>Full-Stack Manual Validation</h3>
+    {% if mode == "live" %}
+      {% if execution_target == "testnet" %}
+      <div class="banner">
+        <strong>Live testnet mode is active.</strong><br>
+        The `Long` and `Short` buttons below already run the full engine and place real <strong>testnet</strong> orders through the configured Hyperliquid adapter at <span class="mono">{{ hyperliquid_base_url }}</span>.
+      </div>
+      {% else %}
+      <div class="error-box">
+        <strong>Mainnet live mode is active.</strong><br>
+        The `Long` and `Short` buttons below will place real orders against <span class="mono">{{ hyperliquid_base_url }}</span>. Use this only if you intentionally want mainnet execution.
+      </div>
+      {% endif %}
+    {% elif mode == "paper" %}
+    <div class="banner">
+      <strong>Paper mode is active.</strong><br>
+      The manual buttons still run the full decision and supervision pipeline, but fills are simulated instead of reaching Hyperliquid.
+    </div>
+    {% else %}
+    <div class="banner">
+      <strong>Shadow mode is active.</strong><br>
+      The manual buttons build the full decision path and intended orders, but the execution backend stays observe-only.
+    </div>
+    {% endif %}
+    <div class="stack">
+      <div class="workflow-step">
+        <strong>What happens when you click Long or Short</strong><br>
+        A manual signal is created from the latest closed 15m BTC bar, the engine runs market-data and safety checks, builds the decision packet, sends orders through the configured backend, persists attribution, and then supervision/reconcile continues on the same runtime path.
+      </div>
+      <div class="workflow-step">
+        <strong>Recommended test sequence</strong><br>
+        1. Refresh Health and confirm market/execution are healthy. 2. Send one manual entry. 3. Inspect the Decision and Execution boxes. 4. Watch Timeline and Overview for protection placement, supervision state, and health events. 5. Run Reconcile. 6. Close via Supervise or opposite-side flip and confirm the close attribution is persisted.
+      </div>
+    </div>
+  </div>
+  <div class="card wide">
+    <h3>Manual Commands</h3>
+    <div class="workflow-step">
+      <strong>Runtime mode</strong><br>
+      <div class="inline-buttons" style="margin-top:0.6rem;">
+        <button class="secondary" onclick="switchMode('shadow')">Switch To Shadow</button>
+        <button class="secondary" onclick="switchMode('paper')">Switch To Paper</button>
+        <button class="secondary" onclick="switchMode('live')">Switch To Live</button>
+      </div>
+      <div class="muted" style="margin-top:0.45rem;">
+        Mode switches are blocked while a position is open. Switching to <span class="mono">live</span> still uses the same Hyperliquid preflight checks.
+      </div>
+    </div>
+    {% if mode == "live" and execution_target == "testnet" %}
+    <div class="workflow-step">
+      <strong>Optional Hyperliquid testnet TP/SL validation</strong><br>
+      <label style="display:flex; gap:0.6rem; align-items:flex-start; margin-top:0.5rem;">
+        <input id="testnet-protection-toggle" type="checkbox" />
+        <span>
+          Place short-lived TP/SL trigger orders on Hyperliquid testnet after a confirmed manual entry fill.
+          These orders are only for adapter testing and are auto-canceled after <span class="mono">10s</span>, while real exit supervision continues to use Binance data.
+          For this temporary harness, the testnet trigger prices are forced to <span class="mono">75000 / 70000</span> for longs and <span class="mono">70000 / 75000</span> for shorts so testnet price drift does not instantly trip them.
+          This is a testing-only workaround and must be removed before any real deployment.
+        </span>
+      </label>
+    </div>
+    {% endif %}
+    <div class="inline-buttons">
+      <button onclick="runManualSignal('long')">Long{% if mode == "live" %} Full Stack{% endif %}</button>
+      <button onclick="runManualSignal('short')">Short{% if mode == "live" %} Full Stack{% endif %}</button>
+      <button class="secondary" onclick="runCommand('/api/operator/commands/supervise', {symbol:'BTCUSDT'})">Supervise</button>
+      <button class="secondary" onclick="runCommand('/api/operator/commands/reconcile', {symbol:'BTCUSDT'})">Reconcile</button>
+      <button class="secondary" onclick="runCommand('/api/operator/commands/refresh-health', {symbol:'BTCUSDT'})">Refresh Health</button>
+      <button class="secondary" onclick="runSmoke()">Smoke Live</button>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Last Command Result</h3>
+    <div id="command-summary" class="empty">No command submitted yet.</div>
+    <div id="command-panels" class="stack"></div>
+    <details class="details">
+      <summary>Raw response</summary>
+      <pre id="command-raw">No command yet.</pre>
+    </details>
+  </div>
+  <div class="card">
+    <h3>Live Snapshot</h3>
+    <div id="control-snapshot" class="kv"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  function renderCommandSummary(response) {
+    if (!response) {
+      return '<div class="empty">No command submitted yet.</div>';
+    }
+    if (!response.success) {
+      return `<div class="error-box"><strong>Command rejected or failed</strong><br>${window.TBS.escapeHtml(String((response.result || {}).error || "unknown error"))}</div>`;
+    }
+    const result = response.result || {};
+    const packet = result.packet || {};
+    const reports = result.reports || [];
+    const cleanup = result.testnet_short_lived_protections || {};
+    const protectionConfig = (((packet.signal || {}).raw_payload || {}).manual_testnet_protection_test) || {};
+    if (!packet.signal && result.mode) {
+      return `
+        <div class="success-box">
+          <div class="split">
+            <strong>Runtime mode updated</strong>
+            ${window.TBS.pill(window.TBS.escapeHtml(String(result.mode)), "ok")}
+          </div>
+        </div>
+        ${window.TBS.renderKv([
+          ["Previous Mode", window.TBS.escapeHtml(String(result.previous_mode || "n/a"))],
+          ["Current Mode", window.TBS.escapeHtml(String(result.mode || "n/a"))],
+          ["Changed", window.TBS.boolPill(Boolean(result.changed))],
+        ])}
+      `;
+    }
+    return `
+      <div class="success-box">
+        <div class="split">
+          <strong>${window.TBS.escapeHtml(String(packet.action || "completed"))}</strong>
+          ${packet.accepted ? window.TBS.pill("Accepted", "ok") : window.TBS.pill("Rejected", "warn")}
+        </div>
+      </div>
+      ${window.TBS.renderKv([
+        ["Signal", window.TBS.escapeHtml(String((((packet.signal || {}).signal_id) || result.signal_id || "manual")))],
+        ["Direction", window.TBS.escapeHtml(String((((packet.signal || {}).direction) || "n/a")))],
+        ["Reason", window.TBS.escapeHtml(String(packet.rejection_reason || "none"))],
+        ["Reports", window.TBS.toMono(reports.length)],
+        ["Testnet TP/SL", window.TBS.escapeHtml(String(cleanup.reason || "not_requested"))],
+      ])}
+    `;
+  }
+
+  function renderCommandPanels(response) {
+    if (!response || !response.success) {
+      document.getElementById("command-panels").innerHTML = "";
+      return;
+    }
+    const result = response.result || {};
+    const packet = result.packet || {};
+    const reports = result.reports || [];
+    const ticket = result.ticket || {};
+    const cleanup = result.testnet_short_lived_protections || {};
+    if (!packet.signal && result.mode) {
+      document.getElementById("command-panels").innerHTML = [
+        {
+          title: "Runtime Mode",
+          rows: [
+            ["Previous", window.TBS.escapeHtml(String(result.previous_mode || "n/a"))],
+            ["Current", window.TBS.escapeHtml(String(result.mode || "n/a"))],
+            ["Changed", window.TBS.boolPill(Boolean(result.changed))],
+            ["Preflight", window.TBS.escapeHtml(String(((result.preflight || {}).reason) || (((result.preflight || {}).ok) ? "ok" : "n/a")))],
+          ],
+        },
+      ].map(panel => `
+        <div class="card alt">
+          <h4>${window.TBS.escapeHtml(panel.title)}</h4>
+          ${window.TBS.renderKv(panel.rows)}
+        </div>
+      `).join("");
+      return;
+    }
+    document.getElementById("command-panels").innerHTML = [
+      {
+        title: "Decision",
+        rows: [
+          ["Action", window.TBS.escapeHtml(String(packet.action || "n/a"))],
+          ["Accepted", packet.accepted ? window.TBS.pill("Yes", "ok") : window.TBS.pill("No", "warn")],
+          ["Reason", window.TBS.escapeHtml(String(packet.rejection_reason || "none"))],
+          ["Confidence", window.TBS.escapeHtml(String(packet.confidence_bucket || "n/a"))],
+        ],
+      },
+      {
+        title: "Execution",
+        rows: [
+          ["Reports", window.TBS.toMono(reports.length)],
+          ["Statuses", window.TBS.escapeHtml(reports.map(report => `${report.intent_type}:${report.status}`).join(", ") || "none")],
+          ["Filled Prices", window.TBS.escapeHtml(reports.map(report => report.filled_price || "-").join(", "))],
+        ],
+      },
+      {
+        title: "Testnet TP/SL",
+        rows: [
+          ["Requested", window.TBS.boolPill(Boolean(cleanup.requested))],
+          ["Eligible", window.TBS.boolPill(Boolean(cleanup.eligible))],
+          ["Cleanup Armed", window.TBS.boolPill(Boolean(cleanup.armed))],
+          ["Status", window.TBS.escapeHtml(String(cleanup.reason || "not_requested"))],
+          ["Cleanup Delay", window.TBS.escapeHtml(String(cleanup.cleanup_after_seconds || "n/a"))],
+          ["Trigger Prices", window.TBS.escapeHtml(`${protectionConfig.fixed_tp_trigger_price || "-"} / ${protectionConfig.fixed_sl_trigger_price || "-"}`)],
+          ["TP / SL Cloids", window.TBS.escapeHtml(`${cleanup.tp_order_cloid || "-"} / ${cleanup.sl_order_cloid || "-"}`)],
+        ],
+      },
+      {
+        title: "Ticket",
+        rows: [
+          ["Summary", window.TBS.escapeHtml(String(ticket.readable_summary || "n/a"))],
+          ["Action Type", window.TBS.escapeHtml(String(ticket.action_type || "n/a"))],
+          ["Decision Time", window.TBS.formatTime(ticket.decision_time_ms)],
+        ],
+      },
+    ].map(panel => `
+      <div class="card alt">
+        <h4>${window.TBS.escapeHtml(panel.title)}</h4>
+        ${window.TBS.renderKv(panel.rows)}
+      </div>
+    `).join("");
+  }
+
+  async function runCommand(url, payload) {
+    const response = await window.TBS.postJson(url, payload);
+    document.getElementById("command-summary").innerHTML = renderCommandSummary(response);
+    renderCommandPanels(response);
+    document.getElementById("command-raw").textContent = window.TBS.pretty(response);
+    await refreshControlSnapshot();
+  }
+
+  async function runSmoke() {
+    const size = window.prompt("Smoke size (blank for default)", "");
+    await runCommand("/api/operator/commands/smoke-live", { size: size || null });
+  }
+
+  async function switchMode(mode) {
+    if (mode === "live") {
+      const confirmed = window.confirm("Switch runtime mode to live? This enables the Hyperliquid live adapter path and keeps all existing safety checks.");
+      if (!confirmed) {
+        return;
+      }
+    }
+    await runCommand("/api/operator/commands/set-mode", { mode });
+    window.setTimeout(() => window.location.reload(), 250);
+  }
+
+  function manualSignalPayload(direction) {
+    const checkbox = document.getElementById("testnet-protection-toggle");
+    return {
+      symbol: "BTCUSDT",
+      direction: direction,
+      testnet_short_lived_protections: Boolean(checkbox && checkbox.checked),
+    };
+  }
+
+  async function runManualSignal(direction) {
+    await runCommand("/api/operator/commands/manual-signal", manualSignalPayload(direction));
+  }
+
+  async function refreshControlSnapshot() {
+    const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
+    document.getElementById("control-snapshot").innerHTML = window.TBS.renderKv([
+      ["Position", window.TBS.escapeHtml(String((snapshot.position || {}).status || "flat"))],
+      ["Direction", window.TBS.escapeHtml(String((snapshot.position || {}).direction || "n/a"))],
+      ["Safety", (snapshot.safety || {}).in_safe_mode ? window.TBS.pill("Safe Mode", "bad") : window.TBS.pill("Normal", "ok")],
+      ["Runtime State", window.TBS.escapeHtml(String((snapshot.safety_state || {}).state || "healthy"))],
+      ["Market", window.TBS.boolPill(Boolean((snapshot.market_data_health || {}).healthy))],
+      ["Execution", window.TBS.boolPill(Boolean((snapshot.execution_health || {}).healthy))],
+      ["Microstructure", window.TBS.boolPill(Boolean((snapshot.microstructure || {}).healthy))],
+    ]);
+  }
+
+  refreshControlSnapshot();
+  setInterval(refreshControlSnapshot, 4000);
+</script>
+{% endblock %}

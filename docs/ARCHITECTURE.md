@@ -44,3 +44,19 @@ These modules may use LC output, but parity checks should remain possible withou
 - Live trading is disabled by default in example configs.
 
 Keep live execution changes isolated from parity and research changes.
+
+## TradingBotSuite Runtime
+
+- `src/tradingbotsuite/core/engine.py` is the canonical BTC runtime decision, supervision, reconciliation, and system-snapshot path.
+- `src/tradingbotsuite/adapters/binance.py` owns Binance USD-M bars, aggTrade flow, bookTicker, and local diff-depth book reliability.
+- `src/tradingbotsuite/adapters/execution.py` owns Hyperliquid order placement, testnet support, protection cleanup, and execution reports.
+- `src/tradingbotsuite/persistence.py` owns SQLite-backed state, events, operator jobs, health events, and runtime attribution.
+- `src/tradingbotsuite/web/` and `src/tradingbotsuite/operator_console.py` expose the localhost operator console as a thin layer over the engine.
+
+This package is preserved as a sibling runtime stack. It should not be merged into `tradingbot` parity code unless there is a deliberate interface design for signal handoff.
+
+## Archived Runtime Research
+
+- `src/tradingbotsuite/research/` contains preserved chart-export import, dataset, filter, optimizer, and artifact tooling from previous V2 work.
+- That code is not the active workstream. TradingView data importing, dataset training, and live model promotion are frozen until explicitly reactivated.
+- Runtime reliability and signal-generation parity should be stabilized independently before reopening this layer.

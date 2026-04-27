@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Research</h1>
+<p class="muted">V2 stays observe-only until offline evidence is good enough. The workflow here is: build BTC dataset, train baseline, calibrate probabilities, then run walk-forward replay.</p>
+<div class="grid">
+  <div class="card">
+    <h3>Workflow</h3>
+    <div class="workflow-step">
+      <strong>1. Build Dataset</strong>
+      <div class="muted">Reads persisted BTC signals, reconstructs signal-time features, applies the same triple-barrier math used live, and writes a parquet dataset plus manifest.</div>
+    </div>
+    <div class="workflow-step">
+      <strong>2. Train Model</strong>
+      <div class="muted">Fits the baseline logistic-regression model on the dataset. This is still offline only and does not change live behavior.</div>
+    </div>
+    <div class="workflow-step">
+      <strong>3. Calibrate</strong>
+      <div class="muted">Applies isotonic calibration when the sample is large enough, or a safer fallback when it is not.</div>
+    </div>
+    <div class="workflow-step">
+      <strong>4. Replay Evaluate</strong>
+      <div class="muted">Runs walk-forward out-of-sample checks and compares V2 against the current V1 baseline before any promotion is even considered.</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Before You Build</h3>
+    <div class="stack">
+      <div class="list-item">You need persisted BTC signal history in SQLite. No signals means no dataset.</div>
+      <div class="list-item">The builder reconstructs signal-time context, not just raw price rows. It uses stored signals plus Binance history.</div>
+      <div class="list-item">Missing additive features such as funding or open interest do not get fabricated. They become explicit missingness flags.</div>
+      <div class="list-item">A good dataset is not just “finished”. Check row count, class balance, and missing-feature rates before training.</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Actions</h3>
+    <div class="inline-buttons">
+      <button onclick="queueJob('/api/operator/research/jobs/build-dataset', {})">Build Dataset</button>
+      <button class="secondary" onclick="queueTrainLatest()">Train Latest Dataset</button>
+      <button class="secondary" onclick="queueCalibrateLatest()">Calibrate Latest Train</button>
+      <button class="secondary" onclick="queueReplayLatest()">Replay Latest Artifact</button>
+    </div>
+    <div id="job-response" class="empty" style="margin-top:12px;">No job submitted.</div>
+  </div>
+  <div class="card wide">
+    <h3>Entry Gate Research</h3>
+    <p class="muted">Runs the observe-only trend/chop blocker replay on TradingView chart-export signals. This does not change live entries.</p>
+    <div class="grid">
+      <label>CSV Path <input id="entry-gate-path" value="BINANCE_BTCUSDT.P, 15 (2).csv"></label>
+      <label>Strategy Version <input id="entry-gate-version" value="kernel_v1"></label>
+      <label>Research Exit Profile
+        <select id="entry-gate-exit-profile">
+          <option value="runner">Runner: 0.5% SL, +0.5% activation, 0.3% trail</option>
+          <option value="fixed">Fixed: 1.5% TP, 0.5% SL</option>
+        </select>
+      </label>
+    </div>
+    <button class="secondary" onclick="queueEntryGateResearch()">Run Entry-Gate Research</button>
+  </div>
+  <div class="card wide">
+    <h3>Latest Status</h3>
+    <div id="research-status" class="stat-grid"></div>
+  </div>
+  <div class="card wide">
+    <h3>How Dataset Build Works</h3>
+    <div class="grid">
+      <div class="card alt">
+        <h4>Inputs</h4>
+        <div class="muted">Stored BTC signals, Binance 15m history, and any available signal-time context already saved in decision packets.</div>
+      </div>
+      <div class="card alt">
+        <h4>Processing</h4>
+        <div class="muted">The builder preloads one shared bar range, slices it locally per signal, rebuilds features, freezes ATR barriers, and labels outcomes with the same exit logic used live.</div>
+      </div>
+      <div class="card alt">
+        <h4>Outputs</h4>
+        <div class="muted">A parquet dataset for training plus a manifest with row count, dataset hash, config snapshot, and missing-feature rates.</div>
+      </div>
+      <div class="card alt">
+        <h4>Quality Check</h4>
+        <div class="muted">Do not move to training blindly. First confirm the dataset is large enough, not one-sided, and not dominated by missing features.</div>
+      </div>
+    </div>
+  </div>
+  <div class="card wide">
+    <h3>Jobs</h3>
+    <table>
+      <thead><tr><th>Requested</th><th>Type</th><th>Status</th><th>Summary</th><th>Details</th></tr></thead>
+      <tbody id="jobs-list"><tr><td colspan="5">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card wide">
+    <h3>Artifacts</h3>
+    <div id="artifacts-list" class="grid"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  let latestArtifacts = [];
+
+  function pickLatest(type) {
+    return latestArtifacts.find(item => item.type === type) || null;
+  }
+
+  async function queueJob(url, payload) {
+    try {
+      const response = await window.TBS.postJson(url, payload);
+      document.getElementById("job-response").innerHTML = `<div class="success-box"><strong>Job queued</strong><br>${window.TBS.escapeHtml(response.job_id || "queued")}</div>`;
+    } catch (error) {
+      document.getElementById("job-response").innerHTML = `<div class="error-box"><strong>Job rejected</strong><br>${window.TBS.escapeHtml(String(error.message || error))}</div>`;
+    }
+    await refreshResearch();
+  }
+
+  async function queueTrainLatest() {
+    const dataset = pickLatest("dataset");
+    if (!dataset) {
+      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No dataset found</strong><br>Build a dataset first.</div>';
+      return;
+    }
+    await queueJob("/api/operator/research/jobs/train-model", { dataset_path: dataset.manifest.dataset_path });
+  }
+
+  async function queueCalibrateLatest() {
+    const train = pickLatest("train_artifact");
+    if (!train) {
+      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No training artifact found</strong><br>Train the model first.</div>';
+      return;
+    }
+    await queueJob("/api/operator/research/jobs/calibrate-model", { train_manifest_path: train.path });
+  }
+
+  async function queueReplayLatest() {
+    const artifact = pickLatest("model_artifact");
+    if (!artifact) {
+      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No calibrated artifact found</strong><br>Calibrate the model first.</div>';
+      return;
+    }
+    await queueJob("/api/operator/research/jobs/replay-eval", { artifact_manifest_path: artifact.path });
+  }
+
+  async function queueEntryGateResearch() {
+    await queueJob("/api/operator/research/jobs/research-entry-gates", {
+      path: document.getElementById("entry-gate-path").value,
+      strategy_version: document.getElementById("entry-gate-version").value,
+      symbol: "BTCUSDT",
+      exit_profile: document.getElementById("entry-gate-exit-profile").value,
+      max_candidates: 10000,
+    });
+  }
+
+  function renderJobRow(job) {
+    const stateClass = job.status === "succeeded" ? "ok" : (job.status === "failed" ? "bad" : "warn");
+    const summary = job.result ? Object.entries(job.result).map(([k, v]) => `${k}: ${v}`).join(" | ") : (job.error_text || "waiting");
+    return `
+      <tr>
+        <td>${window.TBS.formatTime(job.requested_at_ms)}</td>
+        <td>${window.TBS.escapeHtml(job.job_type)}</td>
+        <td>${window.TBS.pill(job.status, stateClass)}</td>
+        <td>${window.TBS.escapeHtml(summary)}</td>
+        <td>
+          <details class="details">
+            <summary>Inspect</summary>
+            <div class="stack">
+              ${job.error_text ? `<div class="error-box">${window.TBS.escapeHtml(job.error_text)}</div>` : ""}
+              ${job.logs && job.logs.length ? `<pre>${window.TBS.escapeHtml(window.TBS.pretty(job.logs))}</pre>` : '<div class="empty">No detailed logs stored.</div>'}
+            </div>
+          </details>
+        </td>
+      </tr>
+    `;
+  }
+
+  function renderArtifactCard(item) {
+    const summary = item.summary || {};
+    const metrics = item.metrics || {};
+    const missing = summary.missing_feature_rates || {};
+    const topMissing = Object.entries(missing).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return `
+      <div class="card alt">
+        <div class="split">
+          <strong>${window.TBS.escapeHtml(item.type.replaceAll("_", " "))}</strong>
+          ${item.type === "model_artifact" && metrics.promotion_ready ? window.TBS.pill("promotion_ready", "ok") : window.TBS.pill("observe_only", "neutral")}
+        </div>
+        ${window.TBS.renderKv([
+          ["Path", window.TBS.toMono(item.path)],
+          ["Dataset", window.TBS.escapeHtml(String(summary.dataset_path || "n/a"))],
+          ["Rows", window.TBS.toMono(summary.row_count || summary.train_rows || summary.total_rows || "n/a")],
+          ["Model", window.TBS.escapeHtml(String(summary.model_version || "n/a"))],
+          ["Calibration", window.TBS.escapeHtml(String(summary.calibration_version || "n/a"))],
+          ["V2 Expectancy", window.TBS.toMono(summary.v2_expectancy ?? "n/a")],
+          ["Gate Status", window.TBS.escapeHtml(String(summary.selection_status || "n/a"))],
+          ["Best Return", window.TBS.toMono(summary.best_return ?? "n/a")],
+          ["Best Rejection", window.TBS.toMono(summary.best_rejection_rate ?? "n/a")],
+        ])}
+        ${topMissing.length ? `<div class="muted" style="margin-top:8px;">Top missing feature rates: ${topMissing.map(([k, v]) => `${k}=${Number(v).toFixed(2)}`).join(", ")}</div>` : ""}
+        <details class="details">
+          <summary>Manifest / metrics</summary>
+          <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, metrics: item.metrics || null }))}</pre>
+        </details>
+      </div>
+    `;
+  }
+
+  async function refreshResearch() {
+    const [jobsIndex, artifactsIndex] = await Promise.all([
+      window.TBS.getJson("/api/operator/research/jobs"),
+      window.TBS.getJson("/api/operator/research/artifacts")
+    ]);
+    latestArtifacts = artifactsIndex.items || [];
+
+    const jobs = [];
+    for (const job of (jobsIndex.items || []).slice(0, 8)) {
+      jobs.push(await window.TBS.getJson(`/api/operator/research/jobs/${job.job_id}`));
+    }
+    document.getElementById("jobs-list").innerHTML = jobs.length ? jobs.map(renderJobRow).join("") : '<tr><td colspan="5">No jobs yet.</td></tr>';
+    document.getElementById("artifacts-list").innerHTML = latestArtifacts.length ? latestArtifacts.map(renderArtifactCard).join("") : '<div class="empty">No research artifacts created yet.</div>';
+
+    const latestDataset = pickLatest("dataset");
+    const latestTrain = pickLatest("train_artifact");
+    const latestModel = pickLatest("model_artifact");
+    document.getElementById("research-status").innerHTML = [
+      ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
+      ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
+      ["Latest Model", latestModel?.summary?.model_version ?? "n/a"],
+      ["Promotion Ready", latestModel?.summary?.promotion_ready ? "yes" : "no"],
+    ].map(([label, value]) => `
+      <div class="stat">
+        <div class="label">${label}</div>
+        <div class="value">${window.TBS.escapeHtml(String(value))}</div>
+      </div>
+    `).join("");
+  }
+
+  refreshResearch();
+  setInterval(refreshResearch, 4000);
+</script>
+{% endblock %}

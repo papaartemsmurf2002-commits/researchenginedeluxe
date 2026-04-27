@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trading Bot Suite Operator</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #151b23;
+      --panel-alt: #1f2630;
+      --border: #303947;
+      --text: #e6edf3;
+      --muted: #9aa7b4;
+      --accent: #2f81f7;
+      --accent-soft: #1e3a5f;
+      --ok-bg: #173923;
+      --ok-text: #73d18a;
+      --warn-bg: #3c2f13;
+      --warn-text: #f0c36a;
+      --bad-bg: #401f1f;
+      --bad-text: #ff8f83;
+    }
+    body { font-family: Georgia, "Segoe UI", sans-serif; margin: 0; background: var(--bg); color: var(--text); }
+    header { background: linear-gradient(120deg, #111827, #1f2a3b); padding: 16px 20px; border-bottom: 1px solid var(--border); }
+    .layout { display: grid; grid-template-columns: 220px 1fr; min-height: calc(100vh - 73px); }
+    nav { background: #101720; border-right: 1px solid var(--border); padding: 16px; }
+    nav a { display: block; padding: 10px 12px; margin-bottom: 8px; color: var(--text); text-decoration: none; border-radius: 8px; }
+    nav a.active { background: var(--accent-soft); font-weight: 700; }
+    main { padding: 20px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.20); }
+    .card.alt { background: var(--panel-alt); }
+    .wide { grid-column: 1 / -1; }
+    h1, h2, h3, h4 { margin-top: 0; }
+    pre { white-space: pre-wrap; word-break: break-word; background: var(--panel-alt); border-radius: 8px; padding: 10px; font-size: 12px; }
+    button { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+    button.secondary { background: #9f8b6f; }
+    button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
+    form.inline, .inline-buttons { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    input[type=password], input[type=text], input[type=number], select, input[type=file] { padding: 10px; border-radius: 8px; border: 1px solid var(--border); min-width: 220px; background: #0f1620; color: var(--text); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; font-size: 13px; }
+    .banner { padding: 12px; border-radius: 10px; margin-bottom: 12px; background: var(--warn-bg); border: 1px solid #765f28; }
+    .ok { color: var(--ok-text); }
+    .bad { color: var(--bad-text); }
+    .muted { color: var(--muted); font-size: 13px; }
+    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .pill.ok { background: var(--ok-bg); color: var(--ok-text); }
+    .pill.warn { background: var(--warn-bg); color: var(--warn-text); }
+    .pill.bad { background: var(--bad-bg); color: var(--bad-text); }
+    .pill.neutral { background: #2a3340; color: #c7d0da; }
+    .stat-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    .stat { background: var(--panel-alt); border-radius: 10px; padding: 12px; border: 1px solid var(--border); }
+    .stat .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+    .stat .value { font-size: 18px; font-weight: 700; }
+    .kv { display: grid; gap: 8px; }
+    .kv-row { display: grid; grid-template-columns: 170px 1fr; gap: 10px; align-items: start; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+    .kv-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .kv-key { color: var(--muted); font-size: 12px; }
+    .kv-value { font-size: 13px; word-break: break-word; }
+    .list { display: grid; gap: 8px; }
+    .list-item { padding: 10px; border-radius: 10px; background: var(--panel-alt); border: 1px solid var(--border); }
+    .split { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .stack { display: grid; gap: 12px; }
+    .empty { color: var(--muted); font-style: italic; }
+    .mono { font-family: "Consolas", "SFMono-Regular", monospace; font-size: 12px; }
+    .details { margin-top: 8px; }
+    .details summary { cursor: pointer; color: var(--accent); }
+    .error-box { background: var(--bad-bg); border: 1px solid #6e3434; border-radius: 10px; padding: 10px; color: var(--bad-text); }
+    .success-box { background: var(--ok-bg); border: 1px solid #2c6e43; border-radius: 10px; padding: 10px; color: var(--ok-text); }
+    .workflow-step { border-left: 4px solid var(--accent); padding-left: 12px; margin-bottom: 14px; }
+    @media (max-width: 900px) {
+      .layout { grid-template-columns: 1fr; }
+      nav { border-right: 0; border-bottom: 1px solid #d5c7aa; }
+      .kv-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>Trading Bot Suite Operator Console</strong>
+    <span class="muted"> | Mode: {{ mode }}</span>
+  </header>
+  <div class="layout">
+    <nav>
+      <a href="/ui/overview" class="{% if page == 'overview' %}active{% endif %}">Overview</a>
+      <a href="/ui/control" class="{% if page == 'control' %}active{% endif %}">Control</a>
+      <a href="/ui/timeline" class="{% if page == 'timeline' %}active{% endif %}">Timeline</a>
+      <a href="/ui/research" class="{% if page == 'research' %}active{% endif %}">Research</a>
+      <a href="/ui/analysis" class="{% if page == 'analysis' %}active{% endif %}">Analysis</a>
+      <a href="/ui/predictions" class="{% if page == 'predictions' %}active{% endif %}">Predictions</a>
+      <a href="/ui/guides" class="{% if page == 'guides' %}active{% endif %}">Guides</a>
+      <form method="post" action="/ui/logout">
+        <button class="secondary" type="submit">Logout</button>
+      </form>
+    </nav>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <script>
+    window.TBS = {
+      csrfToken: {{ csrf_token|tojson }},
+      async getJson(url) {
+        const response = await fetch(url, { credentials: "same-origin" });
+        if (!response.ok) throw new Error(await response.text());
+        return await response.json();
+      },
+      async postJson(url, payload) {
+        const response = await fetch(url, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-Token": window.TBS.csrfToken || ""
+          },
+          body: JSON.stringify(payload || {})
+        });
+        if (!response.ok) throw new Error(await response.text());
+        return await response.json();
+      },
+      escapeHtml(value) {
+        return String(value ?? "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll("\"", "&quot;")
+          .replaceAll("'", "&#39;");
+      },
+      formatTime(ms) {
+        if (!ms) return "n/a";
+        try {
+          return new Date(Number(ms)).toLocaleString();
+        } catch {
+          return String(ms);
+        }
+      },
+      pill(label, state) {
+        const safe = window.TBS.escapeHtml(label);
+        return `<span class="pill ${state}">${safe}</span>`;
+      },
+      boolPill(value, good = "Healthy", bad = "Unhealthy") {
+        return value ? window.TBS.pill(good, "ok") : window.TBS.pill(bad, "bad");
+      },
+      renderKv(rows) {
+        return `<div class="kv">${rows.map(([key, value]) => `
+          <div class="kv-row">
+            <div class="kv-key">${window.TBS.escapeHtml(key)}</div>
+            <div class="kv-value">${value == null || value === "" ? '<span class="empty">n/a</span>' : value}</div>
+          </div>
+        `).join("")}</div>`;
+      },
+      pretty(value) {
+        return JSON.stringify(value, null, 2);
+      },
+      toMono(value) {
+        return `<span class="mono">${window.TBS.escapeHtml(value)}</span>`;
+      }
+    };
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
