@@ -136,6 +136,14 @@ class ExecutableEntrySimulation:
     metadata: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class LabelEntrySelection:
+    entry_price: Decimal
+    entry_price_source: str
+    label_interval_start_ms: int
+    metadata: dict[str, Any]
+
+
 def _hash_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -149,6 +157,20 @@ def _decimal_or_none(value: Any) -> Decimal | None:
         return Decimal(str(value))
     except Exception:
         return None
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        return int(Decimal(str(value)))
+    except Exception:
+        return None
+
+
+def _first_present(payload: dict[str, Any], fields: tuple[str, ...]) -> Any:
+    for field in fields:
+        if payload.get(field) is not None:
+            return payload.get(field)
+    return None
 
 
 def _signed_return_fraction(*, direction: SignalDirection, entry_price: Decimal, exit_price: Decimal) -> Decimal:
@@ -356,6 +378,46 @@ def classify_label_entry_source(
         latency_fields_present=latency_fields,
         cost_fields_present=cost_fields,
         missing_required_metadata=("known_entry_source",),
+    )
+
+
+def select_label_entry_for_research(
+    *,
+    raw_payload: dict[str, Any],
+    latest_bar: Bar,
+    direction: SignalDirection,
+    default_label_interval_start_ms: int,
+) -> LabelEntrySelection:
+    simulated_entry = simulate_executable_entry_fill(
+        signal_bar_open_time_ms=latest_bar.time_ms,
+        signal_bar_close_time_ms=default_label_interval_start_ms,
+        signal_bar_open=latest_bar.open,
+        signal_bar_close=latest_bar.close,
+        next_bar_open_time_ms=_int_or_none(_first_present(raw_payload, ("next_bar_open_time_ms", "next_bar_time_ms"))),
+        next_bar_open=_first_present(raw_payload, ("next_bar_open",)),
+        decision_latency_ms=_int_or_none(_first_present(raw_payload, ("decision_latency_ms",))),
+        order_placement_latency_ms=_int_or_none(
+            _first_present(raw_payload, ("order_placement_latency_ms", "order_placement_delay_ms"))
+        ),
+        slippage_bps=_first_present(raw_payload, ("entry_slippage_bps", "slippage_bps", "configured_slippage_bps")),
+        direction=direction,
+    )
+    if simulated_entry.promotable and simulated_entry.fill_price is not None and simulated_entry.fill_time_ms is not None:
+        return LabelEntrySelection(
+            entry_price=simulated_entry.fill_price,
+            entry_price_source=simulated_entry.source,
+            label_interval_start_ms=simulated_entry.fill_time_ms,
+            metadata={**raw_payload, **simulated_entry.metadata},
+        )
+
+    normalized_entry_price = _decimal_or_none(raw_payload.get("normalized_entry_price"))
+    raw_entry_price_source = raw_payload.get("entry_price_source")
+    has_explicit_entry = normalized_entry_price is not None and raw_entry_price_source is not None
+    return LabelEntrySelection(
+        entry_price=normalized_entry_price if has_explicit_entry else latest_bar.close,
+        entry_price_source=str(raw_entry_price_source) if has_explicit_entry else "signal_bar_close",
+        label_interval_start_ms=default_label_interval_start_ms,
+        metadata=raw_payload,
     )
 
 
@@ -587,13 +649,19 @@ class ResearchDatasetBuilder:
                 RuleAcceptanceSettings(**asdict(self.plan.acceptance_filter)),
             )
             numeric_features = numeric_feature_map(feature_snapshot)
-            normalized_entry_price = _decimal_or_none(raw_payload.get("normalized_entry_price"))
-            entry_price = normalized_entry_price if normalized_entry_price is not None else latest_bar.close
-            entry_price_source = str(raw_payload.get("entry_price_source") or "signal_bar_close")
+            signal_bar_close_time_ms = bar_close_time_ms(latest_bar.time_ms)
+            entry_selection = select_label_entry_for_research(
+                raw_payload=raw_payload,
+                latest_bar=latest_bar,
+                direction=direction,
+                default_label_interval_start_ms=signal_bar_close_time_ms,
+            )
+            entry_price = entry_selection.entry_price
+            entry_price_source = entry_selection.entry_price_source
             entry_source_metadata = classify_label_entry_source(
                 entry_price_source,
                 {
-                    **raw_payload,
+                    **entry_selection.metadata,
                     "fees_bps": self.plan.evaluation.fee_bps,
                     "slippage_bps": self.plan.evaluation.slippage_bps,
                 },
@@ -645,7 +713,7 @@ class ResearchDatasetBuilder:
                 "tv_bar_time_ms": signal_time_ms,
                 "received_time_ms": int(row["received_time_ms"]),
                 "signal_bar_open_time_ms": latest_bar.time_ms,
-                "signal_bar_close_time_ms": bar_close_time_ms(latest_bar.time_ms),
+                "signal_bar_close_time_ms": signal_bar_close_time_ms,
                 "signal_bar_open": float(latest_bar.open),
                 "signal_bar_high": float(latest_bar.high),
                 "signal_bar_low": float(latest_bar.low),
@@ -673,7 +741,7 @@ class ResearchDatasetBuilder:
                 "next_bar_open": float(_decimal_or_none(raw_payload.get("next_bar_open")) or 0) if raw_payload.get("next_bar_open") is not None else None,
                 "tp_price": float(tp_price),
                 "sl_price": float(sl_price),
-                "label_interval_start_ms": bar_close_time_ms(signal_time_ms),
+                "label_interval_start_ms": entry_selection.label_interval_start_ms,
                 "label_interval_end_ms": label_outcome.exit_time_ms,
                 "label_exit_reason": str(label_outcome.exit_reason),
                 "label_accept": 1 if label_outcome.exit_reason == ExitReason.TAKE_PROFIT else 0,

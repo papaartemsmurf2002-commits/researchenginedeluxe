@@ -238,12 +238,14 @@ These schema and version fields are public research contracts and should not cha
 
 WT3D construction is completed-bar only:
 
+- `src/tradingbotsuite/research/feature_alignment.py` provides the completed-bar alignment helper contract. It validates duplicate bar times, bar-time gaps, and current/incomplete bars, prepares technical-feature input with `feature_time_ms` equal to bar close time, and joins completed-bar features to event rows with a backward-only point-in-time join.
 - `wt3d.price_column` defaults to `entry_price`.
 - Non-finite prices are treated as missing.
 - Missing prices are forward-filled from prior rows only; they are never backfilled from future rows.
 - Initial missing prices with no prior observation are filled with `0.0`.
 - WT3D uses exponentially weighted fast, normal, and slow oscillator states plus spreads, slope, clipped acceleration, bars-since-cross, reversal intensity, and shifted slow-context MTF agreement.
 - Future-pivot divergence features are not part of Phase 1 public features.
+- Event-level completed-bar feature joins must satisfy `feature_time_ms <= decision_time_ms`. Missing joined features stay null and receive `feature_available_<column>` flags; they are not silently zero-filled by alignment helpers.
 
 KNN and HMM feature scaling is train-only:
 

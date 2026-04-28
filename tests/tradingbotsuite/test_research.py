@@ -527,6 +527,110 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
 
 
 @pytest.mark.asyncio
+async def test_research_dataset_builder_uses_promotable_simulated_fill_metadata(app_config, tmp_path) -> None:
+    plan = load_research_plan(Path("configs/v2_btc_research.json"))
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "simulated-fill.sqlite3",
+        webhook=app_config.webhook,
+        strategy=replace(app_config.strategy, hurst_window_bars=32, stale_bar_after_ms=10_000_000_000),
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=ResearchConfig(output_dir=tmp_path / "research", config_path=Path("configs/v2_btc_research.json")),
+    )
+    store = SQLiteStore(config.db_path)
+    await store.initialize()
+
+    bars = []
+    price = Decimal("70000")
+    start_ms = 1712649600000
+    for index in range(82):
+        open_price = price
+        close_price = price + Decimal("15") if index < 60 else price + Decimal("80")
+        bars.append(Bar(**_make_bar(start_ms + (index * 900_000), open_price, close_price)))
+        price = close_price
+
+    payloads = [
+        {
+            "next_bar_time_ms": bars[60].time_ms,
+            "next_bar_open": str(bars[60].open),
+            "decision_latency_ms": 50,
+            "order_placement_latency_ms": 75,
+            "entry_slippage_bps": "5",
+        },
+        {
+            "next_bar_time_ms": bars[61].time_ms,
+            "next_bar_open": str(bars[61].open),
+            "entry_slippage_bps": "5",
+        },
+    ]
+    for offset, (time_index, raw_payload) in enumerate(zip((59, 60), payloads, strict=True), start=1):
+        signal = SignalIntent(
+            signal_id=f"sim-fill-{offset}",
+            symbol="BTCUSDT",
+            direction=SignalDirection.LONG,
+            tv_bar_time_ms=bars[time_index].time_ms,
+            received_time_ms=bars[time_index].time_ms + 900_000,
+            raw_payload=raw_payload,
+        )
+        await store.reserve_signal(signal)
+        await store.update_signal_decision(signal, accepted=True, rejection_reason=None)
+        await store.save_decision_packet(
+            DecisionPacket(
+                signal=signal,
+                mode=RuntimeMode.PAPER,
+                action=DecisionAction.ACCEPT,
+                accepted=True,
+                feature_snapshot={
+                    "microstructure": {"windows": {"20": {"signed_ratio": "0.2"}}, "top_of_book_imbalance": "0.15"},
+                    "basis": {"basis_bps": "2.5"},
+                },
+            ),
+            signal.received_time_ms,
+        )
+
+    class FakeResearchClient:
+        async def fetch_historical_closed_bar_range(self, symbol: str, *, start_time_ms: int, end_time_ms: int, interval: str = "15m"):
+            return [bar for bar in bars if start_time_ms <= bar.time_ms <= end_time_ms]
+
+        async def fetch_funding_context(self, symbol: str, *, as_of_ms: int, history_limit: int = 8):
+            return {"funding_rate": "0.0001", "funding_rate_change": "0.00002", "time_to_next_funding_ms": 1_800_000}
+
+        async def fetch_open_interest_context(self, symbol: str, *, as_of_ms: int, period: str = "5m", lookback_points: int = 13):
+            return {"open_interest": "1000", "open_interest_change": "50", "open_interest_change_pct": "0.05", "open_interest_value": "70500000"}
+
+        async def fetch_premium_context(self, symbol: str, *, as_of_ms: int, interval: str = "5m"):
+            return {"mark_price": "70521", "index_price": "70500", "basis_rate": "0.0003", "basis": "21", "premium_close": "0.0002"}
+
+    result = await ResearchDatasetBuilder(config=config, plan=plan, store=store, candle_client=FakeResearchClient()).build()
+    frame = pd.read_parquet(result.dataset_path).sort_values("signal_id").reset_index(drop=True)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    simulated = frame.iloc[0]
+    diagnostic = frame.iloc[1]
+    expected_fill_price = bars[60].open * Decimal("1.0005")
+
+    assert simulated["signal_id"] == "sim-fill-1"
+    assert simulated["entry_price_source"] == "simulated_fill"
+    assert bool(simulated["entry_price_source_promotable"]) is True
+    assert simulated["entry_price_source_reason"] == "executable_entry_metadata_complete"
+    assert simulated["entry_price"] == pytest.approx(float(expected_fill_price))
+    assert simulated["label_interval_start_ms"] == simulated["signal_bar_close_time_ms"] + 125
+
+    assert diagnostic["signal_id"] == "sim-fill-2"
+    assert diagnostic["entry_price_source"] == "signal_bar_close"
+    assert bool(diagnostic["entry_price_source_promotable"]) is False
+    assert diagnostic["entry_price_source_reason"] == "signal_bar_close_is_diagnostic_not_executable"
+    assert diagnostic["entry_price"] == diagnostic["signal_bar_close"]
+    assert diagnostic["label_interval_start_ms"] == diagnostic["signal_bar_close_time_ms"]
+
+    assert manifest["entry_price_source_summary"]["source_counts"] == {"signal_bar_close": 1, "simulated_fill": 1}
+    assert manifest["entry_price_source_summary"]["classification_counts"] == {"executable_style": 1, "signal_bar_close": 1}
+    assert manifest["entry_price_source_summary"]["promotable_label_row_count"] == 1
+    assert manifest["entry_price_source_summary"]["non_promotable_label_row_count"] == 1
+
+
+@pytest.mark.asyncio
 async def test_research_dataset_builder_preserves_missing_exchange_context(app_config, tmp_path) -> None:
     plan = load_research_plan(Path("configs/v2_btc_research.json"))
     config = AppConfig(
