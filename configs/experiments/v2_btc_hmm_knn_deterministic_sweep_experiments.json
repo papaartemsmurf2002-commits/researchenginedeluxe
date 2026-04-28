@@ -1,0 +1,37 @@
+{
+  "name": "v2 BTC HMM/KNN deterministic fixture diagnostics",
+  "base_config_path": "../v2_btc_hmm_multi_knn_research.json",
+  "dataset_path": "../../data/research/deterministic_sweeps/btcusdt_hmm_knn_sweep_balanced.parquet",
+  "experiments": [
+    {
+      "name": "Deterministic baseline",
+      "slug": "deterministic-baseline",
+      "owning_agent": "Backtest",
+      "run_order": 1,
+      "config_data_change": "Run the production HMM/KNN research config on the deterministic balanced BTC fixture.",
+      "expected_metric_movement": "Establish a stable cacheable baseline for local sweep plumbing and artifact contract checks.",
+      "risk": "Synthetic fixture metrics are not market evidence.",
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "mutations": {}
+    },
+    {
+      "name": "Deterministic small-K softmax",
+      "slug": "deterministic-small-k-softmax",
+      "owning_agent": "KNN",
+      "run_order": 2,
+      "config_data_change": "Use small K values and softmax weighting on the deterministic balanced BTC fixture.",
+      "expected_metric_movement": "Neighbor counts and cache identity should remain stable across repeated local sweeps.",
+      "risk": "Synthetic fixture improvements do not imply live or real-data promotion readiness.",
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "mutations": {
+        "knn.k_values": [4, 8, 12, 16],
+        "knn.primary_k": 12,
+        "knn.neighbor_weighting": ["softmax"],
+        "knn.primary_weighting": "softmax",
+        "knn.min_neighbor_count": 4
+      }
+    }
+  ]
+}

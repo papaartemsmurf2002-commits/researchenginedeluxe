@@ -17,11 +17,13 @@ from tradingbotsuite.research.hmm_knn import (
     RegimeModel,
     WT3D_FEATURE_COLUMNS,
     _leakage_safe_meta_knn_features,
+    _fit_meta_model,
     _knn_predict,
     _overall_metrics,
     _posterior_frame,
     _prepare_dataset,
     _split_metrics,
+    _xgboost_cuda_dependency_report,
     _walk_forward_frames,
     build_wt3d_features,
     load_hmm_knn_plan,
@@ -31,6 +33,11 @@ from tradingbotsuite.research.hmm_knn import (
     run_hmm_knn_research,
 )
 from tradingbotsuite.research.dataset import LABEL_OUTCOME_COLUMNS
+from tradingbotsuite.research.deterministic_datasets import (
+    build_hmm_knn_sweep_dataset,
+    write_hmm_knn_sweep_dataset,
+)
+from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
 
 
@@ -177,6 +184,52 @@ def test_hmm_knn_synthetic_fixture_contract_is_btc_phase_1_and_offline(tmp_path)
     assert set(plan.knn.feature_columns).issubset(prepared.columns)
     assert set(plan.hmm.emission_features).issubset(prepared.columns)
     assert set(LABEL_OUTCOME_COLUMNS).issubset(prepared.columns)
+
+
+def test_hmm_knn_deterministic_sweep_dataset_rewrites_identical_artifacts(tmp_path) -> None:
+    first = write_hmm_knn_sweep_dataset(output_dir=tmp_path, row_count=120, variant="balanced")
+    first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+    second = write_hmm_knn_sweep_dataset(output_dir=tmp_path, row_count=120, variant="balanced")
+    second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+
+    assert first.logical_sha256 == second.logical_sha256
+    assert first.csv_sha256 == second.csv_sha256
+    assert first.parquet_sha256 == second.parquet_sha256
+    assert first_manifest == second_manifest
+    assert first_manifest["research_only"] is True
+    assert first_manifest["determinism"]["no_random_inputs"] is True
+    assert first_manifest["asset_scope"] == ["BTCUSDT"]
+    assert first_manifest["raw_context_available_counts"]["raw_spread_bps"] == 120
+    assert first_manifest["exchange_context_summary"]["microstructure_context"]["successful_count"] == 120
+
+
+def test_hmm_knn_deterministic_sweep_variants_are_consumable_and_auditable(tmp_path) -> None:
+    plan = load_hmm_knn_plan(_write_test_config(tmp_path))
+    balanced = build_hmm_knn_sweep_dataset(row_count=120, variant="balanced")
+    sparse = build_hmm_knn_sweep_dataset(row_count=120, variant="sparse_context")
+    balanced_path = tmp_path / "balanced.parquet"
+    sparse_path = tmp_path / "sparse.parquet"
+    balanced.to_parquet(balanced_path, index=False)
+    sparse.to_parquet(sparse_path, index=False)
+
+    assert set(balanced["symbol"]) == {"BTCUSDT"}
+    assert set(sparse["symbol"]) == {"BTCUSDT"}
+    assert balanced["label_accept"].nunique() == 2
+    assert sparse["label_accept"].nunique() == 2
+    assert balanced["missing_spread_bps"].mean() == 0.0
+    assert sparse["missing_spread_bps"].mean() == 1.0
+    assert sparse["raw_spread_bps"].isna().all()
+    assert sparse["spread_bps"].eq(0.0).all()
+    assert set(LABEL_OUTCOME_COLUMNS).issubset(balanced.columns)
+    assert not set(LABEL_OUTCOME_COLUMNS).intersection(plan.knn.feature_columns)
+
+    prepared_balanced = _prepare_dataset(balanced_path, plan)
+    prepared_sparse = _prepare_dataset(sparse_path, plan)
+
+    assert set(plan.knn.feature_columns).issubset(prepared_balanced.columns)
+    assert set(plan.hmm.emission_features).issubset(prepared_balanced.columns)
+    assert set(plan.knn.feature_columns).issubset(prepared_sparse.columns)
+    assert set(plan.hmm.emission_features).issubset(prepared_sparse.columns)
 
 
 def test_lorentzian_distance_is_deterministic_and_compresses_outliers() -> None:
@@ -600,6 +653,7 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
 
 def test_meta_model_records_random_forest_fallback_when_xgboost_is_unavailable(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(hmm_knn, "XGBClassifier", None)
+    monkeypatch.setattr(hmm_knn, "_xgboost", None)
     config_path = _write_test_config(tmp_path)
     dataset_path = tmp_path / "dataset.parquet"
     _synthetic_dataset().to_parquet(dataset_path, index=False)
@@ -609,9 +663,100 @@ def test_meta_model_records_random_forest_fallback_when_xgboost_is_unavailable(t
     meta = pd.read_parquet(result.meta_predictions_path)
 
     assert manifest["dependencies"]["xgboost_available"] is False
+    assert manifest["dependencies"]["xgboost_cuda_available"] is False
+    assert manifest["dependencies"]["xgboost_cuda_detection"] == "xgboost_unavailable"
     assert manifest["dependencies"]["meta_backend"] == ["random_forest_fallback"]
     assert set(meta["meta_model_backend"]) == {"random_forest_fallback"}
     assert manifest["research_only"] is True
+
+
+def test_xgboost_cuda_dependency_report_reads_build_info(monkeypatch) -> None:
+    class FakeXGBClassifier:
+        pass
+
+    class FakeXGBoostModule:
+        @staticmethod
+        def build_info() -> dict[str, object]:
+            return {
+                "USE_CUDA": True,
+                "CUDA_VERSION": "12.4",
+                "USE_NCCL": False,
+                "UNRELATED_FLAG": True,
+            }
+
+    monkeypatch.setattr(hmm_knn, "XGBClassifier", FakeXGBClassifier)
+    monkeypatch.setattr(hmm_knn, "_xgboost", FakeXGBoostModule)
+
+    report = _xgboost_cuda_dependency_report()
+
+    assert report["xgboost_cuda_available"] is True
+    assert report["xgboost_cuda_detection"] == "build_info"
+    assert report["xgboost_cuda_build_info"] == {
+        "USE_CUDA": True,
+        "CUDA_VERSION": "12.4",
+        "USE_NCCL": False,
+    }
+
+
+def test_xgboost_auto_device_uses_cuda_when_build_reports_support(tmp_path, monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class FakeXGBClassifier:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        def fit(self, frame, labels) -> "FakeXGBClassifier":
+            captured["fit_shape"] = frame.shape
+            captured["label_count"] = len(labels)
+            return self
+
+    class FakeXGBoostModule:
+        @staticmethod
+        def build_info() -> dict[str, object]:
+            return {"USE_CUDA": True, "CUDA_VERSION": "12.8"}
+
+    monkeypatch.setattr(hmm_knn, "XGBClassifier", FakeXGBClassifier)
+    monkeypatch.setattr(hmm_knn, "_xgboost", FakeXGBoostModule)
+    plan = load_hmm_knn_plan(_write_modified_test_config(tmp_path, meta_model__device="auto"))
+
+    _, backend = _fit_meta_model(
+        pd.DataFrame({"feature": [0.0, 1.0, 2.0, 3.0]}),
+        ["feature"],
+        pd.Series([0, 1, 0, 1]),
+        plan,
+    )
+
+    assert backend == "xgboost_cuda"
+    assert captured["device"] == "cuda"
+    assert captured["tree_method"] == "hist"
+    assert captured["fit_shape"] == (4, 1)
+    assert captured["label_count"] == 4
+
+
+def test_xgboost_cuda_dependency_report_handles_non_cuda_build_info(monkeypatch) -> None:
+    class FakeXGBClassifier:
+        pass
+
+    class FakeXGBoostModule:
+        @staticmethod
+        def build_info() -> dict[str, object]:
+            return {
+                "USE_CUDA": "OFF",
+                "USE_NCCL": "OFF",
+                "UNRELATED_FLAG": True,
+            }
+
+    monkeypatch.setattr(hmm_knn, "XGBClassifier", FakeXGBClassifier)
+    monkeypatch.setattr(hmm_knn, "_xgboost", FakeXGBoostModule)
+
+    report = _xgboost_cuda_dependency_report()
+
+    assert report["xgboost_cuda_available"] is False
+    assert report["xgboost_cuda_detection"] == "build_info"
+    assert report["xgboost_cuda_build_info"] == {
+        "USE_CUDA": "OFF",
+        "USE_NCCL": "OFF",
+    }
 
 
 def test_hmm_knn_prepare_dataset_preserves_real_label_outcome_fields(tmp_path) -> None:
@@ -817,3 +962,133 @@ def test_tiny_or_one_class_meta_research_reports_explicit_failures(tmp_path) -> 
     assert "insufficient_evaluated_splits" in metrics["promotion_failures"]
     assert "insufficient_meta_training_class_diversity" in metrics["promotion_failures"]
     assert "constant_meta_model_backend" in metrics["promotion_failures"]
+
+
+def test_hmm_knn_experiment_runner_writes_manifest_summary_and_monitoring(tmp_path) -> None:
+    base_config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    output_dir = tmp_path / "experiments"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+    spec_path = tmp_path / "experiment_spec.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "name": "fixture matrix",
+                "base_config_path": str(base_config_path),
+                "dataset_path": str(dataset_path),
+                "experiments": [
+                    {
+                        "name": "small k softmax",
+                        "slug": "small-k-softmax",
+                        "owning_agent": "KNN",
+                        "run_order": 1,
+                        "config_data_change": "small K softmax diagnostic",
+                        "expected_metric_movement": "more candidates with better distance quality",
+                        "risk": "can add losing candidates",
+                        "requires_new_data": False,
+                        "can_run_on_current_artifacts": True,
+                        "mutations": {
+                            "knn.primary_k": 8,
+                            "knn.k_values": [8, 12],
+                            "knn.primary_weighting": "softmax",
+                            "knn.neighbor_weighting": ["softmax"],
+                        },
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_hmm_knn_experiment_matrix(spec_path=spec_path, output_dir=output_dir)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    rows = result.summary_path.read_text(encoding="utf-8").splitlines()
+
+    assert manifest["experiment_manifest_version"] == "v2-hmm-knn-experiment-manifest-1"
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["overall_status"] == "passed"
+    assert manifest["dataset_path"] == str(dataset_path)
+    assert len(manifest["experiments"]) == 1
+    experiment = manifest["experiments"][0]
+    assert experiment["slug"] == "small-k-softmax"
+    assert experiment["status"] == "passed"
+    assert experiment["cache_status"] == "miss"
+    assert Path(experiment["artifact_manifest_path"]).exists()
+    assert Path(experiment["monitoring_report_path"]).exists()
+    assert experiment["metrics_digest"]["promotion_ready"] is False
+    assert "knn_trade_count" in experiment["metrics_digest"]
+    assert rows[0].startswith("run_order,slug,owning_agent,status,cache_status")
+    assert "small-k-softmax" in rows[1]
+
+
+def test_hmm_knn_experiment_runner_reuses_complete_cached_artifact(tmp_path) -> None:
+    base_config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    output_dir = tmp_path / "experiments"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+    spec_path = tmp_path / "experiment_spec.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "base_config_path": str(base_config_path),
+                "dataset_path": str(dataset_path),
+                "experiments": [
+                    {
+                        "name": "cooldown zero",
+                        "slug": "cooldown-zero",
+                        "owning_agent": "Regime",
+                        "run_order": 1,
+                        "mutations": {"hmm.flip_cooldown_bars": 0},
+                    }
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    first = run_hmm_knn_experiment_matrix(spec_path=spec_path, output_dir=output_dir, write_monitoring=False)
+    first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+    second = run_hmm_knn_experiment_matrix(spec_path=spec_path, output_dir=output_dir, write_monitoring=False)
+    second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+    first_experiment = first_manifest["experiments"][0]
+    second_experiment = second_manifest["experiments"][0]
+
+    assert first_experiment["cache_status"] == "miss"
+    assert second_experiment["cache_status"] == "hit"
+    assert second_experiment["artifact_manifest_path"] == first_experiment["artifact_manifest_path"]
+    assert second_experiment["cache_key"] == first_experiment["cache_key"]
+
+
+def test_hmm_knn_experiment_runner_accepts_utf8_sig_specs(tmp_path) -> None:
+    base_config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    output_dir = tmp_path / "experiments"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+    spec_path = tmp_path / "experiment_spec_bom.json"
+    spec_payload = json.dumps(
+        {
+            "base_config_path": str(base_config_path),
+            "dataset_path": str(dataset_path),
+            "experiments": [
+                {
+                    "name": "bom spec",
+                    "slug": "bom-spec",
+                    "owning_agent": "Backtest",
+                    "run_order": 1,
+                    "mutations": {"hmm.flip_cooldown_bars": 0},
+                }
+            ],
+        },
+        indent=2,
+    )
+    spec_path.write_text("\ufeff" + spec_payload, encoding="utf-8")
+
+    result = run_hmm_knn_experiment_matrix(spec_path=spec_path, output_dir=output_dir, write_monitoring=False)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["overall_status"] == "passed"
+    assert manifest["experiments"][0]["slug"] == "bom-spec"

@@ -72,6 +72,20 @@ $env:PYTHONPATH="src"
 python -m tradingbotsuite.main monitor-hmm-knn --manifest data/research/v2-btc-hmm-multi-knn-1/artifact_manifest.json
 ```
 
+Write deterministic offline BTC sweep datasets:
+
+```powershell
+$env:PYTHONPATH="src"
+python -m tradingbotsuite.main write-hmm-knn-sweep-datasets --output-dir data/research/deterministic_sweeps
+```
+
+Run the deterministic fixture experiment matrix:
+
+```powershell
+$env:PYTHONPATH="src"
+python -m tradingbotsuite.main run-hmm-knn-experiments --spec configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json
+```
+
 ## Artifacts
 
 Input BTC Phase 1 dataset artifacts are produced by the research dataset builder under the BTC research plan output directory. The dataset manifest is part of the public Data/Labeling contract:
@@ -95,6 +109,21 @@ All artifacts are written under:
 ```text
 data/research/<plan_version>/
 ```
+
+Deterministic sweep fixtures are written separately under:
+
+```text
+data/research/deterministic_sweeps/
+```
+
+These fixtures are BTC-only, research-only, and observe-only. They are generated from `src/tradingbotsuite/research/deterministic_datasets.py` without random inputs or network calls. They exist to make CLI experiment sweeps, cache behavior, artifact schemas, and monitoring reports repeatable. They are not real market evidence and must not be used for promotion claims.
+
+Fixture variants:
+
+- `btcusdt_hmm_knn_sweep_balanced.parquet` and `.csv`: all modeled exchange-context columns populated with deterministic non-random values.
+- `btcusdt_hmm_knn_sweep_sparse_context.parquet` and `.csv`: unavailable raw exchange-context fields are null while normalized fields carry matching `missing_*` flags.
+
+Each fixture has a sidecar manifest with `research_only: true`, `observe_only: true`, `promotion_ready: false`, `asset_scope: ["BTCUSDT"]`, row count, parquet hash, CSV hash, and a canonical logical hash.
 
 Required files:
 
@@ -155,6 +184,9 @@ Required files:
   - `label_outcome_fields`
   - `dependencies.meta_backend`
   - `dependencies.xgboost_available`
+  - `dependencies.xgboost_cuda_available`
+  - `dependencies.xgboost_cuda_detection`
+  - optional `dependencies.xgboost_cuda_build_info`
   - `knn_settings`
   - `meta_validation`
 - `monitoring_report.json`
@@ -198,7 +230,16 @@ Required files:
 
 The artifact manifest `feature_columns` field is the public KNN feature contract. It must match the config `knn.feature_columns` and must not include label outcome fields.
 
-Hardening and observability fields such as `label_interval_fields`, `entry_price_source_summary`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, `regime_model_backend`, `neighbor_distance_quality`, `meta_model_backend`, and `dependencies.meta_backend` are public research artifact fields. They are diagnostics and audit inputs only; they do not authorize live gates, live sizing, Hyperliquid execution, safety behavior changes, or operator live controls.
+Hardening and observability fields such as `label_interval_fields`, `entry_price_source_summary`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, `regime_model_backend`, `neighbor_distance_quality`, `meta_model_backend`, `dependencies.meta_backend`, and XGBoost CUDA dependency metadata are public research artifact fields. They are diagnostics and audit inputs only; they do not authorize live gates, live sizing, Hyperliquid execution, safety behavior changes, or operator live controls.
+
+GPU acceleration is optional and research-only:
+
+- Default runtime installs remain CPU-first.
+- `pyproject.toml` exposes `research-gpu` for local research environments that can install XGBoost and CuPy CUDA wheels.
+- `meta_model.device` accepts `cpu`, `cuda`, or `auto`; Phase 1 config uses `auto`, which selects XGBoost CUDA only when the installed XGBoost build reports CUDA support.
+- `meta_model.tree_method` defaults to `hist`, matching XGBoost's supported GPU training path when `device: cuda`.
+- GPU backend choices are recorded in artifacts through `meta_model_backend`, `dependencies.xgboost_cuda_available`, and `dependencies.xgboost_cuda_detection`.
+- GPU results are acceleration evidence only. They do not change promotion rules, live gates, sizing, Hyperliquid execution, safety behavior, or operator live controls.
 
 ## Research Archive Source Contract
 
@@ -229,7 +270,7 @@ v2-btc-hmm-knn-features-1
 These schema and version fields are public research contracts and should not change casually. Any rename, removal, semantic change, or version bump requires a coordinated docs, tests, fixture, replay, monitoring, and artifact migration review:
 
 - Dataset manifest: `dataset_manifest_version`, `feature_version`, `label_version`, `label_outcome_fields`, `label_interval_fields`, `entry_price_source_summary`, `research_only`, `symbol`, `asset_scope`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, and `planned_split_summary`.
-- HMM/KNN artifact manifest: `artifact_manifest_version`, `feature_version`, `feature_columns`, `wt3d_feature_columns`, `label_version`, `label_horizons`, `primary_label_horizon`, `label_outcome_fields`, `knn_settings`, artifact path keys, `dependencies.hmm_backend`, `dependencies.meta_backend`, `dependencies.hmmlearn_available`, `dependencies.xgboost_available`, `meta_validation`, and `research_only`.
+- HMM/KNN artifact manifest: `artifact_manifest_version`, `feature_version`, `feature_columns`, `wt3d_feature_columns`, `label_version`, `label_horizons`, `primary_label_horizon`, `label_outcome_fields`, `knn_settings`, artifact path keys, `dependencies.hmm_backend`, `dependencies.meta_backend`, `dependencies.hmmlearn_available`, `dependencies.xgboost_available`, `dependencies.xgboost_cuda_available`, `dependencies.xgboost_cuda_detection`, optional `dependencies.xgboost_cuda_build_info`, `meta_validation`, and `research_only`.
 - Metrics and monitoring: `metrics_version`, `monitoring_report_version`, `research_only`, `observe_only`, `promotion_ready`, `promotion_failures`, `feature_outages`, `entropy_no_trade`, `regime_distribution_drift`, `neighbor_quality`, `funding_costs`, `calibration_decay`, and `alerts`.
 - Archive/market-data data-quality reports: `data_quality_report_version`, `research_only`, `observe_only`, `promotion_ready`, `manifest_count`, `source_counts`, `family_counts`, `symbol_counts`, `gap_count_total`, `duplicate_count_total`, `missing_receive_time_count`, `non_promotable_count`, `source_mismatch_count`, `missing_research_only_count`, `zero_row_manifest_count`, `timestamp_drift_flags`, `missing_receive_time_flags`, `stale_receive_time_flags`, `alerts`, and `manifest_summaries`.
 - Public parquet/CSV columns: `regime_posteriors.parquet`, `knn_predictions.parquet`, `meta_predictions.parquet`, and `neighbor_diagnostics.csv` fields listed above.

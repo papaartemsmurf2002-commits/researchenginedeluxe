@@ -98,7 +98,9 @@
     "random_state": 17,
     "n_estimators": 80,
     "max_depth": 3,
-    "learning_rate": 0.05
+    "learning_rate": 0.05,
+    "device": "auto",
+    "tree_method": "hist"
   },
   "evaluation": {
     "walk_forward_splits": 3,

@@ -1,0 +1,110 @@
+{
+  "name": "v2 BTC HMM/KNN current-artifact diagnostics",
+  "base_config_path": "../v2_btc_hmm_multi_knn_research.json",
+  "dataset_path": "../../data/research/v2-btc-research-1/btcusdt_dataset.parquet",
+  "experiments": [
+    {
+      "name": "Regime flip cooldown zero",
+      "slug": "regime-cooldown-zero",
+      "owning_agent": "Regime",
+      "run_order": 1,
+      "config_data_change": "Set hmm.flip_cooldown_bars to 0 to isolate cooldown-driven no-trade behavior.",
+      "expected_metric_movement": "Regime no-trade rate should fall if current no-trade behavior is mostly cooldown-policy driven.",
+      "risk": "May admit unstable recently flipped regime rows and increase losing candidates.",
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "mutations": {
+        "hmm.flip_cooldown_bars": 0
+      }
+    },
+    {
+      "name": "KNN small-K softmax",
+      "slug": "knn-small-k-softmax",
+      "owning_agent": "KNN",
+      "run_order": 2,
+      "config_data_change": "Use smaller K values with softmax weighting around the least-bad existing sweep zone.",
+      "expected_metric_movement": "Accepted trade count should increase toward 25+ and expectancy should beat the previous k=16 softmax diagnostic baseline.",
+      "risk": "Can increase candidate count without proving positive costed expectancy.",
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "mutations": {
+        "knn.k_values": [4, 6, 8, 10, 12, 16, 20, 24],
+        "knn.primary_k": 16,
+        "knn.neighbor_weighting": ["softmax"],
+        "knn.primary_weighting": "softmax",
+        "knn.min_neighbor_count": 6
+      }
+    },
+    {
+      "name": "KNN observed-core feature subset",
+      "slug": "knn-observed-core",
+      "owning_agent": "KNN",
+      "run_order": 3,
+      "config_data_change": "Remove currently constant or neutralized perp and microstructure fields from KNN distance.",
+      "expected_metric_movement": "Neighbor quality median should improve from the current baseline and candidate density should increase.",
+      "risk": "Improved geometry can still remove useful market-condition filters and remain non-profitable.",
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "mutations": {
+        "knn.k_values": [8, 12, 16, 24, 32],
+        "knn.primary_k": 16,
+        "knn.neighbor_weighting": ["inverse_distance", "softmax"],
+        "knn.primary_weighting": "softmax",
+        "knn.feature_columns": [
+          "direction_long",
+          "efficiency_ratio",
+          "choppiness",
+          "directional_slope_atr",
+          "directional_di_spread",
+          "range_width",
+          "realized_volatility",
+          "atr_percentile",
+          "volatility_shock_zscore",
+          "wt3d_fast",
+          "wt3d_normal",
+          "wt3d_slow",
+          "wt3d_fast_normal_spread",
+          "wt3d_normal_slow_spread",
+          "wt3d_slope",
+          "wt3d_acceleration",
+          "wt3d_mtf_agreement"
+        ]
+      }
+    },
+    {
+      "name": "KNN price-trend-WT3D subset",
+      "slug": "knn-price-trend-wt3d",
+      "owning_agent": "KNN",
+      "run_order": 4,
+      "config_data_change": "Restrict KNN distance to path shape, trend/chop, volatility, and WT3D state.",
+      "expected_metric_movement": "Distance quality should improve versus baseline; accepted trades should land in the 25 to 60 diagnostic range if smaller K restores density.",
+      "risk": "May discard sparse perp/context information that still matters as a filter.",
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "mutations": {
+        "knn.k_values": [4, 8, 12, 16, 24],
+        "knn.primary_k": 12,
+        "knn.neighbor_weighting": ["inverse_distance", "softmax"],
+        "knn.primary_weighting": "softmax",
+        "knn.feature_columns": [
+          "direction_long",
+          "efficiency_ratio",
+          "choppiness",
+          "directional_slope_atr",
+          "directional_di_spread",
+          "range_width",
+          "realized_volatility",
+          "atr_percentile",
+          "volatility_shock_zscore",
+          "wt3d_fast",
+          "wt3d_normal",
+          "wt3d_slow",
+          "wt3d_fast_normal_spread",
+          "wt3d_normal_slow_spread",
+          "wt3d_slope",
+          "wt3d_acceleration"
+        ]
+      }
+    }
+  ]
+}

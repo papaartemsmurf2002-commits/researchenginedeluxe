@@ -15,7 +15,12 @@ from tradingbotsuite.research.entry_gate import (
     run_entry_gate_preflight,
     run_entry_gate_research,
 )
+from tradingbotsuite.research.deterministic_datasets import (
+    DETERMINISTIC_SWEEP_VARIANTS,
+    write_hmm_knn_sweep_datasets,
+)
 from tradingbotsuite.research.hmm_knn import replay_hmm_knn_artifact, run_hmm_knn_research
+from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
 from tradingbotsuite.research.market_data import collect_binance_usdm_bars
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
@@ -116,6 +121,28 @@ def parse_args() -> argparse.Namespace:
 
     hmm_knn_monitor = subparsers.add_parser("monitor-hmm-knn", help="Write an observe-only HMM/KNN monitoring report")
     hmm_knn_monitor.add_argument("--manifest", required=True)
+
+    hmm_knn_experiments = subparsers.add_parser("run-hmm-knn-experiments", help="Run a cached HMM/KNN research experiment matrix")
+    hmm_knn_experiments.add_argument("--spec", required=True)
+    hmm_knn_experiments.add_argument("--dataset", default=None, help="Override the dataset path in the experiment spec")
+    hmm_knn_experiments.add_argument("--output-dir", default=None)
+    hmm_knn_experiments.add_argument("--cache-dir", default=None)
+    hmm_knn_experiments.add_argument("--force", action="store_true", help="Refresh cached experiment artifacts")
+    hmm_knn_experiments.add_argument("--skip-monitor", action="store_true", help="Do not write monitor-hmm-knn reports for experiment artifacts")
+    hmm_knn_experiments.add_argument("--fail-fast", action="store_true", help="Stop on the first failed experiment")
+
+    hmm_knn_dataset = subparsers.add_parser(
+        "write-hmm-knn-sweep-datasets",
+        help="Write deterministic offline BTC datasets for repeatable HMM/KNN sweeps",
+    )
+    hmm_knn_dataset.add_argument("--output-dir", default="data/research/deterministic_sweeps")
+    hmm_knn_dataset.add_argument("--row-count", type=int, default=240)
+    hmm_knn_dataset.add_argument(
+        "--variant",
+        choices=[*DETERMINISTIC_SWEEP_VARIANTS, "all"],
+        default="all",
+        help="Dataset variant to write",
+    )
 
     collect_bars = subparsers.add_parser("collect-binance-bars", help="Collect research-only Binance USD-M historical chart bars")
     collect_bars.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
@@ -368,6 +395,61 @@ if __name__ == "__main__":
 
         report_path = monitor_hmm_knn_artifact(Path(args.manifest))
         print(json.dumps({"monitoring_report_path": str(report_path)}, indent=2))
+    elif args.command == "run-hmm-knn-experiments":
+        import json
+
+        config = AppConfig.from_env()
+        result = run_hmm_knn_experiment_matrix(
+            spec_path=Path(args.spec),
+            dataset_path=Path(args.dataset) if args.dataset is not None else None,
+            output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir / "hmm_knn_experiments",
+            cache_dir=Path(args.cache_dir) if args.cache_dir is not None else None,
+            force=args.force,
+            write_monitoring=not args.skip_monitor,
+            fail_fast=args.fail_fast,
+        )
+        print(
+            json.dumps(
+                {
+                    "output_dir": str(result.output_dir),
+                    "experiment_manifest_path": str(result.manifest_path),
+                    "summary_path": str(result.summary_path),
+                },
+                indent=2,
+            )
+        )
+    elif args.command == "write-hmm-knn-sweep-datasets":
+        import json
+
+        variants = DETERMINISTIC_SWEEP_VARIANTS if args.variant == "all" else (args.variant,)
+        results = write_hmm_knn_sweep_datasets(
+            output_dir=Path(args.output_dir),
+            row_count=args.row_count,
+            variants=variants,
+        )
+        print(
+            json.dumps(
+                {
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "datasets": [
+                        {
+                            "variant": result.variant,
+                            "parquet_path": str(result.parquet_path),
+                            "csv_path": str(result.csv_path),
+                            "manifest_path": str(result.manifest_path),
+                            "row_count": result.row_count,
+                            "parquet_sha256": result.parquet_sha256,
+                            "csv_sha256": result.csv_sha256,
+                            "logical_sha256": result.logical_sha256,
+                        }
+                        for result in results
+                    ],
+                },
+                indent=2,
+            )
+        )
     elif args.command == "collect-binance-bars":
         import json
 

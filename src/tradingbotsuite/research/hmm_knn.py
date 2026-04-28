@@ -22,8 +22,10 @@ except Exception:  # pragma: no cover - depends on optional environment
     GaussianHMM = None
 
 try:  # optional research extra
+    import xgboost as _xgboost
     from xgboost import XGBClassifier
 except Exception:  # pragma: no cover - depends on optional environment
+    _xgboost = None
     XGBClassifier = None
 
 HMM_KNN_ARTIFACT_MANIFEST_VERSION = "v2-hmm-knn-artifact-manifest-1"
@@ -123,6 +125,8 @@ class MetaModelSettings:
     n_estimators: int
     max_depth: int
     learning_rate: float
+    device: str = "cpu"
+    tree_method: str = "hist"
 
 
 @dataclass(frozen=True, slots=True)
@@ -668,14 +672,17 @@ def _fit_meta_model(train_frame: pd.DataFrame, feature_columns: list[str], label
     if labels.nunique() < 2:
         return _ConstantProbabilityModel(float(labels.mean() if len(labels) else 0.0)), "constant"
     if plan.meta_model.backend == "xgboost" and XGBClassifier is not None:
+        device = _resolve_xgboost_device(plan)
         model = XGBClassifier(
             n_estimators=plan.meta_model.n_estimators,
             max_depth=plan.meta_model.max_depth,
             learning_rate=plan.meta_model.learning_rate,
             random_state=plan.meta_model.random_state,
             eval_metric="logloss",
+            tree_method=plan.meta_model.tree_method,
+            device=device,
         )
-        backend = "xgboost"
+        backend = "xgboost_cuda" if device == "cuda" else "xgboost"
     else:
         model = RandomForestClassifier(
             n_estimators=plan.meta_model.n_estimators,
@@ -686,6 +693,65 @@ def _fit_meta_model(train_frame: pd.DataFrame, feature_columns: list[str], label
         backend = "random_forest_fallback"
     model.fit(train_frame.reindex(columns=feature_columns, fill_value=0.0).fillna(0.0).astype(float), labels.astype(int))
     return model, backend
+
+
+def _resolve_xgboost_device(plan: HmmKnnResearchPlan) -> str:
+    requested = str(getattr(plan.meta_model, "device", "cpu") or "cpu").strip().lower()
+    if requested == "auto":
+        return "cuda" if _xgboost_cuda_dependency_report()["xgboost_cuda_available"] else "cpu"
+    if requested in {"cuda", "gpu"}:
+        return "cuda"
+    return "cpu"
+
+
+def _xgboost_cuda_dependency_report() -> dict[str, Any]:
+    if XGBClassifier is None or _xgboost is None:
+        return {
+            "xgboost_cuda_available": False,
+            "xgboost_cuda_detection": "xgboost_unavailable",
+        }
+    build_info_func = getattr(_xgboost, "build_info", None)
+    if not callable(build_info_func):
+        return {
+            "xgboost_cuda_available": False,
+            "xgboost_cuda_detection": "build_info_unavailable",
+        }
+    try:
+        build_info = dict(build_info_func() or {})
+    except Exception as exc:  # pragma: no cover - defensive optional dependency guard
+        return {
+            "xgboost_cuda_available": False,
+            "xgboost_cuda_detection": "build_info_error",
+            "xgboost_cuda_error": str(exc),
+        }
+    cuda_keys = {
+        str(key): value
+        for key, value in build_info.items()
+        if "CUDA" in str(key).upper() or "NCCL" in str(key).upper()
+    }
+    cuda_available = any(
+        _xgboost_build_info_value_enabled(value)
+        for key, value in cuda_keys.items()
+        if key.upper() in {"USE_CUDA", "USE_NCCL"} or "CUDA" in key.upper()
+    )
+    report: dict[str, Any] = {
+        "xgboost_cuda_available": bool(cuda_available),
+        "xgboost_cuda_detection": "build_info",
+    }
+    if cuda_keys:
+        report["xgboost_cuda_build_info"] = cuda_keys
+    return report
+
+
+def _xgboost_build_info_value_enabled(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return normalized not in {"", "0", "false", "off", "no", "none", "disabled", "not_found", "unknown"}
+    return bool(value)
 
 
 def _leakage_safe_meta_knn_features(
@@ -927,6 +993,7 @@ def run_hmm_knn_research(
     metrics["latency_ms_per_row"] = round(((time.perf_counter() - start_time) * 1000.0) / max(len(meta_predictions), 1), 6)
     metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
 
+    xgboost_dependency_report = _xgboost_cuda_dependency_report()
     manifest = {
         "artifact_manifest_version": HMM_KNN_ARTIFACT_MANIFEST_VERSION,
         "plan_version": plan.version,
@@ -963,6 +1030,7 @@ def run_hmm_knn_research(
             "meta_backend": sorted(meta_predictions["meta_model_backend"].dropna().unique().tolist()),
             "hmmlearn_available": GaussianHMM is not None,
             "xgboost_available": XGBClassifier is not None,
+            **xgboost_dependency_report,
         },
         "meta_validation": {
             "training_summaries": meta_training_summaries,
