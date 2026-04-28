@@ -124,6 +124,18 @@ class LabelEntrySourceMetadata:
     missing_required_metadata: tuple[str, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class ExecutableEntrySimulation:
+    fill_price: Decimal | None
+    fill_time_ms: int | None
+    source: str
+    promotable: bool
+    reason: str
+    direction: str
+    missing_required_metadata: tuple[str, ...]
+    metadata: dict[str, Any]
+
+
 def _hash_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -188,6 +200,121 @@ def _present_metadata_fields(payload: dict[str, Any], fields: tuple[str, ...]) -
     return tuple(field for field in fields if payload.get(field) is not None)
 
 
+def simulate_executable_entry_fill(
+    *,
+    signal_bar_open_time_ms: int | None,
+    signal_bar_close_time_ms: int | None,
+    signal_bar_open: Decimal | int | float | str | None,
+    signal_bar_close: Decimal | int | float | str | None,
+    next_bar_open_time_ms: int | None,
+    next_bar_open: Decimal | int | float | str | None,
+    decision_latency_ms: int | None,
+    order_placement_latency_ms: int | None,
+    slippage_bps: Decimal | int | float | str | None,
+    direction: SignalDirection | str,
+) -> ExecutableEntrySimulation:
+    """Deterministically approximate the first executable entry after signal close."""
+    missing: list[str] = []
+    signal_open_price = _decimal_or_none(signal_bar_open)
+    signal_close_price = _decimal_or_none(signal_bar_close)
+    executable_open_price = _decimal_or_none(next_bar_open)
+    slippage = _decimal_or_none(slippage_bps)
+    for field_name, value in (
+        ("signal_bar_open_time_ms", signal_bar_open_time_ms),
+        ("signal_bar_close_time_ms", signal_bar_close_time_ms),
+        ("signal_bar_open", signal_open_price),
+        ("signal_bar_close", signal_close_price),
+        ("next_bar_open_time_ms", next_bar_open_time_ms),
+        ("next_bar_open", executable_open_price),
+        ("decision_latency_ms", decision_latency_ms),
+        ("order_placement_latency_ms", order_placement_latency_ms),
+        ("slippage_bps", slippage),
+    ):
+        if value is None:
+            missing.append(field_name)
+
+    if executable_open_price is not None and executable_open_price <= 0:
+        missing.append("positive_next_bar_open")
+    if signal_open_price is not None and signal_open_price <= 0:
+        missing.append("positive_signal_bar_open")
+    if signal_close_price is not None and signal_close_price <= 0:
+        missing.append("positive_signal_bar_close")
+    if decision_latency_ms is not None and int(decision_latency_ms) < 0:
+        missing.append("non_negative_decision_latency_ms")
+    if order_placement_latency_ms is not None and int(order_placement_latency_ms) < 0:
+        missing.append("non_negative_order_placement_latency_ms")
+    if slippage is not None and slippage < 0:
+        missing.append("non_negative_slippage_bps")
+
+    try:
+        signal_direction = direction if isinstance(direction, SignalDirection) else SignalDirection(str(direction))
+    except ValueError:
+        signal_direction = None
+        missing.append("valid_direction")
+
+    metadata = {
+        "source": "simulated_fill",
+        "entry_price_source": "simulated_fill",
+        "signal_bar_open_time_ms": signal_bar_open_time_ms,
+        "signal_bar_close_time_ms": signal_bar_close_time_ms,
+        "signal_bar_open": signal_open_price,
+        "signal_bar_close": signal_close_price,
+        "next_bar_open_time_ms": next_bar_open_time_ms,
+        "next_bar_open": executable_open_price,
+        "decision_latency_ms": decision_latency_ms,
+        "order_placement_latency_ms": order_placement_latency_ms,
+        "entry_latency_ms": (
+            int(decision_latency_ms) + int(order_placement_latency_ms)
+            if decision_latency_ms is not None and order_placement_latency_ms is not None
+            else None
+        ),
+        "slippage_bps": slippage,
+        "entry_slippage_bps": slippage,
+        "fill_price_basis": "next_bar_open_plus_directional_slippage",
+        "fill_time_basis": "max_signal_close_plus_latency_and_next_bar_open_time",
+    }
+    if missing:
+        return ExecutableEntrySimulation(
+            fill_price=None,
+            fill_time_ms=None,
+            source="simulated_fill",
+            promotable=False,
+            reason="simulated_fill_metadata_incomplete",
+            direction=str(direction),
+            missing_required_metadata=tuple(dict.fromkeys(missing)),
+            metadata=metadata,
+        )
+
+    assert executable_open_price is not None
+    assert signal_bar_close_time_ms is not None
+    assert next_bar_open_time_ms is not None
+    assert decision_latency_ms is not None
+    assert order_placement_latency_ms is not None
+    assert slippage is not None
+    assert signal_direction is not None
+    slippage_fraction = slippage / Decimal("10000")
+    if signal_direction == SignalDirection.LONG:
+        fill_price = executable_open_price * (Decimal("1") + slippage_fraction)
+    else:
+        fill_price = executable_open_price * (Decimal("1") - slippage_fraction)
+    fill_time_ms = max(
+        int(signal_bar_close_time_ms) + int(decision_latency_ms) + int(order_placement_latency_ms),
+        int(next_bar_open_time_ms),
+    )
+    metadata["fill_time_ms"] = fill_time_ms
+    metadata["fill_price"] = fill_price
+    return ExecutableEntrySimulation(
+        fill_price=fill_price,
+        fill_time_ms=fill_time_ms,
+        source="simulated_fill",
+        promotable=True,
+        reason="simulated_fill_metadata_complete",
+        direction=str(signal_direction),
+        missing_required_metadata=(),
+        metadata=metadata,
+    )
+
+
 def classify_label_entry_source(
     entry_price_source: str | None,
     metadata: dict[str, Any] | None = None,
@@ -244,6 +371,28 @@ def label_intervals_overlap(
         raise ValueError("label interval end must be greater than or equal to start")
     embargo = max(int(embargo_ms), 0)
     return int(left_start_ms) < int(right_end_ms) + embargo and int(right_start_ms) < int(left_end_ms) + embargo
+
+
+def purged_train_indices_for_label_intervals(
+    train_label_intervals: list[tuple[int, int]] | tuple[tuple[int, int], ...],
+    test_label_intervals: list[tuple[int, int]] | tuple[tuple[int, int], ...],
+    *,
+    embargo_ms: int = 0,
+) -> list[int]:
+    purged: list[int] = []
+    for train_index, (train_start_ms, train_end_ms) in enumerate(train_label_intervals):
+        if any(
+            label_intervals_overlap(
+                train_start_ms,
+                train_end_ms,
+                test_start_ms,
+                test_end_ms,
+                embargo_ms=embargo_ms,
+            )
+            for test_start_ms, test_end_ms in test_label_intervals
+        ):
+            purged.append(train_index)
+    return purged
 
 
 def _field_count_payload(frame: pd.DataFrame, *, prefix: str) -> dict[str, int]:

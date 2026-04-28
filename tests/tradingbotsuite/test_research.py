@@ -21,6 +21,8 @@ from tradingbotsuite.research.dataset import (
     _label_from_future_bars,
     classify_label_entry_source,
     label_intervals_overlap,
+    purged_train_indices_for_label_intervals,
+    simulate_executable_entry_fill,
 )
 from tradingbotsuite.research.hmm_knn import run_hmm_knn_research
 from tradingbotsuite.research.inference import AcceptanceScorer
@@ -141,6 +143,59 @@ def test_label_entry_source_classification_requires_executable_metadata() -> Non
     assert simulated_fill.reason == "executable_entry_metadata_complete"
 
 
+def test_simulate_executable_entry_fill_requires_latency_price_time_and_cost_metadata() -> None:
+    incomplete = simulate_executable_entry_fill(
+        signal_bar_open_time_ms=0,
+        signal_bar_close_time_ms=900_000,
+        signal_bar_open=Decimal("100"),
+        signal_bar_close=Decimal("101"),
+        next_bar_open_time_ms=900_000,
+        next_bar_open=Decimal("102"),
+        decision_latency_ms=50,
+        order_placement_latency_ms=None,
+        slippage_bps=Decimal("5"),
+        direction=SignalDirection.LONG,
+    )
+    missing_cost = simulate_executable_entry_fill(
+        signal_bar_open_time_ms=0,
+        signal_bar_close_time_ms=900_000,
+        signal_bar_open=Decimal("100"),
+        signal_bar_close=Decimal("101"),
+        next_bar_open_time_ms=900_000,
+        next_bar_open=Decimal("102"),
+        decision_latency_ms=50,
+        order_placement_latency_ms=75,
+        slippage_bps=None,
+        direction=SignalDirection.LONG,
+    )
+    complete = simulate_executable_entry_fill(
+        signal_bar_open_time_ms=0,
+        signal_bar_close_time_ms=900_000,
+        signal_bar_open=Decimal("100"),
+        signal_bar_close=Decimal("101"),
+        next_bar_open_time_ms=900_000,
+        next_bar_open=Decimal("102"),
+        decision_latency_ms=50,
+        order_placement_latency_ms=75,
+        slippage_bps=Decimal("5"),
+        direction=SignalDirection.LONG,
+    )
+    classification = classify_label_entry_source(complete.source, complete.metadata)
+
+    assert incomplete.promotable is False
+    assert incomplete.reason == "simulated_fill_metadata_incomplete"
+    assert incomplete.missing_required_metadata == ("order_placement_latency_ms",)
+    assert incomplete.fill_price is None
+    assert missing_cost.promotable is False
+    assert missing_cost.missing_required_metadata == ("slippage_bps",)
+    assert complete.promotable is True
+    assert complete.reason == "simulated_fill_metadata_complete"
+    assert complete.fill_time_ms == 900_125
+    assert complete.fill_price == Decimal("102") * Decimal("1.0005")
+    assert classification.promotable is True
+    assert classification.reason == "executable_entry_metadata_complete"
+
+
 def test_label_interval_overlap_shows_fixed_bar_purge_is_insufficient_for_7d_horizon() -> None:
     bar_ms = 15 * 60 * 1000
     seven_days_ms = 7 * 24 * 60 * 60 * 1000
@@ -156,6 +211,23 @@ def test_label_interval_overlap_shows_fixed_bar_purge_is_insufficient_for_7d_hor
         fixed_eight_bar_embargo_start_ms,
         validation_label_end_ms,
     )
+
+
+def test_purged_train_indices_use_7d_label_interval_overlap_not_fixed_bar_count() -> None:
+    bar_ms = 15 * 60 * 1000
+    seven_days_ms = 7 * 24 * 60 * 60 * 1000
+    train_intervals = [
+        (0, seven_days_ms),
+        (seven_days_ms + bar_ms, seven_days_ms + (4 * bar_ms)),
+        (seven_days_ms + (10 * bar_ms), seven_days_ms + (12 * bar_ms)),
+    ]
+    test_intervals = [
+        (8 * bar_ms, 8 * bar_ms + (6 * 60 * 60 * 1000)),
+        (seven_days_ms + (4 * bar_ms), seven_days_ms + (5 * bar_ms)),
+    ]
+
+    assert purged_train_indices_for_label_intervals(train_intervals, test_intervals, embargo_ms=0) == [0]
+    assert purged_train_indices_for_label_intervals(train_intervals, test_intervals, embargo_ms=bar_ms) == [0, 1]
 
 
 @pytest.mark.asyncio

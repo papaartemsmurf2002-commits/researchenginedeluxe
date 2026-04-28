@@ -172,6 +172,27 @@ Required files:
   - `funding_costs`
   - `calibration_decay`
   - `alerts`
+- Archive/market-data data-quality reports built from manifest dictionaries
+  - `data_quality_report_version`
+  - `research_only: true`
+  - `observe_only: true`
+  - `promotion_ready: false`
+  - `manifest_count`
+  - `source_counts`
+  - `family_counts`
+  - `symbol_counts`
+  - `gap_count_total`
+  - `duplicate_count_total`
+  - `missing_receive_time_count`
+  - `non_promotable_count`
+  - `source_mismatch_count`
+  - `missing_research_only_count`
+  - `zero_row_manifest_count`
+  - `timestamp_drift_flags`
+  - `missing_receive_time_flags`
+  - `stale_receive_time_flags`
+  - `alerts`
+  - `manifest_summaries`
 
 ## Public Feature Columns
 
@@ -189,9 +210,13 @@ Supported descriptor names:
 - `crypto_lake`
 - `hyperliquid_archive`
 
-Archive source manifests must include `source_name`, `source_type`, `symbol`, `data_family`, `start_time_ms`, `end_time_ms`, `row_count`, `event_time_field`, `receive_time_field` or `receive_time_unavailable_reason`, `schema_version`, `content_hash`, and `research_only: true`.
+Archive source manifests must include `source_name`, `source_type`, `symbol`, `data_family`, `start_time_ms`, `end_time_ms`, `row_count`, `event_time_field`, `receive_time_field` or `receive_time_unavailable_reason`, `schema_version`, `content_hash`, `normalized_fields`, and `research_only: true`.
 
-Point-in-time compatibility requires an event-time field. Receive-time unavailability is allowed only with an explicit reason and marks the source non-promotable. Missing book/account execution fields must remain explicit missingness via manifest fields such as `missing_fields`; they must not be zero-filled. Provider schema or symbol differences are represented as a first-class `source_mismatch` quality flag.
+Canonical normalized data families are `kline`, `trade`, `agg_trade`, `book_ticker`, `depth_snapshot`, `liquidation`, `funding_rate`, `open_interest`, `premium_index`, `user_fill`, `user_funding`, `order_event`, and `position_snapshot`. `order_book_l2`/`book_snapshot` are treated as `depth_snapshot` aliases, and `bbo` is treated as a `book_ticker` alias. `archive_sources.py` exposes helper contracts for each family with required, optional, and protected fields.
+
+Point-in-time compatibility requires an event-time field. Receive-time unavailability is allowed only with an explicit reason and marks the source non-promotable. Manifest validation checks that `normalized_fields` covers each family-required field or that missing required fields are explicitly recorded in `missing_fields`, `unavailable_fields`, or `null_fields`. Unreported required normalized fields are invalid. Explicitly unavailable required fields are allowed only as diagnostic missingness and receive the `missing_required_normalized_fields` quality flag. Missing book/account execution fields must remain explicit missingness; they must not be zero-filled. Provider schema or symbol differences are represented as first-class `provider_mismatch` and `source_mismatch` quality flags. Unsupported families, missing receive time, and source-specific archive caveats are also surfaced as quality flags.
+
+`src/tradingbotsuite/research/data_quality.py` provides a pure observe-only report builder for archive source, market-data collector, and journal manifest dictionaries. It performs no file I/O, network calls, live safe-mode changes, operator control changes, model promotion, or execution actions. Data-quality alerts are research diagnostics only and include `missing_receive_time`, `gaps_detected`, `duplicates_detected`, `source_mismatch`, `non_promotable_source`, `missing_research_only`, `zero_row_manifest`, plus timestamp and receive-time staleness alerts when comparable timestamp fields exist.
 
 The HMM/KNN feature version emitted in artifacts is:
 
@@ -206,6 +231,7 @@ These schema and version fields are public research contracts and should not cha
 - Dataset manifest: `dataset_manifest_version`, `feature_version`, `label_version`, `label_outcome_fields`, `label_interval_fields`, `entry_price_source_summary`, `research_only`, `symbol`, `asset_scope`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, and `planned_split_summary`.
 - HMM/KNN artifact manifest: `artifact_manifest_version`, `feature_version`, `feature_columns`, `wt3d_feature_columns`, `label_version`, `label_horizons`, `primary_label_horizon`, `label_outcome_fields`, `knn_settings`, artifact path keys, `dependencies.hmm_backend`, `dependencies.meta_backend`, `dependencies.hmmlearn_available`, `dependencies.xgboost_available`, `meta_validation`, and `research_only`.
 - Metrics and monitoring: `metrics_version`, `monitoring_report_version`, `research_only`, `observe_only`, `promotion_ready`, `promotion_failures`, `feature_outages`, `entropy_no_trade`, `regime_distribution_drift`, `neighbor_quality`, `funding_costs`, `calibration_decay`, and `alerts`.
+- Archive/market-data data-quality reports: `data_quality_report_version`, `research_only`, `observe_only`, `promotion_ready`, `manifest_count`, `source_counts`, `family_counts`, `symbol_counts`, `gap_count_total`, `duplicate_count_total`, `missing_receive_time_count`, `non_promotable_count`, `source_mismatch_count`, `missing_research_only_count`, `zero_row_manifest_count`, `timestamp_drift_flags`, `missing_receive_time_flags`, `stale_receive_time_flags`, `alerts`, and `manifest_summaries`.
 - Public parquet/CSV columns: `regime_posteriors.parquet`, `knn_predictions.parquet`, `meta_predictions.parquet`, and `neighbor_diagnostics.csv` fields listed above.
 
 ## Feature Construction And Scaling
