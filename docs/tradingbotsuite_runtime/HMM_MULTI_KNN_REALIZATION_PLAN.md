@@ -132,6 +132,33 @@ Continuation orchestration converted the real BTC run into explicit architecture
 
 Next research iteration should focus on data quality, longer history, regime stability, and neighbor pool quality before threshold tuning or any live-promotion discussion.
 
+## Next Experiment Matrix Summary
+
+All next experiments are offline research only. They must use cloned research configs, local or explicitly authorized historical datasets, temp or explicit research output directories, and must keep `research_only: true`, `promotion_ready: false`, and monitoring `observe_only: true`. No experiment may feed HMM/KNN outputs into live gates, sizing, Hyperliquid execution, safety behavior, runtime-mode switching, or operator live controls.
+
+Selected execution stages:
+
+| Stage | Priority | Experiments | Purpose | Boundary |
+| --- | --- | --- | --- | --- |
+| A | Current-artifact diagnostics | Regime flip-cooldown sensitivity; KNN small-K softmax sweep; KNN observed-core feature subset; posterior and entropy threshold sweeps; KNN price-trend-WT3D subset; meta threshold diagnostic ladder; monitoring red/yellow/green overlay. | Identify whether current failure is mostly no-trade policy, KNN geometry, or meta thresholding. | Offline research reruns or artifact diagnostics only; no live gates or acceptance semantics change. |
+| B | Data and label regeneration | Regenerate BTC dataset with exchange-context quality gates; regenerate labels with full triple-barrier audit fields; re-run the best Stage A configs on regenerated data. | Convert the package from contract-ready to performance-testable by fixing missing context, label audit, and horizon evidence gaps. | Data regeneration must be local/offline or explicitly authorized historical extraction; current-only websocket/order-book state must not backfill historical rows. |
+| C | Implementation-backed experiments | Distance-quality gate; candidate-conditioned meta training; per-regime pool-size gates; bounded compatible-regime fallback. | Add schema/model complexity only after config-only diagnostics identify a high-value failure mode. | Research code/config only; outputs remain non-promotional and must extend manifests/metrics/diagnostics for auditability. |
+
+Highest-ranked items from the matrix:
+
+1. Regenerate BTC dataset with exchange-context quality gates.
+2. Regenerate labels with full triple-barrier audit fields.
+3. Regime flip-cooldown sensitivity.
+4. KNN small-K softmax sweep.
+5. KNN observed-core feature subset.
+6. Regime posterior threshold sensitivity.
+7. Regime entropy threshold sensitivity.
+8. KNN price-trend-WT3D subset.
+9. Meta threshold diagnostic ladder.
+10. Monitoring red-to-yellow acceptance overlay.
+
+Experiment readouts must report manifest path, dataset and quality-gate status, KNN trade count, long/short counts, costed expectancy, profit factor, split concentration, regime no-trade and flip rates, entropy and posterior diagnostics, neighbor quality distribution, calibration, feature outages, and explicit `promotion_ready: false`.
+
 ## Production Risks
 
 - Regime labels can drift after each refit; use posterior confidence and label-by-statistics rather than fixed component IDs.
