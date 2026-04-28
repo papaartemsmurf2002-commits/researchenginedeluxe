@@ -13,6 +13,14 @@ This document preserves the user-provided research inputs as a lookup source for
    - Main use: production-oriented matrix and agent runbook for HMM-routed multi-KNN strategy research.
 3. User-provided refined thesis and implementation request
    - Main use: final implementation direction and acceptance rules.
+4. `tradingbotsuite_critical_audit_orchestrator_next_agent.md`
+   - Repo lookup copy: `docs/tradingbotsuite_runtime/source_inputs/tradingbotsuite_critical_audit_orchestrator_next_agent.md`
+   - Local source: `C:/Users/papaa/Downloads/tradingbotsuite_critical_audit_orchestrator_next_agent.md`
+   - Main use: critical live-readiness audit, P0/P1 stop-ship risks, and next-agent cleanup priorities.
+5. `orchestrator_btc_eth_perps_architecture_review_v3.md`
+   - Repo lookup copy: `docs/tradingbotsuite_runtime/source_inputs/orchestrator_btc_eth_perps_architecture_review_v3.md`
+   - Local source: `C:/Users/papaa/Downloads/orchestrator_btc_eth_perps_architecture_review_v3.md`
+   - Main use: BTC/ETH perpetual architecture target, Binance-data/Hyperliquid-execution separation, event-journal/replay roadmap, and KNN demotion to regime-local diagnostics.
 
 ## Initial Research Thesis From DOCX
 
@@ -249,3 +257,63 @@ The user requested implementation of:
 - all outputs research-only
 - no live gate, sizing, or Hyperliquid execution changes
 - issue protocol where agents write difficult unresolved problems to Markdown and stop when 4 or more unresolved issues accumulate
+
+## Critical Audit Addendum From Uploaded Orchestrator Documents
+
+The April 28, 2026 uploaded audit documents are now part of the lookup source of truth. They do not reverse the HMM/KNN research package, but they tighten the priority order:
+
+1. Safety and execution correctness.
+2. Data integrity and replayability.
+3. Leakage-free research protocol.
+4. Shadow-mode model diagnostics.
+5. Live promotion only after hard acceptance criteria.
+
+The current HMM/KNN branch remains:
+
+```text
+status: research prototype
+live_signal_status: prohibited
+promotion_status: failed
+research_only: true
+observe_only: true
+promotion_ready: false
+```
+
+The real BTC diagnostic evidence remains explicitly non-promotional:
+
+- row count was only `446`.
+- pure KNN accepted only `5` trades.
+- pure KNN costed expectancy was approximately `-1.0008811453163364`.
+- meta model accepted `0` trades.
+- monitoring flagged high no-trade behavior and low neighbor quality.
+
+The uploaded audits require future work to treat Lorentzian KNN as a regime-local similarity diagnostic, not the primary alpha engine. The likely durable edge, if any, should be sought through:
+
+- Binance USD-M event journals and replayable market data.
+- Hyperliquid order/account/fill journals and reconciliation.
+- point-in-time feature availability and train-only scaling/imputation.
+- CUSUM/triple-barrier labels with executable-entry assumptions, fees, slippage, funding, latency, and venue basis.
+- perp microstructure features: funding, premium/basis, OI, taker imbalance, book depth, spread, liquidation/force-order context.
+- BTC-to-ETH spillover and ETH/BTC relative features in Phase 2.
+- independent risk governor and Hyperliquid execution safety before any model promotion.
+
+Uploaded audit P0 blockers that agents must keep visible:
+
+- LIVE risk caps cannot default to zero or disabled.
+- root launchers must not reconstruct and lose `AppConfig` fields.
+- research jobs must be banned in LIVE, even when flat.
+- HMM/KNN artifacts with `research_only` or `observe_only` must not be live-promotable.
+- Hyperliquid execution must be idempotent, journaled, reconciled, and dead-man protected before autonomous live use.
+- Binance-only signals do not prove Hyperliquid fillability; basis, spread, depth, funding, and account state must gate execution.
+- webhook defaults such as `change-me` must fail in LIVE or externally exposed modes.
+
+Minimum future research thresholds from the critical audit, before model training is considered meaningful:
+
+- at least `10,000` event rows per asset, or a documented power-analysis exception.
+- at least `1,000` rows per HMM regime.
+- at least `300` labeled trades per side per asset.
+- at least `50` accepted trades per validation split.
+- at least `6` walk-forward validation splits.
+- history that includes multiple volatility regimes and at least one major stress period.
+
+These thresholds are not profitability proof; they are a floor for taking the model evidence seriously.

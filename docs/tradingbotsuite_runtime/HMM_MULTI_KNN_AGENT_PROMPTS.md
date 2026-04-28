@@ -14,6 +14,8 @@ Read these files before making decisions:
 - `docs/tradingbotsuite_runtime/HMM_MULTI_KNN_AGENT_RUNBOOK.md`
 - `docs/tradingbotsuite_runtime/HMM_MULTI_KNN_SOURCE_LOG.md`
 - `docs/tradingbotsuite_runtime/HMM_MULTI_KNN_AGENT_ISSUES.md`
+- `docs/tradingbotsuite_runtime/source_inputs/tradingbotsuite_critical_audit_orchestrator_next_agent.md`
+- `docs/tradingbotsuite_runtime/source_inputs/orchestrator_btc_eth_perps_architecture_review_v3.md`
 - `configs/v2_btc_hmm_multi_knn_research.json`
 
 If `docs/tradingbotsuite_runtime/agent_artifacts/` exists, read relevant existing artifacts before starting. These artifacts are the handoff channel between agents and the supervisor.
@@ -26,6 +28,29 @@ Hard boundaries:
 - Do not change live gating, live sizing, Hyperliquid execution behavior, safety behavior, or operator live controls.
 - Do not fabricate missing funding, OI, premium, microstructure, or sentiment fields. Preserve explicit missingness.
 - Fit scalers, HMMs, KNN pools, feature selectors, and meta-models only on train rows.
+- The uploaded critical audits override any optimistic interpretation of the HMM/KNN package: current real BTC evidence is diagnostic, negative, sparse, BTC-only, and not promotable.
+- Do not describe the branch as BTC/ETH live-capable. BTC is the only implemented research path; ETH is a Phase 2 design target requiring separate data, labels, artifacts, metrics, and promotion gates.
+- Do not claim KNN is the main alpha engine. Treat KNN as a regime-local similarity diagnostic unless out-of-sample costed evidence proves otherwise.
+- Prioritize safety, event journals, replayability, point-in-time features, cost-aware labels, and execution boundaries ahead of model tuning.
+
+Critical audit live-safety constraints:
+
+- LIVE risk caps must not be zero or disabled in any future live-readiness work.
+- Research jobs must be hard-banned in LIVE, even when there are no open positions.
+- HMM/KNN artifacts with `research_only: true` or `observe_only: true` must never be live-promotable.
+- Binance-derived signals are not executable prices for Hyperliquid. Future live feasibility must check Hyperliquid basis, spread, depth, funding, book staleness, user-state staleness, open orders, and position reconciliation.
+- Hyperliquid execution must eventually be idempotent through deterministic `cloid`, append-only order/fill journals, cancel-by-cloid, reduce-only exits, dead-man cancel, and restart reconciliation before any live automation discussion.
+- Root launchers must not bypass canonical CLI/preflight behavior or reconstruct config in a way that drops fields.
+- Default webhook secrets such as `change-me` are invalid for LIVE or externally exposed modes.
+
+Minimum evidence floor from the critical audit before model conclusions are meaningful:
+
+- `>= 10000` event rows per asset, or a documented power-analysis exception.
+- `>= 1000` rows per HMM regime.
+- `>= 300` labeled trades per side per asset.
+- `>= 50` accepted trades per validation split.
+- `>= 6` walk-forward validation splits.
+- Multiple volatility regimes and at least one major stress period.
 
 Artifact communication protocol:
 
@@ -64,6 +89,22 @@ Definition of done:
 - Work artifact is created or updated under `docs/tradingbotsuite_runtime/agent_artifacts/`.
 - Research artifacts include `research_only: true` where applicable.
 - Existing tracked tests remain green for your touched area.
+
+## Critical Audit Agent Overlay
+
+All agents must keep the following overlay in mind when working from the uploaded audit documents:
+
+| Agent | Added audit responsibility |
+| --- | --- |
+| Data Agent | Move future work toward Binance USD-M and Hyperliquid append-only journals, not ad hoc exports; distinguish TradingView/export rows as non-promotable. |
+| Feature Agent | Prove timestamp availability, avoid silent zero-fill, add availability flags, and ensure WT3D is computed on continuous completed bars before joining to events. |
+| Labeling Agent | Replace promotable label assumptions based on signal-bar close with executable-entry modeling; output label intervals for label-window-aware purge/embargo. |
+| Regime Agent | Treat HMM as posterior/entropy/dwell-time diagnostics only; do not hardcode state IDs after retrain. |
+| KNN Agent | Keep KNN exact, regime-local, out-of-fold/prior-only, and diagnostic; report small pools, low quality, and concentrated neighbors as failures. |
+| Meta-Model Agent | Ensure KNN diagnostics used by meta are out-of-fold; compare against logistic/tree baselines and report failure for one-class or tiny samples. |
+| Backtest Agent | Enforce purged walk-forward validation with costs, funding, latency, venue-basis assumptions, long/short/regime/horizon reports, and split concentration. |
+| Execution And Risk Agent | Own live-readiness blockers, research/live isolation, artifact promotion refusal, venue-basis guard requirements, idempotent execution requirements, and dead-man/reconciliation requirements. |
+| Monitoring Agent | Keep monitoring observe-only; track feature outages, regime drift, neighbor quality, funding/cost anomalies, calibration decay, and feed/execution staleness as future readiness risks. |
 
 ## Data Agent Prompt
 

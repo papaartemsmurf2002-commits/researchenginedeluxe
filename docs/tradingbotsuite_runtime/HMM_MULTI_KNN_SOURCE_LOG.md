@@ -4,6 +4,11 @@ This source log condenses the workbook `crypto_hmm_multi_knn_production_matrix (
 
 For preserved local source filenames, including the Cyrillic DOCX name and ASCII alias, see `HMM_MULTI_KNN_INPUT_LOOKUP.md`.
 
+The uploaded critical audit documents are preserved under `docs/tradingbotsuite_runtime/source_inputs/` and are now part of the orchestration lookup set:
+
+- `tradingbotsuite_critical_audit_orchestrator_next_agent.md`
+- `orchestrator_btc_eth_perps_architecture_review_v3.md`
+
 ## Production Matrix Sources
 
 | Source label | URL | Use in plan | Caveat |
@@ -52,6 +57,16 @@ For preserved local source filenames, including the Cyrillic DOCX name and ASCII
 - Pure KNN failed costed expectancy and trade-count gates; meta accepted zero trades.
 - Monitoring warnings aligned with architecture risks: high no-trade rate and low neighbor quality.
 - These findings support further research iteration, not live promotion.
+
+## Critical Audit Source Notes
+
+The uploaded critical audit documents add these source-of-truth constraints for future orchestration:
+
+- Do not merge the current HMM/KNN branch into production/live runtime as a trading decision system.
+- Treat current real BTC evidence as failed diagnostic evidence.
+- Prioritize safety, event journals, replayability, leakage-free research, executable labels, and venue-aware execution before additional KNN tuning.
+- Keep HMM/KNN artifacts research-only and observe-only until a separate future approval pass verifies hard live-promotion criteria.
+- Require BTC and ETH to be validated separately before any BTC evidence is generalized to ETH.
 
 Checked dependency references:
 

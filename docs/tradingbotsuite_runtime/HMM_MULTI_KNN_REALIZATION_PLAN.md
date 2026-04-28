@@ -168,3 +168,40 @@ Experiment readouts must report manifest path, dataset and quality-gate status, 
 - KNN can overfit via neighbor memorization; all comparisons must be purged walk-forward with embargo.
 - The meta-model can hide weak KNN behavior; report pure KNN metrics beside meta-filter metrics.
 - Phase 1 artifacts remain research-only even when validation is green; a separate approval pass is required before any live execution, sizing, gate, Hyperliquid, safety, or operator live-control integration.
+
+## Critical Audit Reprioritization
+
+The uploaded April 28, 2026 critical audit and BTC/ETH architecture review add a stricter orchestration priority. They do not make the current HMM/KNN package live-ready. They explicitly classify the branch as a research prototype with failed promotion evidence:
+
+- `research_only: true`
+- `observe_only: true`
+- `promotion_ready: false`
+- BTC-only implementation
+- sparse real BTC evidence (`446` rows)
+- pure KNN accepted only `5` trades
+- costed KNN expectancy around `-1.0008811453163364`
+- meta accepted `0` trades
+
+The next development direction is therefore not threshold tuning or more oscillator variants. The priority order is:
+
+1. Live-readiness safety surfaces and canonical preflight rules.
+2. Binance and Hyperliquid event journals with deterministic replay.
+3. Point-in-time feature availability, train-only scaling/imputation, and no silent zero-fill.
+4. Executable-entry, cost-aware CUSUM/triple-barrier labeling with label-window-aware purge/embargo.
+5. HMM posterior routing as diagnostics and no-trade context.
+6. KNN as regime-local similarity diagnostics with explicit pool-quality failures.
+7. Meta-model ablation after data, labels, and OOF KNN diagnostics are credible.
+8. Shadow-mode monitoring and live-vs-replay verification before any future promotion.
+
+Any future live-production branch must prove these safety invariants before HMM/KNN artifacts can matter:
+
+- LIVE cannot start with disabled/zero hard risk caps.
+- LIVE cannot run research jobs, even when flat.
+- `research_only` or `observe_only` artifacts cannot be loaded as live signals.
+- BTC-only artifacts cannot be used for ETH.
+- Binance signal prices cannot be treated as Hyperliquid fill prices.
+- Hyperliquid order flow requires deterministic `cloid`, order/fill journals, cancel-by-cloid, reduce-only exits, dead-man cancel, and exchange reconciliation.
+- Root launchers must call canonical CLI/preflight logic and preserve every config field.
+- Default webhook secrets must fail live/external startup checks.
+
+For HMM/KNN research to become worth evaluating as model evidence, future datasets should target at least `10000` event rows per asset, `1000` rows per regime, `300` labeled trades per side per asset, `50` accepted trades per validation split, and `6` walk-forward splits. These are evidence floors, not promotion criteria.

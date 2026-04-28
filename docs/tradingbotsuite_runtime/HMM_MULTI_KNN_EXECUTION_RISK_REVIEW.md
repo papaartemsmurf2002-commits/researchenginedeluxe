@@ -12,6 +12,26 @@ It does not approve live trading. It does not change live execution, position si
 
 Phase 1 output remains advisory research metadata only. Any future live use requires a separate approval pass after BTC validation and later ETH validation.
 
+## Critical Audit Override
+
+The uploaded April 28, 2026 critical audit documents tighten this review:
+
+- The HMM/KNN branch must not be merged into production/live runtime as a trading decision system.
+- Current real BTC evidence is a failed diagnostic, not an optimization target: `446` rows, `5` pure-KNN trades, negative costed expectancy, and `0` meta trades.
+- The package is allowed only as research-only and observe-only work until explicit future approval.
+- KNN should be treated as a regime-local similarity diagnostic, not a live signal or core alpha engine.
+- The larger production priority is safety, replayability, leakage-free data, executable labels, perp microstructure, cross-venue execution checks, and independent risk control.
+
+Future execution-readiness work must enforce these blockers before any model artifact can be considered for live loading:
+
+1. LIVE startup rejects disabled or zero hard risk caps.
+2. LIVE startup rejects default webhook secrets.
+3. LIVE runtime rejects build/train/replay/research jobs, even when flat.
+4. Live signal loading rejects `research_only`, `observe_only`, missing promotion manifests, or BTC-only artifacts used for ETH.
+5. Binance-derived signal prices are never treated as Hyperliquid executable fills without basis, spread, depth, funding, stale-feed, account-state, and position-reconciliation checks.
+6. Hyperliquid execution has deterministic `cloid`, persisted order intents, retry dedupe, cancel-by-cloid, reduce-only exits, dead-man cancel, and restart reconciliation.
+7. Root launchers preserve full config and call the same canonical CLI/preflight path as normal runtime commands.
+
 ## Current Repo State
 
 - Shared issue protocol: `docs/tradingbotsuite_runtime/HMM_MULTI_KNN_AGENT_ISSUES.md` currently reports no open issues.
