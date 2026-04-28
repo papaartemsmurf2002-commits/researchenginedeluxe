@@ -45,6 +45,14 @@ For preserved local source filenames, including the Cyrillic DOCX name and ASCII
 - `monitor-hmm-knn --manifest <artifact_manifest.json>` generated an observe-only `monitoring_report.json`; warning alerts remain research diagnostics and do not change live trading state.
 - Final live-boundary review and readiness scorecard confirmed HMM/KNN docs, commands, artifacts, and UI summaries remain research-only and do not modify live execution, sizing, gates, Hyperliquid behavior, safety behavior, or operator live controls. No positive expectancy or live-readiness claim exists yet.
 
+## Continuation Evidence Notes
+
+- The real BTC diagnostic artifact under `data/research/v2-btc-hmm-multi-knn-1` was reviewed as local evidence only; generated `data/` artifacts remain ignored and are not source-controlled.
+- The run produced `446` evaluation rows and remained `research_only: true` / `promotion_ready: false`.
+- Pure KNN failed costed expectancy and trade-count gates; meta accepted zero trades.
+- Monitoring warnings aligned with architecture risks: high no-trade rate and low neighbor quality.
+- These findings support further research iteration, not live promotion.
+
 Checked dependency references:
 
 - https://pypi.org/project/hmmlearn/

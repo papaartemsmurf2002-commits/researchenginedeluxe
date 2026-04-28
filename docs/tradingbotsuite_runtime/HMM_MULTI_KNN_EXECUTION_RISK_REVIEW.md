@@ -294,9 +294,9 @@ For this docs-only review, no runtime test suite is required.
 
 Current decision: blocked for live promotion.
 
-Reason: Phase 1 is explicitly research-only, and no HMM/KNN artifact manifest is currently available for replay in `data/research/v2-btc-hmm-multi-knn-1/`.
+Reason: Phase 1 is explicitly research-only. A local real BTC HMM/KNN artifact manifest exists under `data/research/v2-btc-hmm-multi-knn-1/`, but it is diagnostic evidence only: `research_only: true`, `promotion_ready: false`, negative KNN costed expectancy, too few KNN trades, and zero accepted meta trades.
 
-Allowed next step: generate or replay HMM/KNN research artifacts and apply this checklist as an advisory execution-risk review.
+Allowed next step: regenerate or replay HMM/KNN research artifacts after improving data quality, regime stability, neighbor quality, or dependency availability, then apply this checklist as an advisory execution-risk review.
 
 Disallowed next steps without separate approval:
 

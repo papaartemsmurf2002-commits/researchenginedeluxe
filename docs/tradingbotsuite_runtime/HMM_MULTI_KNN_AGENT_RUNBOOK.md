@@ -132,3 +132,11 @@ Final live-boundary invariant:
 - Alert when research data quality degrades, but do not change live behavior.
 - Run `monitor-hmm-knn --manifest <artifact_manifest.json>` against generated artifacts to write observe-only `monitoring_report.json`.
 - Artifact smoke validation confirmed `monitoring_report.json` preserves `research_only: true`, `observe_only: true`, and `promotion_ready: false`.
+
+## Continuation Orchestration Notes
+
+- Treat synthetic fixture validation as contract validation only.
+- Treat the current real BTC artifact as negative diagnostic evidence, not as acceptance evidence.
+- Before any new model tuning pass, agents should inspect data completeness, regime stability, neighbor quality, and meta trade sparsity.
+- Every real-data review must classify findings as `pass`, `fail`, or `insufficient-data`.
+- Any future live discussion requires a separate approval pass after real BTC acceptance gates are met and ETH Phase 2 has been separately evaluated.

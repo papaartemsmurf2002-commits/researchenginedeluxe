@@ -120,6 +120,18 @@ Still research-only:
 - No live-readiness claim exists.
 - HMM/KNN artifacts must not feed live gates, live sizing, Hyperliquid execution, safety behavior, runtime-mode switching, or operator live controls without a separate explicit approval pass.
 
+## Architecture Gap Triage
+
+Continuation orchestration converted the real BTC run into explicit architecture-gap evidence:
+
+- Regime routing emits all four intended labels, but recent regime flips are very frequent (`0.8946`) and the regime no-trade rate is high (`0.9103`). The regime layer is currently defensive rather than tradable.
+- Same-regime Lorentzian KNN diagnostics are populated and same-regime-only, but KNN accepted only `5` trades, mean distance quality is low (`0.1555`), and costed expectancy is negative.
+- The meta-filter used `random_forest_fallback` because XGBoost is unavailable in the current environment; it accepted zero trades, so it validates schema/backend reporting but not edge.
+- Monitoring maps the main risks through observe-only alerts: `high_no_trade_rate` and `low_neighbor_quality`.
+- The real BTC dataset is usable for coarse diagnostic replay, but important perp/microstructure context is missing or sparse. Exact label-distribution claims require regenerating the dataset with the latest hardened label/context manifest.
+
+Next research iteration should focus on data quality, longer history, regime stability, and neighbor pool quality before threshold tuning or any live-promotion discussion.
+
 ## Production Risks
 
 - Regime labels can drift after each refit; use posterior confidence and label-by-statistics rather than fixed component IDs.

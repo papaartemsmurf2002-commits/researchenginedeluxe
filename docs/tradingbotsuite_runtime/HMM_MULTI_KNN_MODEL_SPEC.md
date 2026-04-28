@@ -321,3 +321,15 @@ Observed result from the mid-development readiness scorecard: `383 passed in 146
 - A CLI/E2E fixture validation now runs `research-hmm-knn` followed by `monitor-hmm-knn` through `python -m tradingbotsuite.main`, using only synthetic BTC data and temporary output paths. It verifies expected artifact files and keeps generated artifacts outside repo data directories.
 - `monitor-hmm-knn` was run against the smoke `artifact_manifest.json` and produced `monitoring_report.json` with `research_only: true`, `observe_only: true`, and `promotion_ready: false`.
 - The readiness scorecard classifies the current state as research-contract validation only. No positive expectancy or live-readiness claim exists yet, and HMM/KNN outputs must not feed live gates, live sizing, Hyperliquid execution, safety behavior, or operator live controls.
+
+## Real BTC Diagnostic Interpretation
+
+The current real BTC artifact is a diagnostic contract run, not an acceptance pass.
+
+- `artifact_manifest.json` reports `research_only: true`, BTC-only `asset_scope`, and `row_count: 446`.
+- `walk_forward_metrics.json` reports `promotion_ready: false` with failures for negative KNN expectancy, insufficient KNN trade count, split concentration, insufficient meta trade count, missing meta long/short breakout, and research-only non-promotability.
+- Pure KNN accepted `5` trades and produced costed expectancy `-1.0008811453163364`.
+- Meta accepted `0` trades, so meta predictions validate schema and backend reporting only.
+- `monitoring_report.json` remains `observe_only: true` and identifies high no-trade rate plus low neighbor quality.
+
+Downstream readers must treat these fields as evidence for research triage only. They are not live signals, sizing inputs, or production acceptance outputs.
