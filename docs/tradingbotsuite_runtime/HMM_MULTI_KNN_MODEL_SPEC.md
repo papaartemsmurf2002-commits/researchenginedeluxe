@@ -83,6 +83,8 @@ Input BTC Phase 1 dataset artifacts are produced by the research dataset builder
   - `feature_version`
   - `label_version`
   - `label_outcome_fields`
+  - `label_interval_fields`
+  - `entry_price_source_summary`
   - `missing_feature_rates`
   - `raw_context_available_counts`
   - `exchange_context_summary`
@@ -175,7 +177,21 @@ Required files:
 
 The artifact manifest `feature_columns` field is the public KNN feature contract. It must match the config `knn.feature_columns` and must not include label outcome fields.
 
-Hardening and observability fields such as `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, `regime_model_backend`, `neighbor_distance_quality`, `meta_model_backend`, and `dependencies.meta_backend` are public research artifact fields. They are diagnostics and audit inputs only; they do not authorize live gates, live sizing, Hyperliquid execution, safety behavior changes, or operator live controls.
+Hardening and observability fields such as `label_interval_fields`, `entry_price_source_summary`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, `regime_model_backend`, `neighbor_distance_quality`, `meta_model_backend`, and `dependencies.meta_backend` are public research artifact fields. They are diagnostics and audit inputs only; they do not authorize live gates, live sizing, Hyperliquid execution, safety behavior changes, or operator live controls.
+
+## Research Archive Source Contract
+
+Historical order-flow style archive sources are described by the offline contract in `src/tradingbotsuite/research/archive_sources.py`. This is not a downloader and makes no network calls.
+
+Supported descriptor names:
+
+- `binance_vision`
+- `crypto_lake`
+- `hyperliquid_archive`
+
+Archive source manifests must include `source_name`, `source_type`, `symbol`, `data_family`, `start_time_ms`, `end_time_ms`, `row_count`, `event_time_field`, `receive_time_field` or `receive_time_unavailable_reason`, `schema_version`, `content_hash`, and `research_only: true`.
+
+Point-in-time compatibility requires an event-time field. Receive-time unavailability is allowed only with an explicit reason and marks the source non-promotable. Missing book/account execution fields must remain explicit missingness via manifest fields such as `missing_fields`; they must not be zero-filled. Provider schema or symbol differences are represented as a first-class `source_mismatch` quality flag.
 
 The HMM/KNN feature version emitted in artifacts is:
 
@@ -187,7 +203,7 @@ v2-btc-hmm-knn-features-1
 
 These schema and version fields are public research contracts and should not change casually. Any rename, removal, semantic change, or version bump requires a coordinated docs, tests, fixture, replay, monitoring, and artifact migration review:
 
-- Dataset manifest: `dataset_manifest_version`, `feature_version`, `label_version`, `label_outcome_fields`, `research_only`, `symbol`, `asset_scope`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, and `planned_split_summary`.
+- Dataset manifest: `dataset_manifest_version`, `feature_version`, `label_version`, `label_outcome_fields`, `label_interval_fields`, `entry_price_source_summary`, `research_only`, `symbol`, `asset_scope`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, and `planned_split_summary`.
 - HMM/KNN artifact manifest: `artifact_manifest_version`, `feature_version`, `feature_columns`, `wt3d_feature_columns`, `label_version`, `label_horizons`, `primary_label_horizon`, `label_outcome_fields`, `knn_settings`, artifact path keys, `dependencies.hmm_backend`, `dependencies.meta_backend`, `dependencies.hmmlearn_available`, `dependencies.xgboost_available`, `meta_validation`, and `research_only`.
 - Metrics and monitoring: `metrics_version`, `monitoring_report_version`, `research_only`, `observe_only`, `promotion_ready`, `promotion_failures`, `feature_outages`, `entropy_no_trade`, `regime_distribution_drift`, `neighbor_quality`, `funding_costs`, `calibration_decay`, and `alerts`.
 - Public parquet/CSV columns: `regime_posteriors.parquet`, `knn_predictions.parquet`, `meta_predictions.parquet`, and `neighbor_diagnostics.csv` fields listed above.
@@ -294,6 +310,8 @@ A row is blocked or downgraded when:
 
 - Fit HMM, scalers, KNN pools, and meta-models on train rows only.
 - Apply purge/embargo before each test window.
+- Prefer `label_interval_start_ms` and `label_interval_end_ms` for purge/embargo; fixed row or bar counts are only a fallback and are not sufficient for 7-day labels.
+- Treat `signal_bar_close` entry labels as non-promotable diagnostics. Executable-style entry sources require latency and cost metadata before they can be considered promotable label assumptions.
 - Report pure KNN and meta-filter metrics separately.
 - Include funding, fees, and slippage in expected value.
 - Keep `promotion_ready` false in this phase.

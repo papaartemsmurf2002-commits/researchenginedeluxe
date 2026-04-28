@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 
 from tradingbotsuite.config import AppConfig
@@ -16,6 +17,7 @@ from tradingbotsuite.research.entry_gate import (
 )
 from tradingbotsuite.research.hmm_knn import replay_hmm_knn_artifact, run_hmm_knn_research
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
+from tradingbotsuite.research.market_data import collect_binance_usdm_bars
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.research.tradingview_import import import_tradingview_chart_export
 from tradingbotsuite.web.app import create_app
@@ -115,6 +117,14 @@ def parse_args() -> argparse.Namespace:
     hmm_knn_monitor = subparsers.add_parser("monitor-hmm-knn", help="Write an observe-only HMM/KNN monitoring report")
     hmm_knn_monitor.add_argument("--manifest", required=True)
 
+    collect_bars = subparsers.add_parser("collect-binance-bars", help="Collect research-only Binance USD-M historical chart bars")
+    collect_bars.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
+    collect_bars.add_argument("--interval", required=True)
+    collect_bars.add_argument("--start-time-ms", required=True, type=int)
+    collect_bars.add_argument("--end-time-ms", required=True, type=int)
+    collect_bars.add_argument("--output-dir", default=None)
+    collect_bars.add_argument("--strict", action="store_true")
+
     return parser.parse_args()
 
 
@@ -125,6 +135,35 @@ def _parse_component_list(value: str | None) -> tuple[str, ...] | None:
     return components or None
 
 
+def _config_with_runtime_mode(config: AppConfig, mode: str) -> AppConfig:
+    return replace(config, runtime_mode=RuntimeMode(mode))
+
+
+def _config_with_research_config_path(config: AppConfig, config_path: str) -> AppConfig:
+    return replace(config, research=replace(config.research, config_path=Path(config_path)))
+
+
+def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, object]:
+    result = asyncio.run(
+        collect_binance_usdm_bars(
+            symbol=args.symbol,
+            interval=args.interval,
+            start_time_ms=args.start_time_ms,
+            end_time_ms=args.end_time_ms,
+            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            strict=args.strict,
+        )
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "data_path": str(result.data_path),
+        "manifest_path": str(result.manifest_path),
+        "row_count": result.row_count,
+        "gap_count": result.gap_count,
+        "duplicate_count": result.duplicate_count,
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -132,15 +171,7 @@ if __name__ == "__main__":
     if args.command == "manual":
         config = AppConfig.from_env()
         if args.mode is not None:
-            config = AppConfig(
-                runtime_mode=RuntimeMode(args.mode),
-                db_path=config.db_path,
-                webhook=config.webhook,
-                strategy=config.strategy,
-                binance=config.binance,
-                hyperliquid=config.hyperliquid,
-                research=config.research,
-            )
+            config = _config_with_runtime_mode(config, args.mode)
         asyncio.run(run_manual_shell(config))
     elif args.command == "smoke-live":
         from decimal import Decimal
@@ -154,19 +185,7 @@ if __name__ == "__main__":
 
         config = AppConfig.from_env()
         if args.research_config is not None:
-            config = AppConfig(
-                runtime_mode=config.runtime_mode,
-                db_path=config.db_path,
-                webhook=config.webhook,
-                strategy=config.strategy,
-                binance=config.binance,
-                hyperliquid=config.hyperliquid,
-                research=config.research.__class__(
-                    output_dir=config.research.output_dir,
-                    config_path=Path(args.research_config),
-                    artifact_manifest_path=config.research.artifact_manifest_path,
-                ),
-            )
+            config = _config_with_research_config_path(config, args.research_config)
         result = asyncio.run(build_dataset(config))
         print(json.dumps({"dataset_path": str(result.dataset_path), "manifest_path": str(result.manifest_path), "row_count": result.row_count}, indent=2))
     elif args.command == "import-tv-chart-export":
@@ -205,19 +224,7 @@ if __name__ == "__main__":
 
         config = AppConfig.from_env()
         if args.research_config is not None:
-            config = AppConfig(
-                runtime_mode=config.runtime_mode,
-                db_path=config.db_path,
-                webhook=config.webhook,
-                strategy=config.strategy,
-                binance=config.binance,
-                hyperliquid=config.hyperliquid,
-                research=config.research.__class__(
-                    output_dir=config.research.output_dir,
-                    config_path=Path(args.research_config),
-                    artifact_manifest_path=config.research.artifact_manifest_path,
-                ),
-            )
+            config = _config_with_research_config_path(config, args.research_config)
         manifest_path = train_model(config, dataset_path=Path(args.dataset))
         print(json.dumps({"train_manifest_path": str(manifest_path)}, indent=2))
     elif args.command == "calibrate-model":
@@ -225,19 +232,7 @@ if __name__ == "__main__":
 
         config = AppConfig.from_env()
         if args.research_config is not None:
-            config = AppConfig(
-                runtime_mode=config.runtime_mode,
-                db_path=config.db_path,
-                webhook=config.webhook,
-                strategy=config.strategy,
-                binance=config.binance,
-                hyperliquid=config.hyperliquid,
-                research=config.research.__class__(
-                    output_dir=config.research.output_dir,
-                    config_path=Path(args.research_config),
-                    artifact_manifest_path=config.research.artifact_manifest_path,
-                ),
-            )
+            config = _config_with_research_config_path(config, args.research_config)
         artifact_manifest_path = calibrate_model_artifact(config, train_manifest_path=Path(args.train_manifest))
         print(json.dumps({"artifact_manifest_path": str(artifact_manifest_path)}, indent=2))
     elif args.command == "replay-eval":
@@ -245,19 +240,7 @@ if __name__ == "__main__":
 
         config = AppConfig.from_env()
         if args.research_config is not None:
-            config = AppConfig(
-                runtime_mode=config.runtime_mode,
-                db_path=config.db_path,
-                webhook=config.webhook,
-                strategy=config.strategy,
-                binance=config.binance,
-                hyperliquid=config.hyperliquid,
-                research=config.research.__class__(
-                    output_dir=config.research.output_dir,
-                    config_path=Path(args.research_config),
-                    artifact_manifest_path=config.research.artifact_manifest_path,
-                ),
-            )
+            config = _config_with_research_config_path(config, args.research_config)
         metrics_path = replay_eval_artifact(config, artifact_manifest_path=Path(args.artifact_manifest))
         print(json.dumps({"metrics_path": str(metrics_path)}, indent=2))
     elif args.command == "research-entry-gates":
@@ -385,6 +368,10 @@ if __name__ == "__main__":
 
         report_path = monitor_hmm_knn_artifact(Path(args.manifest))
         print(json.dumps({"monitoring_report_path": str(report_path)}, indent=2))
+    elif args.command == "collect-binance-bars":
+        import json
+
+        print(json.dumps(_run_collect_binance_bars_command(args), indent=2))
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)

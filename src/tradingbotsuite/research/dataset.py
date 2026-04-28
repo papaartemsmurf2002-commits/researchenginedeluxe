@@ -66,6 +66,30 @@ CONTEXT_MANIFEST_FIELDS = {
         "premium_close",
     ),
 }
+NON_PROMOTABLE_ENTRY_PRICE_SOURCES = {"signal_bar_close"}
+EXECUTABLE_STYLE_ENTRY_PRICE_SOURCES = {
+    "next_bar_open_plus_configured_slippage",
+    "simulated_fill",
+    "explicit_simulated_fill",
+    "hyperliquid_simulated_fill",
+}
+ENTRY_SOURCE_LATENCY_FIELDS = (
+    "entry_latency_ms",
+    "decision_latency_ms",
+    "configured_latency_ms",
+    "signal_delay_ms",
+    "order_decision_delay_ms",
+    "order_placement_delay_ms",
+)
+ENTRY_SOURCE_COST_FIELDS = (
+    "entry_slippage_bps",
+    "slippage_bps",
+    "configured_slippage_bps",
+    "fee_bps",
+    "fees_bps",
+    "taker_fee_bps",
+    "maker_fee_bps",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +111,17 @@ class LabelOutcome:
     max_adverse_excursion: Decimal
     max_favorable_excursion: Decimal
     barrier_hit_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class LabelEntrySourceMetadata:
+    source: str
+    source_class: str
+    promotable: bool
+    reason: str
+    latency_fields_present: tuple[str, ...]
+    cost_fields_present: tuple[str, ...]
+    missing_required_metadata: tuple[str, ...]
 
 
 def _hash_file(path: Path) -> str:
@@ -147,6 +182,68 @@ def _mfe_mae_update(
 
 def _json_dumps(payload: Any) -> str:
     return json.dumps(payload or {}, default=str, sort_keys=True)
+
+
+def _present_metadata_fields(payload: dict[str, Any], fields: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(field for field in fields if payload.get(field) is not None)
+
+
+def classify_label_entry_source(
+    entry_price_source: str | None,
+    metadata: dict[str, Any] | None = None,
+) -> LabelEntrySourceMetadata:
+    source = str(entry_price_source or "signal_bar_close")
+    payload = metadata or {}
+    latency_fields = _present_metadata_fields(payload, ENTRY_SOURCE_LATENCY_FIELDS)
+    cost_fields = _present_metadata_fields(payload, ENTRY_SOURCE_COST_FIELDS)
+    if source in NON_PROMOTABLE_ENTRY_PRICE_SOURCES:
+        return LabelEntrySourceMetadata(
+            source=source,
+            source_class="signal_bar_close",
+            promotable=False,
+            reason="signal_bar_close_is_diagnostic_not_executable",
+            latency_fields_present=latency_fields,
+            cost_fields_present=cost_fields,
+            missing_required_metadata=(),
+        )
+    if source in EXECUTABLE_STYLE_ENTRY_PRICE_SOURCES or "simulated_fill" in source:
+        missing = []
+        if not latency_fields:
+            missing.append("latency")
+        if not cost_fields:
+            missing.append("cost")
+        return LabelEntrySourceMetadata(
+            source=source,
+            source_class="executable_style",
+            promotable=not missing,
+            reason="executable_entry_metadata_complete" if not missing else "executable_entry_metadata_incomplete",
+            latency_fields_present=latency_fields,
+            cost_fields_present=cost_fields,
+            missing_required_metadata=tuple(missing),
+        )
+    return LabelEntrySourceMetadata(
+        source=source,
+        source_class="unknown",
+        promotable=False,
+        reason="unknown_entry_price_source",
+        latency_fields_present=latency_fields,
+        cost_fields_present=cost_fields,
+        missing_required_metadata=("known_entry_source",),
+    )
+
+
+def label_intervals_overlap(
+    left_start_ms: int,
+    left_end_ms: int,
+    right_start_ms: int,
+    right_end_ms: int,
+    *,
+    embargo_ms: int = 0,
+) -> bool:
+    if left_end_ms < left_start_ms or right_end_ms < right_start_ms:
+        raise ValueError("label interval end must be greater than or equal to start")
+    embargo = max(int(embargo_ms), 0)
+    return int(left_start_ms) < int(right_end_ms) + embargo and int(right_start_ms) < int(left_end_ms) + embargo
 
 
 def _field_count_payload(frame: pd.DataFrame, *, prefix: str) -> dict[str, int]:
@@ -344,6 +441,14 @@ class ResearchDatasetBuilder:
             normalized_entry_price = _decimal_or_none(raw_payload.get("normalized_entry_price"))
             entry_price = normalized_entry_price if normalized_entry_price is not None else latest_bar.close
             entry_price_source = str(raw_payload.get("entry_price_source") or "signal_bar_close")
+            entry_source_metadata = classify_label_entry_source(
+                entry_price_source,
+                {
+                    **raw_payload,
+                    "fees_bps": self.plan.evaluation.fee_bps,
+                    "slippage_bps": self.plan.evaluation.slippage_bps,
+                },
+            )
             tp_price, sl_price = build_barriers(
                 entry_price=entry_price,
                 atr=atr,
@@ -410,10 +515,17 @@ class ResearchDatasetBuilder:
                 "v1_rejection_reason": row.get("rejection_reason"),
                 "entry_price": float(entry_price),
                 "entry_price_source": entry_price_source,
+                "entry_price_source_classification": entry_source_metadata.source_class,
+                "entry_price_source_promotable": bool(entry_source_metadata.promotable),
+                "entry_price_source_reason": entry_source_metadata.reason,
+                "entry_price_source_missing_required_metadata": ",".join(entry_source_metadata.missing_required_metadata),
+                "entry_price_source_metadata_json": _json_dumps(asdict(entry_source_metadata)),
                 "signal_marker_price": float(_decimal_or_none(raw_payload.get("signal_marker_price")) or 0) if raw_payload.get("signal_marker_price") is not None else None,
                 "next_bar_open": float(_decimal_or_none(raw_payload.get("next_bar_open")) or 0) if raw_payload.get("next_bar_open") is not None else None,
                 "tp_price": float(tp_price),
                 "sl_price": float(sl_price),
+                "label_interval_start_ms": bar_close_time_ms(signal_time_ms),
+                "label_interval_end_ms": label_outcome.exit_time_ms,
                 "label_exit_reason": str(label_outcome.exit_reason),
                 "label_accept": 1 if label_outcome.exit_reason == ExitReason.TAKE_PROFIT else 0,
                 "label_pnl_multiple": float(label_outcome.pnl_multiple),
@@ -487,6 +599,23 @@ class ResearchDatasetBuilder:
             str(strategy_version): int(count)
             for strategy_version, count in frame["strategy_version"].fillna("none").value_counts(dropna=False).sort_index().items()
         }
+        entry_price_source_summary = {
+            "source_counts": {
+                str(source): int(count)
+                for source, count in frame["entry_price_source"].value_counts(dropna=False).sort_index().items()
+            },
+            "classification_counts": {
+                str(source_class): int(count)
+                for source_class, count in frame["entry_price_source_classification"].value_counts(dropna=False).sort_index().items()
+            },
+            "reason_counts": {
+                str(reason): int(count)
+                for reason, count in frame["entry_price_source_reason"].value_counts(dropna=False).sort_index().items()
+            },
+            "promotable_label_row_count": int(frame["entry_price_source_promotable"].astype(bool).sum()),
+            "non_promotable_label_row_count": int((~frame["entry_price_source_promotable"].astype(bool)).sum()),
+            "all_label_entry_sources_promotable": bool(frame["entry_price_source_promotable"].astype(bool).all()),
+        }
         class_balance = {
             "label_accept_0": int((frame["label_accept"] == 0).sum()),
             "label_accept_1": int((frame["label_accept"] == 1).sum()),
@@ -517,6 +646,12 @@ class ResearchDatasetBuilder:
             "feature_version": frame["feature_version"].iloc[0],
             "label_version": LABEL_VERSION,
             "label_outcome_fields": [column for column in LABEL_OUTCOME_COLUMNS if column in frame.columns],
+            "label_interval_fields": [
+                column
+                for column in ("label_interval_start_ms", "label_interval_end_ms")
+                if column in frame.columns
+            ],
+            "entry_price_source_summary": entry_price_source_summary,
             "source_counts": source_counts,
             "source_mode_counts": source_mode_counts,
             "strategy_version_counts": strategy_version_counts,

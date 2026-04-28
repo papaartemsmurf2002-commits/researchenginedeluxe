@@ -15,7 +15,13 @@ from tradingbotsuite.core.features import RESEARCH_FEATURE_COLUMNS, build_extend
 from tradingbotsuite.core.models import Bar, DecisionPacket, DecisionAction, RuntimeMode, SignalDirection, SignalIntent
 from tradingbotsuite.persistence.sqlite_store import SQLiteStore
 from tradingbotsuite.research.config import load_research_plan
-from tradingbotsuite.research.dataset import ResearchDatasetBuilder, _funding_paid_or_received, _label_from_future_bars
+from tradingbotsuite.research.dataset import (
+    ResearchDatasetBuilder,
+    _funding_paid_or_received,
+    _label_from_future_bars,
+    classify_label_entry_source,
+    label_intervals_overlap,
+)
 from tradingbotsuite.research.hmm_knn import run_hmm_knn_research
 from tradingbotsuite.research.inference import AcceptanceScorer
 from tradingbotsuite.research.modeling import calibrate_model, train_base_model
@@ -111,6 +117,45 @@ def test_label_mfe_mae_stop_at_actual_exit_bar() -> None:
     assert outcome.time_in_trade_bars == 1
     assert outcome.max_favorable_excursion == Decimal("1.1")
     assert outcome.max_adverse_excursion == Decimal("0.2")
+
+
+def test_label_entry_source_classification_requires_executable_metadata() -> None:
+    signal_close = classify_label_entry_source(
+        "signal_bar_close",
+        {"entry_latency_ms": 250, "entry_slippage_bps": "5"},
+    )
+    next_open_without_latency = classify_label_entry_source(
+        "next_bar_open_plus_configured_slippage",
+        {"entry_slippage_bps": "5"},
+    )
+    simulated_fill = classify_label_entry_source(
+        "simulated_fill",
+        {"decision_latency_ms": 120, "entry_slippage_bps": "4"},
+    )
+
+    assert signal_close.promotable is False
+    assert signal_close.reason == "signal_bar_close_is_diagnostic_not_executable"
+    assert next_open_without_latency.promotable is False
+    assert next_open_without_latency.missing_required_metadata == ("latency",)
+    assert simulated_fill.promotable is True
+    assert simulated_fill.reason == "executable_entry_metadata_complete"
+
+
+def test_label_interval_overlap_shows_fixed_bar_purge_is_insufficient_for_7d_horizon() -> None:
+    bar_ms = 15 * 60 * 1000
+    seven_days_ms = 7 * 24 * 60 * 60 * 1000
+    train_label_start_ms = 0
+    train_label_end_ms = seven_days_ms
+    fixed_eight_bar_embargo_start_ms = 8 * bar_ms
+    validation_label_end_ms = fixed_eight_bar_embargo_start_ms + (6 * 60 * 60 * 1000)
+
+    assert fixed_eight_bar_embargo_start_ms > 0
+    assert label_intervals_overlap(
+        train_label_start_ms,
+        train_label_end_ms,
+        fixed_eight_bar_embargo_start_ms,
+        validation_label_end_ms,
+    )
 
 
 @pytest.mark.asyncio
@@ -363,6 +408,11 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
     assert (frame["signal_bar_open_time_ms"] == frame["tv_bar_time_ms"]).all()
     assert (frame["historical_feature_end_time_ms"] <= frame["tv_bar_time_ms"]).all()
     assert (frame["label_future_start_time_ms"] > frame["tv_bar_time_ms"]).all()
+    assert (frame["label_interval_start_ms"] == frame["signal_bar_close_time_ms"]).all()
+    assert (frame["label_interval_end_ms"] == frame["label_exit_time_ms"]).all()
+    assert frame["entry_price_source"].tolist() == ["signal_bar_close", "signal_bar_close"]
+    assert frame["entry_price_source_promotable"].tolist() == [False, False]
+    assert set(frame["entry_price_source_reason"]) == {"signal_bar_close_is_diagnostic_not_executable"}
     assert frame.iloc[0]["raw_open_interest"] == 1000.0
     assert frame.iloc[0]["open_interest"] == 1000.0
     assert frame.iloc[0]["raw_mark_price"] == 70521.0
@@ -375,6 +425,10 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
     assert manifest["symbol"] == "BTCUSDT"
     assert manifest["feature_version"] == "v2-btc-acceptance-2"
     assert manifest["label_version"] == "triple_barrier_live_parity_v1"
+    assert manifest["label_interval_fields"] == ["label_interval_start_ms", "label_interval_end_ms"]
+    assert manifest["entry_price_source_summary"]["source_counts"] == {"signal_bar_close": 2}
+    assert manifest["entry_price_source_summary"]["non_promotable_label_row_count"] == 2
+    assert manifest["entry_price_source_summary"]["all_label_entry_sources_promotable"] is False
     assert manifest["source_counts"] == {"tradingview": 2}
     assert manifest["source_mode_counts"] == {"tradingview": 2}
     assert manifest["class_balance"]["label_accept_1"] == 2

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -17,14 +18,7 @@ from tradingbotsuite.manual_cli import run_manual_shell
 def main() -> None:
     config = AppConfig.from_env()
     if len(sys.argv) > 1:
-        config = AppConfig(
-            runtime_mode=RuntimeMode(sys.argv[1]),
-            db_path=config.db_path,
-            webhook=config.webhook,
-            strategy=config.strategy,
-            binance=config.binance,
-            hyperliquid=config.hyperliquid,
-        )
+        config = replace(config, runtime_mode=RuntimeMode(sys.argv[1]))
     asyncio.run(run_manual_shell(config))
 
 
