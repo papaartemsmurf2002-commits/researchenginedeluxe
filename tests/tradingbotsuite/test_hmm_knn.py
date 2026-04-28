@@ -1,0 +1,819 @@
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+import numpy as np
+import pandas as pd
+import pytest
+
+import tradingbotsuite.research.hmm_knn as hmm_knn
+from tradingbotsuite.research.hmm_knn import (
+    HMM_KNN_FEATURE_VERSION,
+    KNN_OUTPUT_COLUMNS,
+    RegimeModel,
+    WT3D_FEATURE_COLUMNS,
+    _leakage_safe_meta_knn_features,
+    _knn_predict,
+    _overall_metrics,
+    _posterior_frame,
+    _prepare_dataset,
+    _split_metrics,
+    _walk_forward_frames,
+    build_wt3d_features,
+    load_hmm_knn_plan,
+    lorentzian_distance_matrix,
+    replay_hmm_knn_artifact,
+    robust_scaler_fit,
+    run_hmm_knn_research,
+)
+from tradingbotsuite.research.dataset import LABEL_OUTCOME_COLUMNS
+from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
+
+
+def _write_test_config(tmp_path: Path) -> Path:
+    payload = json.loads(Path("configs/v2_btc_hmm_multi_knn_research.json").read_text(encoding="utf-8"))
+    payload["version"] = "test-hmm-knn"
+    payload["hmm"]["n_states"] = 3
+    payload["hmm"]["posterior_threshold"] = 0.45
+    payload["hmm"]["entropy_threshold"] = 0.95
+    payload["knn"]["primary_k"] = 12
+    payload["knn"]["k_values"] = [8, 12]
+    payload["knn"]["min_neighbor_count"] = 3
+    payload["evaluation"]["min_training_rows"] = 36
+    payload["evaluation"]["walk_forward_splits"] = 2
+    payload["evaluation"]["purge_embargo_bars"] = 2
+    payload["acceptance"]["min_trade_count"] = 1
+    config_path = tmp_path / "hmm_knn_config.json"
+    config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return config_path
+
+
+def _write_modified_test_config(tmp_path: Path, **updates: object) -> Path:
+    payload = json.loads(Path("configs/v2_btc_hmm_multi_knn_research.json").read_text(encoding="utf-8"))
+    payload["version"] = "test-hmm-knn"
+    payload["hmm"]["n_states"] = 3
+    payload["hmm"]["posterior_threshold"] = 0.45
+    payload["hmm"]["entropy_threshold"] = 0.95
+    payload["knn"]["primary_k"] = 12
+    payload["knn"]["k_values"] = [8, 12]
+    payload["knn"]["min_neighbor_count"] = 3
+    payload["evaluation"]["min_training_rows"] = 36
+    payload["evaluation"]["walk_forward_splits"] = 2
+    payload["evaluation"]["purge_embargo_bars"] = 2
+    payload["acceptance"]["min_trade_count"] = 1
+    for dotted_key, value in updates.items():
+        section, key = dotted_key.split("__", maxsplit=1)
+        payload[section][key] = value
+    config_path = tmp_path / "hmm_knn_modified_config.json"
+    config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return config_path
+
+
+def _synthetic_dataset(row_count: int = 120) -> pd.DataFrame:
+    rows = []
+    start_ms = 1712649600000
+    price = 70000.0
+    for index in range(row_count):
+        regime = index // 30
+        if regime == 0:
+            drift = 8.0 * ((index % 2) - 0.5)
+            vol = 0.004
+            slope = 0.05
+            label = 1 if index % 4 in {0, 1} else 0
+        elif regime == 1:
+            drift = 35.0
+            vol = 0.009
+            slope = 0.65
+            label = 1 if index % 5 != 0 else 0
+        elif regime == 2:
+            drift = -30.0
+            vol = 0.011
+            slope = -0.60
+            label = 1 if index % 5 == 0 else 0
+        else:
+            drift = 80.0 if index % 2 == 0 else -90.0
+            vol = 0.035
+            slope = -0.10
+            label = 0 if index % 3 else 1
+        price += drift
+        direction = "long" if index % 2 == 0 else "short"
+        rows.append(
+            {
+                "signal_id": f"sig-{index}",
+                "source": "tradingview",
+                "symbol": "BTCUSDT",
+                "direction": direction,
+                "direction_long": 1.0 if direction == "long" else 0.0,
+                "tv_bar_time_ms": start_ms + (index * 900_000),
+                "entry_price": price,
+                "label_accept": label,
+                "label_pnl_multiple": 1.4 if label else -0.9,
+                "label_exit_reason": "take_profit" if label else "stop_loss",
+                "efficiency_ratio": min(abs(slope), 1.0),
+                "choppiness": 62.0 if regime == 0 else (28.0 if regime in {1, 2} else 44.0),
+                "directional_slope_atr": slope if direction == "long" else -slope,
+                "directional_di_spread": slope * 20.0,
+                "range_width": 0.005 + vol,
+                "primary_signed_imbalance_ratio": 0.35 if drift > 0 else -0.35,
+                "primary_sqrt_signed_imbalance_ratio": 0.25 if drift > 0 else -0.25,
+                "top_of_book_imbalance": 0.2 if drift > 0 else -0.2,
+                "queue_imbalance_l5": 0.15 if drift > 0 else -0.15,
+                "spread_bps": 3.0 + (regime == 3) * 6.0,
+                "basis_bps": 2.0 + regime,
+                "funding_rate": 0.00008 if regime == 1 else (-0.00004 if regime == 2 else 0.00001),
+                "funding_rate_change": 0.00001,
+                "open_interest_change_pct": 0.04 if regime in {1, 3} else -0.02,
+                "premium_basis_rate": 0.0002 if regime == 1 else -0.0001,
+                "realized_volatility": vol,
+                "atr_percentile": min(0.95, 0.25 + vol * 20),
+                "volatility_shock_zscore": 3.0 if regime == 3 else 0.4,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def test_hmm_knn_synthetic_fixture_contract_is_btc_phase_1_and_offline(tmp_path) -> None:
+    config_path = _write_test_config(tmp_path)
+    plan = load_hmm_knn_plan(config_path)
+    frame = _synthetic_dataset()
+    dataset_path = tmp_path / "dataset.parquet"
+    frame.to_parquet(dataset_path, index=False)
+
+    required_input_columns = {
+        "signal_id",
+        "source",
+        "symbol",
+        "direction",
+        "tv_bar_time_ms",
+        "entry_price",
+        plan.labels.label_column,
+        plan.labels.pnl_column,
+        "label_exit_reason",
+        *plan.hmm.emission_features,
+        *[column for column in plan.knn.feature_columns if column not in WT3D_FEATURE_COLUMNS],
+    }
+
+    assert set(frame["symbol"].astype(str).str.upper()) == {"BTCUSDT"}
+    assert plan.symbol == "BTCUSDT"
+    assert plan.asset_scope == ["BTCUSDT"]
+    assert frame["source"].eq("tradingview").all()
+    assert frame["tv_bar_time_ms"].diff().dropna().eq(900_000).all()
+    assert frame[plan.labels.label_column].nunique() == 2
+    assert required_input_columns.issubset(frame.columns)
+
+    raw_context_columns = [
+        column
+        for column in frame.columns
+        if column.startswith("raw_") or column.startswith("missing_") or column.endswith("_context_json")
+    ]
+    assert raw_context_columns == []
+    assert {"funding_rate", "funding_rate_change", "open_interest_change_pct", "premium_basis_rate"}.issubset(frame.columns)
+
+    prepared = _prepare_dataset(dataset_path, plan)
+    assert set(plan.knn.feature_columns).issubset(prepared.columns)
+    assert set(plan.hmm.emission_features).issubset(prepared.columns)
+    assert set(LABEL_OUTCOME_COLUMNS).issubset(prepared.columns)
+
+
+def test_lorentzian_distance_is_deterministic_and_compresses_outliers() -> None:
+    train = np.array([[0.0, 0.0], [1.0, 1.0], [100.0, 100.0]])
+    query = np.array([[0.0, 0.0]])
+    distances = lorentzian_distance_matrix(query, train, np.array([1.0, 1.0]))[0]
+
+    assert distances.tolist() == lorentzian_distance_matrix(query, train, np.array([1.0, 1.0]))[0].tolist()
+    assert distances[2] < 100.0
+    with pytest.raises(ValueError, match="finite positive"):
+        lorentzian_distance_matrix(query, train, np.array([1.0, 0.0]))
+
+
+def test_wt3d_features_use_completed_history_without_future_pivots() -> None:
+    frame = pd.DataFrame({"entry_price": [100.0, 101.0, 102.0, 101.5, 103.0, 104.0, 105.0]})
+    plan = load_hmm_knn_plan(Path("configs/v2_btc_hmm_multi_knn_research.json"))
+    baseline = build_wt3d_features(frame, plan.wt3d)
+    changed = frame.copy()
+    changed.loc[6, "entry_price"] = 1000.0
+    perturbed = build_wt3d_features(changed, plan.wt3d)
+
+    pd.testing.assert_frame_equal(baseline.loc[:5, WT3D_FEATURE_COLUMNS], perturbed.loc[:5, WT3D_FEATURE_COLUMNS])
+    assert set(baseline.columns) >= {"wt3d_fast", "wt3d_normal", "wt3d_slow", "wt3d_mtf_agreement"}
+
+
+def test_wt3d_missing_price_fill_does_not_backfill_from_future_rows() -> None:
+    plan = load_hmm_knn_plan(Path("configs/v2_btc_hmm_multi_knn_research.json"))
+    frame = pd.DataFrame({"entry_price": [np.nan, 101.0, 102.0, 103.0]})
+    baseline = build_wt3d_features(frame, plan.wt3d)
+    changed = frame.copy()
+    changed.loc[1, "entry_price"] = 1000.0
+    perturbed = build_wt3d_features(changed, plan.wt3d)
+
+    pd.testing.assert_series_equal(baseline.loc[:0, "wt3d_normal"], perturbed.loc[:0, "wt3d_normal"])
+
+
+def test_robust_scaler_is_train_only_and_maps_missing_to_neutral() -> None:
+    train = pd.DataFrame({"feature": [0.0, 10.0, 20.0], "all_missing": [np.nan, np.nan, np.nan]})
+    test = pd.DataFrame({"feature": [1000.0], "all_missing": [np.nan]})
+
+    scaler = robust_scaler_fit(train, ["feature", "all_missing"])
+    transformed_train = scaler.transform(train)
+    transformed_test = scaler.transform(test)
+
+    assert scaler.median.tolist() == [10.0, 0.0]
+    assert scaler.scale.tolist() == [10.0, 1.0]
+    assert transformed_train[:, 0].tolist() == [-1.0, 0.0, 1.0]
+    assert transformed_test[0, 0] == 99.0
+    assert transformed_test[0, 1] == 0.0
+
+
+def test_public_feature_columns_are_reflected_in_model_spec() -> None:
+    plan = load_hmm_knn_plan(Path("configs/v2_btc_hmm_multi_knn_research.json"))
+    spec = Path("docs/tradingbotsuite_runtime/HMM_MULTI_KNN_MODEL_SPEC.md").read_text(encoding="utf-8")
+
+    assert "Agent Artifact Communication" in spec
+    assert "feature_columns" in spec
+    assert "Missing prices are forward-filled from prior rows only" in spec
+    assert "Validation/test rows do not influence HMM emissions, KNN distances, or meta-model KNN feature scaling" in spec
+    for column in [*plan.knn.feature_columns, *plan.hmm.emission_features, *WT3D_FEATURE_COLUMNS, *KNN_OUTPUT_COLUMNS]:
+        assert f"`{column}`" in spec
+    for column in LABEL_OUTCOME_COLUMNS:
+        assert f"`{column}`" in spec
+
+
+def test_meta_training_knn_features_use_prior_rows_with_embargo(tmp_path) -> None:
+    config_path = _write_modified_test_config(
+        tmp_path,
+        knn__min_neighbor_count=1,
+        evaluation__purge_embargo_bars=2,
+    )
+    plan = load_hmm_knn_plan(config_path)
+    frame = _synthetic_dataset(50)
+    scaler = robust_scaler_fit(frame, plan.knn.feature_columns)
+    posterior = pd.DataFrame({"top_regime": [0] * len(frame)})
+
+    oof = _leakage_safe_meta_knn_features(
+        train_frame=frame,
+        train_posterior=posterior,
+        feature_scaler=scaler,
+        plan=plan,
+    )
+    available = oof.loc[oof["meta_knn_oof_available"].astype(bool)].copy()
+
+    assert not available.empty
+    assert (available["neighbor_max_source_index"].astype(int) < available.index).all()
+    assert (available["neighbor_max_source_index"].astype(int) <= available.index - 3).all()
+    assert set(oof["meta_knn_feature_source"]) == {"prior_train_rows_with_embargo"}
+
+
+def test_hmm_online_posterior_is_forward_only_for_prefix_rows() -> None:
+    class FakeHmm:
+        startprob_ = np.array([0.5, 0.5])
+        transmat_ = np.array([[0.85, 0.15], [0.20, 0.80]])
+
+        def _compute_log_likelihood(self, matrix: np.ndarray) -> np.ndarray:
+            values = matrix[:, 0]
+            return np.column_stack([-np.abs(values), -np.abs(values - 10.0)])
+
+    model = RegimeModel(backend="hmmlearn", model=FakeHmm(), n_states=2, state_labels={0: "low", 1: "high"})
+    prefix = np.array([[0.0], [0.5], [1.0]])
+    extended = np.vstack([prefix, [[20.0], [25.0], [30.0]]])
+
+    np.testing.assert_allclose(model.posterior(prefix), model.posterior(extended)[: len(prefix)])
+
+
+def test_uncertain_regime_posterior_sets_no_trade_flag() -> None:
+    plan = load_hmm_knn_plan(Path("configs/v2_btc_hmm_multi_knn_research.json"))
+    base = pd.DataFrame(
+        {
+            "signal_id": ["sig-1", "sig-2"],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "direction": ["long", "short"],
+            "tv_bar_time_ms": [1712649600000, 1712650500000],
+        },
+        index=[10, 11],
+    )
+    posterior = np.array([[0.25, 0.25, 0.25, 0.25], [0.40, 0.30, 0.20, 0.10]])
+    model = RegimeModel(
+        backend="test",
+        model=None,
+        n_states=4,
+        state_labels={0: "range_chop", 1: "bull_trend", 2: "bear_trend", 3: "shock_transition"},
+    )
+
+    regimes = _posterior_frame(base_frame=base, posterior=posterior, model=model, plan=plan, split_index=0, fit_end_index=9)
+
+    assert regimes["regime_no_trade"].tolist() == [True, True]
+    assert regimes["hmm_fit_end_row"].tolist() == [9, 9]
+
+
+def test_degenerate_regime_posterior_normalizes_to_uniform_no_trade() -> None:
+    class DegeneratePosteriorModel:
+        def predict_proba(self, matrix: np.ndarray) -> np.ndarray:
+            return np.array(
+                [
+                    [np.nan, np.inf, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0],
+                ]
+            )
+
+    plan = load_hmm_knn_plan(Path("configs/v2_btc_hmm_multi_knn_research.json"))
+    model = RegimeModel(
+        backend="degenerate_test",
+        model=DegeneratePosteriorModel(),
+        n_states=4,
+        state_labels={0: "range_chop", 1: "bull_trend", 2: "bear_trend", 3: "shock_transition"},
+    )
+    posterior = model.posterior(np.zeros((2, 1)))
+    base = pd.DataFrame(
+        {
+            "signal_id": ["degenerate-1", "degenerate-2"],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "direction": ["long", "short"],
+            "tv_bar_time_ms": [1712649600000, 1712650500000],
+        },
+        index=[20, 21],
+    )
+
+    regimes = _posterior_frame(base_frame=base, posterior=posterior, model=model, plan=plan, split_index=3, fit_end_index=19)
+
+    np.testing.assert_allclose(posterior, np.full((2, 4), 0.25))
+    assert regimes["max_regime_probability"].tolist() == [0.25, 0.25]
+    assert regimes["posterior_entropy"].tolist() == [pytest.approx(1.0), pytest.approx(1.0)]
+    assert regimes["regime_no_trade"].tolist() == [True, True]
+    assert regimes["regime_model_backend"].tolist() == ["degenerate_test", "degenerate_test"]
+    assert regimes["walk_forward_split"].tolist() == [3, 3]
+    assert regimes["source_row_index"].tolist() == [20, 21]
+    assert regimes["hmm_fit_end_row"].tolist() == [19, 19]
+
+
+def test_knn_config_rejects_non_lorentzian_distance(tmp_path) -> None:
+    config_path = _write_modified_test_config(tmp_path, knn__distance="euclidean")
+
+    with pytest.raises(ValueError, match="knn.distance must be 'lorentzian'"):
+        load_hmm_knn_plan(config_path)
+
+
+def test_knn_primary_output_uses_primary_k_and_weighting(tmp_path) -> None:
+    config_path = _write_modified_test_config(
+        tmp_path,
+        knn__primary_k=2,
+        knn__k_values=[1, 2],
+        knn__neighbor_weighting=["inverse_distance"],
+        knn__primary_weighting="inverse_distance",
+        knn__min_neighbor_count=1,
+        evaluation__fee_bps=0.0,
+        evaluation__slippage_bps=0.0,
+        evaluation__funding_cost_enabled=False,
+    )
+    plan = load_hmm_knn_plan(config_path)
+    train_frame = pd.DataFrame(
+        {
+            "signal_id": ["train-1", "train-2"],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "direction": ["long", "long"],
+            "tv_bar_time_ms": [1, 2],
+            "label_accept": [1, 0],
+            "label_pnl_multiple": [1.0, -1.0],
+        },
+        index=[0, 1],
+    )
+    test_frame = pd.DataFrame(
+        {
+            "signal_id": ["test-1"],
+            "symbol": ["BTCUSDT"],
+            "direction": ["long"],
+            "tv_bar_time_ms": [3],
+            "label_accept": [1],
+            "label_pnl_multiple": [1.0],
+        },
+        index=[2],
+    )
+
+    primary, diagnostics, sweep = _knn_predict(
+        train_matrix=np.array([[0.0], [10.0]]),
+        test_matrix=np.array([[0.1]]),
+        train_frame=train_frame,
+        test_frame=test_frame,
+        train_regimes=pd.Series([0, 0], index=train_frame.index),
+        test_regimes=pd.Series([0], index=test_frame.index),
+        plan=plan,
+    )
+
+    k1_probability = float(sweep.loc[sweep["k"] == 1, "p_up_barrier"].iloc[0])
+    primary_probability = float(sweep.loc[sweep["is_primary"], "p_up_barrier"].iloc[0])
+    assert primary["p_up_barrier"].iloc[0] == primary_probability
+    assert primary_probability != k1_probability
+    assert set(diagnostics["k"]) == {1, 2}
+    assert diagnostics.loc[diagnostics["is_primary"], "k"].unique().tolist() == [2]
+
+
+def test_knn_same_regime_blocks_cross_regime_neighbors_until_fallback_is_enabled(tmp_path) -> None:
+    base_path = _write_modified_test_config(
+        tmp_path,
+        knn__primary_k=1,
+        knn__k_values=[1],
+        knn__neighbor_weighting=["inverse_distance"],
+        knn__primary_weighting="inverse_distance",
+        knn__min_neighbor_count=1,
+        knn__allow_cross_regime_fallback=False,
+    )
+    base_plan = load_hmm_knn_plan(base_path)
+    fallback_path = _write_modified_test_config(
+        tmp_path,
+        knn__primary_k=1,
+        knn__k_values=[1],
+        knn__neighbor_weighting=["inverse_distance"],
+        knn__primary_weighting="inverse_distance",
+        knn__min_neighbor_count=1,
+        knn__allow_cross_regime_fallback=True,
+    )
+    train_frame = pd.DataFrame(
+        {
+            "signal_id": ["train-1"],
+            "symbol": ["BTCUSDT"],
+            "direction": ["long"],
+            "tv_bar_time_ms": [1],
+            "label_accept": [1],
+            "label_pnl_multiple": [1.0],
+        },
+        index=[0],
+    )
+    test_frame = pd.DataFrame(
+        {
+            "signal_id": ["test-1"],
+            "symbol": ["BTCUSDT"],
+            "direction": ["long"],
+            "tv_bar_time_ms": [2],
+            "label_accept": [1],
+            "label_pnl_multiple": [1.0],
+        },
+        index=[1],
+    )
+    kwargs = {
+        "train_matrix": np.array([[0.0]]),
+        "test_matrix": np.array([[0.1]]),
+        "train_frame": train_frame,
+        "test_frame": test_frame,
+        "train_regimes": pd.Series([0], index=train_frame.index),
+        "test_regimes": pd.Series([1], index=test_frame.index),
+    }
+
+    blocked, blocked_diagnostics, blocked_sweep = _knn_predict(**kwargs, plan=base_plan)
+    fallback, fallback_diagnostics, fallback_sweep = _knn_predict(**kwargs, plan=load_hmm_knn_plan(fallback_path))
+
+    assert blocked["knn_skip_reason"].tolist() == ["no_same_regime_neighbors"]
+    assert blocked_sweep["fallback_used"].tolist() == [False]
+    assert blocked_diagnostics["knn_skip_reason"].tolist() == ["no_same_regime_neighbors"]
+    assert blocked_diagnostics["neighbor_regime"].isna().all()
+    assert fallback["knn_skip_reason"].tolist() == [None]
+    assert fallback_sweep["fallback_used"].tolist() == [True]
+    assert fallback_diagnostics["fallback_used"].tolist() == [True]
+    assert fallback_diagnostics["neighbor_regime"].astype(int).tolist() == [0]
+    assert fallback_diagnostics["query_regime"].astype(int).tolist() == [1]
+
+
+def test_regime_fit_ignores_rows_after_current_test_split(tmp_path) -> None:
+    config_path = _write_test_config(tmp_path)
+    baseline_path = tmp_path / "baseline.parquet"
+    perturbed_path = tmp_path / "perturbed.parquet"
+    baseline = _synthetic_dataset()
+    perturbed = baseline.copy()
+    future_mask = perturbed.index >= 100
+    perturbed.loc[future_mask, "directional_slope_atr"] = 50.0
+    perturbed.loc[future_mask, "realized_volatility"] = 10.0
+    perturbed.loc[future_mask, "choppiness"] = 1.0
+    perturbed.loc[future_mask, "volatility_shock_zscore"] = 100.0
+    baseline.to_parquet(baseline_path, index=False)
+    perturbed.to_parquet(perturbed_path, index=False)
+
+    baseline_result = run_hmm_knn_research(config_path=config_path, dataset_path=baseline_path, output_dir=tmp_path / "baseline")
+    perturbed_result = run_hmm_knn_research(config_path=config_path, dataset_path=perturbed_path, output_dir=tmp_path / "perturbed")
+    baseline_regimes = pd.read_parquet(baseline_result.regime_posteriors_path)
+    perturbed_regimes = pd.read_parquet(perturbed_result.regime_posteriors_path)
+    compare_columns = [
+        "regime_p_0",
+        "regime_p_1",
+        "regime_p_2",
+        "top_regime",
+        "max_regime_probability",
+        "posterior_entropy",
+        "regime_no_trade",
+        "hmm_fit_end_row",
+    ]
+
+    pd.testing.assert_frame_equal(
+        baseline_regimes.loc[baseline_regimes["walk_forward_split"] == 0, compare_columns].reset_index(drop=True),
+        perturbed_regimes.loc[perturbed_regimes["walk_forward_split"] == 0, compare_columns].reset_index(drop=True),
+    )
+
+
+def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> None:
+    config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+
+    result = run_hmm_knn_research(config_path=config_path, dataset_path=dataset_path, output_dir=tmp_path)
+    manifest = json.loads(result.artifact_manifest_path.read_text(encoding="utf-8"))
+    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+    regimes = pd.read_parquet(result.regime_posteriors_path)
+    knn = pd.read_parquet(result.knn_predictions_path)
+    meta = pd.read_parquet(result.meta_predictions_path)
+    diagnostics = pd.read_csv(result.neighbor_diagnostics_path)
+    replay_metrics_path = replay_hmm_knn_artifact(result.artifact_manifest_path)
+
+    assert manifest["research_only"] is True
+    assert manifest["feature_version"] == HMM_KNN_FEATURE_VERSION
+    assert set(WT3D_FEATURE_COLUMNS).issubset(manifest["wt3d_feature_columns"])
+    assert manifest["knn_settings"]["distance"] == "lorentzian"
+    assert manifest["knn_settings"]["primary_k"] == 12
+    assert metrics["research_only"] is True
+    assert metrics["promotion_ready"] is False
+    assert metrics["knn_sweep"]["primary_k"] == 12
+    assert {
+        (result["k"], result["weighting"])
+        for result in metrics["knn_sweep"]["results"]
+    } == {(8, "inverse_distance"), (8, "softmax"), (12, "inverse_distance"), (12, "softmax")}
+    assert replay_metrics_path == result.metrics_path
+    posterior_columns = {f"regime_p_{index}" for index in range(3)}
+    assert posterior_columns.issubset(regimes.columns)
+    assert {
+        "top_regime",
+        "top_regime_label",
+        "max_regime_probability",
+        "posterior_entropy",
+        "recent_regime_flip",
+        "regime_no_trade",
+        "regime_model_backend",
+        "walk_forward_split",
+        "source_row_index",
+        "hmm_fit_end_row",
+    }.issubset(regimes.columns)
+    np.testing.assert_allclose(regimes[list(sorted(posterior_columns))].sum(axis=1).to_numpy(), np.ones(len(regimes)))
+    assert set(KNN_OUTPUT_COLUMNS).issubset(knn.columns)
+    assert {"meta_probability", "accepted_by_meta", "meta_model_backend"}.issubset(meta.columns)
+    assert set(LABEL_OUTCOME_COLUMNS).issubset(meta.columns)
+    assert manifest["label_version"] == "triple_barrier_live_parity_v1"
+    assert manifest["label_horizons"] == ["6h", "24h", "72h", "7d"]
+    assert manifest["primary_label_horizon"] == "24h"
+    assert set(manifest["label_outcome_fields"]) == set(LABEL_OUTCOME_COLUMNS)
+    assert not set(LABEL_OUTCOME_COLUMNS).intersection(manifest["feature_columns"])
+    assert {
+        "k",
+        "weighting",
+        "is_primary",
+        "same_regime_only",
+        "fallback_used",
+        "knn_skip_reason",
+        "source_row_index",
+        "query_regime",
+        "neighbor_rank",
+        "neighbor_source_index",
+        "neighbor_distance",
+        "neighbor_distance_quality",
+        "neighbor_weight",
+        "neighbor_label_accept",
+        "neighbor_label_pnl_multiple",
+        "neighbor_regime",
+    }.issubset(diagnostics.columns)
+    populated_diagnostics = diagnostics.dropna(subset=["neighbor_regime"])
+    assert not populated_diagnostics.empty
+    assert (populated_diagnostics["neighbor_distance_quality"].astype(float).between(0.0, 1.0)).all()
+    assert (populated_diagnostics["neighbor_source_index"].astype(int) <= populated_diagnostics["source_row_index"].astype(int)).all()
+    assert (populated_diagnostics["neighbor_regime"].astype(int) == populated_diagnostics["query_regime"].astype(int)).all()
+    assert set(populated_diagnostics["k"].astype(int)).issubset({8, 12})
+    assert set(populated_diagnostics["weighting"].astype(str)) == {"inverse_distance", "softmax"}
+    assert set(WT3D_FEATURE_COLUMNS).issubset(meta.columns)
+    assert set(meta["hmm_knn_feature_version"]) == {HMM_KNN_FEATURE_VERSION}
+    assert result.neighbor_diagnostics_path.exists()
+    assert (regimes["hmm_fit_end_row"] < regimes["source_row_index"]).all()
+    assert manifest["dependencies"]["meta_backend"]
+    assert "meta_validation" in manifest
+    assert metrics["evaluation_basis"]["pnl_source"] == "realized_label_return_after_fee_slippage_funding"
+    assert {"hmm_regime_lorentzian_knn", "hmm_knn_meta_model"} == set(metrics["comparison"])
+    assert metrics["comparison"]["hmm_regime_lorentzian_knn"]["pnl_source"] == "realized_label_return_after_fee_slippage_funding"
+    assert metrics["comparison"]["hmm_knn_meta_model"]["pnl_source"] == "realized_label_return_after_fee_slippage_funding"
+    assert "meta_validation" in metrics
+    assert "research_only_not_live_promotable" in metrics["promotion_failures"]
+
+
+def test_meta_model_records_random_forest_fallback_when_xgboost_is_unavailable(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(hmm_knn, "XGBClassifier", None)
+    config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+
+    result = hmm_knn.run_hmm_knn_research(config_path=config_path, dataset_path=dataset_path, output_dir=tmp_path)
+    manifest = json.loads(result.artifact_manifest_path.read_text(encoding="utf-8"))
+    meta = pd.read_parquet(result.meta_predictions_path)
+
+    assert manifest["dependencies"]["xgboost_available"] is False
+    assert manifest["dependencies"]["meta_backend"] == ["random_forest_fallback"]
+    assert set(meta["meta_model_backend"]) == {"random_forest_fallback"}
+    assert manifest["research_only"] is True
+
+
+def test_hmm_knn_prepare_dataset_preserves_real_label_outcome_fields(tmp_path) -> None:
+    plan = load_hmm_knn_plan(_write_test_config(tmp_path))
+    dataset_path = tmp_path / "dataset.parquet"
+    frame = _synthetic_dataset(60)
+    frame["gross_return"] = 0.0123
+    frame["fees_bps"] = 7.0
+    frame["slippage_bps"] = 3.0
+    frame["funding_paid_or_received"] = -0.0002
+    frame["time_in_trade"] = 1.5
+    frame["max_adverse_excursion"] = 0.4
+    frame["max_favorable_excursion"] = 1.1
+    frame["barrier_hit_type"] = frame["label_exit_reason"]
+    frame.to_parquet(dataset_path, index=False)
+
+    prepared = _prepare_dataset(dataset_path, plan)
+
+    assert prepared["gross_return"].iloc[0] == 0.0123
+    assert prepared["fees_bps"].iloc[0] == 7.0
+    assert prepared["slippage_bps"].iloc[0] == 3.0
+    assert prepared["funding_paid_or_received"].iloc[0] == -0.0002
+    assert prepared["time_in_trade"].iloc[0] == 1.5
+    assert prepared["max_adverse_excursion"].iloc[0] == 0.4
+    assert prepared["max_favorable_excursion"].iloc[0] == 1.1
+    assert prepared["realized_net_return_after_costs"].iloc[0] == pytest.approx(0.0123 - 0.001 + -0.0002)
+
+
+def test_hmm_knn_walk_forward_uses_label_exit_time_for_purge(tmp_path) -> None:
+    plan = load_hmm_knn_plan(_write_test_config(tmp_path))
+    frame = _synthetic_dataset(80)
+    frame["label_exit_time_ms"] = frame["tv_bar_time_ms"] + (12 * 900_000)
+
+    splits = _walk_forward_frames(frame, plan)
+
+    assert splits
+    train_frame, test_frame = splits[0]
+    assert train_frame["label_exit_time_ms"].max() + (plan.evaluation.purge_embargo_bars * 900_000) < test_frame["tv_bar_time_ms"].min()
+
+
+def test_backtest_metrics_use_realized_costed_returns_and_flag_split_concentration(tmp_path) -> None:
+    plan = load_hmm_knn_plan(_write_test_config(tmp_path))
+    frame = pd.DataFrame(
+        {
+            "label_accept": [1, 1, 1, 1, 1, 0],
+            "label_pnl_multiple": [1.0, 1.0, 1.0, 1.0, 1.0, -0.1],
+            "gross_return": [1.0, 1.0, 1.0, 1.0, 1.0, -0.1],
+            "funding_paid_or_received": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "expected_net_return_after_costs": [99.0, 99.0, 99.0, 99.0, 99.0, 99.0],
+            "accepted_by_knn": [True, True, True, True, True, True],
+            "accepted_by_meta": [True, True, True, True, True, True],
+            "regime_no_trade": [False, False, False, False, False, False],
+            "top_regime_label": ["bull_trend", "bull_trend", "bull_trend", "bull_trend", "bear_trend", "bear_trend"],
+            "direction": ["long", "short", "long", "short", "long", "short"],
+        }
+    )
+    split_metrics = [
+        _split_metrics(frame.iloc[:5].copy(), 0, plan, meta_training_summary={"meta_training_rows": 5}),
+        _split_metrics(frame.iloc[5:].copy(), 1, plan, meta_training_summary={"meta_training_rows": 5}),
+    ]
+
+    metrics = _overall_metrics(frame, split_metrics, plan, knn_sweep=pd.DataFrame())
+    meta_metrics = metrics["comparison"]["hmm_knn_meta_model"]
+
+    assert meta_metrics["expectancy_after_cost"] == pytest.approx(((5.0 - 0.1) / 6) - 0.001)
+    assert meta_metrics["expected_value_mean"] == 99.0
+    assert metrics["max_single_split_pnl_share_by_strategy"]["hmm_knn_meta_model"] > 0.6
+    assert "meta_single_split_dominates_pnl" in metrics["promotion_failures"]
+    assert "knn_single_split_dominates_pnl" in metrics["promotion_failures"]
+    assert metrics["promotion_ready"] is False
+    assert metrics["research_only"] is True
+
+
+def test_hmm_knn_monitoring_report_is_research_only_and_observe_only(tmp_path) -> None:
+    config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+
+    result = run_hmm_knn_research(config_path=config_path, dataset_path=dataset_path, output_dir=tmp_path)
+    report_path = monitor_hmm_knn_artifact(result.artifact_manifest_path)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert report_path == result.output_dir / "monitoring_report.json"
+    assert report["research_only"] is True
+    assert report["promotion_ready"] is False
+    assert report["observe_only"] is True
+    assert report["live_vs_replay_mismatch"] == "not_available"
+    assert report["artifact_identity"]["plan_version"] == "test-hmm-knn"
+    assert report["feature_outages"]["configured_feature_count"] > 0
+    assert "posterior_entropy_p95" in report["entropy_no_trade"]
+    assert report["regime_distribution_drift"]["available"] is True
+    assert "neighbor_distance_quality_p05" in report["neighbor_quality"]
+    assert report["calibration_decay"]["available"] is True
+    assert all(alert["observe_only"] is True for alert in report["alerts"])
+
+
+def test_hmm_knn_cli_research_then_monitor_writes_expected_temp_artifacts(tmp_path) -> None:
+    config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    output_dir = tmp_path / "research_output"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+    env = {**os.environ, "PYTHONPATH": str(Path("src").resolve())}
+
+    research = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tradingbotsuite.main",
+            "research-hmm-knn",
+            "--config",
+            str(config_path),
+            "--dataset",
+            str(dataset_path),
+            "--output-dir",
+            str(output_dir),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    research_payload = json.loads(research.stdout)
+    artifact_manifest_path = Path(research_payload["artifact_manifest_path"])
+    expected_paths = [
+        Path(research_payload["output_dir"]),
+        artifact_manifest_path,
+        Path(research_payload["metrics_path"]),
+        Path(research_payload["regime_posteriors_path"]),
+        Path(research_payload["knn_predictions_path"]),
+        Path(research_payload["meta_predictions_path"]),
+        Path(research_payload["neighbor_diagnostics_path"]),
+    ]
+
+    for path in expected_paths:
+        assert path.exists()
+        assert path.resolve().is_relative_to(tmp_path.resolve())
+
+    manifest = json.loads(artifact_manifest_path.read_text(encoding="utf-8"))
+    assert manifest["research_only"] is True
+    assert manifest["artifact_manifest_version"] == "v2-hmm-knn-artifact-manifest-1"
+    assert manifest["symbol"] == "BTCUSDT"
+    assert manifest["asset_scope"] == ["BTCUSDT"]
+    assert manifest["dataset_path"] == str(dataset_path)
+    assert set(manifest["feature_columns"]) == set(load_hmm_knn_plan(config_path).knn.feature_columns)
+
+    monitor = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "tradingbotsuite.main",
+            "monitor-hmm-knn",
+            "--manifest",
+            str(artifact_manifest_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    monitor_payload = json.loads(monitor.stdout)
+    monitoring_report_path = Path(monitor_payload["monitoring_report_path"])
+    assert monitoring_report_path == artifact_manifest_path.parent / "monitoring_report.json"
+    assert monitoring_report_path.exists()
+    assert monitoring_report_path.resolve().is_relative_to(tmp_path.resolve())
+
+    monitoring_report = json.loads(monitoring_report_path.read_text(encoding="utf-8"))
+    assert monitoring_report["research_only"] is True
+    assert monitoring_report["observe_only"] is True
+    assert monitoring_report["promotion_ready"] is False
+
+
+def test_hmm_knn_monitoring_fails_clearly_when_required_artifact_is_missing(tmp_path) -> None:
+    config_path = _write_test_config(tmp_path)
+    dataset_path = tmp_path / "dataset.parquet"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+    result = run_hmm_knn_research(config_path=config_path, dataset_path=dataset_path, output_dir=tmp_path)
+    result.neighbor_diagnostics_path.unlink()
+
+    with pytest.raises(FileNotFoundError, match="missing required artifact files"):
+        monitor_hmm_knn_artifact(result.artifact_manifest_path)
+
+
+def test_tiny_or_one_class_meta_research_reports_explicit_failures(tmp_path) -> None:
+    config_path = _write_modified_test_config(
+        tmp_path,
+        evaluation__walk_forward_splits=1,
+        evaluation__min_training_rows=24,
+        evaluation__purge_embargo_bars=1,
+        acceptance__min_trade_count=2,
+    )
+    dataset_path = tmp_path / "one_class_dataset.parquet"
+    frame = _synthetic_dataset(70)
+    frame["label_accept"] = 1
+    frame["label_pnl_multiple"] = 1.2
+    frame.to_parquet(dataset_path, index=False)
+
+    result = run_hmm_knn_research(config_path=config_path, dataset_path=dataset_path, output_dir=tmp_path)
+    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+
+    assert metrics["promotion_ready"] is False
+    assert metrics["research_only"] is True
+    assert metrics["meta_validation"]["failure_reasons"]
+    assert "insufficient_evaluated_splits" in metrics["promotion_failures"]
+    assert "insufficient_meta_training_class_diversity" in metrics["promotion_failures"]
+    assert "constant_meta_model_backend" in metrics["promotion_failures"]

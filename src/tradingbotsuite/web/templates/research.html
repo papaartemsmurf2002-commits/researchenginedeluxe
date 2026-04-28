@@ -61,6 +61,10 @@
     <div id="research-status" class="stat-grid"></div>
   </div>
   <div class="card wide">
+    <h3>HMM/KNN Monitoring</h3>
+    <div id="hmm-monitoring-panel" class="empty">No HMM/KNN monitoring report found.</div>
+  </div>
+  <div class="card wide">
     <h3>How Dataset Build Works</h3>
     <div class="grid">
       <div class="card alt">
@@ -174,6 +178,34 @@
   function renderArtifactCard(item) {
     const summary = item.summary || {};
     const metrics = item.metrics || {};
+    const monitoring = item.monitoring || {};
+    if (item.type === "hmm_knn_artifact") {
+      const alerts = monitoring.alerts || [];
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>HMM/KNN research</strong>
+            ${window.TBS.pill("observe_only", "neutral")}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Plan", window.TBS.escapeHtml(String(summary.plan_version || "n/a"))],
+            ["Symbol", window.TBS.escapeHtml(String(summary.symbol || "n/a"))],
+            ["Rows", window.TBS.toMono(summary.row_count ?? "n/a")],
+            ["Meta Trades", window.TBS.toMono(summary.meta_trade_count ?? "n/a")],
+            ["Meta Expectancy", window.TBS.toMono(summary.meta_expectancy ?? "n/a")],
+            ["No-Trade Rate", window.TBS.toMono(formatRate(summary.regime_no_trade_rate))],
+            ["Entropy p95", window.TBS.toMono(formatNumber(summary.posterior_entropy_p95))],
+            ["Alerts", window.TBS.toMono(alerts.length)],
+          ])}
+          ${alerts.length ? `<div class="muted" style="margin-top:8px;">Latest alerts: ${alerts.slice(0, 3).map(alert => `${window.TBS.escapeHtml(alert.severity)}:${window.TBS.escapeHtml(alert.code)}`).join(", ")}</div>` : ""}
+          <details class="details">
+            <summary>Manifest / metrics / monitoring</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, metrics: item.metrics || null, monitoring: monitoring || null }))}</pre>
+          </details>
+        </div>
+      `;
+    }
     const missing = summary.missing_feature_rates || {};
     const topMissing = Object.entries(missing).sort((a, b) => b[1] - a[1]).slice(0, 3);
     return `
@@ -202,6 +234,65 @@
     `;
   }
 
+  function formatNumber(value) {
+    if (value === null || value === undefined || value === "n/a") return "n/a";
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(4) : String(value);
+  }
+
+  function formatRate(value) {
+    if (value === null || value === undefined || value === "n/a") return "n/a";
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${(numeric * 100).toFixed(1)}%` : String(value);
+  }
+
+  function renderHmmMonitoringPanel(item) {
+    if (!item || !item.monitoring) {
+      return '<div class="empty">No HMM/KNN monitoring report found.</div>';
+    }
+    const summary = item.summary || {};
+    const monitoring = item.monitoring || {};
+    const featureOutages = monitoring.feature_outages || {};
+    const entropy = monitoring.entropy_no_trade || {};
+    const drift = monitoring.regime_distribution_drift || {};
+    const neighbor = monitoring.neighbor_quality || {};
+    const calibration = monitoring.calibration_decay || {};
+    const alerts = monitoring.alerts || [];
+    const alertState = alerts.some(alert => alert.severity === "warn") ? "warn" : "neutral";
+    return `
+      <div class="grid">
+        <div class="stat">
+          <div class="label">Status</div>
+          <div class="value">${window.TBS.pill(alerts.length ? `${alerts.length} alerts` : "quiet", alertState)}</div>
+        </div>
+        <div class="stat">
+          <div class="label">No-Trade Rate</div>
+          <div class="value">${window.TBS.escapeHtml(formatRate(entropy.regime_no_trade_rate))}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Entropy p95</div>
+          <div class="value">${window.TBS.escapeHtml(formatNumber(entropy.posterior_entropy_p95))}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Max Regime Drift</div>
+          <div class="value">${window.TBS.escapeHtml(formatNumber(drift.max_drift))}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Neighbor Quality p05</div>
+          <div class="value">${window.TBS.escapeHtml(formatNumber(neighbor.neighbor_distance_quality_p05))}</div>
+        </div>
+        <div class="stat">
+          <div class="label">Feature Outages</div>
+          <div class="value">${window.TBS.escapeHtml(String(featureOutages.high_outage_feature_count ?? "n/a"))}</div>
+        </div>
+      </div>
+      <div class="muted" style="margin-top:12px;">
+        Plan ${window.TBS.escapeHtml(summary.plan_version || "n/a")} | rows ${window.TBS.escapeHtml(summary.row_count ?? "n/a")} | live-vs-replay ${window.TBS.escapeHtml(monitoring.live_vs_replay_mismatch || "n/a")} | calibration ${window.TBS.escapeHtml(calibration.available ? "available" : "unavailable")}
+      </div>
+      ${alerts.length ? `<div class="stack" style="margin-top:12px;">${alerts.slice(0, 5).map(alert => `<div class="list-item"><strong>${window.TBS.escapeHtml(alert.severity)}:${window.TBS.escapeHtml(alert.code)}</strong><div class="muted">${window.TBS.escapeHtml(alert.message)}</div></div>`).join("")}</div>` : ""}
+    `;
+  }
+
   async function refreshResearch() {
     const [jobsIndex, artifactsIndex] = await Promise.all([
       window.TBS.getJson("/api/operator/research/jobs"),
@@ -219,17 +310,21 @@
     const latestDataset = pickLatest("dataset");
     const latestTrain = pickLatest("train_artifact");
     const latestModel = pickLatest("model_artifact");
+    const latestHmm = pickLatest("hmm_knn_artifact");
     document.getElementById("research-status").innerHTML = [
       ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
       ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
       ["Latest Model", latestModel?.summary?.model_version ?? "n/a"],
       ["Promotion Ready", latestModel?.summary?.promotion_ready ? "yes" : "no"],
+      ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
+      ["HMM/KNN Alerts", latestHmm?.summary?.monitoring_alert_count ?? "n/a"],
     ].map(([label, value]) => `
       <div class="stat">
         <div class="label">${label}</div>
         <div class="value">${window.TBS.escapeHtml(String(value))}</div>
       </div>
     `).join("");
+    document.getElementById("hmm-monitoring-panel").innerHTML = renderHmmMonitoringPanel(latestHmm);
   }
 
   refreshResearch();

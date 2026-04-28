@@ -29,11 +29,42 @@ from tradingbotsuite.research.config import ResearchPlan
 
 DATASET_MANIFEST_VERSION = "v2-dataset-manifest-1"
 LABEL_VERSION = "triple_barrier_live_parity_v1"
+LABEL_OUTCOME_COLUMNS = [
+    "gross_return",
+    "fees_bps",
+    "slippage_bps",
+    "funding_paid_or_received",
+    "time_in_trade",
+    "max_adverse_excursion",
+    "max_favorable_excursion",
+    "barrier_hit_type",
+]
 RESEARCH_SIGNAL_SOURCES = {
     "tradingview",
     "tradingview_chart_export",
     "tradingview_strategy_export",
     "tradingview_alert_log",
+}
+BTC_PHASE_1_SYMBOL = "BTCUSDT"
+CONTEXT_MANIFEST_FIELDS = {
+    "funding_context": (
+        "funding_rate",
+        "funding_rate_change",
+        "time_to_next_funding_ms",
+    ),
+    "open_interest_context": (
+        "open_interest",
+        "open_interest_change",
+        "open_interest_change_pct",
+        "open_interest_value",
+    ),
+    "premium_context": (
+        "mark_price",
+        "index_price",
+        "basis",
+        "basis_rate",
+        "premium_close",
+    ),
 }
 
 
@@ -42,6 +73,20 @@ class DatasetBuildResult:
     dataset_path: Path
     manifest_path: Path
     row_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class LabelOutcome:
+    exit_reason: ExitReason
+    pnl_multiple: Decimal
+    gross_return: Decimal
+    exit_price: Decimal
+    exit_time_ms: int
+    time_in_trade: Decimal
+    time_in_trade_bars: int
+    max_adverse_excursion: Decimal
+    max_favorable_excursion: Decimal
+    barrier_hit_type: str
 
 
 def _hash_file(path: Path) -> str:
@@ -59,6 +104,97 @@ def _decimal_or_none(value: Any) -> Decimal | None:
         return None
 
 
+def _signed_return_fraction(*, direction: SignalDirection, entry_price: Decimal, exit_price: Decimal) -> Decimal:
+    if entry_price <= 0:
+        return Decimal("0")
+    if direction == SignalDirection.LONG:
+        return (exit_price - entry_price) / entry_price
+    return (entry_price - exit_price) / entry_price
+
+
+def _funding_paid_or_received(
+    *,
+    direction: SignalDirection,
+    funding_rate: Decimal | None,
+    time_in_trade_hours: Decimal,
+) -> Decimal | None:
+    if funding_rate is None:
+        return None
+    direction_sign = Decimal("1") if direction == SignalDirection.LONG else Decimal("-1")
+    funding_cost = direction_sign * funding_rate * (time_in_trade_hours / Decimal("8"))
+    return -funding_cost
+
+
+def _mfe_mae_update(
+    *,
+    direction: SignalDirection,
+    entry_price: Decimal,
+    atr: Decimal,
+    bar: Bar,
+    current_mfe: Decimal,
+    current_mae: Decimal,
+) -> tuple[Decimal, Decimal]:
+    if atr <= 0:
+        return current_mfe, current_mae
+    if direction == SignalDirection.LONG:
+        favorable = (bar.high - entry_price) / atr
+        adverse = (entry_price - bar.low) / atr
+    else:
+        favorable = (entry_price - bar.low) / atr
+        adverse = (bar.high - entry_price) / atr
+    return max(current_mfe, favorable, Decimal("0")), max(current_mae, adverse, Decimal("0"))
+
+
+def _json_dumps(payload: Any) -> str:
+    return json.dumps(payload or {}, default=str, sort_keys=True)
+
+
+def _field_count_payload(frame: pd.DataFrame, *, prefix: str) -> dict[str, int]:
+    return {
+        column: int(frame[column].notna().sum())
+        for column in frame.columns
+        if column.startswith(prefix)
+    }
+
+
+def _context_manifest_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for context_name, field_names in CONTEXT_MANIFEST_FIELDS.items():
+        contexts = [
+            record.get(context_name)
+            for record in records
+            if isinstance(record.get(context_name), dict)
+        ]
+        source_counts: dict[str, int] = {}
+        source_error_counts: dict[str, int] = {}
+        current_source_error_counts: dict[str, int] = {}
+        for context in contexts:
+            source = str(context.get("source") or "unspecified")
+            source_counts[source] = source_counts.get(source, 0) + 1
+            source_error = context.get("source_error")
+            if source_error is not None:
+                key = str(source_error)
+                source_error_counts[key] = source_error_counts.get(key, 0) + 1
+            current_source_error = context.get("current_source_error")
+            if current_source_error is not None:
+                key = str(current_source_error)
+                current_source_error_counts[key] = current_source_error_counts.get(key, 0) + 1
+
+        summary[context_name] = {
+            "rows_with_context": len(contexts),
+            "source_counts": dict(sorted(source_counts.items())),
+            "field_available_counts": {
+                field_name: sum(1 for context in contexts if context.get(field_name) is not None)
+                for field_name in field_names
+            },
+            "rows_with_source_error": sum(1 for context in contexts if context.get("source_error") is not None),
+            "source_error_counts": dict(sorted(source_error_counts.items())),
+            "current_source_error_counts": dict(sorted(current_source_error_counts.items())),
+            "rows_with_backoff": sum(1 for context in contexts if context.get("backoff_until_ms") is not None),
+        }
+    return summary
+
+
 def _label_from_future_bars(
     *,
     signal_direction: SignalDirection,
@@ -69,7 +205,7 @@ def _label_from_future_bars(
     signal_bar_time_ms: int,
     future_bars: list[Bar],
     vertical_barrier_time_ms: int,
-) -> tuple[ExitReason | None, Decimal | None]:
+) -> LabelOutcome | None:
     position = PositionState(
         symbol="BTCUSDT",
         status=TradeStatus.OPEN,
@@ -83,16 +219,50 @@ def _label_from_future_bars(
         sl_price=sl_price,
         vertical_barrier_time_ms=vertical_barrier_time_ms,
     )
-    for bar in future_bars:
-        exit_reason = evaluate_exit_on_bar(position, bar, bar_close_time_ms(bar.time_ms))
+    max_favorable_excursion = Decimal("0")
+    max_adverse_excursion = Decimal("0")
+    for bars_held, bar in enumerate(future_bars, start=1):
+        max_favorable_excursion, max_adverse_excursion = _mfe_mae_update(
+            direction=signal_direction,
+            entry_price=entry_price,
+            atr=atr,
+            bar=bar,
+            current_mfe=max_favorable_excursion,
+            current_mae=max_adverse_excursion,
+        )
+        exit_time_ms = bar_close_time_ms(bar.time_ms)
+        exit_reason = evaluate_exit_on_bar(position, bar, exit_time_ms)
         if exit_reason is None:
             continue
         if exit_reason == ExitReason.TAKE_PROFIT:
-            return exit_reason, label_position_pnl_multiple(direction=signal_direction, entry_price=entry_price, exit_price=tp_price, atr=atr)
-        if exit_reason == ExitReason.STOP_LOSS:
-            return exit_reason, label_position_pnl_multiple(direction=signal_direction, entry_price=entry_price, exit_price=sl_price, atr=atr)
-        return exit_reason, label_position_pnl_multiple(direction=signal_direction, entry_price=entry_price, exit_price=bar.close, atr=atr)
-    return None, None
+            exit_price = tp_price
+        elif exit_reason == ExitReason.STOP_LOSS:
+            exit_price = sl_price
+        else:
+            exit_price = bar.close
+        time_in_trade = Decimal(exit_time_ms - bar_close_time_ms(signal_bar_time_ms)) / Decimal(60 * 60 * 1000)
+        return LabelOutcome(
+            exit_reason=exit_reason,
+            pnl_multiple=label_position_pnl_multiple(
+                direction=signal_direction,
+                entry_price=entry_price,
+                exit_price=exit_price,
+                atr=atr,
+            ),
+            gross_return=_signed_return_fraction(
+                direction=signal_direction,
+                entry_price=entry_price,
+                exit_price=exit_price,
+            ),
+            exit_price=exit_price,
+            exit_time_ms=exit_time_ms,
+            time_in_trade=time_in_trade,
+            time_in_trade_bars=bars_held,
+            max_adverse_excursion=max_adverse_excursion,
+            max_favorable_excursion=max_favorable_excursion,
+            barrier_hit_type=str(exit_reason),
+        )
+    return None
 
 
 class ResearchDatasetBuilder:
@@ -110,6 +280,8 @@ class ResearchDatasetBuilder:
         self.candle_client = candle_client
 
     async def build(self) -> DatasetBuildResult:
+        if self.plan.symbol.upper() != BTC_PHASE_1_SYMBOL:
+            raise ValueError("Phase 1 research dataset builds are BTCUSDT-only")
         await self.store.initialize()
         all_rows = sorted(await self.store.list_research_signals(self.plan.symbol), key=lambda row: int(row["tv_bar_time_ms"]))
         rows = [row for row in all_rows if str(row["source"]) in RESEARCH_SIGNAL_SOURCES]
@@ -136,9 +308,18 @@ class ResearchDatasetBuilder:
             if len(bars) < max(self.config.strategy.atr_length + 1, self.config.strategy.hurst_window_bars):
                 continue
             latest_bar = bars[-1]
+            if latest_bar.time_ms != signal_time_ms:
+                continue
+            if latest_bar.time_ms > signal_time_ms:
+                raise ValueError("historical feature bars include a future bar")
             direction = SignalDirection(str(row["direction"]))
             atr = atr_wilder(bars, self.config.strategy.atr_length)
             hurst = hurst_exponent([bar.close for bar in bars[-self.config.strategy.hurst_window_bars :]])
+            funding_context = contexts.get("funding_context")
+            open_interest_context = contexts.get("open_interest_context")
+            premium_context = contexts.get("premium_context")
+            microstructure_context = decision_snapshot.get("microstructure")
+            basis_context = decision_snapshot.get("basis")
             feature_snapshot = build_extended_feature_snapshot(
                 signal_direction=direction,
                 signal_time_ms=signal_time_ms,
@@ -147,11 +328,11 @@ class ResearchDatasetBuilder:
                 atr=atr,
                 atr_length=self.config.strategy.atr_length,
                 hurst=hurst,
-                microstructure=decision_snapshot.get("microstructure"),
-                basis_snapshot=decision_snapshot.get("basis"),
-                funding_context=contexts.get("funding_context"),
-                open_interest_context=contexts.get("open_interest_context"),
-                premium_context=contexts.get("premium_context"),
+                microstructure=microstructure_context,
+                basis_snapshot=basis_context,
+                funding_context=funding_context,
+                open_interest_context=open_interest_context,
+                premium_context=premium_context,
                 primary_window_seconds=self.config.strategy.microstructure_primary_window_seconds,
                 volatility_config=volatility_config,
             )
@@ -172,7 +353,7 @@ class ResearchDatasetBuilder:
                 price_tick=self.config.strategy.price_tick,
             )
             future_bars = self._slice_future_bars(preloaded_bars, bar_times, signal_time_ms)
-            label_exit_reason, label_pnl_multiple = _label_from_future_bars(
+            label_outcome = _label_from_future_bars(
                 signal_direction=direction,
                 entry_price=entry_price,
                 atr=atr,
@@ -182,10 +363,21 @@ class ResearchDatasetBuilder:
                 future_bars=future_bars,
                 vertical_barrier_time_ms=build_vertical_barrier(signal_time_ms, self.config.strategy.time_barrier_bars),
             )
-            if label_exit_reason is None or label_pnl_multiple is None:
+            if label_outcome is None:
                 continue
+            if future_bars and future_bars[0].time_ms <= signal_time_ms:
+                raise ValueError("label future bars include the signal bar or an earlier bar")
 
-            basis_bps = _decimal_or_none((decision_snapshot.get("basis") or {}).get("basis_bps"))
+            basis_bps = _decimal_or_none((basis_context or {}).get("basis_bps"))
+            primary_window = (microstructure_context or {}).get("windows", {}).get(
+                str(self.config.strategy.microstructure_primary_window_seconds),
+                {},
+            )
+            funding_paid_or_received = _funding_paid_or_received(
+                direction=direction,
+                funding_rate=_decimal_or_none((funding_context or {}).get("funding_rate")),
+                time_in_trade_hours=label_outcome.time_in_trade,
+            )
             record = {
                 "signal_id": row["signal_id"],
                 "source": row["source"],
@@ -193,10 +385,23 @@ class ResearchDatasetBuilder:
                 "strategy_version": raw_payload.get("strategy_version"),
                 "import_batch_id": raw_payload.get("import_batch_id"),
                 "source_row_number": raw_payload.get("source_row_number"),
+                "asset_symbol": row["symbol"],
                 "symbol": row["symbol"],
                 "direction": row["direction"],
                 "tv_bar_time_ms": signal_time_ms,
                 "received_time_ms": int(row["received_time_ms"]),
+                "signal_bar_open_time_ms": latest_bar.time_ms,
+                "signal_bar_close_time_ms": bar_close_time_ms(latest_bar.time_ms),
+                "signal_bar_open": float(latest_bar.open),
+                "signal_bar_high": float(latest_bar.high),
+                "signal_bar_low": float(latest_bar.low),
+                "signal_bar_close": float(latest_bar.close),
+                "signal_bar_volume": float(latest_bar.volume),
+                "historical_feature_end_time_ms": latest_bar.time_ms,
+                "historical_feature_bar_count": len(bars),
+                "label_future_start_time_ms": future_bars[0].time_ms if future_bars else None,
+                "label_future_end_time_ms": future_bars[-1].time_ms if future_bars else None,
+                "label_future_bar_count": len(future_bars),
                 "feature_version": feature_snapshot["feature_version"],
                 "label_version": LABEL_VERSION,
                 "model_version": "observe_only",
@@ -209,19 +414,52 @@ class ResearchDatasetBuilder:
                 "next_bar_open": float(_decimal_or_none(raw_payload.get("next_bar_open")) or 0) if raw_payload.get("next_bar_open") is not None else None,
                 "tp_price": float(tp_price),
                 "sl_price": float(sl_price),
-                "label_exit_reason": str(label_exit_reason),
-                "label_accept": 1 if label_exit_reason == ExitReason.TAKE_PROFIT else 0,
-                "label_pnl_multiple": float(label_pnl_multiple),
-                "basis_bps": float(basis_bps) if basis_bps is not None else None,
+                "label_exit_reason": str(label_outcome.exit_reason),
+                "label_accept": 1 if label_outcome.exit_reason == ExitReason.TAKE_PROFIT else 0,
+                "label_pnl_multiple": float(label_outcome.pnl_multiple),
+                "label_exit_price": float(label_outcome.exit_price),
+                "label_exit_time_ms": label_outcome.exit_time_ms,
+                "gross_return": float(label_outcome.gross_return),
+                "fees_bps": float(self.plan.evaluation.fee_bps),
+                "slippage_bps": float(self.plan.evaluation.slippage_bps),
+                "funding_paid_or_received": float(funding_paid_or_received) if funding_paid_or_received is not None else None,
+                "time_in_trade": float(label_outcome.time_in_trade),
+                "time_in_trade_bars": label_outcome.time_in_trade_bars,
+                "max_adverse_excursion": float(label_outcome.max_adverse_excursion),
+                "max_favorable_excursion": float(label_outcome.max_favorable_excursion),
+                "barrier_hit_type": label_outcome.barrier_hit_type,
+                "raw_basis_bps": float(basis_bps) if basis_bps is not None else None,
+                "raw_funding_rate": float(_decimal_or_none((funding_context or {}).get("funding_rate"))) if (funding_context or {}).get("funding_rate") is not None else None,
+                "raw_funding_rate_change": float(_decimal_or_none((funding_context or {}).get("funding_rate_change"))) if (funding_context or {}).get("funding_rate_change") is not None else None,
+                "raw_time_to_next_funding_ms": (funding_context or {}).get("time_to_next_funding_ms"),
+                "raw_open_interest": float(_decimal_or_none((open_interest_context or {}).get("open_interest"))) if (open_interest_context or {}).get("open_interest") is not None else None,
+                "raw_open_interest_change": float(_decimal_or_none((open_interest_context or {}).get("open_interest_change"))) if (open_interest_context or {}).get("open_interest_change") is not None else None,
+                "raw_open_interest_change_pct": float(_decimal_or_none((open_interest_context or {}).get("open_interest_change_pct"))) if (open_interest_context or {}).get("open_interest_change_pct") is not None else None,
+                "raw_open_interest_value": float(_decimal_or_none((open_interest_context or {}).get("open_interest_value"))) if (open_interest_context or {}).get("open_interest_value") is not None else None,
+                "raw_premium_basis_rate": float(_decimal_or_none((premium_context or {}).get("basis_rate"))) if (premium_context or {}).get("basis_rate") is not None else None,
+                "raw_premium_basis_abs": float(_decimal_or_none((premium_context or {}).get("basis"))) if (premium_context or {}).get("basis") is not None else None,
+                "raw_premium_close": float(_decimal_or_none((premium_context or {}).get("premium_close"))) if (premium_context or {}).get("premium_close") is not None else None,
+                "raw_mark_price": float(_decimal_or_none((premium_context or {}).get("mark_price"))) if (premium_context or {}).get("mark_price") is not None else None,
+                "raw_index_price": float(_decimal_or_none((premium_context or {}).get("index_price"))) if (premium_context or {}).get("index_price") is not None else None,
+                "raw_primary_signed_imbalance_ratio": float(_decimal_or_none(primary_window.get("signed_ratio"))) if primary_window.get("signed_ratio") is not None else None,
+                "raw_spread_bps": float(_decimal_or_none((microstructure_context or {}).get("spread_bps"))) if (microstructure_context or {}).get("spread_bps") is not None else None,
                 "rule_acceptance_total_score": float((feature_snapshot.get("rule_acceptance") or {}).get("total_score") or 0.0),
                 "rule_acceptance_core_score": float((feature_snapshot.get("rule_acceptance") or {}).get("core_score") or 0.0),
                 "rule_acceptance_perp_score": float((feature_snapshot.get("rule_acceptance") or {}).get("perp_score") or 0.0),
                 "rule_acceptance_accept_candidate": 1 if ((feature_snapshot.get("rule_acceptance") or {}).get("accept_candidate")) else 0,
                 "rule_acceptance_liquidity_status": (feature_snapshot.get("rule_acceptance") or {}).get("liquidity_status"),
+                "funding_context": funding_context,
+                "open_interest_context": open_interest_context,
+                "premium_context": premium_context,
             }
             record.update(numeric_features)
-            record["feature_snapshot_json"] = json.dumps(feature_snapshot, sort_keys=True)
-            record["raw_signal_payload_json"] = json.dumps(raw_payload, sort_keys=True)
+            record["feature_snapshot_json"] = _json_dumps(feature_snapshot)
+            record["raw_signal_payload_json"] = _json_dumps(raw_payload)
+            record["microstructure_context_json"] = _json_dumps(microstructure_context)
+            record["basis_context_json"] = _json_dumps(basis_context)
+            record["funding_context_json"] = _json_dumps(funding_context)
+            record["open_interest_context_json"] = _json_dumps(open_interest_context)
+            record["premium_context_json"] = _json_dumps(premium_context)
             record["decision_context_present"] = decision_snapshot != {}
             records.append(record)
 
@@ -255,6 +493,12 @@ class ResearchDatasetBuilder:
             "positive_rate": float(frame["label_accept"].mean()),
         }
         planned_split_summary = self._planned_split_summary(len(frame))
+        exchange_context_summary = _context_manifest_summary(records)
+        raw_context_available_counts = {
+            **_field_count_payload(frame, prefix="raw_"),
+            "decision_context_present": int(frame["decision_context_present"].sum()),
+        }
+        frame = frame.drop(columns=["funding_context", "open_interest_context", "premium_context"])
 
         output_dir = self.config.research.output_dir / self.plan.version
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -264,17 +508,22 @@ class ResearchDatasetBuilder:
             "dataset_manifest_version": DATASET_MANIFEST_VERSION,
             "plan_version": self.plan.version,
             "plan_sha256": self.plan.plan_sha256(),
+            "research_only": True,
             "symbol": self.plan.symbol,
+            "asset_scope": [self.plan.symbol],
             "row_count": len(frame),
             "dataset_path": str(dataset_path),
             "dataset_sha256": _hash_file(dataset_path),
             "feature_version": frame["feature_version"].iloc[0],
             "label_version": LABEL_VERSION,
+            "label_outcome_fields": [column for column in LABEL_OUTCOME_COLUMNS if column in frame.columns],
             "source_counts": source_counts,
             "source_mode_counts": source_mode_counts,
             "strategy_version_counts": strategy_version_counts,
             "class_balance": class_balance,
             "missing_feature_rates": missing_feature_rates,
+            "raw_context_available_counts": raw_context_available_counts,
+            "exchange_context_summary": exchange_context_summary,
             "planned_split_summary": planned_split_summary,
             "config": self.plan.to_payload(),
         }

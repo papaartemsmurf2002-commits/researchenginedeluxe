@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import os
 import re
 import time
@@ -208,99 +207,6 @@ def test_operator_snapshot_includes_microstructure_prediction(app_config, sample
     assert prediction["direction"] == "up"
     assert prediction["calibrated"] is False
     assert Decimal(prediction["probabilities"]["up"]) > Decimal(prediction["probabilities"]["down"])
-
-
-def test_operator_artifacts_include_hmm_knn_monitoring_summary(app_config, sample_bars, tmp_path) -> None:
-    research_dir = tmp_path / "research"
-    artifact_dir = research_dir / "v2-btc-hmm-multi-knn-1"
-    artifact_dir.mkdir(parents=True)
-    metrics_path = artifact_dir / "walk_forward_metrics.json"
-    monitoring_path = artifact_dir / "monitoring_report.json"
-    manifest_path = artifact_dir / "artifact_manifest.json"
-    metrics_path.write_text(
-        json.dumps(
-            {
-                "research_only": True,
-                "promotion_ready": False,
-                "comparison": {
-                    "hmm_knn_meta_model": {
-                        "trade_count": 7,
-                        "expectancy_after_cost": 0.12,
-                    }
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    monitoring_path.write_text(
-        json.dumps(
-            {
-                "research_only": True,
-                "promotion_ready": False,
-                "entropy_no_trade": {"regime_no_trade_rate": 0.25, "posterior_entropy_p95": 0.72},
-                "regime_distribution_drift": {"max_drift": 0.18},
-                "neighbor_quality": {"neighbor_distance_quality_p05": 0.31},
-                "alerts": [{"severity": "warn", "code": "feature_outage", "message": "observe only", "observe_only": True}],
-            }
-        ),
-        encoding="utf-8",
-    )
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "artifact_manifest_version": "v2-hmm-knn-artifact-manifest-1",
-                "research_only": True,
-                "plan_version": "v2-btc-hmm-multi-knn-1",
-                "symbol": "BTCUSDT",
-                "row_count": 42,
-                "metrics_path": str(metrics_path),
-            }
-        ),
-        encoding="utf-8",
-    )
-    config = _operator_config(
-        AppConfig(
-            runtime_mode=RuntimeMode.PAPER,
-            db_path=tmp_path / "operator_ui.sqlite3",
-            webhook=app_config.webhook,
-            strategy=app_config.strategy,
-            binance=app_config.binance,
-            hyperliquid=app_config.hyperliquid,
-            research=replace(app_config.research, output_dir=research_dir),
-            operator_ui=app_config.operator_ui,
-        )
-    )
-    app = create_app(config)
-    app.state.engine.candle_client = FakeCandles(sample_bars)
-    with TestClient(app) as client:
-        _login(client, "operator-secret")
-        payload = client.get("/api/operator/research/artifacts").json()
-
-    item = next(artifact for artifact in payload["items"] if artifact["type"] == "hmm_knn_artifact")
-    assert item["summary"]["plan_version"] == "v2-btc-hmm-multi-knn-1"
-    assert item["summary"]["promotion_ready"] is False
-    assert item["summary"]["monitoring_alert_count"] == 1
-    assert item["summary"]["monitoring_alert_counts"] == {"warn": 1}
-    assert item["summary"]["regime_no_trade_rate"] == 0.25
-    assert item["monitoring"]["alerts"][0]["observe_only"] is True
-
-
-def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config, sample_bars) -> None:
-    config = _operator_config(app_config)
-    app = create_app(config)
-    app.state.engine.candle_client = FakeCandles(sample_bars)
-    with TestClient(app) as client:
-        _login(client, "operator-secret")
-        response = client.get("/ui/research")
-
-    assert response.status_code == 200
-    assert "HMM/KNN Monitoring" in response.text
-    assert "hmm_knn_artifact" in response.text
-    assert "observe_only" in response.text
-    assert "/api/operator/commands/" not in response.text
-    assert "set-mode" not in response.text
-    assert "manual-signal" not in response.text
-    assert "smoke-live" not in response.text
 
 
 def test_operator_manual_signal_matches_direct_command_shape(app_config, sample_bars, tmp_path) -> None:

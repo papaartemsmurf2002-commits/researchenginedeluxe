@@ -1,0 +1,119 @@
+{
+  "version": "v2-btc-hmm-multi-knn-1",
+  "asset_scope": ["BTCUSDT"],
+  "symbol": "BTCUSDT",
+  "dataset_path": null,
+  "regimes": [
+    {"id": "S0", "name": "range_chop", "description": "Low-volatility range / chop"},
+    {"id": "S1", "name": "bull_trend", "description": "Bull trend / upside momentum"},
+    {"id": "S2", "name": "bear_trend", "description": "Bear trend / downside momentum"},
+    {"id": "S3", "name": "shock_transition", "description": "Shock / transition / liquidation volatility"}
+  ],
+  "hmm": {
+    "n_states": 4,
+    "posterior_threshold": 0.6,
+    "entropy_threshold": 0.78,
+    "flip_cooldown_bars": 3,
+    "random_state": 17,
+    "max_iter": 200,
+    "covariance_type": "diag",
+    "backend": "auto",
+    "emission_features": [
+      "directional_slope_atr",
+      "choppiness",
+      "realized_volatility",
+      "atr_percentile",
+      "volatility_shock_zscore",
+      "funding_rate",
+      "open_interest_change_pct",
+      "primary_signed_imbalance_ratio",
+      "top_of_book_imbalance"
+    ]
+  },
+  "wt3d": {
+    "price_column": "entry_price",
+    "fast_length": 10,
+    "normal_length": 21,
+    "slow_length": 55,
+    "slope_lag": 1,
+    "reversal_zone": 0.75,
+    "mtf_slow_window": 4
+  },
+  "knn": {
+    "distance": "lorentzian",
+    "k_values": [16, 24, 32, 48, 64],
+    "primary_k": 32,
+    "neighbor_weighting": ["inverse_distance", "softmax"],
+    "primary_weighting": "inverse_distance",
+    "same_regime_only": true,
+    "allow_cross_regime_fallback": false,
+    "time_decay_half_life_bars": 672,
+    "min_neighbor_count": 8,
+    "vote_probability_threshold": 0.55,
+    "expected_value_threshold": 0.0,
+    "feature_columns": [
+      "direction_long",
+      "efficiency_ratio",
+      "choppiness",
+      "directional_slope_atr",
+      "directional_di_spread",
+      "range_width",
+      "primary_signed_imbalance_ratio",
+      "primary_sqrt_signed_imbalance_ratio",
+      "top_of_book_imbalance",
+      "queue_imbalance_l5",
+      "spread_bps",
+      "basis_bps",
+      "funding_rate",
+      "funding_rate_change",
+      "open_interest_change_pct",
+      "premium_basis_rate",
+      "realized_volatility",
+      "atr_percentile",
+      "volatility_shock_zscore",
+      "wt3d_fast",
+      "wt3d_normal",
+      "wt3d_slow",
+      "wt3d_fast_normal_spread",
+      "wt3d_normal_slow_spread",
+      "wt3d_slope",
+      "wt3d_acceleration",
+      "wt3d_reversal_intensity",
+      "wt3d_mtf_agreement"
+    ]
+  },
+  "labels": {
+    "event_sampling": "cusum_research",
+    "label_column": "label_accept",
+    "pnl_column": "label_pnl_multiple",
+    "horizons": ["6h", "24h", "72h", "7d"],
+    "primary_horizon": "24h",
+    "include_mfe_mae": true,
+    "include_barrier_type": true
+  },
+  "meta_model": {
+    "backend": "xgboost",
+    "fallback_backend": "random_forest",
+    "probability_threshold": 0.55,
+    "random_state": 17,
+    "n_estimators": 80,
+    "max_depth": 3,
+    "learning_rate": 0.05
+  },
+  "evaluation": {
+    "walk_forward_splits": 3,
+    "train_fraction": 0.6,
+    "min_training_rows": 50,
+    "fee_bps": 5.0,
+    "slippage_bps": 5.0,
+    "funding_cost_enabled": true,
+    "purge_embargo_bars": 8
+  },
+  "acceptance": {
+    "research_only": true,
+    "min_trade_count": 25,
+    "min_expectancy_after_cost": 0.0,
+    "max_single_split_pnl_share": 0.6,
+    "require_long_short_breakout": true
+  }
+}

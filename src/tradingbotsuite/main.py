@@ -14,6 +14,8 @@ from tradingbotsuite.research.entry_gate import (
     run_entry_gate_preflight,
     run_entry_gate_research,
 )
+from tradingbotsuite.research.hmm_knn import replay_hmm_knn_artifact, run_hmm_knn_research
+from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.research.tradingview_import import import_tradingview_chart_export
 from tradingbotsuite.web.app import create_app
@@ -101,6 +103,17 @@ def parse_args() -> argparse.Namespace:
     gate_preflight.add_argument("--output-dir", default=None)
     gate_preflight.add_argument("--gate-family", choices=list(GATE_FAMILIES), default="acf_hvr_dsp")
     gate_preflight.add_argument("--ohlcv-cache-policy", choices=["use-or-fetch", "cache-only", "off"], default=None)
+
+    hmm_knn = subparsers.add_parser("research-hmm-knn", help="Run BTC HMM-routed Lorentzian KNN research")
+    hmm_knn.add_argument("--config", required=True)
+    hmm_knn.add_argument("--dataset", default=None)
+    hmm_knn.add_argument("--output-dir", default=None)
+
+    hmm_knn_replay = subparsers.add_parser("replay-hmm-knn", help="Summarize an HMM/KNN research artifact")
+    hmm_knn_replay.add_argument("--manifest", required=True)
+
+    hmm_knn_monitor = subparsers.add_parser("monitor-hmm-knn", help="Write an observe-only HMM/KNN monitoring report")
+    hmm_knn_monitor.add_argument("--manifest", required=True)
 
     return parser.parse_args()
 
@@ -339,6 +352,39 @@ if __name__ == "__main__":
                 indent=2,
             )
         )
+    elif args.command == "research-hmm-knn":
+        import json
+
+        config = AppConfig.from_env()
+        result = run_hmm_knn_research(
+            config_path=Path(args.config),
+            dataset_path=Path(args.dataset) if args.dataset is not None else None,
+            output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir,
+        )
+        print(
+            json.dumps(
+                {
+                    "output_dir": str(result.output_dir),
+                    "artifact_manifest_path": str(result.artifact_manifest_path),
+                    "metrics_path": str(result.metrics_path),
+                    "regime_posteriors_path": str(result.regime_posteriors_path),
+                    "knn_predictions_path": str(result.knn_predictions_path),
+                    "meta_predictions_path": str(result.meta_predictions_path),
+                    "neighbor_diagnostics_path": str(result.neighbor_diagnostics_path),
+                },
+                indent=2,
+            )
+        )
+    elif args.command == "replay-hmm-knn":
+        import json
+
+        metrics_path = replay_hmm_knn_artifact(Path(args.manifest))
+        print(json.dumps({"metrics_path": str(metrics_path)}, indent=2))
+    elif args.command == "monitor-hmm-knn":
+        import json
+
+        report_path = monitor_hmm_knn_artifact(Path(args.manifest))
+        print(json.dumps({"monitoring_report_path": str(report_path)}, indent=2))
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)

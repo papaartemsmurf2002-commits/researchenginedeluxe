@@ -242,6 +242,47 @@ class OperatorConsoleService:
             )
         for manifest_path in sorted(base_dir.rglob("artifact_manifest.json")):
             payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if payload.get("artifact_manifest_version") == "v2-hmm-knn-artifact-manifest-1":
+                raw_metrics_path = payload.get("metrics_path")
+                metrics_path = Path(str(raw_metrics_path)) if raw_metrics_path else manifest_path.parent / "walk_forward_metrics.json"
+                if not metrics_path.is_absolute():
+                    parent_candidate = manifest_path.parent / metrics_path
+                    metrics_path = parent_candidate if parent_candidate.exists() else metrics_path
+                metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else None
+                monitoring_path = manifest_path.parent / "monitoring_report.json"
+                monitoring = json.loads(monitoring_path.read_text(encoding="utf-8")) if monitoring_path.exists() else None
+                alert_counts: dict[str, int] = {}
+                for alert in (monitoring or {}).get("alerts", []):
+                    severity = str(alert.get("severity", "unknown"))
+                    alert_counts[severity] = alert_counts.get(severity, 0) + 1
+                artifacts.append(
+                    {
+                        "type": "hmm_knn_artifact",
+                        "path": str(manifest_path),
+                        "sort_time": manifest_path.stat().st_mtime,
+                        "manifest": payload,
+                        "metrics_path": str(metrics_path) if metrics_path.exists() else None,
+                        "metrics": metrics,
+                        "monitoring_path": str(monitoring_path) if monitoring_path.exists() else None,
+                        "monitoring": monitoring,
+                        "summary": {
+                            "plan_version": payload.get("plan_version"),
+                            "symbol": payload.get("symbol"),
+                            "row_count": payload.get("row_count"),
+                            "promotion_ready": False,
+                            "research_only": payload.get("research_only"),
+                            "meta_trade_count": ((((metrics or {}).get("comparison") or {}).get("hmm_knn_meta_model") or {}).get("trade_count")),
+                            "meta_expectancy": ((((metrics or {}).get("comparison") or {}).get("hmm_knn_meta_model") or {}).get("expectancy_after_cost")),
+                            "monitoring_alert_count": len((monitoring or {}).get("alerts", [])),
+                            "monitoring_alert_counts": alert_counts,
+                            "regime_no_trade_rate": (((monitoring or {}).get("entropy_no_trade") or {}).get("regime_no_trade_rate")),
+                            "posterior_entropy_p95": (((monitoring or {}).get("entropy_no_trade") or {}).get("posterior_entropy_p95")),
+                            "max_regime_drift": (((monitoring or {}).get("regime_distribution_drift") or {}).get("max_drift")),
+                            "neighbor_quality_p05": (((monitoring or {}).get("neighbor_quality") or {}).get("neighbor_distance_quality_p05")),
+                        },
+                    }
+                )
+                continue
             metrics_path = manifest_path.parent / "metrics.json"
             metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else None
             artifacts.append(

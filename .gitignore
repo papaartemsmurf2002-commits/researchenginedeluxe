@@ -10,6 +10,7 @@ __pycache__/
 .vscode/
 *.swp
 *.tmp
+tradingbot/
 
 # Local credentials
 tradingbotsuite_v1_legacy/hyperliquidtestnet.txt
@@ -41,3 +42,4 @@ data/parity/**/btc_parity_merged.csv
 data/parity/**/*_python_dump.csv
 data/parity/reports_*/
 !tests/fixtures/**/*.csv
+tests/fixtures/btc_15m_fixture.json

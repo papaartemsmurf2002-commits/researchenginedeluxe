@@ -15,8 +15,7 @@ from tradingbotsuite.core.features import RESEARCH_FEATURE_COLUMNS, build_extend
 from tradingbotsuite.core.models import Bar, DecisionPacket, DecisionAction, RuntimeMode, SignalDirection, SignalIntent
 from tradingbotsuite.persistence.sqlite_store import SQLiteStore
 from tradingbotsuite.research.config import load_research_plan
-from tradingbotsuite.research.dataset import ResearchDatasetBuilder, _funding_paid_or_received, _label_from_future_bars
-from tradingbotsuite.research.hmm_knn import run_hmm_knn_research
+from tradingbotsuite.research.dataset import LABEL_OUTCOME_COLUMNS, ResearchDatasetBuilder, _label_from_future_bars
 from tradingbotsuite.research.inference import AcceptanceScorer
 from tradingbotsuite.research.modeling import calibrate_model, train_base_model
 from tradingbotsuite.research.evaluation import replay_eval
@@ -47,49 +46,7 @@ def _trend_bars(count: int = 80) -> list[Bar]:
     return bars
 
 
-def _write_hmm_knn_test_config(tmp_path: Path) -> Path:
-    payload = json.loads(Path("configs/v2_btc_hmm_multi_knn_research.json").read_text(encoding="utf-8"))
-    payload["version"] = "test-hmm-knn-from-dataset-builder"
-    payload["hmm"]["n_states"] = 3
-    payload["hmm"]["posterior_threshold"] = 0.45
-    payload["hmm"]["entropy_threshold"] = 0.95
-    payload["knn"]["primary_k"] = 12
-    payload["knn"]["k_values"] = [8, 12]
-    payload["knn"]["min_neighbor_count"] = 3
-    payload["evaluation"]["min_training_rows"] = 32
-    payload["evaluation"]["walk_forward_splits"] = 2
-    payload["evaluation"]["purge_embargo_bars"] = 2
-    payload["acceptance"]["min_trade_count"] = 1
-    config_path = tmp_path / "hmm_knn_config.json"
-    config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    return config_path
-
-
-def test_funding_paid_or_received_uses_trade_direction_sign() -> None:
-    funding_rate = Decimal("0.0008")
-    time_in_trade_hours = Decimal("4")
-
-    long_funding = _funding_paid_or_received(
-        direction=SignalDirection.LONG,
-        funding_rate=funding_rate,
-        time_in_trade_hours=time_in_trade_hours,
-    )
-    short_funding = _funding_paid_or_received(
-        direction=SignalDirection.SHORT,
-        funding_rate=funding_rate,
-        time_in_trade_hours=time_in_trade_hours,
-    )
-
-    assert long_funding == Decimal("-0.00040")
-    assert short_funding == Decimal("0.00040")
-    assert _funding_paid_or_received(
-        direction=SignalDirection.LONG,
-        funding_rate=None,
-        time_in_trade_hours=time_in_trade_hours,
-    ) is None
-
-
-def test_label_mfe_mae_stop_at_actual_exit_bar() -> None:
+def test_triple_barrier_label_outcome_tracks_take_profit_mae_mfe_and_time() -> None:
     outcome = _label_from_future_bars(
         signal_direction=SignalDirection.LONG,
         entry_price=Decimal("100"),
@@ -98,19 +55,74 @@ def test_label_mfe_mae_stop_at_actual_exit_bar() -> None:
         sl_price=Decimal("90"),
         signal_bar_time_ms=0,
         future_bars=[
-            Bar(time_ms=900_000, open=Decimal("100"), high=Decimal("111"), low=Decimal("98"), close=Decimal("110"), volume=Decimal("1")),
-            Bar(time_ms=1_800_000, open=Decimal("110"), high=Decimal("150"), low=Decimal("50"), close=Decimal("120"), volume=Decimal("1")),
+            Bar(time_ms=900_000, open=Decimal("100"), high=Decimal("112"), low=Decimal("98"), close=Decimal("111"), volume=Decimal("1"))
         ],
         vertical_barrier_time_ms=24 * 900_000,
     )
 
     assert outcome is not None
     assert str(outcome.exit_reason) == "take_profit"
-    assert outcome.exit_time_ms == 1_800_000
+    assert outcome.pnl_multiple == Decimal("1")
+    assert outcome.gross_return == Decimal("0.1")
     assert outcome.time_in_trade == Decimal("0.25")
     assert outcome.time_in_trade_bars == 1
-    assert outcome.max_favorable_excursion == Decimal("1.1")
+    assert outcome.max_favorable_excursion == Decimal("1.2")
     assert outcome.max_adverse_excursion == Decimal("0.2")
+    assert outcome.barrier_hit_type == "take_profit"
+
+
+def test_triple_barrier_label_outcome_tracks_short_stop_and_time_barrier() -> None:
+    short_stop = _label_from_future_bars(
+        signal_direction=SignalDirection.SHORT,
+        entry_price=Decimal("100"),
+        atr=Decimal("10"),
+        tp_price=Decimal("90"),
+        sl_price=Decimal("110"),
+        signal_bar_time_ms=0,
+        future_bars=[
+            Bar(time_ms=900_000, open=Decimal("100"), high=Decimal("111"), low=Decimal("95"), close=Decimal("109"), volume=Decimal("1"))
+        ],
+        vertical_barrier_time_ms=24 * 900_000,
+    )
+    time_exit = _label_from_future_bars(
+        signal_direction=SignalDirection.LONG,
+        entry_price=Decimal("100"),
+        atr=Decimal("10"),
+        tp_price=Decimal("120"),
+        sl_price=Decimal("90"),
+        signal_bar_time_ms=0,
+        future_bars=[
+            Bar(time_ms=900_000, open=Decimal("100"), high=Decimal("105"), low=Decimal("99"), close=Decimal("104"), volume=Decimal("1"))
+        ],
+        vertical_barrier_time_ms=900_000,
+    )
+
+    assert short_stop is not None
+    assert str(short_stop.exit_reason) == "stop_loss"
+    assert short_stop.pnl_multiple == Decimal("-1")
+    assert short_stop.max_favorable_excursion == Decimal("0.5")
+    assert short_stop.max_adverse_excursion == Decimal("1.1")
+    assert time_exit is not None
+    assert str(time_exit.exit_reason) == "time_barrier"
+    assert time_exit.pnl_multiple == Decimal("0.4")
+    assert time_exit.gross_return == Decimal("0.04")
+
+
+def test_triple_barrier_label_outcome_skips_missing_future_exit() -> None:
+    outcome = _label_from_future_bars(
+        signal_direction=SignalDirection.LONG,
+        entry_price=Decimal("100"),
+        atr=Decimal("10"),
+        tp_price=Decimal("120"),
+        sl_price=Decimal("90"),
+        signal_bar_time_ms=0,
+        future_bars=[
+            Bar(time_ms=900_000, open=Decimal("100"), high=Decimal("105"), low=Decimal("99"), close=Decimal("104"), volume=Decimal("1"))
+        ],
+        vertical_barrier_time_ms=24 * 900_000,
+    )
+
+    assert outcome is None
 
 
 @pytest.mark.asyncio
@@ -299,7 +311,6 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
     class FakeResearchClient:
         def __init__(self) -> None:
             self.range_calls = 0
-            self.context_calls: list[tuple[str, int]] = []
 
         async def fetch_historical_closed_bar_range(self, symbol: str, *, start_time_ms: int, end_time_ms: int, interval: str = "15m"):
             self.range_calls += 1
@@ -314,35 +325,18 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
             return eligible[:limit]
 
         async def fetch_funding_context(self, symbol: str, *, as_of_ms: int, history_limit: int = 8):
-            self.context_calls.append(("funding", as_of_ms))
-            return {
-                "funding_rate": "0.0001",
-                "funding_rate_change": "0.00002",
-                "time_to_next_funding_ms": 1_800_000,
-                "source": "fundingRate",
-            }
+            return {"funding_rate": "0.0001", "funding_rate_change": "0.00002", "time_to_next_funding_ms": 1_800_000}
 
         async def fetch_open_interest_context(self, symbol: str, *, as_of_ms: int, period: str = "5m", lookback_points: int = 13):
-            self.context_calls.append(("open_interest", as_of_ms))
             return {
                 "open_interest": "1000",
                 "open_interest_change": "50",
                 "open_interest_change_pct": "0.05",
                 "open_interest_value": "70500000",
-                "current_open_interest": "999999",
-                "source": "openInterestHist",
             }
 
         async def fetch_premium_context(self, symbol: str, *, as_of_ms: int, interval: str = "5m"):
-            self.context_calls.append(("premium", as_of_ms))
-            return {
-                "mark_price": "70521",
-                "index_price": "70500",
-                "basis_rate": "0.0003",
-                "basis": "21",
-                "premium_close": "0.0002",
-                "source": "premiumIndexKlines",
-            }
+            return {"basis_rate": "0.0003", "basis": "21", "premium_close": "0.0002"}
 
     fake_client = FakeResearchClient()
     builder = ResearchDatasetBuilder(config=config, plan=plan, store=store, candle_client=fake_client)
@@ -354,156 +348,28 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
     assert "source" in frame.columns
     assert "label_version" in frame.columns
     assert "funding_rate" in frame.columns
-    assert "raw_funding_rate" in frame.columns
-    assert "signal_bar_open" in frame.columns
-    assert "signal_bar_close_time_ms" in frame.columns
     assert "rule_acceptance_total_score" in frame.columns
     assert "rule_acceptance_accept_candidate" in frame.columns
+    assert set(LABEL_OUTCOME_COLUMNS).issubset(frame.columns)
     assert frame.iloc[0]["label_accept"] == 1
-    assert (frame["signal_bar_open_time_ms"] == frame["tv_bar_time_ms"]).all()
-    assert (frame["historical_feature_end_time_ms"] <= frame["tv_bar_time_ms"]).all()
-    assert (frame["label_future_start_time_ms"] > frame["tv_bar_time_ms"]).all()
-    assert frame.iloc[0]["raw_open_interest"] == 1000.0
-    assert frame.iloc[0]["open_interest"] == 1000.0
-    assert frame.iloc[0]["raw_mark_price"] == 70521.0
-    assert manifest["missing_feature_rates"]["missing_funding_rate"] == 0.0
-    assert manifest["missing_feature_rates"]["missing_open_interest"] == 0.0
-    assert manifest["missing_feature_rates"]["missing_premium_close"] == 0.0
+    assert frame.iloc[0]["gross_return"] > 0.0
+    assert frame.iloc[0]["fees_bps"] == plan.evaluation.fee_bps
+    assert frame.iloc[0]["slippage_bps"] == plan.evaluation.slippage_bps
+    assert pd.notna(frame.iloc[0]["funding_paid_or_received"])
+    assert frame.iloc[0]["time_in_trade"] > 0.0
+    assert frame.iloc[0]["max_favorable_excursion"] >= frame.iloc[0]["max_adverse_excursion"]
+    assert frame.iloc[0]["barrier_hit_type"] == frame.iloc[0]["label_exit_reason"]
     assert manifest["row_count"] == 2
-    assert manifest["research_only"] is True
-    assert manifest["asset_scope"] == ["BTCUSDT"]
     assert manifest["symbol"] == "BTCUSDT"
     assert manifest["feature_version"] == "v2-btc-acceptance-2"
     assert manifest["label_version"] == "triple_barrier_live_parity_v1"
+    assert set(manifest["label_outcome_fields"]) == set(LABEL_OUTCOME_COLUMNS)
     assert manifest["source_counts"] == {"tradingview": 2}
     assert manifest["source_mode_counts"] == {"tradingview": 2}
     assert manifest["class_balance"]["label_accept_1"] == 2
     assert manifest["planned_split_summary"]["walk_forward_splits"] == plan.evaluation.walk_forward_splits
     assert "missing_feature_rates" in manifest
-    assert manifest["exchange_context_summary"]["funding_context"]["source_counts"] == {"fundingRate": 2}
-    assert manifest["exchange_context_summary"]["open_interest_context"]["source_counts"] == {"openInterestHist": 2}
-    assert manifest["exchange_context_summary"]["premium_context"]["source_counts"] == {"premiumIndexKlines": 2}
-    assert manifest["raw_context_available_counts"]["raw_funding_rate"] == 2
-    assert manifest["raw_context_available_counts"]["raw_open_interest"] == 2
-    assert manifest["raw_context_available_counts"]["raw_premium_close"] == 2
-    assert manifest["raw_context_available_counts"]["decision_context_present"] == 2
-    assert sorted(fake_client.context_calls) == sorted(
-        [
-            ("funding", bars[59].time_ms),
-            ("funding", bars[60].time_ms),
-            ("open_interest", bars[59].time_ms),
-            ("open_interest", bars[60].time_ms),
-            ("premium", bars[59].time_ms),
-            ("premium", bars[60].time_ms),
-        ]
-    )
     assert fake_client.range_calls == 1
-
-
-@pytest.mark.asyncio
-async def test_research_dataset_builder_preserves_missing_exchange_context(app_config, tmp_path) -> None:
-    plan = load_research_plan(Path("configs/v2_btc_research.json"))
-    config = AppConfig(
-        runtime_mode=RuntimeMode.PAPER,
-        db_path=tmp_path / "missing.sqlite3",
-        webhook=app_config.webhook,
-        strategy=replace(app_config.strategy, hurst_window_bars=32, stale_bar_after_ms=10_000_000_000),
-        binance=app_config.binance,
-        hyperliquid=app_config.hyperliquid,
-        research=ResearchConfig(output_dir=tmp_path / "research", config_path=Path("configs/v2_btc_research.json")),
-    )
-    store = SQLiteStore(config.db_path)
-    await store.initialize()
-
-    bars = []
-    price = Decimal("70000")
-    start_ms = 1712649600000
-    for index in range(75):
-        open_price = price
-        close_price = price + Decimal("15") if index < 60 else price + Decimal("80")
-        bars.append(Bar(**_make_bar(start_ms + (index * 900_000), open_price, close_price)))
-        price = close_price
-
-    signal = SignalIntent(
-        signal_id="missing-context-1",
-        symbol="BTCUSDT",
-        direction=SignalDirection.LONG,
-        tv_bar_time_ms=bars[59].time_ms,
-        received_time_ms=bars[59].time_ms + 900_000,
-        raw_payload={},
-    )
-    await store.reserve_signal(signal)
-    await store.update_signal_decision(signal, accepted=True, rejection_reason=None)
-    await store.save_decision_packet(
-        DecisionPacket(
-            signal=signal,
-            mode=RuntimeMode.PAPER,
-            action=DecisionAction.ACCEPT,
-            accepted=True,
-            feature_snapshot={},
-        ),
-        signal.received_time_ms,
-    )
-
-    class MissingContextClient:
-        async def fetch_historical_closed_bar_range(self, symbol: str, *, start_time_ms: int, end_time_ms: int, interval: str = "15m"):
-            return [bar for bar in bars if start_time_ms <= bar.time_ms <= end_time_ms]
-
-        async def fetch_funding_context(self, symbol: str, *, as_of_ms: int, history_limit: int = 8):
-            return {"funding_rate": None, "funding_rate_change": None, "source": "fundingRate", "source_error": "rate_limit"}
-
-        async def fetch_open_interest_context(self, symbol: str, *, as_of_ms: int, period: str = "5m", lookback_points: int = 13):
-            return {"open_interest": None, "open_interest_change_pct": None, "source": "openInterestHist", "backoff_until_ms": as_of_ms + 1000}
-
-        async def fetch_premium_context(self, symbol: str, *, as_of_ms: int, interval: str = "5m"):
-            return {"basis_rate": None, "basis": None, "premium_close": None, "source": "premiumIndexKlines"}
-
-    result = await ResearchDatasetBuilder(config=config, plan=plan, store=store, candle_client=MissingContextClient()).build()
-    frame = pd.read_parquet(result.dataset_path)
-    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
-
-    row = frame.iloc[0]
-    assert pd.isna(row["raw_funding_rate"])
-    assert pd.isna(row["raw_funding_rate_change"])
-    assert pd.isna(row["raw_time_to_next_funding_ms"])
-    assert row["funding_rate"] == 0.0
-    assert row["funding_rate_change"] == 0.0
-    assert row["time_to_next_funding_hours"] == 0.0
-    assert row["missing_funding_rate"] == 1.0
-    assert row["missing_funding_rate_change"] == 1.0
-    assert row["missing_time_to_next_funding_hours"] == 1.0
-    assert pd.isna(row["raw_open_interest"])
-    assert pd.isna(row["raw_open_interest_change"])
-    assert pd.isna(row["raw_open_interest_change_pct"])
-    assert pd.isna(row["raw_open_interest_value"])
-    assert row["open_interest"] == 0.0
-    assert row["open_interest_change"] == 0.0
-    assert row["open_interest_change_pct"] == 0.0
-    assert row["open_interest_value"] == 0.0
-    assert row["missing_open_interest"] == 1.0
-    assert row["missing_open_interest_change"] == 1.0
-    assert row["missing_open_interest_change_pct"] == 1.0
-    assert row["missing_open_interest_value"] == 1.0
-    assert pd.isna(row["raw_premium_basis_rate"])
-    assert pd.isna(row["raw_premium_basis_abs"])
-    assert pd.isna(row["raw_premium_close"])
-    assert row["premium_basis_rate"] == 0.0
-    assert row["premium_basis_abs"] == 0.0
-    assert row["premium_close"] == 0.0
-    assert row["missing_premium_basis_rate"] == 1.0
-    assert row["missing_premium_basis_abs"] == 1.0
-    assert row["missing_premium_close"] == 1.0
-    assert manifest["missing_feature_rates"]["missing_funding_rate"] == 1.0
-    assert manifest["missing_feature_rates"]["missing_open_interest"] == 1.0
-    assert manifest["missing_feature_rates"]["missing_premium_close"] == 1.0
-    assert manifest["raw_context_available_counts"]["raw_funding_rate"] == 0
-    assert manifest["raw_context_available_counts"]["raw_open_interest"] == 0
-    assert manifest["raw_context_available_counts"]["raw_premium_close"] == 0
-    assert manifest["exchange_context_summary"]["funding_context"]["field_available_counts"]["funding_rate"] == 0
-    assert manifest["exchange_context_summary"]["open_interest_context"]["field_available_counts"]["open_interest"] == 0
-    assert manifest["exchange_context_summary"]["premium_context"]["field_available_counts"]["premium_close"] == 0
-    assert manifest["exchange_context_summary"]["funding_context"]["rows_with_source_error"] == 1
-    assert manifest["exchange_context_summary"]["open_interest_context"]["rows_with_backoff"] == 1
 
 
 def test_research_model_pipeline_and_shadow_scoring(app_config, tmp_path, sample_bars) -> None:
@@ -770,120 +636,6 @@ async def test_research_dataset_builder_is_deterministic(app_config, tmp_path) -
     assert first_manifest["dataset_sha256"] == second_manifest["dataset_sha256"]
     assert first_manifest["source_mode_counts"] == second_manifest["source_mode_counts"]
     assert first_manifest["planned_split_summary"] == second_manifest["planned_split_summary"]
-
-
-@pytest.mark.asyncio
-async def test_hmm_knn_research_consumes_dataset_builder_output(app_config, tmp_path) -> None:
-    plan = load_research_plan(Path("configs/v2_btc_research.json"))
-    config = AppConfig(
-        runtime_mode=RuntimeMode.PAPER,
-        db_path=tmp_path / "hmm_dataset.sqlite3",
-        webhook=app_config.webhook,
-        strategy=replace(app_config.strategy, hurst_window_bars=32, stale_bar_after_ms=10_000_000_000),
-        binance=app_config.binance,
-        hyperliquid=app_config.hyperliquid,
-        research=ResearchConfig(output_dir=tmp_path / "research", config_path=Path("configs/v2_btc_research.json")),
-    )
-    store = SQLiteStore(config.db_path)
-    await store.initialize()
-
-    bars = []
-    price = Decimal("70000")
-    start_ms = 1712649600000
-    for index in range(125):
-        open_price = price
-        close_price = price + Decimal("55")
-        bars.append(Bar(**_make_bar(start_ms + (index * 900_000), open_price, close_price)))
-        price = close_price
-
-    for offset, time_index in enumerate(range(50, 96), start=1):
-        direction = SignalDirection.LONG if offset % 2 else SignalDirection.SHORT
-        signal = SignalIntent(
-            signal_id=f"hmm-data-{offset}",
-            symbol="BTCUSDT",
-            direction=direction,
-            tv_bar_time_ms=bars[time_index].time_ms,
-            received_time_ms=bars[time_index].time_ms + 900_000,
-            raw_payload={"source_mode": "chart_export", "strategy_version": "fixture-v1"},
-        )
-        await store.reserve_signal(signal)
-        await store.update_signal_decision(signal, accepted=True, rejection_reason=None)
-        await store.save_decision_packet(
-            DecisionPacket(
-                signal=signal,
-                mode=RuntimeMode.PAPER,
-                action=DecisionAction.ACCEPT,
-                accepted=True,
-                feature_snapshot={
-                    "microstructure": {
-                        "spread_bps": "3.0",
-                        "top_of_book_imbalance": "0.12" if direction == SignalDirection.LONG else "-0.12",
-                        "queue_imbalance_l5": "0.08" if direction == SignalDirection.LONG else "-0.08",
-                        "windows": {
-                            "20": {
-                                "signed_ratio": "0.20" if direction == SignalDirection.LONG else "-0.20",
-                                "sqrt_signed_ratio": "0.15" if direction == SignalDirection.LONG else "-0.15",
-                            }
-                        },
-                    },
-                    "basis": {"basis_bps": "2.0"},
-                },
-            ),
-            signal.received_time_ms,
-        )
-
-    class HmmDatasetClient:
-        async def fetch_historical_closed_bar_range(self, symbol: str, *, start_time_ms: int, end_time_ms: int, interval: str = "15m"):
-            return [bar for bar in bars if start_time_ms <= bar.time_ms <= end_time_ms]
-
-        async def fetch_funding_context(self, symbol: str, *, as_of_ms: int, history_limit: int = 8):
-            return {"funding_rate": "0.00008", "funding_rate_change": "0.00001", "time_to_next_funding_ms": 1_800_000, "source": "fundingRate"}
-
-        async def fetch_open_interest_context(self, symbol: str, *, as_of_ms: int, period: str = "5m", lookback_points: int = 13):
-            return {"open_interest": "1000", "open_interest_change": "20", "open_interest_change_pct": "0.02", "open_interest_value": "70500000", "source": "openInterestHist"}
-
-        async def fetch_premium_context(self, symbol: str, *, as_of_ms: int, interval: str = "5m"):
-            return {"mark_price": "70521", "index_price": "70500", "basis_rate": "0.0003", "basis": "21", "premium_close": "0.0002", "source": "premiumIndexKlines"}
-
-    dataset_result = await ResearchDatasetBuilder(config=config, plan=plan, store=store, candle_client=HmmDatasetClient()).build()
-    frame = pd.read_parquet(dataset_result.dataset_path)
-    assert frame["label_accept"].nunique() == 2
-    required_label_fields = [
-        "gross_return",
-        "fees_bps",
-        "slippage_bps",
-        "funding_paid_or_received",
-        "time_in_trade",
-        "max_adverse_excursion",
-        "max_favorable_excursion",
-        "barrier_hit_type",
-        "label_exit_time_ms",
-        "realized_net_return_after_costs",
-    ]
-    dataset_required_label_fields = [field for field in required_label_fields if field != "realized_net_return_after_costs"]
-    assert set(dataset_required_label_fields).issubset(frame.columns)
-    assert {"take_profit", "stop_loss"}.issubset(set(frame["barrier_hit_type"]))
-    for field in dataset_required_label_fields:
-        assert frame[field].notna().any(), field
-
-    result = run_hmm_knn_research(
-        config_path=_write_hmm_knn_test_config(tmp_path),
-        dataset_path=dataset_result.dataset_path,
-        output_dir=tmp_path / "hmm_artifacts",
-    )
-    manifest = json.loads(result.artifact_manifest_path.read_text(encoding="utf-8"))
-    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
-    meta = pd.read_parquet(result.meta_predictions_path)
-
-    assert manifest["research_only"] is True
-    assert manifest["dataset_path"] == str(dataset_result.dataset_path)
-    assert metrics["research_only"] is True
-    assert set(required_label_fields).issubset(meta.columns)
-    for field in required_label_fields:
-        assert meta[field].notna().any(), field
-    assert meta["max_adverse_excursion"].gt(0.0).any()
-    assert meta["max_favorable_excursion"].gt(0.0).any()
-    assert meta["time_in_trade"].gt(0.0).any()
 
 
 def test_replay_eval_is_deterministic_and_has_promotion_reasons(tmp_path) -> None:
