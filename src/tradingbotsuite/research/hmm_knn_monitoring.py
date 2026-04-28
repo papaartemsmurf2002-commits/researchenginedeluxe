@@ -9,6 +9,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from tradingbotsuite.research.live_readiness import (
+    build_research_boundary_report,
+    research_boundary_metadata,
+    research_boundary_passed,
+)
+
 HMM_KNN_MONITORING_REPORT_VERSION = "v2-hmm-knn-monitoring-report-1"
 _FEATURE_OUTAGE_THRESHOLD = 0.20
 _REGIME_DRIFT_WARN_THRESHOLD = 0.35
@@ -23,6 +29,9 @@ def monitor_hmm_knn_artifact(manifest_path: Path) -> Path:
     manifest = _read_json(manifest_path)
     if not manifest.get("research_only"):
         raise ValueError("HMM/KNN monitoring only supports research_only artifacts")
+    manifest_boundary = build_research_boundary_report(artifact_manifest=manifest)
+    if not research_boundary_passed(manifest_boundary):
+        raise ValueError(f"HMM/KNN artifact failed research boundary validation: {manifest_boundary['blockers']}")
 
     required_paths = {
         "regime_posteriors": _resolve_artifact_path(manifest_path, manifest, "regime_posteriors_path"),
@@ -55,6 +64,7 @@ def monitor_hmm_knn_artifact(manifest_path: Path) -> Path:
         "research_only": True,
         "promotion_ready": False,
         "observe_only": True,
+        **research_boundary_metadata(),
         "artifact_identity": {
             "manifest_path": str(manifest_path),
             "artifact_manifest_sha256": _file_sha256(manifest_path),
@@ -82,6 +92,17 @@ def monitor_hmm_knn_artifact(manifest_path: Path) -> Path:
         "live_vs_replay_mismatch": "not_available",
         "alerts": alerts,
     }
+    report_boundary = build_research_boundary_report(
+        artifact_manifest=manifest,
+        metrics=metrics,
+        monitoring_report=report,
+    )
+    report["research_boundary"] = {
+        "passed": bool(report_boundary["passed"]),
+        "blockers": report_boundary["blockers"],
+    }
+    if not research_boundary_passed(report_boundary):
+        raise ValueError(f"HMM/KNN monitoring failed research boundary validation: {report_boundary['blockers']}")
     report_path = manifest_path.parent / "monitoring_report.json"
     report_path.write_text(json.dumps(_json_safe(report), indent=2, sort_keys=True), encoding="utf-8")
     return report_path

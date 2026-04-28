@@ -112,6 +112,11 @@ def test_append_read_and_replay_journal_are_deterministic(tmp_path: Path) -> Non
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["schema_version"] == SCHEMA_VERSION
     assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["intended_use"] == "research_observe_only"
+    assert manifest["live_signal_input"] is False
+    assert manifest["position_sizing_input"] is False
     assert manifest["replay_order"] == ["receive_time_ms", "source_event_time_ms", "source_row_index"]
 
 

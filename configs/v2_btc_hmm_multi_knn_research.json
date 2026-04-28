@@ -41,6 +41,7 @@
   },
   "knn": {
     "distance": "lorentzian",
+    "distance_backend": "cpu",
     "k_values": [16, 24, 32, 48, 64],
     "primary_k": 32,
     "neighbor_weighting": ["inverse_distance", "softmax"],

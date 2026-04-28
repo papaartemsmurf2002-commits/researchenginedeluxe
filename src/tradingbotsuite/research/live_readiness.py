@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 LIVE_READINESS_REPORT_VERSION = "hmm-multi-knn-live-readiness-contract-v1"
+RESEARCH_BOUNDARY_REPORT_VERSION = "hmm-multi-knn-research-boundary-contract-v1"
 
 RESEARCH_JOB_NAMES = frozenset(
     {
@@ -30,6 +31,23 @@ REQUIRED_EXECUTION_JOURNAL_EVIDENCE = (
     "schedule_cancel_dead_man_heartbeat",
     "reconciliation_before_live",
 )
+NON_LIVE_INPUT_FLAGS = (
+    "live_signal_input",
+    "position_sizing_input",
+    "operator_control_input",
+    "live_execution_input",
+    "runtime_control_input",
+)
+LIVE_OUTPUT_FIELDS = (
+    "live_signal_path",
+    "signal_output_path",
+    "position_sizing_path",
+    "sizing_output_path",
+    "execution_intents_path",
+    "orders_path",
+    "runtime_control_path",
+)
+RESEARCH_INTENDED_USES = frozenset({"research", "research_only", "observe_only", "research_observe_only"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +110,62 @@ def build_live_readiness_report(
             "A passing report does not promote artifacts or enable live automation.",
             "Live runtime, Hyperliquid adapter behavior, sizing, and operator controls remain outside this module.",
         ],
+    }
+
+
+def build_research_boundary_report(
+    *,
+    artifact_manifest: Mapping[str, Any] | None = None,
+    metrics: Mapping[str, Any] | None = None,
+    monitoring_report: Mapping[str, Any] | None = None,
+    experiment_manifest: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate that research artifacts cannot be mistaken for live inputs.
+
+    This is a pure payload validator. It does not read files, connect to
+    exchanges, load runtime config, or decide live promotion.
+    """
+
+    payloads = [
+        ("artifact_manifest", artifact_manifest, _validate_research_artifact_manifest),
+        ("metrics", metrics, _validate_research_metrics),
+        ("monitoring_report", monitoring_report, _validate_monitoring_report),
+        ("experiment_manifest", experiment_manifest, _validate_experiment_manifest),
+    ]
+    checks = [
+        _boundary_check(name, validator(payload))
+        for name, payload, validator in payloads
+        if payload is not None
+    ]
+    blockers = [
+        reason
+        for check in checks
+        if not check["passed"]
+        for reason in check["reasons"]
+    ]
+    return {
+        "research_boundary_report_version": RESEARCH_BOUNDARY_REPORT_VERSION,
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "passed": not blockers,
+        "checks": checks,
+        "blockers": blockers,
+    }
+
+
+def research_boundary_passed(report: Mapping[str, Any]) -> bool:
+    return bool(report.get("passed")) and report.get("research_only") is True and report.get("promotion_ready") is False
+
+
+def research_boundary_metadata() -> dict[str, Any]:
+    return {
+        "intended_use": "research_observe_only",
+        "live_signal_input": False,
+        "position_sizing_input": False,
+        "operator_control_input": False,
+        "live_execution_input": False,
+        "runtime_control_input": False,
     }
 
 
@@ -253,6 +327,84 @@ def _check(name: str, reasons: list[str]) -> dict[str, Any]:
         "severity": "blocker",
         "reasons": reasons,
     }
+
+
+def _boundary_check(name: str, reasons: list[str]) -> dict[str, Any]:
+    return {
+        "name": name,
+        "passed": not reasons,
+        "severity": "blocker",
+        "reasons": reasons,
+    }
+
+
+def _validate_research_artifact_manifest(payload: Mapping[str, Any]) -> list[str]:
+    reasons = _validate_research_payload(payload, payload_name="artifact_manifest", require_observe_only=False)
+    if not (payload.get("artifact_manifest_version") or payload.get("schema_version") or payload.get("experiment_manifest_version")):
+        reasons.append("artifact_manifest:missing_manifest_version")
+    return reasons
+
+
+def _validate_research_metrics(payload: Mapping[str, Any]) -> list[str]:
+    return _validate_research_payload(payload, payload_name="metrics", require_observe_only=False)
+
+
+def _validate_monitoring_report(payload: Mapping[str, Any]) -> list[str]:
+    reasons = _validate_research_payload(payload, payload_name="monitoring_report", require_observe_only=True)
+    if not payload.get("monitoring_report_version"):
+        reasons.append("monitoring_report:missing_monitoring_report_version")
+    for index, alert in enumerate(_sequence_or_empty(payload.get("alerts"))):
+        if not isinstance(alert, Mapping):
+            reasons.append(f"monitoring_report:alert_not_mapping:{index}")
+        elif alert.get("observe_only") is not True:
+            reasons.append(f"monitoring_report:alert_not_observe_only:{index}")
+    return reasons
+
+
+def _validate_experiment_manifest(payload: Mapping[str, Any]) -> list[str]:
+    reasons = _validate_research_payload(payload, payload_name="experiment_manifest", require_observe_only=True)
+    if not payload.get("experiment_manifest_version"):
+        reasons.append("experiment_manifest:missing_experiment_manifest_version")
+    for index, experiment in enumerate(_sequence_or_empty(payload.get("experiments"))):
+        if not isinstance(experiment, Mapping):
+            reasons.append(f"experiment_manifest:experiment_not_mapping:{index}")
+            continue
+        digest = _mapping_or_empty(experiment.get("metrics_digest"))
+        if digest.get("promotion_ready") is True:
+            reasons.append(f"experiment_manifest:experiment_metrics_promotion_ready:{index}")
+        boundary = experiment.get("research_boundary")
+        if isinstance(boundary, Mapping) and boundary.get("passed") is not True:
+            reasons.append(f"experiment_manifest:experiment_boundary_failed:{index}")
+    return reasons
+
+
+def _validate_research_payload(
+    payload: Mapping[str, Any],
+    *,
+    payload_name: str,
+    require_observe_only: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if payload.get("research_only") is not True:
+        reasons.append(f"{payload_name}:research_only_must_be_true")
+    if require_observe_only and payload.get("observe_only") is not True:
+        reasons.append(f"{payload_name}:observe_only_must_be_true")
+    if payload.get("promotion_ready") is True:
+        reasons.append(f"{payload_name}:promotion_ready_must_remain_false")
+    intended_use = str(payload.get("intended_use") or "").strip().lower()
+    if intended_use and intended_use not in RESEARCH_INTENDED_USES:
+        reasons.append(f"{payload_name}:intended_use_not_research:{intended_use}")
+    if not intended_use:
+        reasons.append(f"{payload_name}:missing_research_intended_use")
+    for field_name in NON_LIVE_INPUT_FLAGS:
+        if field_name not in payload:
+            reasons.append(f"{payload_name}:missing_explicit_non_live_flag:{field_name}")
+        elif payload.get(field_name) is not False:
+            reasons.append(f"{payload_name}:non_live_flag_must_be_false:{field_name}")
+    for field_name in LIVE_OUTPUT_FIELDS:
+        if payload.get(field_name):
+            reasons.append(f"{payload_name}:must_not_emit_live_output_field:{field_name}")
+    return reasons
 
 
 def _runtime_mode(config: Mapping[str, Any]) -> str:

@@ -12,6 +12,7 @@ from typing import Any, Mapping, Protocol
 
 from tradingbotsuite.adapters.binance import INTERVAL_TO_MS, BinanceCandleClient
 from tradingbotsuite.core.models import Bar
+from tradingbotsuite.research.live_readiness import research_boundary_metadata
 
 BINANCE_USDM_FAPI_URL = "https://fapi.binance.com"
 COLLECTOR_VERSION = "binance-usdm-chart-bars-v1"
@@ -571,6 +572,9 @@ def ingest_binance_vision_archive(
     missing_fields = ["interval"] if normalized_family == "kline" and normalized_interval is None else []
     manifest = {
         "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
         "source_name": "binance_vision",
         "source_type": "public_archive",
         "symbol": normalized_symbol,
@@ -715,6 +719,9 @@ class MarketJournalWriter:
         event_times = [int(event["source_event_time_ms"]) for event in events]
         manifest = {
             "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            **research_boundary_metadata(),
             "schema_version": MARKET_JOURNAL_SCHEMA_VERSION,
             "writer_version": MARKET_JOURNAL_WRITER_VERSION,
             "journal_path": str(self.journal_path),
@@ -837,6 +844,9 @@ async def collect_binance_usdm_bars(
 
     manifest = {
         "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
         "source": "binance_usdm_klines",
         "symbol": normalized_symbol,
         "interval": normalized_interval,

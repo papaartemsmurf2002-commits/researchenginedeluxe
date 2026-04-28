@@ -83,7 +83,7 @@ Run the deterministic fixture experiment matrix:
 
 ```powershell
 $env:PYTHONPATH="src"
-python -m tradingbotsuite.main run-hmm-knn-experiments --spec configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json
+python -m tradingbotsuite.main run-hmm-knn-experiments --spec configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json --workers 2
 ```
 
 ## Artifacts
@@ -117,6 +117,8 @@ data/research/deterministic_sweeps/
 ```
 
 These fixtures are BTC-only, research-only, and observe-only. They are generated from `src/tradingbotsuite/research/deterministic_datasets.py` without random inputs or network calls. They exist to make CLI experiment sweeps, cache behavior, artifact schemas, and monitoring reports repeatable. They are not real market evidence and must not be used for promotion claims.
+
+The HMM/KNN experiment runner is also research-only. `run-hmm-knn-experiments` accepts `--workers` for a bounded number of independent experiment specs. The default is sequential (`1`), and `--fail-fast` preserves sequential execution. Experiment cache keys remain based on the runner version, dataset hash, and final config payload hash, so parallel execution does not change deterministic artifact paths or cache identity.
 
 Fixture variants:
 
@@ -225,6 +227,22 @@ Required files:
   - `stale_receive_time_flags`
   - `alerts`
   - `manifest_summaries`
+- `experiment_manifest.json` and `experiment_summary.csv`
+  - `experiment_manifest_version`
+  - `runner_version`
+  - `research_only: true`
+  - `observe_only: true`
+  - `promotion_ready: false`
+  - `runtime_seconds`
+  - `max_workers`
+  - `effective_workers`
+  - `promotion_failure_counts`
+  - per-experiment `runtime_seconds`
+  - per-experiment `cache_status`
+  - per-experiment `cache_hit`
+  - per-experiment `artifact_manifest_path`
+  - per-experiment `artifact_manifest`
+  - per-experiment `promotion_failures`
 
 ## Public Feature Columns
 
@@ -236,6 +254,8 @@ GPU acceleration is optional and research-only:
 
 - Default runtime installs remain CPU-first.
 - `pyproject.toml` exposes `research-gpu` for local research environments that can install XGBoost and CuPy CUDA wheels.
+- `knn.distance_backend` accepts `cpu`, `auto`, or `cupy`; Phase 1 config defaults to `cpu`, and `auto` falls back to CPU when CuPy is not importable or cannot pass a small smoke test.
+- KNN backend choices are recorded in artifacts through `knn_settings.distance_backend`, `dependencies.knn_distance_backend_requested`, `dependencies.knn_distance_backend`, and `dependencies.cupy_available`.
 - `meta_model.device` accepts `cpu`, `cuda`, or `auto`; Phase 1 config uses `auto`, which selects XGBoost CUDA only when the installed XGBoost build reports CUDA support.
 - `meta_model.tree_method` defaults to `hist`, matching XGBoost's supported GPU training path when `device: cuda`.
 - GPU backend choices are recorded in artifacts through `meta_model_backend`, `dependencies.xgboost_cuda_available`, and `dependencies.xgboost_cuda_detection`.
@@ -270,7 +290,7 @@ v2-btc-hmm-knn-features-1
 These schema and version fields are public research contracts and should not change casually. Any rename, removal, semantic change, or version bump requires a coordinated docs, tests, fixture, replay, monitoring, and artifact migration review:
 
 - Dataset manifest: `dataset_manifest_version`, `feature_version`, `label_version`, `label_outcome_fields`, `label_interval_fields`, `entry_price_source_summary`, `research_only`, `symbol`, `asset_scope`, `missing_feature_rates`, `raw_context_available_counts`, `exchange_context_summary`, and `planned_split_summary`.
-- HMM/KNN artifact manifest: `artifact_manifest_version`, `feature_version`, `feature_columns`, `wt3d_feature_columns`, `label_version`, `label_horizons`, `primary_label_horizon`, `label_outcome_fields`, `knn_settings`, artifact path keys, `dependencies.hmm_backend`, `dependencies.meta_backend`, `dependencies.hmmlearn_available`, `dependencies.xgboost_available`, `dependencies.xgboost_cuda_available`, `dependencies.xgboost_cuda_detection`, optional `dependencies.xgboost_cuda_build_info`, `meta_validation`, and `research_only`.
+- HMM/KNN artifact manifest: `artifact_manifest_version`, `feature_version`, `feature_columns`, `wt3d_feature_columns`, `label_version`, `label_horizons`, `primary_label_horizon`, `label_outcome_fields`, `knn_settings`, artifact path keys, `dependencies.hmm_backend`, `dependencies.meta_backend`, `dependencies.hmmlearn_available`, `dependencies.cupy_available`, `dependencies.knn_distance_backend_requested`, `dependencies.knn_distance_backend`, `dependencies.xgboost_available`, `dependencies.xgboost_cuda_available`, `dependencies.xgboost_cuda_detection`, optional `dependencies.xgboost_cuda_build_info`, `meta_validation`, and `research_only`.
 - Metrics and monitoring: `metrics_version`, `monitoring_report_version`, `research_only`, `observe_only`, `promotion_ready`, `promotion_failures`, `feature_outages`, `entropy_no_trade`, `regime_distribution_drift`, `neighbor_quality`, `funding_costs`, `calibration_decay`, and `alerts`.
 - Archive/market-data data-quality reports: `data_quality_report_version`, `research_only`, `observe_only`, `promotion_ready`, `manifest_count`, `source_counts`, `family_counts`, `symbol_counts`, `gap_count_total`, `duplicate_count_total`, `missing_receive_time_count`, `non_promotable_count`, `source_mismatch_count`, `missing_research_only_count`, `zero_row_manifest_count`, `timestamp_drift_flags`, `missing_receive_time_flags`, `stale_receive_time_flags`, `alerts`, and `manifest_summaries`.
 - Public parquet/CSV columns: `regime_posteriors.parquet`, `knn_predictions.parquet`, `meta_predictions.parquet`, and `neighbor_diagnostics.csv` fields listed above.

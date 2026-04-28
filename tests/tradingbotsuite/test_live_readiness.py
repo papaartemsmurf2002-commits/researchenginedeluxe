@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from tradingbotsuite.research.live_readiness import (
     LIVE_READINESS_REPORT_VERSION,
+    RESEARCH_BOUNDARY_REPORT_VERSION,
     build_live_readiness_report,
+    build_research_boundary_report,
+    research_boundary_metadata,
 )
 
 
@@ -148,3 +151,82 @@ def test_live_readiness_future_style_payload_passes_advisory_checks_but_never_pr
         "failed_check_count": 0,
         "passed_check_count": 6,
     }
+
+
+def test_research_boundary_accepts_research_artifact_metrics_and_monitoring_report() -> None:
+    boundary = research_boundary_metadata()
+    report = build_research_boundary_report(
+        artifact_manifest={
+            "artifact_manifest_version": "v2-hmm-knn-artifact-manifest-1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            **boundary,
+        },
+        metrics={
+            "metrics_version": "v2-hmm-knn-walk-forward-metrics-1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "promotion_failures": ["research_only_not_live_promotable"],
+            **boundary,
+        },
+        monitoring_report={
+            "monitoring_report_version": "v2-hmm-knn-monitoring-report-1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "alerts": [{"code": "low_neighbor_quality", "observe_only": True}],
+            **boundary,
+        },
+    )
+
+    assert report["research_boundary_report_version"] == RESEARCH_BOUNDARY_REPORT_VERSION
+    assert report["research_only"] is True
+    assert report["observe_only"] is True
+    assert report["promotion_ready"] is False
+    assert report["passed"] is True
+    assert report["blockers"] == []
+
+
+def test_research_boundary_rejects_live_consumable_research_manifest() -> None:
+    report = build_research_boundary_report(
+        artifact_manifest={
+            "artifact_manifest_version": "v2-hmm-knn-artifact-manifest-1",
+            "research_only": True,
+            "promotion_ready": True,
+            "intended_use": "live",
+            "live_signal_input": True,
+            "position_sizing_input": True,
+            "operator_control_input": False,
+            "live_execution_input": False,
+            "runtime_control_input": False,
+            "execution_intents_path": "orders.jsonl",
+        }
+    )
+
+    assert report["passed"] is False
+    assert {
+        "artifact_manifest:promotion_ready_must_remain_false",
+        "artifact_manifest:intended_use_not_research:live",
+        "artifact_manifest:non_live_flag_must_be_false:live_signal_input",
+        "artifact_manifest:non_live_flag_must_be_false:position_sizing_input",
+        "artifact_manifest:must_not_emit_live_output_field:execution_intents_path",
+    }.issubset(set(report["blockers"]))
+
+
+def test_research_boundary_rejects_monitoring_alerts_that_are_not_observe_only() -> None:
+    boundary = research_boundary_metadata()
+    report = build_research_boundary_report(
+        monitoring_report={
+            "monitoring_report_version": "v2-hmm-knn-monitoring-report-1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "alerts": [{"code": "feature_outage"}],
+            **boundary,
+        }
+    )
+
+    assert report["passed"] is False
+    assert "monitoring_report:alert_not_observe_only:0" in report["blockers"]

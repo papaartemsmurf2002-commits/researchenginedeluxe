@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import json
 import math
 import time
@@ -15,6 +16,7 @@ from sklearn.mixture import GaussianMixture
 
 from tradingbotsuite.core.math import BAR_INTERVAL_MS
 from tradingbotsuite.research.dataset import LABEL_OUTCOME_COLUMNS, LABEL_VERSION
+from tradingbotsuite.research.live_readiness import research_boundary_metadata
 
 try:  # optional research extra
     from hmmlearn.hmm import GaussianHMM
@@ -103,6 +105,7 @@ class KnnSettings:
     vote_probability_threshold: float
     expected_value_threshold: float
     feature_columns: list[str]
+    distance_backend: str = "cpu"
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +220,8 @@ def load_hmm_knn_plan(path: Path) -> HmmKnnResearchPlan:
 def _validate_knn_settings(plan: HmmKnnResearchPlan) -> None:
     if plan.knn.distance != "lorentzian":
         raise ValueError("knn.distance must be 'lorentzian'")
+    if plan.knn.distance_backend not in {"cpu", "auto", "cupy"}:
+        raise ValueError("knn.distance_backend must be one of: cpu, auto, cupy")
     if not plan.knn.k_values:
         raise ValueError("knn.k_values must contain at least one k value")
     if any(int(k) <= 0 for k in plan.knn.k_values):
@@ -267,7 +272,87 @@ def robust_scaler_fit(frame: pd.DataFrame, columns: list[str]) -> RobustScalerSt
     return RobustScalerState(columns=list(columns), median=median, scale=scale)
 
 
-def lorentzian_distance_matrix(query: np.ndarray, train: np.ndarray, scales: np.ndarray | None = None) -> np.ndarray:
+def _import_cupy() -> Any | None:
+    try:
+        return importlib.import_module("cupy")
+    except Exception:
+        return None
+
+
+def _cupy_lorentzian_smoke(cupy: Any) -> None:
+    sample = cupy.asarray([[0.0, 1.0]], dtype=float)
+    result = cupy.log1p(cupy.abs(sample)).sum(axis=1)
+    if hasattr(cupy, "asnumpy"):
+        cupy.asnumpy(result)
+    elif hasattr(result, "get"):
+        result.get()
+
+
+def _resolve_lorentzian_distance_backend(requested_backend: str) -> str:
+    requested = str(requested_backend or "cpu").strip().lower()
+    if requested not in {"cpu", "auto", "cupy"}:
+        raise ValueError("knn.distance_backend must be one of: cpu, auto, cupy")
+    if requested == "cpu":
+        return "cpu"
+    cupy = _import_cupy()
+    if cupy is None:
+        if requested == "auto":
+            return "cpu"
+        raise RuntimeError("CuPy Lorentzian backend requested, but cupy is not importable")
+    try:
+        _cupy_lorentzian_smoke(cupy)
+    except Exception as exc:
+        if requested == "auto":
+            return "cpu"
+        raise RuntimeError("CuPy Lorentzian backend requested, but a CuPy smoke test failed") from exc
+    return "cupy"
+
+
+def _cupy_available() -> bool:
+    return _resolve_lorentzian_distance_backend("auto") == "cupy"
+
+
+def _knn_distance_backend_report(requested_backend: str) -> dict[str, Any]:
+    requested = str(requested_backend or "cpu").strip().lower()
+    try:
+        resolved = _resolve_lorentzian_distance_backend(requested)
+        error = None
+    except RuntimeError as exc:
+        resolved = "unavailable"
+        error = str(exc)
+    return {
+        "knn_distance_backend_requested": requested,
+        "knn_distance_backend": resolved,
+        "cupy_available": resolved == "cupy" if requested == "auto" else _cupy_available(),
+        "cupy_error": error,
+    }
+
+
+def _numpy_lorentzian_distance_matrix(query: np.ndarray, train: np.ndarray, scales: np.ndarray) -> np.ndarray:
+    diff = np.abs(query[:, None, :] - train[None, :, :]) / scales.reshape(1, 1, -1)
+    return np.log1p(diff).sum(axis=2)
+
+
+def _cupy_lorentzian_distance_matrix(query: np.ndarray, train: np.ndarray, scales: np.ndarray, cupy: Any) -> np.ndarray:
+    query_gpu = cupy.asarray(query, dtype=float)
+    train_gpu = cupy.asarray(train, dtype=float)
+    scales_gpu = cupy.asarray(scales, dtype=float)
+    diff = cupy.abs(query_gpu[:, None, :] - train_gpu[None, :, :]) / scales_gpu.reshape(1, 1, -1)
+    distances = cupy.log1p(diff).sum(axis=2)
+    if hasattr(cupy, "asnumpy"):
+        return np.asarray(cupy.asnumpy(distances), dtype=float)
+    if hasattr(distances, "get"):
+        return np.asarray(distances.get(), dtype=float)
+    return np.asarray(distances, dtype=float)
+
+
+def lorentzian_distance_matrix(
+    query: np.ndarray,
+    train: np.ndarray,
+    scales: np.ndarray | None = None,
+    *,
+    backend: str = "cpu",
+) -> np.ndarray:
     query = np.asarray(query, dtype=float)
     train = np.asarray(train, dtype=float)
     if query.ndim == 1:
@@ -279,8 +364,22 @@ def lorentzian_distance_matrix(query: np.ndarray, train: np.ndarray, scales: np.
     scales = np.asarray(scales, dtype=float)
     if scales.ndim != 1 or len(scales) != train.shape[1] or np.any(~np.isfinite(scales)) or np.any(scales <= 0):
         raise ValueError("Lorentzian scales must be finite positive values for every feature")
-    diff = np.abs(query[:, None, :] - train[None, :, :]) / scales.reshape(1, 1, -1)
-    return np.log1p(diff).sum(axis=2)
+    requested = str(backend or "cpu").strip().lower()
+    if requested not in {"cpu", "auto", "cupy"}:
+        raise ValueError("knn.distance_backend must be one of: cpu, auto, cupy")
+    if requested == "cpu":
+        return _numpy_lorentzian_distance_matrix(query, train, scales)
+    cupy = _import_cupy()
+    if cupy is None:
+        if requested == "auto":
+            return _numpy_lorentzian_distance_matrix(query, train, scales)
+        raise RuntimeError("CuPy Lorentzian backend requested, but cupy is not importable")
+    try:
+        return _cupy_lorentzian_distance_matrix(query, train, scales, cupy)
+    except Exception as exc:
+        if requested == "auto":
+            return _numpy_lorentzian_distance_matrix(query, train, scales)
+        raise RuntimeError("CuPy Lorentzian backend requested, but distance calculation failed") from exc
 
 
 def build_wt3d_features(frame: pd.DataFrame, settings: Wt3dSettings) -> pd.DataFrame:
@@ -500,6 +599,7 @@ def _knn_predict(
     test_regimes: pd.Series,
     plan: HmmKnnResearchPlan,
     include_sweep: bool = True,
+    distance_backend: str | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     labels = train_frame[plan.labels.label_column].astype(float).to_numpy()
     pnl = train_frame[plan.labels.pnl_column].astype(float).to_numpy()
@@ -507,7 +607,8 @@ def _knn_predict(
     rows: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
     sweep_rows: list[dict[str, Any]] = []
-    distance_matrix = lorentzian_distance_matrix(test_matrix, train_matrix)
+    resolved_distance_backend = distance_backend or _resolve_lorentzian_distance_backend(plan.knn.distance_backend)
+    distance_matrix = lorentzian_distance_matrix(test_matrix, train_matrix, backend=resolved_distance_backend)
     combinations = _knn_combinations(plan, include_sweep=include_sweep)
     for local_index, (_, test_row) in enumerate(test_frame.iterrows()):
         current_regime = int(test_regimes.iloc[local_index])
@@ -887,6 +988,7 @@ def run_hmm_knn_research(
     all_knn_sweeps: list[pd.DataFrame] = []
     split_metrics: list[dict[str, Any]] = []
     meta_training_summaries: list[dict[str, Any]] = []
+    knn_distance_backend = _resolve_lorentzian_distance_backend(plan.knn.distance_backend)
     start_time = time.perf_counter()
     meta_feature_columns = [
         "p_up_barrier",
@@ -927,6 +1029,7 @@ def run_hmm_knn_research(
             train_regimes=train_posterior["top_regime"],
             test_regimes=test_posterior["top_regime"],
             plan=plan,
+            distance_backend=knn_distance_backend,
         )
         test_scoring = test_frame.reset_index(drop=True).copy()
         meta_frame = pd.concat(
@@ -999,6 +1102,9 @@ def run_hmm_knn_research(
         "plan_version": plan.version,
         "plan_sha256": plan.plan_sha256(),
         "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
         "symbol": plan.symbol,
         "asset_scope": plan.asset_scope,
         "config_path": str(config_path),
@@ -1019,6 +1125,7 @@ def run_hmm_knn_research(
             "primary_weighting": plan.knn.primary_weighting,
             "same_regime_only": bool(plan.knn.same_regime_only),
             "allow_cross_regime_fallback": bool(plan.knn.allow_cross_regime_fallback),
+            "distance_backend": plan.knn.distance_backend,
         },
         "regime_posteriors_path": str(regime_posteriors_path),
         "knn_predictions_path": str(knn_predictions_path),
@@ -1030,6 +1137,9 @@ def run_hmm_knn_research(
             "meta_backend": sorted(meta_predictions["meta_model_backend"].dropna().unique().tolist()),
             "hmmlearn_available": GaussianHMM is not None,
             "xgboost_available": XGBClassifier is not None,
+            "cupy_available": _cupy_available(),
+            "knn_distance_backend": knn_distance_backend,
+            "knn_distance_backend_requested": plan.knn.distance_backend,
             **xgboost_dependency_report,
         },
         "meta_validation": {
@@ -1227,6 +1337,8 @@ def _knn_sweep_metrics(knn_sweep: pd.DataFrame, plan: HmmKnnResearchPlan) -> dic
         "primary_weighting": plan.knn.primary_weighting,
         "same_regime_only": bool(plan.knn.same_regime_only),
         "allow_cross_regime_fallback": bool(plan.knn.allow_cross_regime_fallback),
+        "distance_backend_requested": plan.knn.distance_backend,
+        "distance_backend": _resolve_lorentzian_distance_backend(plan.knn.distance_backend),
         "results": [],
     }
     if knn_sweep.empty:
@@ -1284,7 +1396,9 @@ def _overall_metrics(
         failures.append("meta_filter_did_not_improve_pure_knn")
     return {
         "research_only": True,
+        "observe_only": True,
         "promotion_ready": False,
+        **research_boundary_metadata(),
         "promotion_failures": sorted(set(failures)),
         "evaluation_basis": {
             "return_column": "gross_return" if "gross_return" in frame.columns else plan.labels.pnl_column,
@@ -1332,6 +1446,8 @@ def replay_hmm_knn_artifact(manifest_path: Path) -> Path:
         raise FileNotFoundError(metrics_path)
     metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     metrics["research_only"] = True
+    metrics["observe_only"] = True
     metrics["promotion_ready"] = False
+    metrics.update(research_boundary_metadata())
     metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
     return metrics_path

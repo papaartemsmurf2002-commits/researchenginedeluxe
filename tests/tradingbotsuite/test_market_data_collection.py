@@ -84,6 +84,11 @@ async def test_collect_binance_usdm_bars_writes_jsonl_and_manifest(tmp_path: Pat
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["intended_use"] == "research_observe_only"
+    assert manifest["live_signal_input"] is False
+    assert manifest["position_sizing_input"] is False
     assert manifest["source"] == "binance_usdm_klines"
     assert manifest["symbol"] == "BTCUSDT"
     assert manifest["interval"] == "1m"
@@ -246,6 +251,11 @@ def test_ingest_binance_vision_kline_csv_reports_gaps_duplicates_and_is_determin
     manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
     assert_valid_archive_source_manifest(manifest)
     assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["intended_use"] == "research_observe_only"
+    assert manifest["live_signal_input"] is False
+    assert manifest["position_sizing_input"] is False
     assert manifest["source_name"] == "binance_vision"
     assert manifest["source_type"] == "public_archive"
     assert manifest["data_family"] == "kline"
@@ -340,6 +350,11 @@ def test_market_journal_replay_is_deterministic_and_validates_manifest_hash(tmp_
     replayed = read_market_journal(journal_path)
 
     assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["intended_use"] == "research_observe_only"
+    assert manifest["live_signal_input"] is False
+    assert manifest["position_sizing_input"] is False
     assert manifest["event_count"] == 3
     assert manifest["event_counts_by_family"] == {"trade": 3}
     assert manifest["event_counts_by_symbol"] == {"BTCUSDT": 3}

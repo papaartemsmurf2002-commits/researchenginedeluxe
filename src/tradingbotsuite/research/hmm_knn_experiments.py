@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -10,6 +11,11 @@ from typing import Any
 
 from tradingbotsuite.research.hmm_knn import run_hmm_knn_research
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
+from tradingbotsuite.research.live_readiness import (
+    build_research_boundary_report,
+    research_boundary_metadata,
+    research_boundary_passed,
+)
 
 HMM_KNN_EXPERIMENT_RUNNER_VERSION = "v2-hmm-knn-experiment-runner-1"
 HMM_KNN_EXPERIMENT_MANIFEST_VERSION = "v2-hmm-knn-experiment-manifest-1"
@@ -22,6 +28,24 @@ class HmmKnnExperimentMatrixResult:
     summary_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class _ExperimentJob:
+    experiment: dict[str, Any]
+    slug: str
+    index: int
+    run_order: int
+    mutations: dict[str, Any]
+    config_path: Path
+    config_sha256: str
+    config_payload_sha256: str
+    cache_key: str
+    artifact_manifest_path: Path
+    resolved_dataset_path: Path
+    cache_root: Path
+    force: bool
+    write_monitoring: bool
+
+
 def run_hmm_knn_experiment_matrix(
     *,
     spec_path: Path,
@@ -31,9 +55,12 @@ def run_hmm_knn_experiment_matrix(
     force: bool = False,
     write_monitoring: bool = True,
     fail_fast: bool = False,
+    max_workers: int = 1,
 ) -> HmmKnnExperimentMatrixResult:
     """Run a research-only HMM/KNN experiment matrix with deterministic caching."""
 
+    if max_workers < 1:
+        raise ValueError("max_workers must be at least 1")
     spec_path = spec_path.expanduser()
     spec = _read_json(spec_path)
     output_dir = output_dir.expanduser()
@@ -57,8 +84,9 @@ def run_hmm_knn_experiment_matrix(
 
     manifest_records: list[dict[str, Any]] = []
     summary_rows: list[dict[str, Any]] = []
-    overall_status = "passed"
     started_at_ms = int(time.time() * 1000)
+    started_perf = time.perf_counter()
+    jobs: list[_ExperimentJob] = []
 
     for index, experiment in enumerate(experiments, start=1):
         slug = _safe_slug(str(experiment.get("slug") or experiment.get("name") or f"experiment-{index}"))
@@ -83,59 +111,42 @@ def run_hmm_knn_experiment_matrix(
                 "config_payload_sha256": config_payload_sha256,
             }
         )[:24]
-        cache_status = "miss"
         artifact_manifest_path = cache_root / cache_key / str(experiment_config["version"]) / "artifact_manifest.json"
-        monitoring_report_path: Path | None = None
-        error: str | None = None
+        jobs.append(
+            _ExperimentJob(
+                experiment=dict(experiment),
+                slug=slug,
+                index=index,
+                run_order=int(experiment.get("run_order", index)),
+                mutations=mutations,
+                config_path=config_path,
+                config_sha256=config_sha256,
+                config_payload_sha256=config_payload_sha256,
+                cache_key=cache_key,
+                artifact_manifest_path=artifact_manifest_path,
+                resolved_dataset_path=resolved_dataset_path,
+                cache_root=cache_root,
+                force=force,
+                write_monitoring=write_monitoring,
+            )
+        )
 
-        try:
-            if not force and _cached_artifact_complete(artifact_manifest_path, config_sha256=config_sha256, dataset_path=resolved_dataset_path):
-                cache_status = "hit"
-            else:
-                result = run_hmm_knn_research(
-                    config_path=config_path,
-                    dataset_path=resolved_dataset_path,
-                    output_dir=cache_root / cache_key,
-                )
-                artifact_manifest_path = result.artifact_manifest_path
-                cache_status = "refresh" if force else "miss"
+    effective_workers = 1 if fail_fast else min(max_workers, len(jobs))
+    if effective_workers == 1:
+        for job in jobs:
+            record = _run_experiment_job(job)
+            if fail_fast and record["status"] == "failed":
+                raise RuntimeError(record["error"])
+            manifest_records.append(record)
+    else:
+        with ThreadPoolExecutor(max_workers=effective_workers) as executor:
+            records = list(executor.map(_run_experiment_job, jobs))
+        manifest_records.extend(records)
 
-            if write_monitoring:
-                monitoring_report_path = monitor_hmm_knn_artifact(artifact_manifest_path)
-            metrics = _load_metrics(artifact_manifest_path)
-            record_status = "passed"
-        except Exception as exc:
-            overall_status = "failed"
-            record_status = "failed"
-            metrics = {}
-            error = f"{type(exc).__name__}: {exc}"
-            if fail_fast:
-                raise
-
-        record = {
-            "name": str(experiment.get("name") or slug),
-            "slug": slug,
-            "owning_agent": experiment.get("owning_agent"),
-            "run_order": int(experiment.get("run_order", index)),
-            "config_data_change": experiment.get("config_data_change"),
-            "expected_metric_movement": experiment.get("expected_metric_movement"),
-            "risk": experiment.get("risk"),
-            "requires_new_data": bool(experiment.get("requires_new_data", False)),
-            "can_run_on_current_artifacts": bool(experiment.get("can_run_on_current_artifacts", True)),
-            "mutations": mutations,
-            "status": record_status,
-            "error": error,
-            "cache_key": cache_key,
-            "cache_status": cache_status,
-            "config_path": str(config_path),
-            "config_sha256": config_sha256,
-            "config_payload_sha256": config_payload_sha256,
-            "artifact_manifest_path": str(artifact_manifest_path) if error is None else None,
-            "monitoring_report_path": str(monitoring_report_path) if monitoring_report_path is not None else None,
-            "metrics_digest": _metrics_digest(metrics),
-        }
-        manifest_records.append(record)
-        summary_rows.append(_summary_row(record))
+    manifest_records.sort(key=lambda record: int(record.get("run_order", 0)))
+    summary_rows = [_summary_row(record) for record in manifest_records]
+    overall_status = "failed" if any(record.get("status") == "failed" for record in manifest_records) else "passed"
+    promotion_failure_counts = _promotion_failure_counts(manifest_records)
 
     summary_path = output_dir / "experiment_summary.csv"
     _write_summary(summary_path, summary_rows)
@@ -148,8 +159,12 @@ def run_hmm_knn_experiment_matrix(
         "research_only": True,
         "observe_only": True,
         "promotion_ready": False,
+        **research_boundary_metadata(),
         "overall_status": overall_status,
         "name": spec.get("name") or spec_path.stem,
+        "runtime_seconds": round(time.perf_counter() - started_perf, 6),
+        "max_workers": max_workers,
+        "effective_workers": effective_workers,
         "spec_path": str(spec_path),
         "spec_sha256": spec_sha256,
         "base_config_path": str(base_config_path),
@@ -161,10 +176,93 @@ def run_hmm_knn_experiment_matrix(
         "force": bool(force),
         "write_monitoring": bool(write_monitoring),
         "summary_path": str(summary_path),
+        "promotion_failure_counts": promotion_failure_counts,
         "experiments": manifest_records,
     }
+    boundary_report = build_research_boundary_report(experiment_manifest=manifest)
+    manifest["research_boundary"] = {
+        "passed": bool(boundary_report["passed"]),
+        "blockers": boundary_report["blockers"],
+    }
+    if not research_boundary_passed(boundary_report):
+        manifest["overall_status"] = "failed"
     manifest_path.write_text(_canonical_json(manifest, indent=2) + "\n", encoding="utf-8")
     return HmmKnnExperimentMatrixResult(output_dir=output_dir, manifest_path=manifest_path, summary_path=summary_path)
+
+
+def _run_experiment_job(job: _ExperimentJob) -> dict[str, Any]:
+    experiment_started = time.perf_counter()
+    cache_status = "miss"
+    artifact_manifest_path = job.artifact_manifest_path
+    monitoring_report_path: Path | None = None
+    error: str | None = None
+    boundary_report: dict[str, Any] = {}
+
+    try:
+        if not job.force and _cached_artifact_complete(
+            artifact_manifest_path,
+            config_sha256=job.config_sha256,
+            dataset_path=job.resolved_dataset_path,
+        ):
+            cache_status = "hit"
+        else:
+            result = run_hmm_knn_research(
+                config_path=job.config_path,
+                dataset_path=job.resolved_dataset_path,
+                output_dir=job.cache_root / job.cache_key,
+            )
+            artifact_manifest_path = result.artifact_manifest_path
+            cache_status = "refresh" if job.force else "miss"
+
+        if job.write_monitoring:
+            monitoring_report_path = monitor_hmm_knn_artifact(artifact_manifest_path)
+        metrics = _load_metrics(artifact_manifest_path)
+        artifact_manifest = _read_json(artifact_manifest_path)
+        monitoring_report = _read_json(monitoring_report_path) if monitoring_report_path is not None else None
+        boundary_report = build_research_boundary_report(
+            artifact_manifest=artifact_manifest,
+            metrics=metrics,
+            monitoring_report=monitoring_report,
+        )
+        if not research_boundary_passed(boundary_report):
+            raise ValueError(f"research boundary validation failed: {boundary_report['blockers']}")
+        record_status = "passed"
+    except Exception as exc:
+        record_status = "failed"
+        metrics = {}
+        error = f"{type(exc).__name__}: {exc}"
+
+    metrics_digest = _metrics_digest(metrics)
+    return {
+        "name": str(job.experiment.get("name") or job.slug),
+        "slug": job.slug,
+        "owning_agent": job.experiment.get("owning_agent"),
+        "run_order": job.run_order,
+        "config_data_change": job.experiment.get("config_data_change"),
+        "expected_metric_movement": job.experiment.get("expected_metric_movement"),
+        "risk": job.experiment.get("risk"),
+        "requires_new_data": bool(job.experiment.get("requires_new_data", False)),
+        "can_run_on_current_artifacts": bool(job.experiment.get("can_run_on_current_artifacts", True)),
+        "mutations": job.mutations,
+        "status": record_status,
+        "error": error,
+        "runtime_seconds": round(time.perf_counter() - experiment_started, 6),
+        "cache_key": job.cache_key,
+        "cache_status": cache_status,
+        "cache_hit": cache_status == "hit",
+        "config_path": str(job.config_path),
+        "config_sha256": job.config_sha256,
+        "config_payload_sha256": job.config_payload_sha256,
+        "artifact_manifest_path": str(artifact_manifest_path) if error is None else None,
+        "artifact_manifest": str(artifact_manifest_path) if error is None else None,
+        "monitoring_report_path": str(monitoring_report_path) if monitoring_report_path is not None else None,
+        "metrics_digest": metrics_digest,
+        "research_boundary": {
+            "passed": bool(boundary_report.get("passed", False)),
+            "blockers": boundary_report.get("blockers", []),
+        },
+        "promotion_failures": metrics_digest.get("promotion_failures") or [],
+    }
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -221,6 +319,8 @@ def _cached_artifact_complete(artifact_manifest_path: Path, *, config_sha256: st
         return False
     if not manifest.get("research_only"):
         return False
+    if not research_boundary_passed(build_research_boundary_report(artifact_manifest=manifest)):
+        return False
     if str(manifest.get("dataset_path")) != str(dataset_path):
         return False
     config_path = Path(str(manifest.get("config_path", "")))
@@ -273,20 +373,36 @@ def _metrics_digest(metrics: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _promotion_failure_counts(records: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        digest = record.get("metrics_digest") or {}
+        for reason in digest.get("promotion_failures") or []:
+            key = str(reason)
+            counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def _summary_row(record: dict[str, Any]) -> dict[str, Any]:
     digest = record.get("metrics_digest") or {}
     split_share = digest.get("max_single_split_pnl_share_by_strategy") or {}
+    promotion_failures = digest.get("promotion_failures") or []
     return {
         "run_order": record.get("run_order"),
         "slug": record.get("slug"),
         "owning_agent": record.get("owning_agent"),
         "status": record.get("status"),
         "cache_status": record.get("cache_status"),
+        "cache_hit": record.get("cache_hit"),
+        "runtime_seconds": record.get("runtime_seconds"),
         "requires_new_data": record.get("requires_new_data"),
         "can_run_on_current_artifacts": record.get("can_run_on_current_artifacts"),
         "artifact_manifest_path": record.get("artifact_manifest_path"),
+        "artifact_manifest": record.get("artifact_manifest"),
         "monitoring_report_path": record.get("monitoring_report_path"),
         "promotion_ready": digest.get("promotion_ready"),
+        "promotion_failure_count": len(promotion_failures),
+        "promotion_failures": ";".join(str(reason) for reason in promotion_failures),
         "knn_trade_count": digest.get("knn_trade_count"),
         "knn_expectancy_after_cost": digest.get("knn_expectancy_after_cost"),
         "knn_profit_factor": digest.get("knn_profit_factor"),

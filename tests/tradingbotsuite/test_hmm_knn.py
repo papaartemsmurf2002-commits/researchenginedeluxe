@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import csv
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import types
 
 import numpy as np
 import pandas as pd
@@ -18,10 +20,12 @@ from tradingbotsuite.research.hmm_knn import (
     WT3D_FEATURE_COLUMNS,
     _leakage_safe_meta_knn_features,
     _fit_meta_model,
+    _knn_distance_backend_report,
     _knn_predict,
     _overall_metrics,
     _posterior_frame,
     _prepare_dataset,
+    _resolve_lorentzian_distance_backend,
     _split_metrics,
     _xgboost_cuda_dependency_report,
     _walk_forward_frames,
@@ -241,6 +245,60 @@ def test_lorentzian_distance_is_deterministic_and_compresses_outliers() -> None:
     assert distances[2] < 100.0
     with pytest.raises(ValueError, match="finite positive"):
         lorentzian_distance_matrix(query, train, np.array([1.0, 0.0]))
+    with pytest.raises(ValueError, match="knn.distance_backend"):
+        lorentzian_distance_matrix(query, train, backend="gpu")
+
+
+def test_lorentzian_distance_auto_backend_falls_back_to_cpu_without_cupy(monkeypatch) -> None:
+    monkeypatch.setattr(hmm_knn, "_import_cupy", lambda: None)
+    train = np.array([[0.0, 0.0], [2.0, 4.0]])
+    query = np.array([[1.0, 1.0]])
+
+    distances = lorentzian_distance_matrix(query, train, backend="auto")
+
+    np.testing.assert_allclose(distances, lorentzian_distance_matrix(query, train, backend="cpu"))
+    assert _resolve_lorentzian_distance_backend("auto") == "cpu"
+    assert _knn_distance_backend_report("auto") == {
+        "knn_distance_backend_requested": "auto",
+        "knn_distance_backend": "cpu",
+        "cupy_available": False,
+        "cupy_error": None,
+    }
+
+
+def test_lorentzian_distance_cupy_backend_dispatches_through_optional_import(monkeypatch) -> None:
+    calls: dict[str, int] = {"asarray": 0}
+
+    def fake_asarray(value, dtype=float):
+        calls["asarray"] += 1
+        return np.asarray(value, dtype=dtype)
+
+    fake_cupy = types.SimpleNamespace(
+        asarray=fake_asarray,
+        abs=np.abs,
+        log1p=np.log1p,
+        asnumpy=lambda value: np.asarray(value),
+    )
+    monkeypatch.setitem(sys.modules, "cupy", fake_cupy)
+    train = np.array([[0.0, 0.0], [3.0, 4.0]])
+    query = np.array([[1.0, 2.0]])
+
+    distances = lorentzian_distance_matrix(query, train, backend="cupy")
+
+    np.testing.assert_allclose(distances, lorentzian_distance_matrix(query, train, backend="cpu"))
+    assert _resolve_lorentzian_distance_backend("cupy") == "cupy"
+    assert calls["asarray"] >= 3
+
+
+def test_knn_config_accepts_distance_backend_and_rejects_unknown_backend(tmp_path) -> None:
+    auto_config = _write_modified_test_config(tmp_path, knn__distance_backend="auto")
+    auto_plan = load_hmm_knn_plan(auto_config)
+
+    assert auto_plan.knn.distance_backend == "auto"
+
+    bad_config = _write_modified_test_config(tmp_path, knn__distance_backend="gpu")
+    with pytest.raises(ValueError, match="knn.distance_backend"):
+        load_hmm_knn_plan(bad_config)
 
 
 def test_wt3d_features_use_completed_history_without_future_pivots() -> None:
@@ -580,9 +638,15 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
     assert manifest["feature_version"] == HMM_KNN_FEATURE_VERSION
     assert set(WT3D_FEATURE_COLUMNS).issubset(manifest["wt3d_feature_columns"])
     assert manifest["knn_settings"]["distance"] == "lorentzian"
+    assert manifest["knn_settings"]["distance_backend"] == "cpu"
     assert manifest["knn_settings"]["primary_k"] == 12
+    assert manifest["dependencies"]["knn_distance_backend_requested"] == "cpu"
+    assert manifest["dependencies"]["knn_distance_backend"] == "cpu"
+    assert manifest["dependencies"]["cupy_available"] in {True, False}
     assert metrics["research_only"] is True
     assert metrics["promotion_ready"] is False
+    assert metrics["knn_sweep"]["distance_backend_requested"] == "cpu"
+    assert metrics["knn_sweep"]["distance_backend"] == "cpu"
     assert metrics["knn_sweep"]["primary_k"] == 12
     assert {
         (result["k"], result["weighting"])
@@ -843,6 +907,10 @@ def test_hmm_knn_monitoring_report_is_research_only_and_observe_only(tmp_path) -
     assert report["research_only"] is True
     assert report["promotion_ready"] is False
     assert report["observe_only"] is True
+    assert report["intended_use"] == "research_observe_only"
+    assert report["live_signal_input"] is False
+    assert report["position_sizing_input"] is False
+    assert report["research_boundary"]["passed"] is True
     assert report["live_vs_replay_mismatch"] == "not_available"
     assert report["artifact_identity"]["plan_version"] == "test-hmm-knn"
     assert report["feature_outages"]["configured_feature_count"] > 0
@@ -896,6 +964,11 @@ def test_hmm_knn_cli_research_then_monitor_writes_expected_temp_artifacts(tmp_pa
 
     manifest = json.loads(artifact_manifest_path.read_text(encoding="utf-8"))
     assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["intended_use"] == "research_observe_only"
+    assert manifest["live_signal_input"] is False
+    assert manifest["position_sizing_input"] is False
     assert manifest["artifact_manifest_version"] == "v2-hmm-knn-artifact-manifest-1"
     assert manifest["symbol"] == "BTCUSDT"
     assert manifest["asset_scope"] == ["BTCUSDT"]
@@ -926,6 +999,7 @@ def test_hmm_knn_cli_research_then_monitor_writes_expected_temp_artifacts(tmp_pa
     assert monitoring_report["research_only"] is True
     assert monitoring_report["observe_only"] is True
     assert monitoring_report["promotion_ready"] is False
+    assert monitoring_report["research_boundary"]["passed"] is True
 
 
 def test_hmm_knn_monitoring_fails_clearly_when_required_artifact_is_missing(tmp_path) -> None:
@@ -1009,6 +1083,10 @@ def test_hmm_knn_experiment_runner_writes_manifest_summary_and_monitoring(tmp_pa
     assert manifest["research_only"] is True
     assert manifest["observe_only"] is True
     assert manifest["promotion_ready"] is False
+    assert manifest["intended_use"] == "research_observe_only"
+    assert manifest["live_signal_input"] is False
+    assert manifest["position_sizing_input"] is False
+    assert manifest["research_boundary"]["passed"] is True
     assert manifest["overall_status"] == "passed"
     assert manifest["dataset_path"] == str(dataset_path)
     assert len(manifest["experiments"]) == 1
@@ -1016,11 +1094,20 @@ def test_hmm_knn_experiment_runner_writes_manifest_summary_and_monitoring(tmp_pa
     assert experiment["slug"] == "small-k-softmax"
     assert experiment["status"] == "passed"
     assert experiment["cache_status"] == "miss"
+    assert experiment["cache_hit"] is False
+    assert isinstance(experiment["runtime_seconds"], float)
     assert Path(experiment["artifact_manifest_path"]).exists()
+    assert experiment["artifact_manifest"] == experiment["artifact_manifest_path"]
     assert Path(experiment["monitoring_report_path"]).exists()
     assert experiment["metrics_digest"]["promotion_ready"] is False
+    assert experiment["research_boundary"]["passed"] is True
+    assert experiment["promotion_failures"] == experiment["metrics_digest"]["promotion_failures"]
     assert "knn_trade_count" in experiment["metrics_digest"]
-    assert rows[0].startswith("run_order,slug,owning_agent,status,cache_status")
+    assert manifest["runtime_seconds"] >= 0.0
+    assert manifest["max_workers"] == 1
+    assert manifest["effective_workers"] == 1
+    assert manifest["promotion_failure_counts"]
+    assert rows[0].startswith("run_order,slug,owning_agent,status,cache_status,cache_hit,runtime_seconds")
     assert "small-k-softmax" in rows[1]
 
 
@@ -1059,8 +1146,76 @@ def test_hmm_knn_experiment_runner_reuses_complete_cached_artifact(tmp_path) -> 
 
     assert first_experiment["cache_status"] == "miss"
     assert second_experiment["cache_status"] == "hit"
+    assert first_experiment["cache_hit"] is False
+    assert second_experiment["cache_hit"] is True
     assert second_experiment["artifact_manifest_path"] == first_experiment["artifact_manifest_path"]
     assert second_experiment["cache_key"] == first_experiment["cache_key"]
+
+
+def test_hmm_knn_experiment_runner_parallel_workers_preserve_order_and_cache_keys(tmp_path) -> None:
+    base_config_path = _write_test_config(tmp_path)
+    fixture_result = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "deterministic_sweeps", row_count=120)
+    dataset_path = fixture_result.parquet_path
+    output_dir = tmp_path / "experiments"
+    spec_path = tmp_path / "experiment_spec.json"
+    spec_path.write_text(
+        json.dumps(
+            {
+                "base_config_path": str(base_config_path),
+                "dataset_path": str(dataset_path),
+                "experiments": [
+                    {
+                        "name": "second by input first by order",
+                        "slug": "order-one",
+                        "owning_agent": "Backtest",
+                        "run_order": 2,
+                        "mutations": {"hmm.flip_cooldown_bars": 0},
+                    },
+                    {
+                        "name": "first by order",
+                        "slug": "order-zero",
+                        "owning_agent": "Backtest",
+                        "run_order": 1,
+                        "mutations": {"hmm.posterior_threshold": 0.40},
+                    },
+                ],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    first = run_hmm_knn_experiment_matrix(
+        spec_path=spec_path,
+        output_dir=output_dir,
+        write_monitoring=False,
+        max_workers=2,
+    )
+    first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+    first_rows = list(csv.DictReader(first.summary_path.open(encoding="utf-8")))
+    second = run_hmm_knn_experiment_matrix(
+        spec_path=spec_path,
+        output_dir=output_dir,
+        write_monitoring=False,
+        max_workers=2,
+    )
+    second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+
+    assert first_manifest["max_workers"] == 2
+    assert first_manifest["effective_workers"] == 2
+    assert [record["slug"] for record in first_manifest["experiments"]] == ["order-zero", "order-one"]
+    assert [row["slug"] for row in first_rows] == ["order-zero", "order-one"]
+    assert all(record["runtime_seconds"] >= 0.0 for record in first_manifest["experiments"])
+    assert all(record["artifact_manifest_path"] for record in first_manifest["experiments"])
+    assert first_manifest["promotion_failure_counts"]
+    assert [record["cache_status"] for record in first_manifest["experiments"]] == ["miss", "miss"]
+    assert [record["cache_status"] for record in second_manifest["experiments"]] == ["hit", "hit"]
+    assert [record["cache_key"] for record in second_manifest["experiments"]] == [
+        record["cache_key"] for record in first_manifest["experiments"]
+    ]
+    assert [record["artifact_manifest_path"] for record in second_manifest["experiments"]] == [
+        record["artifact_manifest_path"] for record in first_manifest["experiments"]
+    ]
 
 
 def test_hmm_knn_experiment_runner_accepts_utf8_sig_specs(tmp_path) -> None:

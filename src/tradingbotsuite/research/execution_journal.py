@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from tradingbotsuite.research.live_readiness import research_boundary_metadata
+
 SCHEMA_VERSION = "hyperliquid-execution-journal-v1"
 
 EVENT_TYPES = frozenset(
@@ -184,6 +186,9 @@ def build_journal_manifest(data_path: Path | str) -> dict[str, Any]:
     manifest = {
         "schema_version": SCHEMA_VERSION,
         "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
         "journal_type": "hyperliquid_execution_account_journal",
         "data_path": str(path),
         "row_count": len(events),

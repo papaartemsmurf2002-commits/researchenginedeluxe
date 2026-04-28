@@ -130,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     hmm_knn_experiments.add_argument("--force", action="store_true", help="Refresh cached experiment artifacts")
     hmm_knn_experiments.add_argument("--skip-monitor", action="store_true", help="Do not write monitor-hmm-knn reports for experiment artifacts")
     hmm_knn_experiments.add_argument("--fail-fast", action="store_true", help="Stop on the first failed experiment")
+    hmm_knn_experiments.add_argument("--workers", type=int, default=1, help="Bounded worker count for independent experiment specs")
 
     hmm_knn_dataset = subparsers.add_parser(
         "write-hmm-knn-sweep-datasets",
@@ -407,6 +408,7 @@ if __name__ == "__main__":
             force=args.force,
             write_monitoring=not args.skip_monitor,
             fail_fast=args.fail_fast,
+            max_workers=args.workers,
         )
         print(
             json.dumps(
