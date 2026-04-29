@@ -13,13 +13,18 @@ from typing import Any, Mapping, Protocol
 from tradingbotsuite.adapters.binance import INTERVAL_TO_MS, BinanceCandleClient
 from tradingbotsuite.core.models import Bar
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
+from tradingbotsuite.research.market_journal import (
+    MARKET_JOURNAL_SCHEMA_VERSION,
+    MARKET_JOURNAL_WRITER_VERSION,
+    MarketJournalValidationError,
+    MarketJournalWriter as _CanonicalMarketJournalWriter,
+    read_market_journal_for_replay,
+)
 
 BINANCE_USDM_FAPI_URL = "https://fapi.binance.com"
 COLLECTOR_VERSION = "binance-usdm-chart-bars-v1"
 BINANCE_VISION_ARCHIVE_SCHEMA_VERSION = "binance-vision-archive-jsonl-v1"
 BINANCE_VISION_ARCHIVE_INGESTOR_VERSION = "binance-vision-local-ingestor-v1"
-MARKET_JOURNAL_SCHEMA_VERSION = "market-journal-jsonl-v1"
-MARKET_JOURNAL_WRITER_VERSION = "market-journal-writer-v1"
 RESEARCH_MARKET_DATA_ROOT = Path("data/research/market_data/binance_usdm")
 RESEARCH_ARCHIVE_DATA_ROOT = Path("data/research/market_data/binance_vision")
 SUPPORTED_RESEARCH_SYMBOLS = frozenset({"BTCUSDT", "ETHUSDT"})
@@ -127,10 +132,6 @@ class MarketDataValidationError(ValueError):
 
 
 class MarketDataGapError(MarketDataValidationError):
-    pass
-
-
-class MarketJournalValidationError(MarketDataValidationError):
     pass
 
 
@@ -636,46 +637,13 @@ def ingest_binance_vision_archive(
     )
 
 
-def _market_journal_event(
-    *,
-    raw_payload: Mapping[str, Any],
-    normalized_payload: Mapping[str, Any],
-    source_event_time_ms: int,
-    receive_time_ms: int | None,
-    source_name: str,
-    symbol: str,
-    data_family: str,
-    source_row_index: int,
-    schema_version: str = MARKET_JOURNAL_SCHEMA_VERSION,
-) -> dict[str, Any]:
-    if source_event_time_ms < 0:
-        raise ValueError("source_event_time_ms must be non-negative")
-    if receive_time_ms is not None and receive_time_ms < 0:
-        raise ValueError("receive_time_ms must be non-negative or None")
-    event = {
-        "raw_payload": dict(raw_payload),
-        "normalized_payload": dict(normalized_payload),
-        "source_event_time_ms": int(source_event_time_ms),
-        "receive_time_ms": int(receive_time_ms) if receive_time_ms is not None else None,
-        "source_name": str(source_name),
-        "symbol": _normalize_symbol(symbol),
-        "data_family": _validate_data_family(data_family),
-        "schema_version": str(schema_version),
-        "source_row_index": int(source_row_index),
-    }
-    event["payload_hash"] = f"sha256:{_canonical_hash(event)}"
-    return event
-
-
 class MarketJournalWriter:
-    """File-backed append-only JSONL writer for research market events."""
+    """Compatibility wrapper for the canonical Binance-style market journal."""
 
     def __init__(self, journal_path: Path, manifest_path: Path | None = None) -> None:
-        self.journal_path = Path(journal_path)
-        self.manifest_path = Path(manifest_path) if manifest_path is not None else self.journal_path.with_suffix(
-            self.journal_path.suffix + ".manifest.json"
-        )
-        self.journal_path.parent.mkdir(parents=True, exist_ok=True)
+        self._writer = _CanonicalMarketJournalWriter(journal_path, manifest_path=manifest_path)
+        self.journal_path = self._writer.journal_path
+        self.manifest_path = self._writer.manifest_path
 
     def append(
         self,
@@ -690,80 +658,21 @@ class MarketJournalWriter:
         source_row_index: int,
         schema_version: str = MARKET_JOURNAL_SCHEMA_VERSION,
     ) -> dict[str, Any]:
-        event = _market_journal_event(
+        if schema_version != MARKET_JOURNAL_SCHEMA_VERSION:
+            raise MarketJournalValidationError("schema_version_must_match_market_journal_contract")
+        return self._writer.append(
             raw_payload=raw_payload,
             normalized_payload=normalized_payload,
             source_event_time_ms=source_event_time_ms,
-            receive_time_ms=receive_time_ms,
+            local_receive_time_ms=receive_time_ms,
             source_name=source_name,
             symbol=symbol,
             data_family=data_family,
             source_row_index=source_row_index,
-            schema_version=schema_version,
         )
-        line = json.dumps(event, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n"
-        with self.journal_path.open("a", encoding="utf-8", newline="\n") as handle:
-            handle.write(line)
-        return event
 
-    def write_manifest(self) -> dict[str, Any]:
-        events = _read_jsonl_events(self.journal_path)
-        journal_hash = _hash_file(self.journal_path)
-        counts_by_family: dict[str, int] = {}
-        counts_by_symbol: dict[str, int] = {}
-        for event in events:
-            data_family = str(event["data_family"])
-            symbol = str(event["symbol"])
-            counts_by_family[data_family] = counts_by_family.get(data_family, 0) + 1
-            counts_by_symbol[symbol] = counts_by_symbol.get(symbol, 0) + 1
-        event_times = [int(event["source_event_time_ms"]) for event in events]
-        manifest = {
-            "research_only": True,
-            "observe_only": True,
-            "promotion_ready": False,
-            **research_boundary_metadata(),
-            "schema_version": MARKET_JOURNAL_SCHEMA_VERSION,
-            "writer_version": MARKET_JOURNAL_WRITER_VERSION,
-            "journal_path": str(self.journal_path),
-            "journal_hash": f"sha256:{journal_hash}",
-            "event_count": len(events),
-            "event_counts_by_family": dict(sorted(counts_by_family.items())),
-            "event_counts_by_symbol": dict(sorted(counts_by_symbol.items())),
-            "first_source_event_time_ms": min(event_times) if event_times else None,
-            "last_source_event_time_ms": max(event_times) if event_times else None,
-            "manifest_generated_at_ms": int(time.time() * 1000),
-            "non_promotable_notes": [
-                "Research-only append-only market event journal.",
-                "Journal replay is deterministic and does not imply live execution readiness.",
-            ],
-        }
-        self.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
-        return manifest
-
-
-def _read_jsonl_events(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        raise FileNotFoundError(path)
-    events: list[dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as handle:
-        for line_number, line in enumerate(handle, start=1):
-            if not line.strip():
-                continue
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError as exc:
-                raise MarketJournalValidationError(f"invalid JSONL at {path}:{line_number}") from exc
-    return events
-
-
-def _validate_journal_payload_hash(event: Mapping[str, Any]) -> None:
-    payload_hash = event.get("payload_hash")
-    if not isinstance(payload_hash, str) or not payload_hash.startswith("sha256:"):
-        raise MarketJournalValidationError("journal event missing payload_hash")
-    without_hash = {key: value for key, value in event.items() if key != "payload_hash"}
-    expected = f"sha256:{_canonical_hash(without_hash)}"
-    if payload_hash != expected:
-        raise MarketJournalValidationError("journal event payload_hash mismatch")
+    def write_manifest(self, *, strict: bool = False) -> dict[str, Any]:
+        return self._writer.write_manifest(strict=strict)
 
 
 def read_market_journal(
@@ -774,24 +683,11 @@ def read_market_journal(
 ) -> list[dict[str, Any]]:
     """Read a research market journal in deterministic replay order."""
 
-    journal_path = Path(journal_path)
-    resolved_manifest_path = (
-        Path(manifest_path)
-        if manifest_path is not None
-        else journal_path.with_suffix(journal_path.suffix + ".manifest.json")
+    return read_market_journal_for_replay(
+        journal_path,
+        manifest_path=manifest_path,
+        validate_manifest=validate_manifest,
     )
-    if validate_manifest:
-        manifest = json.loads(resolved_manifest_path.read_text(encoding="utf-8"))
-        expected_hash = manifest.get("journal_hash")
-        actual_hash = f"sha256:{_hash_file(journal_path)}"
-        if expected_hash != actual_hash:
-            raise MarketJournalValidationError(
-                f"journal hash mismatch: expected {expected_hash}, observed {actual_hash}"
-            )
-    events = _read_jsonl_events(journal_path)
-    for event in events:
-        _validate_journal_payload_hash(event)
-    return sorted(events, key=lambda event: (int(event["source_event_time_ms"]), int(event["source_row_index"])))
 
 
 async def collect_binance_usdm_bars(

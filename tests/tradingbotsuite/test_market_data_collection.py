@@ -10,6 +10,8 @@ import pytest
 
 from tradingbotsuite.core.models import Bar
 from tradingbotsuite.research.market_data import (
+    MARKET_JOURNAL_SCHEMA_VERSION,
+    MARKET_JOURNAL_WRITER_VERSION,
     MarketDataCollectionResult,
     MarketJournalValidationError,
     MarketJournalWriter,
@@ -355,6 +357,9 @@ def test_market_journal_replay_is_deterministic_and_validates_manifest_hash(tmp_
     assert manifest["intended_use"] == "research_observe_only"
     assert manifest["live_signal_input"] is False
     assert manifest["position_sizing_input"] is False
+    assert manifest["schema_version"] == MARKET_JOURNAL_SCHEMA_VERSION
+    assert manifest["writer_version"] == MARKET_JOURNAL_WRITER_VERSION
+    assert manifest["journal_type"] == "binance_style_market_event_journal"
     assert manifest["event_count"] == 3
     assert manifest["event_counts_by_family"] == {"trade": 3}
     assert manifest["event_counts_by_symbol"] == {"BTCUSDT": 3}
@@ -363,6 +368,8 @@ def test_market_journal_replay_is_deterministic_and_validates_manifest_hash(tmp_
         (1_000, 1),
         (2_000, 0),
     ]
+    assert all("local_receive_time_ms" in event for event in replayed)
+    assert all("receive_time_ms" not in event for event in replayed)
     assert all(event["payload_hash"].startswith("sha256:") for event in replayed)
 
     with journal_path.open("a", encoding="utf-8") as handle:
