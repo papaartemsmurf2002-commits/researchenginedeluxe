@@ -19,6 +19,7 @@ from tradingbotsuite.research.deterministic_datasets import (
     DETERMINISTIC_SWEEP_VARIANTS,
     write_hmm_knn_sweep_datasets,
 )
+from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_STAGES, prepare_hmm_knn_research_data
 from tradingbotsuite.research.hmm_knn import replay_hmm_knn_artifact, run_hmm_knn_research
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
@@ -153,6 +154,13 @@ def parse_args() -> argparse.Namespace:
     collect_bars.add_argument("--output-dir", default=None)
     collect_bars.add_argument("--strict", action="store_true")
 
+    prepare_hmm_knn_data = subparsers.add_parser(
+        "prepare-hmm-knn-research-data",
+        help="Prepare provider-aware research-only HMM/KNN data intake artifacts",
+    )
+    prepare_hmm_knn_data.add_argument("--spec", required=True)
+    prepare_hmm_knn_data.add_argument("--stage", choices=list(DATA_PIPELINE_STAGES), default="intake")
+
     return parser.parse_args()
 
 
@@ -189,6 +197,22 @@ def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, obj
         "row_count": result.row_count,
         "gap_count": result.gap_count,
         "duplicate_count": result.duplicate_count,
+    }
+
+
+def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict[str, object]:
+    result = prepare_hmm_knn_research_data(
+        spec_path=Path(args.spec),
+        stage=args.stage,
+        app_config=AppConfig.from_env(),
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "data_intake_manifest_path": str(result.intake_manifest_path),
+        "data_quality_report_path": str(result.data_quality_report_path),
+        "market_journal_manifest_path": str(result.market_journal_manifest_path),
+        "dataset_manifest_path": str(result.dataset_manifest_path) if result.dataset_manifest_path is not None else None,
+        "evidence_manifest_path": str(result.evidence_manifest_path) if result.evidence_manifest_path is not None else None,
     }
 
 
@@ -456,6 +480,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_collect_binance_bars_command(args), indent=2))
+    elif args.command == "prepare-hmm-knn-research-data":
+        import json
+
+        print(json.dumps(_run_prepare_hmm_knn_research_data_command(args), indent=2))
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)

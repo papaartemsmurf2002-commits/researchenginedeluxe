@@ -86,6 +86,15 @@ $env:PYTHONPATH="src"
 python -m tradingbotsuite.main run-hmm-knn-experiments --spec configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json --workers 2
 ```
 
+Prepare provider-aware research data intake artifacts:
+
+```powershell
+$env:PYTHONPATH="src"
+python -m tradingbotsuite.main prepare-hmm-knn-research-data --spec configs/data/v2_btc_hmm_knn_provider_pipeline.json --stage intake
+```
+
+Supported stages are `intake`, `dataset`, `evidence`, and `all`. `dataset` runs intake first, and `evidence` runs intake plus dataset first so prerequisite manifests are always available.
+
 ## Artifacts
 
 Input BTC Phase 1 dataset artifacts are produced by the research dataset builder under the BTC research plan output directory. The dataset manifest is part of the public Data/Labeling contract:
@@ -243,6 +252,29 @@ Required files:
   - per-experiment `artifact_manifest_path`
   - per-experiment `artifact_manifest`
   - per-experiment `promotion_failures`
+- `data_intake_manifest.json`
+  - `data_pipeline_manifest_version`
+  - `research_only: true`
+  - `observe_only: true`
+  - `promotion_ready: false`
+  - provider descriptors for `binance_vision`, `crypto_lake`, and `hyperliquid_archive`
+  - per-provider status, implementation status, and manifest paths
+  - stage status for `intake`, `dataset`, and `evidence`
+  - `market_journal_manifest_path`
+  - `data_quality_report_path`
+- `market_journal_manifest.json`
+  - canonical append-only Binance-style market event journal metadata
+  - source, symbol, and family counts
+  - duplicate payload hashes and sequence-gap diagnostics
+  - explicit non-promotable research notes
+
+Provider-aware data pipeline:
+
+- Binance Vision local CSV/ZIP ingestion is implemented for `kline`, `trade`, and `agg_trade`.
+- Crypto Lake and Hyperliquid Archive are registered provider contracts only in this pass. They emit diagnostic `not_implemented_for_ingestion` manifests when enabled.
+- No network archive downloader is implemented.
+- Archive-backed dataset rebuilding can read local kline/context manifests, but existing SQLite research signals remain the source of labeled events.
+- Missing context remains explicit missingness. Protected order-flow, book, funding, OI, premium, and execution/account fields must not be zero-filled.
 
 ## Public Feature Columns
 

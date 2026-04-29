@@ -1,0 +1,56 @@
+{
+  "version": "v2-btc-hmm-knn-provider-pipeline-1",
+  "asset_scope": ["BTCUSDT"],
+  "output_dir": "data/research/v2-btc-hmm-knn-provider-pipeline-1",
+  "providers": [
+    {
+      "source_name": "binance_vision",
+      "enabled": true,
+      "inputs": [],
+      "local_file_input_examples": [
+        {
+          "path": "C:/path/to/BTCUSDT-15m-klines.zip",
+          "symbol": "BTCUSDT",
+          "data_family": "kline",
+          "interval": "15m"
+        },
+        {
+          "path": "C:/path/to/BTCUSDT-aggTrades.zip",
+          "symbol": "BTCUSDT",
+          "data_family": "agg_trade"
+        },
+        {
+          "path": "C:/path/to/BTCUSDT-trades.zip",
+          "symbol": "BTCUSDT",
+          "data_family": "trade"
+        }
+      ]
+    },
+    {
+      "source_name": "crypto_lake",
+      "enabled": true,
+      "symbol": "BTCUSDT",
+      "data_family": "trade",
+      "inputs": []
+    },
+    {
+      "source_name": "hyperliquid_archive",
+      "enabled": true,
+      "symbol": "BTCUSDT",
+      "data_family": "order_event",
+      "inputs": []
+    }
+  ],
+  "dataset_stage": {
+    "enabled": false,
+    "research_config": "configs/v2_btc_research.json",
+    "db_path": "data/tradingbotsuite.sqlite3"
+  },
+  "evidence_stage": {
+    "enabled": false,
+    "hmm_knn_config": "configs/v2_btc_hmm_multi_knn_research.json",
+    "experiment_spec": null,
+    "workers": 1,
+    "write_monitoring": true
+  }
+}
