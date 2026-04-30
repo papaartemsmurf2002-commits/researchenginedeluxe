@@ -33,6 +33,7 @@ from tradingbotsuite.research.entry_gate import (
     run_entry_gate_preflight,
     run_entry_gate_research,
 )
+from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, prepare_hmm_knn_research_data
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 
 AMBIGUOUS_SAFETY_REASONS = {
@@ -319,6 +320,123 @@ class OperatorConsoleService:
                     },
                 }
             )
+        for pipeline_summary in sorted(base_dir.rglob("pipeline_summary.json")):
+            payload = json.loads(pipeline_summary.read_text(encoding="utf-8"))
+            artifacts.append(
+                {
+                    "type": "research_pipeline",
+                    "path": str(pipeline_summary),
+                    "sort_time": pipeline_summary.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "version": payload.get("version"),
+                        "stage_requested": payload.get("stage_requested"),
+                        "conclusion_status": ((payload.get("conclusion") or {}).get("status")),
+                        "conclusion_reason": ((payload.get("conclusion") or {}).get("reason")),
+                        "data_quality_alert_count": ((payload.get("data_quality") or {}).get("alert_count")),
+                        "evidence_mode": ((payload.get("evidence") or {}).get("mode")),
+                        "evidence_status": ((payload.get("evidence") or {}).get("status")),
+                        "top_failure_count": len(payload.get("top_failure_reasons") or []),
+                    },
+                }
+            )
+        for intake_manifest in sorted(base_dir.rglob("data_intake_manifest.json")):
+            payload = json.loads(intake_manifest.read_text(encoding="utf-8"))
+            artifacts.append(
+                {
+                    "type": "data_pipeline_intake",
+                    "path": str(intake_manifest),
+                    "sort_time": intake_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "version": payload.get("version"),
+                        "stage_requested": payload.get("stage_requested"),
+                        "provider_count": len(payload.get("providers") or []),
+                        "dataset_status": (((payload.get("stage_status") or {}).get("dataset") or {}).get("status")),
+                        "evidence_status": (((payload.get("stage_status") or {}).get("evidence") or {}).get("status")),
+                    },
+                }
+            )
+        for data_quality_report in sorted(base_dir.rglob("data_quality_report.json")):
+            payload = json.loads(data_quality_report.read_text(encoding="utf-8"))
+            artifacts.append(
+                {
+                    "type": "data_quality_report",
+                    "path": str(data_quality_report),
+                    "sort_time": data_quality_report.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "manifest_count": payload.get("manifest_count"),
+                        "alert_count": len(payload.get("alerts") or []),
+                        "gap_count_total": payload.get("gap_count_total"),
+                        "duplicate_count_total": payload.get("duplicate_count_total"),
+                        "non_promotable_count": payload.get("non_promotable_count"),
+                    },
+                }
+            )
+        for market_journal_manifest in sorted(base_dir.rglob("market_journal_manifest.json")):
+            payload = json.loads(market_journal_manifest.read_text(encoding="utf-8"))
+            artifacts.append(
+                {
+                    "type": "market_journal_manifest",
+                    "path": str(market_journal_manifest),
+                    "sort_time": market_journal_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "event_count": payload.get("event_count"),
+                        "event_counts_by_source": payload.get("event_counts_by_source") or {},
+                        "event_counts_by_symbol": payload.get("event_counts_by_symbol") or {},
+                        "event_counts_by_family": payload.get("event_counts_by_family") or {},
+                        "duplicate_hash_count": payload.get("duplicate_hash_count"),
+                        "sequence_gap_count": payload.get("sequence_gap_count"),
+                    },
+                }
+            )
+        for provider_manifest in sorted(base_dir.rglob("*.manifest.json")):
+            if provider_manifest.name == "market_journal_manifest.json":
+                continue
+            payload = json.loads(provider_manifest.read_text(encoding="utf-8"))
+            if not payload.get("source_name") or not payload.get("data_family"):
+                continue
+            if "content_hash" not in payload and "ingestion_status" not in payload:
+                continue
+            artifacts.append(
+                {
+                    "type": "provider_archive_manifest",
+                    "path": str(provider_manifest),
+                    "sort_time": provider_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "source_name": payload.get("source_name"),
+                        "symbol": payload.get("symbol"),
+                        "data_family": payload.get("data_family"),
+                        "interval": payload.get("interval"),
+                        "row_count": payload.get("row_count"),
+                        "gap_count": payload.get("gap_count"),
+                        "duplicate_count": payload.get("duplicate_count"),
+                        "ingestion_status": payload.get("ingestion_status"),
+                        "diagnostic_only": payload.get("diagnostic_only"),
+                    },
+                }
+            )
+        for experiment_manifest in sorted(base_dir.rglob("experiment_manifest.json")):
+            payload = json.loads(experiment_manifest.read_text(encoding="utf-8"))
+            artifacts.append(
+                {
+                    "type": "hmm_knn_experiment_matrix",
+                    "path": str(experiment_manifest),
+                    "sort_time": experiment_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "name": payload.get("name"),
+                        "overall_status": payload.get("overall_status"),
+                        "experiment_count": len(payload.get("experiments") or []),
+                        "effective_workers": payload.get("effective_workers"),
+                        "promotion_failure_counts": payload.get("promotion_failure_counts") or {},
+                        "research_boundary_passed": ((payload.get("research_boundary") or {}).get("passed")),
+                    },
+                }
+            )
         for entry_gate_metrics in sorted(base_dir.rglob("v2-btc-entry-gates-*/metrics.json")):
             payload = json.loads(entry_gate_metrics.read_text(encoding="utf-8"))
             artifacts.append(
@@ -573,9 +691,7 @@ class OperatorConsoleService:
         if safety and safety.in_safe_mode and safety.reason in AMBIGUOUS_SAFETY_REASONS:
             raise ValueError(f"research jobs are blocked while safety is ambiguous: {safety.reason}")
         if self.config.runtime_mode == RuntimeMode.LIVE:
-            for position in await self.store.list_position_states():
-                if position.status == TradeStatus.OPEN:
-                    raise ValueError("research jobs are blocked while a live position is open")
+            raise ValueError("research jobs are blocked in live mode")
 
     async def _job_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -628,6 +744,22 @@ class OperatorConsoleService:
         if job_type == "build-dataset":
             result = await build_dataset(self.config)
             return {"dataset_path": str(result.dataset_path), "manifest_path": str(result.manifest_path), "row_count": result.row_count}
+        if job_type == "prepare-hmm-knn-research-data":
+            result = await asyncio.to_thread(
+                prepare_hmm_knn_research_data,
+                spec_path=Path(str(request["spec_path"])),
+                stage=str(request.get("stage") or DATA_PIPELINE_DEFAULT_STAGE),
+                app_config=self.config,
+            )
+            return {
+                "output_dir": str(result.output_dir),
+                "data_intake_manifest_path": str(result.intake_manifest_path),
+                "data_quality_report_path": str(result.data_quality_report_path),
+                "market_journal_manifest_path": str(result.market_journal_manifest_path),
+                "pipeline_summary_path": str(result.pipeline_summary_path),
+                "dataset_manifest_path": str(result.dataset_manifest_path) if result.dataset_manifest_path is not None else None,
+                "evidence_manifest_path": str(result.evidence_manifest_path) if result.evidence_manifest_path is not None else None,
+            }
         if job_type == "train-model":
             dataset_path = Path(request["dataset_path"])
             manifest_path = await asyncio.to_thread(train_model, self.config, dataset_path=dataset_path)

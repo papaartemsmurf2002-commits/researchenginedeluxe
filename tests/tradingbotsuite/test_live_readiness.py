@@ -52,7 +52,7 @@ def _blocker_codes(report: dict[str, object]) -> set[str]:
 
 def test_live_readiness_rejects_research_job_and_research_only_artifact() -> None:
     report = build_live_readiness_report(
-        config=_future_config(job_type="research-hmm-knn"),
+        config=_future_config(job_type="prepare-hmm-knn-research-data"),
         artifacts=[
             {
                 "artifact_manifest_version": "hmm-knn-test",
@@ -69,7 +69,7 @@ def test_live_readiness_rejects_research_job_and_research_only_artifact() -> Non
     assert report["promotion_ready"] is False
     assert report["passed"] is False
     assert {
-        "live_runtime_rejects_research_job:research-hmm-knn",
+        "live_runtime_rejects_research_job:prepare-hmm-knn-research-data",
         "live_runtime_rejects_research_artifact:0",
         "research_only_artifact_not_live_promotable:0",
     }.issubset(_blocker_codes(report))
@@ -185,6 +185,23 @@ def test_research_boundary_accepts_research_artifact_metrics_and_monitoring_repo
     assert report["research_only"] is True
     assert report["observe_only"] is True
     assert report["promotion_ready"] is False
+    assert report["passed"] is True
+    assert report["blockers"] == []
+
+
+def test_research_boundary_accepts_provider_pipeline_summary_artifact() -> None:
+    boundary = research_boundary_metadata()
+    report = build_research_boundary_report(
+        artifact_manifest={
+            "pipeline_summary_version": "v2-hmm-knn-provider-data-pipeline-summary-1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "conclusion": {"status": "inconclusive"},
+            **boundary,
+        }
+    )
+
     assert report["passed"] is True
     assert report["blockers"] == []
 

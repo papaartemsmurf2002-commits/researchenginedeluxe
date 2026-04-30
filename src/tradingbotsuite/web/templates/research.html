@@ -42,6 +42,21 @@
     <div id="job-response" class="empty" style="margin-top:12px;">No job submitted.</div>
   </div>
   <div class="card wide">
+    <h3>Provider Pipeline</h3>
+    <div class="grid">
+      <label>Spec Path <input id="provider-pipeline-spec" value="configs/data/v2_btc_hmm_knn_provider_pipeline.json"></label>
+      <label>Stage
+        <select id="provider-pipeline-stage">
+          <option value="intake">Intake</option>
+          <option value="dataset">Dataset</option>
+          <option value="evidence">Evidence</option>
+          <option value="all">All</option>
+        </select>
+      </label>
+    </div>
+    <button class="secondary" onclick="queueProviderPipeline()">Run Pipeline</button>
+  </div>
+  <div class="card wide">
     <h3>Entry Gate Research</h3>
     <p class="muted">Runs the observe-only trend/chop blocker replay on TradingView chart-export signals. This does not change live entries.</p>
     <div class="grid">
@@ -153,6 +168,17 @@
     });
   }
 
+  async function queueProviderPipeline() {
+    const stage = document.getElementById("provider-pipeline-stage").value;
+    if (stage !== "intake" && !window.confirm(`Queue provider pipeline stage "${stage}"?`)) {
+      return;
+    }
+    await queueJob("/api/operator/research/jobs/prepare-hmm-knn-research-data", {
+      spec_path: document.getElementById("provider-pipeline-spec").value,
+      stage,
+    });
+  }
+
   function renderJobRow(job) {
     const stateClass = job.status === "succeeded" ? "ok" : (job.status === "failed" ? "bad" : "warn");
     const summary = job.result ? Object.entries(job.result).map(([k, v]) => `${k}: ${v}`).join(" | ") : (job.error_text || "waiting");
@@ -202,6 +228,77 @@
           <details class="details">
             <summary>Manifest / metrics / monitoring</summary>
             <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, metrics: item.metrics || null, monitoring: monitoring || null }))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "research_pipeline") {
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>Research pipeline</strong>
+            ${window.TBS.pill(summary.conclusion_status || "inconclusive", summary.conclusion_status === "supported" ? "ok" : (summary.conclusion_status === "rejected" ? "bad" : "warn"))}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Version", window.TBS.escapeHtml(String(summary.version || "n/a"))],
+            ["Stage", window.TBS.escapeHtml(String(summary.stage_requested || "n/a"))],
+            ["Evidence", window.TBS.escapeHtml(`${summary.evidence_mode || "n/a"} / ${summary.evidence_status || "n/a"}`)],
+            ["Data Alerts", window.TBS.toMono(summary.data_quality_alert_count ?? "n/a")],
+            ["Failures", window.TBS.toMono(summary.top_failure_count ?? "n/a")],
+          ])}
+          <div class="muted" style="margin-top:8px;">${window.TBS.escapeHtml(summary.conclusion_reason || "")}</div>
+          <details class="details">
+            <summary>Pipeline summary</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "hmm_knn_experiment_matrix") {
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>HMM/KNN experiment matrix</strong>
+            ${window.TBS.pill(summary.overall_status || "unknown", summary.overall_status === "passed" ? "ok" : "warn")}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Name", window.TBS.escapeHtml(String(summary.name || "n/a"))],
+            ["Experiments", window.TBS.toMono(summary.experiment_count ?? "n/a")],
+            ["Workers", window.TBS.toMono(summary.effective_workers ?? "n/a")],
+            ["Boundary", window.TBS.escapeHtml(summary.research_boundary_passed ? "passed" : "failed")],
+          ])}
+          <details class="details">
+            <summary>Experiment manifest</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "data_pipeline_intake" || item.type === "data_quality_report" || item.type === "market_journal_manifest" || item.type === "provider_archive_manifest") {
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>${window.TBS.escapeHtml(item.type.replaceAll("_", " "))}</strong>
+            ${window.TBS.pill("observe_only", "neutral")}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Version", window.TBS.escapeHtml(String(summary.version || "n/a"))],
+            ["Providers", window.TBS.toMono(summary.provider_count ?? "n/a")],
+            ["Dataset", window.TBS.escapeHtml(String(summary.dataset_status || "n/a"))],
+            ["Evidence", window.TBS.escapeHtml(String(summary.evidence_status || "n/a"))],
+            ["Alerts", window.TBS.toMono(summary.alert_count ?? "n/a")],
+            ["Manifests", window.TBS.toMono(summary.manifest_count ?? "n/a")],
+            ["Source", window.TBS.escapeHtml(String(summary.source_name || "n/a"))],
+            ["Family", window.TBS.escapeHtml(String(summary.data_family || "n/a"))],
+            ["Events", window.TBS.toMono(summary.event_count ?? "n/a")],
+            ["Rows", window.TBS.toMono(summary.row_count ?? "n/a")],
+          ])}
+          <details class="details">
+            <summary>Manifest</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
           </details>
         </div>
       `;

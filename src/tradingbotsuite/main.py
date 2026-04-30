@@ -23,7 +23,13 @@ from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_STAGES, prepare
 from tradingbotsuite.research.hmm_knn import replay_hmm_knn_artifact, run_hmm_knn_research
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
-from tradingbotsuite.research.market_data import collect_binance_usdm_bars
+from tradingbotsuite.research.market_data import (
+    collect_binance_usdm_bars,
+    download_and_ingest_binance_vision_archive,
+    download_binance_vision_archive,
+    fetch_crypto_lake_archive,
+    ingest_crypto_lake_archive,
+)
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.research.tradingview_import import import_tradingview_chart_export
 from tradingbotsuite.web.app import create_app
@@ -154,6 +160,31 @@ def parse_args() -> argparse.Namespace:
     collect_bars.add_argument("--output-dir", default=None)
     collect_bars.add_argument("--strict", action="store_true")
 
+    binance_vision = subparsers.add_parser("fetch-binance-vision", help="Download and optionally ingest a Binance Vision research archive")
+    binance_vision.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
+    binance_vision.add_argument("--data-family", required=True, choices=["kline", "trade", "agg_trade"])
+    binance_vision.add_argument("--period", required=True, help="Daily YYYY-MM-DD or monthly YYYY-MM period")
+    binance_vision.add_argument("--interval", default=None)
+    binance_vision.add_argument("--cadence", choices=["daily", "monthly"], default="daily")
+    binance_vision.add_argument("--market", choices=["futures/um", "futures/cm", "spot"], default="futures/um")
+    binance_vision.add_argument("--output-dir", default=None)
+    binance_vision.add_argument("--no-checksum", action="store_true")
+    binance_vision.add_argument("--download-only", action="store_true")
+    binance_vision.add_argument("--strict", action="store_true")
+
+    crypto_lake = subparsers.add_parser("fetch-crypto-lake", help="Fetch or ingest Crypto Lake research archive data")
+    crypto_lake.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
+    crypto_lake.add_argument("--data-family", required=True, choices=["kline", "trade", "funding_rate", "open_interest"])
+    crypto_lake.add_argument("--path", default=None, help="Local Crypto Lake export path: csv/json/jsonl/parquet")
+    crypto_lake.add_argument("--start-time", default=None)
+    crypto_lake.add_argument("--end-time", default=None)
+    crypto_lake.add_argument("--exchange", default="BINANCE")
+    crypto_lake.add_argument("--table", default=None)
+    crypto_lake.add_argument("--provider-symbol", default=None)
+    crypto_lake.add_argument("--interval", default=None)
+    crypto_lake.add_argument("--output-dir", default=None)
+    crypto_lake.add_argument("--strict", action="store_true")
+
     prepare_hmm_knn_data = subparsers.add_parser(
         "prepare-hmm-knn-research-data",
         help="Prepare provider-aware research-only HMM/KNN data intake artifacts",
@@ -200,6 +231,82 @@ def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, obj
     }
 
 
+def _archive_payload(result: object) -> dict[str, object]:
+    return {
+        "output_dir": str(result.output_dir),
+        "data_path": str(result.data_path),
+        "manifest_path": str(result.manifest_path),
+        "row_count": result.row_count,
+        "gap_count": result.gap_count,
+        "duplicate_count": result.duplicate_count,
+        "content_hash": result.content_hash,
+        "source_hash": result.source_hash,
+    }
+
+
+def _run_fetch_binance_vision_command(args: argparse.Namespace) -> dict[str, object]:
+    output_dir = Path(args.output_dir) if args.output_dir is not None else None
+    if args.download_only:
+        result = download_binance_vision_archive(
+            symbol=args.symbol,
+            data_family=args.data_family,
+            period=args.period,
+            output_dir=output_dir,
+            interval=args.interval,
+            cadence=args.cadence,
+            market=args.market,
+            verify_checksum=not args.no_checksum,
+        )
+        return {
+            "url": result.url,
+            "output_path": str(result.output_path),
+            "checksum_url": result.checksum_url,
+            "checksum_path": str(result.checksum_path) if result.checksum_path is not None else None,
+            "sha256": result.sha256,
+            "verified": result.verified,
+        }
+    result = download_and_ingest_binance_vision_archive(
+        symbol=args.symbol,
+        data_family=args.data_family,
+        period=args.period,
+        output_dir=output_dir,
+        interval=args.interval,
+        cadence=args.cadence,
+        market=args.market,
+        strict=args.strict,
+        verify_checksum=not args.no_checksum,
+    )
+    return _archive_payload(result)
+
+
+def _run_fetch_crypto_lake_command(args: argparse.Namespace) -> dict[str, object]:
+    if args.path is not None:
+        result = ingest_crypto_lake_archive(
+            Path(args.path),
+            symbol=args.symbol,
+            data_family=args.data_family,
+            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            interval=args.interval,
+            provider_symbol=args.provider_symbol,
+            strict=args.strict,
+        )
+    else:
+        if args.start_time is None or args.end_time is None:
+            raise ValueError("fetch-crypto-lake requires --path or both --start-time and --end-time")
+        result = fetch_crypto_lake_archive(
+            symbol=args.symbol,
+            data_family=args.data_family,
+            start_time=args.start_time,
+            end_time=args.end_time,
+            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            interval=args.interval,
+            exchange=args.exchange,
+            table=args.table,
+            provider_symbol=args.provider_symbol,
+        )
+    return _archive_payload(result)
+
+
 def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict[str, object]:
     result = prepare_hmm_knn_research_data(
         spec_path=Path(args.spec),
@@ -211,6 +318,7 @@ def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict
         "data_intake_manifest_path": str(result.intake_manifest_path),
         "data_quality_report_path": str(result.data_quality_report_path),
         "market_journal_manifest_path": str(result.market_journal_manifest_path),
+        "pipeline_summary_path": str(result.pipeline_summary_path),
         "dataset_manifest_path": str(result.dataset_manifest_path) if result.dataset_manifest_path is not None else None,
         "evidence_manifest_path": str(result.evidence_manifest_path) if result.evidence_manifest_path is not None else None,
     }
@@ -480,6 +588,14 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_collect_binance_bars_command(args), indent=2))
+    elif args.command == "fetch-binance-vision":
+        import json
+
+        print(json.dumps(_run_fetch_binance_vision_command(args), indent=2))
+    elif args.command == "fetch-crypto-lake":
+        import json
+
+        print(json.dumps(_run_fetch_crypto_lake_command(args), indent=2))
     elif args.command == "prepare-hmm-knn-research-data":
         import json
 

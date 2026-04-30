@@ -16,6 +16,10 @@ from tradingbotsuite.research.market_data import (
     MarketJournalValidationError,
     MarketJournalWriter,
     MarketDataGapError,
+    binance_vision_archive_url,
+    download_and_ingest_binance_vision_archive,
+    download_binance_vision_archive,
+    ingest_crypto_lake_archive,
     ingest_binance_vision_archive,
     read_market_journal,
     collect_binance_usdm_bars,
@@ -211,6 +215,59 @@ def test_collect_binance_bars_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch,
     }
 
 
+def test_fetch_market_data_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from tradingbotsuite import main
+
+    class Result:
+        output_dir = tmp_path / "out"
+        data_path = tmp_path / "out" / "data.jsonl"
+        manifest_path = tmp_path / "out" / "manifest.json"
+        row_count = 2
+        gap_count = 0
+        duplicate_count = 0
+        content_hash = "sha256:content"
+        source_hash = "sha256:source"
+
+    captured: dict[str, object] = {}
+
+    def fake_crypto_lake_archive(path, **kwargs):
+        captured["path"] = path
+        captured.update(kwargs)
+        return Result()
+
+    monkeypatch.setattr(main, "ingest_crypto_lake_archive", fake_crypto_lake_archive)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tradingbot",
+            "fetch-crypto-lake",
+            "--symbol",
+            "BTCUSDT",
+            "--data-family",
+            "kline",
+            "--path",
+            str(tmp_path / "crypto.csv"),
+            "--interval",
+            "1m",
+            "--provider-symbol",
+            "BTC-USDT-PERP",
+            "--output-dir",
+            str(tmp_path / "out"),
+        ],
+    )
+
+    args = main.parse_args()
+    payload = main._run_fetch_crypto_lake_command(args)
+
+    assert captured["path"] == tmp_path / "crypto.csv"
+    assert captured["symbol"] == "BTCUSDT"
+    assert captured["data_family"] == "kline"
+    assert captured["interval"] == "1m"
+    assert captured["provider_symbol"] == "BTC-USDT-PERP"
+    assert payload["manifest_path"] == str(tmp_path / "out" / "manifest.json")
+
+
 def test_ingest_binance_vision_kline_csv_reports_gaps_duplicates_and_is_deterministic(tmp_path: Path) -> None:
     source_path = tmp_path / "BTCUSDT-1m-klines.csv"
     source_path.write_text(
@@ -311,6 +368,100 @@ def test_ingest_binance_vision_agg_trade_zip_reports_duplicate_ids(tmp_path: Pat
     assert manifest["duplicate_count"] == 1
     assert manifest["duplicate_event_id_field"] == "aggregate_trade_id"
     assert manifest["duplicates"] == [7]
+
+
+def test_download_binance_vision_archive_verifies_checksum_and_can_ingest(tmp_path: Path) -> None:
+    csv_payload = "\n".join(
+        [
+            "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,"
+            "taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+            "0,100,101,99,100.5,1,59999,100,10,0.5,50,0",
+        ]
+    )
+    zip_bytes = __import__("io").BytesIO()
+    with zipfile.ZipFile(zip_bytes, "w") as archive:
+        archive.writestr("BTCUSDT-1m-2024-01-01.csv", csv_payload)
+    payload = zip_bytes.getvalue()
+    sha256 = __import__("hashlib").sha256(payload).hexdigest()
+    urls: list[str] = []
+
+    def fake_fetch(url: str) -> bytes:
+        urls.append(url)
+        if url.endswith(".CHECKSUM"):
+            return f"{sha256}  BTCUSDT-1m-2024-01-01.zip\n".encode("utf-8")
+        return payload
+
+    assert binance_vision_archive_url(
+        symbol="BTCUSDT",
+        data_family="kline",
+        interval="1m",
+        period="2024-01-01",
+    ).endswith("/data/futures/um/daily/klines/BTCUSDT/1m/BTCUSDT-1m-2024-01-01.zip")
+
+    download = download_binance_vision_archive(
+        symbol="BTCUSDT",
+        data_family="kline",
+        interval="1m",
+        period="2024-01-01",
+        output_dir=tmp_path / "downloads",
+        fetcher=fake_fetch,
+    )
+    assert download.verified is True
+    assert download.sha256 == f"sha256:{sha256}"
+    assert download.output_path.exists()
+    assert download.checksum_path is not None and download.checksum_path.exists()
+    assert len(urls) == 2
+
+    result = download_and_ingest_binance_vision_archive(
+        symbol="BTCUSDT",
+        data_family="kline",
+        interval="1m",
+        period="2024-01-01",
+        output_dir=tmp_path / "ingested",
+        fetcher=fake_fetch,
+    )
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert_valid_archive_source_manifest(manifest)
+    assert manifest["source_name"] == "binance_vision"
+    assert manifest["row_count"] == 1
+    assert result.row_count == 1
+
+
+def test_ingest_crypto_lake_kline_csv_writes_archive_manifest(tmp_path: Path) -> None:
+    source_path = tmp_path / "crypto_lake_candles.csv"
+    source_path.write_text(
+        "\n".join(
+            [
+                "origin_time,exchange,symbol,open,high,low,close,volume,quote_volume,received_time",
+                "2024-01-01T00:00:00+00:00,BINANCE,BTC-USDT-PERP,100,101,99,100.5,10,1000,2024-01-01T00:00:01+00:00",
+                "2024-01-01T00:01:00+00:00,BINANCE,BTC-USDT-PERP,100.5,102,100,101.5,12,1200,2024-01-01T00:01:01+00:00",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = ingest_crypto_lake_archive(
+        source_path,
+        symbol="BTCUSDT",
+        provider_symbol="BTC-USDT-PERP",
+        data_family="kline",
+        interval="1m",
+        output_dir=tmp_path / "out",
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    validation = assert_valid_archive_source_manifest(manifest)
+    rows = [json.loads(line) for line in result.data_path.read_text(encoding="utf-8").splitlines()]
+
+    assert result.row_count == 2
+    assert result.gap_count == 0
+    assert manifest["source_name"] == "crypto_lake"
+    assert manifest["source_type"] == "commercial_archive"
+    assert manifest["receive_time_field"] == "receive_time_ms"
+    assert manifest["provider_symbol"] == "BTC-USDT-PERP"
+    assert "provider_symbol_differs_from_symbol" in validation.quality_flags
+    assert [row["event_time_ms"] for row in rows] == [1704067200000, 1704067260000]
+    assert rows[0]["receive_time_ms"] == 1704067201000
 
 
 def test_market_journal_replay_is_deterministic_and_validates_manifest_hash(tmp_path: Path) -> None:

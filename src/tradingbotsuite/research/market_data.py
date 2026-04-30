@@ -5,10 +5,12 @@ import hashlib
 import io
 import json
 import time
+import urllib.request
 import zipfile
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol
 
 from tradingbotsuite.adapters.binance import INTERVAL_TO_MS, BinanceCandleClient
 from tradingbotsuite.core.models import Bar
@@ -22,13 +24,19 @@ from tradingbotsuite.research.market_journal import (
 )
 
 BINANCE_USDM_FAPI_URL = "https://fapi.binance.com"
+BINANCE_VISION_BASE_URL = "https://data.binance.vision"
 COLLECTOR_VERSION = "binance-usdm-chart-bars-v1"
 BINANCE_VISION_ARCHIVE_SCHEMA_VERSION = "binance-vision-archive-jsonl-v1"
 BINANCE_VISION_ARCHIVE_INGESTOR_VERSION = "binance-vision-local-ingestor-v1"
+BINANCE_VISION_DOWNLOADER_VERSION = "binance-vision-downloader-v1"
+CRYPTO_LAKE_ARCHIVE_SCHEMA_VERSION = "crypto-lake-archive-jsonl-v1"
+CRYPTO_LAKE_ARCHIVE_INGESTOR_VERSION = "crypto-lake-ingestor-v1"
 RESEARCH_MARKET_DATA_ROOT = Path("data/research/market_data/binance_usdm")
 RESEARCH_ARCHIVE_DATA_ROOT = Path("data/research/market_data/binance_vision")
+RESEARCH_CRYPTO_LAKE_DATA_ROOT = Path("data/research/market_data/crypto_lake")
 SUPPORTED_RESEARCH_SYMBOLS = frozenset({"BTCUSDT", "ETHUSDT"})
 SUPPORTED_BINANCE_VISION_DATA_FAMILIES = frozenset({"kline", "agg_trade", "trade"})
+SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES = frozenset({"kline", "trade", "funding_rate", "open_interest"})
 
 _KLINE_HEADER = (
     "open_time_ms",
@@ -157,6 +165,16 @@ class MarketDataArchiveIngestionResult:
     source_hash: str
 
 
+@dataclass(frozen=True, slots=True)
+class BinanceVisionDownloadResult:
+    url: str
+    output_path: Path
+    checksum_url: str | None
+    checksum_path: Path | None
+    sha256: str
+    verified: bool
+
+
 def _normalize_symbol(symbol: str) -> str:
     normalized = symbol.strip().upper()
     if normalized not in SUPPORTED_RESEARCH_SYMBOLS:
@@ -255,6 +273,193 @@ def _validate_data_family(data_family: str) -> str:
             f"data_family must be one of: {', '.join(sorted(SUPPORTED_BINANCE_VISION_DATA_FAMILIES))}"
         )
     return normalized
+
+
+def _validate_crypto_lake_data_family(data_family: str) -> str:
+    normalized = data_family.strip().lower().replace("-", "_")
+    if normalized in {"candles", "candle", "ohlcv", "ohlc", "klines"}:
+        normalized = "kline"
+    elif normalized in {"trades"}:
+        normalized = "trade"
+    elif normalized in {"funding", "funding_rates"}:
+        normalized = "funding_rate"
+    elif normalized in {"oi", "open_interest"}:
+        normalized = "open_interest"
+    if normalized not in SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES:
+        raise ValueError(
+            f"crypto lake data_family must be one of: {', '.join(sorted(SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES))}"
+        )
+    return normalized
+
+
+def _binance_vision_folder(data_family: str) -> str:
+    if data_family == "kline":
+        return "klines"
+    if data_family == "agg_trade":
+        return "aggTrades"
+    if data_family == "trade":
+        return "trades"
+    raise ValueError(f"unsupported Binance Vision data family: {data_family}")
+
+
+def _binance_vision_file_stem(*, symbol: str, data_family: str, interval: str | None, period: str) -> str:
+    folder = _binance_vision_folder(data_family)
+    if folder == "klines":
+        if interval is None:
+            raise ValueError("interval is required for Binance Vision klines")
+        return f"{symbol}-{interval}-{period}"
+    return f"{symbol}-{folder}-{period}"
+
+
+def binance_vision_archive_url(
+    *,
+    symbol: str,
+    data_family: str,
+    period: str,
+    interval: str | None = None,
+    cadence: str = "daily",
+    market: str = "futures/um",
+    base_url: str = BINANCE_VISION_BASE_URL,
+) -> str:
+    normalized_symbol = _normalize_symbol(symbol)
+    normalized_family = _validate_data_family(data_family)
+    normalized_interval = _validate_interval(interval) if interval is not None else None
+    normalized_cadence = cadence.strip().lower()
+    if normalized_cadence not in {"daily", "monthly"}:
+        raise ValueError("cadence must be daily or monthly")
+    normalized_market = market.strip().strip("/")
+    if normalized_market not in {"futures/um", "futures/cm", "spot"}:
+        raise ValueError("market must be one of: futures/um, futures/cm, spot")
+    folder = _binance_vision_folder(normalized_family)
+    stem = _binance_vision_file_stem(
+        symbol=normalized_symbol,
+        data_family=normalized_family,
+        interval=normalized_interval,
+        period=period,
+    )
+    parts = [
+        base_url.rstrip("/"),
+        "data",
+        *normalized_market.split("/"),
+        normalized_cadence,
+        folder,
+        normalized_symbol,
+    ]
+    if folder == "klines":
+        parts.append(str(normalized_interval))
+    parts.append(f"{stem}.zip")
+    return "/".join(parts)
+
+
+def _fetch_bytes(url: str, *, timeout_seconds: float = 60.0) -> bytes:
+    with urllib.request.urlopen(url, timeout=timeout_seconds) as response:  # nosec B310 - research CLI fetcher
+        return response.read()
+
+
+def _parse_checksum_payload(payload: bytes) -> str | None:
+    text = payload.decode("utf-8", errors="replace").strip()
+    if not text:
+        return None
+    token = text.split()[0].strip()
+    if len(token) == 64 and all(character in "0123456789abcdefABCDEF" for character in token):
+        return token.lower()
+    return None
+
+
+def download_binance_vision_archive(
+    *,
+    symbol: str,
+    data_family: str,
+    period: str,
+    output_dir: Path | None = None,
+    interval: str | None = None,
+    cadence: str = "daily",
+    market: str = "futures/um",
+    verify_checksum: bool = True,
+    fetcher: Callable[[str], bytes] | None = None,
+) -> BinanceVisionDownloadResult:
+    """Download one Binance Vision archive for research intake.
+
+    The downloaded ZIP is not interpreted as live receive-time data; callers
+    should pass it through ``ingest_binance_vision_archive`` before research use.
+    """
+
+    normalized_symbol = _normalize_symbol(symbol)
+    normalized_family = _validate_data_family(data_family)
+    normalized_interval = _validate_interval(interval) if interval is not None else None
+    url = binance_vision_archive_url(
+        symbol=normalized_symbol,
+        data_family=normalized_family,
+        period=period,
+        interval=normalized_interval,
+        cadence=cadence,
+        market=market,
+    )
+    output_root = output_dir if output_dir is not None else RESEARCH_ARCHIVE_DATA_ROOT / "downloads"
+    folder = _binance_vision_folder(normalized_family)
+    target_dir = output_root / market.replace("/", "_") / cadence / folder / normalized_symbol
+    if normalized_interval is not None:
+        target_dir = target_dir / normalized_interval
+    target_dir.mkdir(parents=True, exist_ok=True)
+    output_path = target_dir / Path(url).name
+    read_url = fetcher or _fetch_bytes
+    payload = read_url(url)
+    output_path.write_bytes(payload)
+    observed_sha256 = _hash_file(output_path)
+
+    checksum_url: str | None = None
+    checksum_path: Path | None = None
+    verified = False
+    if verify_checksum:
+        checksum_url = f"{url}.CHECKSUM"
+        checksum_payload = read_url(checksum_url)
+        checksum_path = output_path.with_name(f"{output_path.name}.CHECKSUM")
+        checksum_path.write_bytes(checksum_payload)
+        expected = _parse_checksum_payload(checksum_payload)
+        if expected is None:
+            raise MarketDataValidationError(f"could not parse Binance Vision checksum for {checksum_url}")
+        if expected != observed_sha256:
+            raise MarketDataValidationError(
+                f"Binance Vision checksum mismatch for {output_path}: expected {expected}, observed {observed_sha256}"
+            )
+        verified = True
+
+    download_manifest = {
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+        "downloader_version": BINANCE_VISION_DOWNLOADER_VERSION,
+        "source_name": "binance_vision",
+        "symbol": normalized_symbol,
+        "data_family": normalized_family,
+        "interval": normalized_interval,
+        "cadence": cadence,
+        "period": period,
+        "market": market,
+        "url": url,
+        "output_path": str(output_path),
+        "sha256": f"sha256:{observed_sha256}",
+        "checksum_url": checksum_url,
+        "checksum_path": str(checksum_path) if checksum_path is not None else None,
+        "checksum_verified": verified,
+        "notes": [
+            "Research-only Binance Vision archive download.",
+            "Downloaded files must be normalized before dataset or evidence stages consume them.",
+        ],
+    }
+    output_path.with_name(f"{output_path.name}.download_manifest.json").write_text(
+        json.dumps(download_manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return BinanceVisionDownloadResult(
+        url=url,
+        output_path=output_path,
+        checksum_url=checksum_url,
+        checksum_path=checksum_path,
+        sha256=f"sha256:{observed_sha256}",
+        verified=verified,
+    )
 
 
 def _field_name(value: str) -> str:
@@ -635,6 +840,406 @@ def ingest_binance_vision_archive(
         content_hash=f"sha256:{content_hash}",
         source_hash=f"sha256:{source_hash}",
     )
+
+
+def download_and_ingest_binance_vision_archive(
+    *,
+    symbol: str,
+    data_family: str,
+    period: str,
+    output_dir: Path | None = None,
+    interval: str | None = None,
+    cadence: str = "daily",
+    market: str = "futures/um",
+    strict: bool = False,
+    verify_checksum: bool = True,
+    fetcher: Callable[[str], bytes] | None = None,
+) -> MarketDataArchiveIngestionResult:
+    download = download_binance_vision_archive(
+        symbol=symbol,
+        data_family=data_family,
+        period=period,
+        output_dir=(output_dir / "downloads") if output_dir is not None else None,
+        interval=interval,
+        cadence=cadence,
+        market=market,
+        verify_checksum=verify_checksum,
+        fetcher=fetcher,
+    )
+    return ingest_binance_vision_archive(
+        download.output_path,
+        symbol=symbol,
+        data_family=data_family,
+        output_dir=output_dir,
+        interval=interval,
+        strict=strict,
+    )
+
+
+def _read_tabular_rows(source_path: Path) -> list[dict[str, Any]]:
+    suffix = source_path.suffix.lower()
+    if suffix == ".jsonl":
+        rows = []
+        for line in source_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                payload = json.loads(line)
+                if not isinstance(payload, dict):
+                    raise MarketDataValidationError("jsonl rows must be objects")
+                rows.append(payload)
+        if not rows:
+            raise MarketDataValidationError("jsonl source has no rows")
+        return rows
+    if suffix == ".json":
+        payload = json.loads(source_path.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            raw_rows = payload.get("rows") or payload.get("data") or payload.get("items")
+        else:
+            raw_rows = payload
+        if not isinstance(raw_rows, list) or not all(isinstance(row, Mapping) for row in raw_rows):
+            raise MarketDataValidationError("json source must contain a list of row objects")
+        return [dict(row) for row in raw_rows]
+
+    import pandas as pd
+
+    if suffix == ".csv":
+        frame = pd.read_csv(source_path)
+    elif suffix in {".parquet", ".pq"}:
+        frame = pd.read_parquet(source_path)
+    else:
+        raise ValueError("source_path must be .csv, .jsonl, .json, or .parquet")
+    return frame.to_dict(orient="records")
+
+
+def _first_present(row: Mapping[str, Any], names: tuple[str, ...]) -> Any:
+    lower_map = {str(key).strip().lower(): value for key, value in row.items()}
+    for name in names:
+        if name in row and row[name] is not None and str(row[name]) != "":
+            return row[name]
+        lower = name.lower()
+        if lower in lower_map and lower_map[lower] is not None and str(lower_map[lower]) != "":
+            return lower_map[lower]
+    return None
+
+
+def _required_present(row: Mapping[str, Any], names: tuple[str, ...]) -> Any:
+    value = _first_present(row, names)
+    if value is None:
+        raise MarketDataValidationError(f"missing required field; tried {', '.join(names)}")
+    return value
+
+
+def _timestamp_to_ms(value: Any) -> int:
+    if hasattr(value, "to_pydatetime"):
+        value = value.to_pydatetime()
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+    if isinstance(value, date):
+        return int(datetime(value.year, value.month, value.day).timestamp() * 1000)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            value = int(stripped)
+        else:
+            normalized = stripped.replace("Z", "+00:00")
+            return int(datetime.fromisoformat(normalized).timestamp() * 1000)
+    numeric = int(float(value))
+    if numeric > 10_000_000_000_000_000:
+        return numeric // 1_000_000
+    if numeric > 10_000_000_000_000:
+        return numeric // 1_000
+    if numeric > 10_000_000_000:
+        return numeric
+    return numeric * 1000
+
+
+def _normalize_crypto_lake_row(
+    row: Mapping[str, Any],
+    *,
+    symbol: str,
+    data_family: str,
+    interval: str | None,
+    source_row_index: int,
+    provider_symbol: str | None,
+) -> dict[str, Any]:
+    event_time_ms = _timestamp_to_ms(
+        _required_present(row, ("event_time_ms", "origin_time", "timestamp", "time", "datetime", "open_time"))
+    )
+    receive_value = _first_present(row, ("receive_time_ms", "received_time", "ingest_time", "receipt_time"))
+    raw_payload = {str(key): _json_scalar(value) for key, value in row.items()}
+    if raw_payload.get("symbol") is not None and str(raw_payload["symbol"]).upper() != symbol:
+        raw_payload["provider_symbol"] = raw_payload.pop("symbol")
+    normalized: dict[str, Any] = {
+        "source_name": "crypto_lake",
+        "symbol": symbol,
+        "provider_symbol": provider_symbol,
+        "data_family": data_family,
+        "source_row_index": source_row_index,
+        "event_time_ms": event_time_ms,
+        "provider_exchange": _first_present(row, ("exchange", "provider_exchange")),
+        "provider_dataset": _first_present(row, ("table", "dataset", "provider_dataset")),
+        "receive_time_ms": _timestamp_to_ms(receive_value) if receive_value is not None else None,
+        "raw_payload": raw_payload,
+    }
+    if data_family == "kline":
+        normalized.update(
+            {
+                "interval": interval,
+                "open_time_ms": event_time_ms,
+                "open_price": str(_required_present(row, ("open_price", "open"))),
+                "open": str(_required_present(row, ("open_price", "open"))),
+                "high_price": str(_required_present(row, ("high_price", "high"))),
+                "high": str(_required_present(row, ("high_price", "high"))),
+                "low_price": str(_required_present(row, ("low_price", "low"))),
+                "low": str(_required_present(row, ("low_price", "low"))),
+                "close_price": str(_required_present(row, ("close_price", "close"))),
+                "close": str(_required_present(row, ("close_price", "close"))),
+                "volume": str(_required_present(row, ("volume", "base_volume", "amount"))),
+                "quote_volume": _string_or_none(_first_present(row, ("quote_volume", "quote_asset_volume"))),
+                "trade_count": _int_or_none(_first_present(row, ("trade_count", "trades", "count"))),
+            }
+        )
+    elif data_family == "trade":
+        normalized.update(
+            {
+                "trade_id": _int_or_none(_first_present(row, ("trade_id", "id"))),
+                "price": str(_required_present(row, ("price",))),
+                "quantity": str(_required_present(row, ("quantity", "qty", "amount", "size"))),
+                "side": _string_or_none(_first_present(row, ("side", "taker_side"))),
+                "is_buyer_maker": _bool_or_none(_first_present(row, ("is_buyer_maker", "buyer_maker"))),
+            }
+        )
+    elif data_family == "funding_rate":
+        normalized.update(
+            {
+                "funding_rate": str(_required_present(row, ("funding_rate", "rate"))),
+                "funding_time_ms": event_time_ms,
+                "mark_price": _string_or_none(_first_present(row, ("mark_price",))),
+                "index_price": _string_or_none(_first_present(row, ("index_price",))),
+            }
+        )
+    else:
+        normalized.update(
+            {
+                "open_interest": str(_required_present(row, ("open_interest", "open_interest_value", "oi"))),
+                "open_interest_value_usd": _string_or_none(
+                    _first_present(row, ("open_interest_value_usd", "open_interest_usd", "notional"))
+                ),
+            }
+        )
+    return {key: value for key, value in normalized.items() if value is not None}
+
+
+def _json_scalar(value: Any) -> Any:
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except Exception:
+            pass
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _bool_or_none(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"true", "1", "t", "yes", "buy", "buyer"}:
+        return True
+    if text in {"false", "0", "f", "no", "sell", "seller"}:
+        return False
+    return None
+
+
+def ingest_crypto_lake_archive(
+    source_path: Path,
+    *,
+    symbol: str,
+    data_family: str,
+    output_dir: Path | None = None,
+    interval: str | None = None,
+    provider_symbol: str | None = None,
+    strict: bool = False,
+) -> MarketDataArchiveIngestionResult:
+    normalized_symbol = _normalize_symbol(symbol)
+    normalized_family = _validate_crypto_lake_data_family(data_family)
+    normalized_interval = _validate_interval(interval) if interval is not None else None
+    source_path = Path(source_path)
+    if not source_path.is_file():
+        raise FileNotFoundError(source_path)
+
+    rows = [
+        _normalize_crypto_lake_row(
+            row,
+            symbol=normalized_symbol,
+            data_family=normalized_family,
+            interval=normalized_interval,
+            source_row_index=index,
+            provider_symbol=provider_symbol,
+        )
+        for index, row in enumerate(_read_tabular_rows(source_path))
+    ]
+    rows = sorted(rows, key=lambda row: (int(row["event_time_ms"]), int(row["source_row_index"])))
+    if not rows:
+        raise MarketDataValidationError("Crypto Lake source has no rows")
+    report = _archive_quality_report(rows, data_family=normalized_family, interval=normalized_interval)
+    first_event_time_ms = int(rows[0]["event_time_ms"])
+    last_event_time_ms = int(rows[-1]["event_time_ms"])
+    source_hash = _hash_file(source_path)
+    output_root = output_dir if output_dir is not None else RESEARCH_CRYPTO_LAKE_DATA_ROOT
+    family_dir = output_root / normalized_symbol / normalized_family
+    if normalized_interval is not None:
+        family_dir = family_dir / normalized_interval
+    interval_part = f"_{normalized_interval}" if normalized_interval is not None else ""
+    stem = f"{normalized_symbol}_{normalized_family}{interval_part}_{source_hash[:16]}"
+    data_path = family_dir / f"{stem}.jsonl"
+    manifest_path = family_dir / f"{stem}.manifest.json"
+    content_hash = _write_jsonl(data_path, rows)
+    normalized_fields = sorted({key for row in rows for key in row if key != "raw_payload"})
+    has_receive_time = any("receive_time_ms" in row for row in rows)
+    manifest = {
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+        "source_name": "crypto_lake",
+        "source_type": "commercial_archive",
+        "symbol": normalized_symbol,
+        "provider_symbol": provider_symbol,
+        "data_family": normalized_family,
+        "interval": normalized_interval,
+        "start_time_ms": first_event_time_ms,
+        "end_time_ms": last_event_time_ms if last_event_time_ms > first_event_time_ms else last_event_time_ms + 1,
+        "row_count": len(rows),
+        "first_event_time_ms": first_event_time_ms,
+        "last_event_time_ms": last_event_time_ms,
+        "content_hash": f"sha256:{content_hash}",
+        "source_hash": f"sha256:{source_hash}",
+        "gap_count": int(report["gap_count"]),
+        "duplicate_count": int(report["duplicate_count"]),
+        "gaps": report["gaps"],
+        "duplicates": report["duplicates"],
+        "duplicate_check_applicable": bool(report["duplicate_check_applicable"]),
+        "duplicate_event_id_field": report["duplicate_event_id_field"],
+        "event_time_field": "event_time_ms",
+        "receive_time_field": "receive_time_ms" if has_receive_time else None,
+        "receive_time_unavailable_reason": None if has_receive_time else "Crypto Lake export did not include local receive timestamps.",
+        "schema_version": CRYPTO_LAKE_ARCHIVE_SCHEMA_VERSION,
+        "ingestor_version": CRYPTO_LAKE_ARCHIVE_INGESTOR_VERSION,
+        "source_path": str(source_path),
+        "data_path": str(data_path),
+        "manifest_path": str(manifest_path),
+        "schema_fields": normalized_fields,
+        "normalized_fields": normalized_fields,
+        "missing_fields": [] if has_receive_time else ["receive_time_ms"],
+        "zero_filled_fields": [],
+        "quality_flags": ["crypto_lake_vendor_normalization", *([] if has_receive_time else ["receive_time_unavailable_non_promotable"])],
+        "diagnostic_only": True,
+        "non_promotable_notes": [
+            "Research-only Crypto Lake archive ingestion.",
+            "Vendor-normalized rows are diagnostic until checked against local point-in-time journals.",
+            "Rows are not Hyperliquid executable prices or fillability evidence.",
+        ],
+    }
+    manifest = {key: value for key, value in manifest.items() if value is not None}
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    if strict and (report["gap_count"] or report["duplicate_count"]):
+        raise MarketDataGapError(
+            f"Crypto Lake archive quality checks failed for {normalized_symbol} {normalized_family}; "
+            f"manifest_path={manifest_path}"
+        )
+
+    return MarketDataArchiveIngestionResult(
+        output_dir=family_dir,
+        data_path=data_path,
+        manifest_path=manifest_path,
+        row_count=len(rows),
+        gap_count=int(report["gap_count"]),
+        duplicate_count=int(report["duplicate_count"]),
+        content_hash=f"sha256:{content_hash}",
+        source_hash=f"sha256:{source_hash}",
+    )
+
+
+def fetch_crypto_lake_archive(
+    *,
+    symbol: str,
+    data_family: str,
+    start_time: str,
+    end_time: str,
+    output_dir: Path | None = None,
+    interval: str | None = None,
+    exchange: str = "BINANCE",
+    table: str | None = None,
+    provider_symbol: str | None = None,
+    lakeapi_module: Any | None = None,
+) -> MarketDataArchiveIngestionResult:
+    """Fetch Crypto Lake data via optional ``lakeapi`` and normalize it.
+
+    The dependency is intentionally optional so offline tests and local exports
+    can use ``ingest_crypto_lake_archive`` without network credentials.
+    """
+
+    normalized_symbol = _normalize_symbol(symbol)
+    normalized_family = _validate_crypto_lake_data_family(data_family)
+    normalized_provider_symbol = provider_symbol or normalized_symbol
+    if lakeapi_module is None:
+        import lakeapi as lakeapi_module  # type: ignore[import-not-found]
+
+    table_name = table or _crypto_lake_default_table(normalized_family)
+    frame = lakeapi_module.load_data(
+        table=table_name,
+        start=start_time,
+        end=end_time,
+        symbols=[normalized_provider_symbol],
+        exchanges=[exchange],
+    )
+    output_root = output_dir if output_dir is not None else RESEARCH_CRYPTO_LAKE_DATA_ROOT / "downloads"
+    raw_dir = output_root / "raw" / normalized_symbol / normalized_family
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    safe_start = start_time.replace(":", "").replace("-", "").replace(" ", "T")
+    safe_end = end_time.replace(":", "").replace("-", "").replace(" ", "T")
+    raw_path = raw_dir / f"{exchange}_{normalized_provider_symbol}_{table_name}_{safe_start}_{safe_end}.csv"
+    frame.to_csv(raw_path, index=False, lineterminator="\n")
+    return ingest_crypto_lake_archive(
+        raw_path,
+        symbol=normalized_symbol,
+        data_family=normalized_family,
+        output_dir=output_dir,
+        interval=interval,
+        provider_symbol=normalized_provider_symbol,
+    )
+
+
+def _crypto_lake_default_table(data_family: str) -> str:
+    if data_family == "kline":
+        return "candles"
+    if data_family == "trade":
+        return "trades"
+    if data_family == "funding_rate":
+        return "funding"
+    return "open_interest"
 
 
 class MarketJournalWriter:

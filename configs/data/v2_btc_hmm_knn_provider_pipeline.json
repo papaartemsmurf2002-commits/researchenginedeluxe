@@ -24,6 +24,19 @@
           "symbol": "BTCUSDT",
           "data_family": "trade"
         }
+      ],
+      "download_input_examples": [
+        {
+          "symbol": "BTCUSDT",
+          "data_family": "kline",
+          "interval": "15m",
+          "download": {
+            "period": "2024-01-01",
+            "cadence": "daily",
+            "market": "futures/um",
+            "verify_checksum": true
+          }
+        }
       ]
     },
     {
@@ -31,7 +44,29 @@
       "enabled": true,
       "symbol": "BTCUSDT",
       "data_family": "trade",
-      "inputs": []
+      "inputs": [],
+      "local_export_input_examples": [
+        {
+          "path": "C:/path/to/crypto_lake_btcusdt_1m.csv",
+          "symbol": "BTCUSDT",
+          "provider_symbol": "BTC-USDT-PERP",
+          "data_family": "kline",
+          "interval": "1m"
+        }
+      ],
+      "fetch_input_examples": [
+        {
+          "symbol": "BTCUSDT",
+          "provider_symbol": "BTC-USDT-PERP",
+          "data_family": "trade",
+          "fetch": {
+            "start_time": "2024-01-01",
+            "end_time": "2024-01-02",
+            "exchange": "BINANCE",
+            "table": "trades"
+          }
+        }
+      ]
     },
     {
       "source_name": "hyperliquid_archive",
@@ -42,14 +77,14 @@
     }
   ],
   "dataset_stage": {
-    "enabled": false,
+    "enabled": true,
     "research_config": "configs/v2_btc_research.json",
     "db_path": "data/tradingbotsuite.sqlite3"
   },
   "evidence_stage": {
-    "enabled": false,
+    "enabled": true,
     "hmm_knn_config": "configs/v2_btc_hmm_multi_knn_research.json",
-    "experiment_spec": null,
+    "experiment_spec": "configs/experiments/v2_btc_hmm_knn_current_artifact_experiments.json",
     "workers": 1,
     "write_monitoring": true
   }

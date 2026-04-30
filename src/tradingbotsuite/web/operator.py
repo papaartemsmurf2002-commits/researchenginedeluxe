@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import secrets
 from pathlib import Path
 from typing import Any
@@ -11,12 +12,14 @@ from itsdangerous import BadSignature, URLSafeSerializer
 
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.models import RuntimeMode, SignalDirection
+from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, DATA_PIPELINE_STAGES
 from tradingbotsuite.operator_console import OperatorConsoleService
 from tradingbotsuite.research.entry_gate import DEFAULT_GATE_CANDIDATE_CAP
 
 
 def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorConsoleService) -> None:
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+    repo_root = Path(__file__).resolve().parents[3]
 
     def active_config() -> AppConfig:
         return service.config
@@ -53,6 +56,42 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             raise HTTPException(status_code=403, detail="missing csrf token")
         if not secrets.compare_digest(token, str(session.get("csrf_token", ""))):
             raise HTTPException(status_code=403, detail="invalid csrf token")
+
+    def resolve_operator_path(raw_path: object) -> Path:
+        path = Path(str(raw_path)).expanduser()
+        if path.is_absolute():
+            return path.resolve()
+        return (repo_root / path).resolve()
+
+    def is_relative_to(path: Path, root: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+    def validate_provider_pipeline_request(payload: dict[str, Any]) -> Path:
+        spec_path = resolve_operator_path(payload.get("spec_path") or "configs/data/v2_btc_hmm_knn_provider_pipeline.json")
+        research_root = resolve_operator_path(active_config().research.output_dir)
+        allowed_spec_roots = [
+            (repo_root / "configs" / "data").resolve(),
+            research_root,
+        ]
+        if not spec_path.is_file():
+            raise HTTPException(status_code=400, detail="pipeline spec_path does not exist")
+        if not any(is_relative_to(spec_path, root) for root in allowed_spec_roots):
+            raise HTTPException(status_code=400, detail="pipeline spec_path must be inside configs/data or the research output directory")
+        try:
+            spec_payload = json.loads(spec_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"pipeline spec is not valid JSON: {exc}") from exc
+        if not isinstance(spec_payload, dict):
+            raise HTTPException(status_code=400, detail="pipeline spec must be a JSON object")
+        raw_output_dir = spec_payload.get("output_dir") or Path("data/research") / str(spec_payload.get("version") or "")
+        output_dir = resolve_operator_path(raw_output_dir)
+        if not is_relative_to(output_dir, research_root):
+            raise HTTPException(status_code=400, detail="pipeline output_dir must be inside the configured research output directory")
+        return spec_path
 
     def template_context(request: Request, page: str, *, session: dict[str, Any] | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         session = session or load_session(request) or {}
@@ -278,6 +317,27 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_csrf(request, session)
         try:
             return await service.queue_job("build-dataset", {})
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/operator/research/jobs/prepare-hmm-knn-research-data")
+    async def operator_prepare_hmm_knn_research_data(request: Request):
+        require_same_origin(request)
+        session = require_session_json(request)
+        require_csrf(request, session)
+        payload = await request.json()
+        stage = str(payload.get("stage") or DATA_PIPELINE_DEFAULT_STAGE)
+        if stage not in DATA_PIPELINE_STAGES:
+            raise HTTPException(status_code=400, detail=f"stage must be one of: {', '.join(DATA_PIPELINE_STAGES)}")
+        spec_path = validate_provider_pipeline_request(payload)
+        try:
+            return await service.queue_job(
+                "prepare-hmm-knn-research-data",
+                {
+                    "spec_path": str(spec_path),
+                    "stage": stage,
+                },
+            )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 

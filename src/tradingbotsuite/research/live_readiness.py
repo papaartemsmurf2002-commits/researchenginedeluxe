@@ -15,6 +15,7 @@ RESEARCH_JOB_NAMES = frozenset(
         "replay-hmm-knn",
         "monitor-hmm-knn",
         "build-dataset",
+        "prepare-hmm-knn-research-data",
         "train",
         "backtest",
         "optimize",
@@ -340,7 +341,14 @@ def _boundary_check(name: str, reasons: list[str]) -> dict[str, Any]:
 
 def _validate_research_artifact_manifest(payload: Mapping[str, Any]) -> list[str]:
     reasons = _validate_research_payload(payload, payload_name="artifact_manifest", require_observe_only=False)
-    if not (payload.get("artifact_manifest_version") or payload.get("schema_version") or payload.get("experiment_manifest_version")):
+    if not (
+        payload.get("artifact_manifest_version")
+        or payload.get("schema_version")
+        or payload.get("experiment_manifest_version")
+        or payload.get("pipeline_summary_version")
+        or payload.get("data_pipeline_manifest_version")
+        or payload.get("data_quality_report_version")
+    ):
         reasons.append("artifact_manifest:missing_manifest_version")
     return reasons
 

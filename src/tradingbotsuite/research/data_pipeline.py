@@ -24,14 +24,21 @@ from tradingbotsuite.research.data_quality import build_manifest_data_quality_re
 from tradingbotsuite.research.dataset import ResearchDatasetBuilder
 from tradingbotsuite.research.hmm_knn import run_hmm_knn_research
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
+from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
-from tradingbotsuite.research.market_data import ingest_binance_vision_archive
+from tradingbotsuite.research.market_data import (
+    download_and_ingest_binance_vision_archive,
+    fetch_crypto_lake_archive,
+    ingest_binance_vision_archive,
+    ingest_crypto_lake_archive,
+)
 from tradingbotsuite.research.market_journal import MarketJournalWriter
 
 DATA_PIPELINE_MANIFEST_VERSION = "v2-hmm-knn-provider-data-pipeline-1"
+DATA_PIPELINE_SUMMARY_VERSION = "v2-hmm-knn-provider-data-pipeline-summary-1"
 DATA_PIPELINE_DEFAULT_STAGE = "intake"
 DATA_PIPELINE_STAGES = ("intake", "dataset", "evidence", "all")
-IMPLEMENTED_LOCAL_INGESTION_PROVIDERS = frozenset({"binance_vision"})
+IMPLEMENTED_LOCAL_INGESTION_PROVIDERS = frozenset({"binance_vision", "crypto_lake"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,8 +47,219 @@ class ResearchDataPipelineResult:
     intake_manifest_path: Path
     data_quality_report_path: Path
     market_journal_manifest_path: Path
+    pipeline_summary_path: Path
     dataset_manifest_path: Path | None
     evidence_manifest_path: Path | None
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderInputSpec:
+    path: str | None
+    symbol: str | None
+    data_family: str
+    interval: str | None = None
+    strict: bool = False
+    extra: Mapping[str, Any] | None = None
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any], *, provider_name: str, input_index: int) -> ProviderInputSpec:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"provider {provider_name} input {input_index} must be an object")
+        path = str(payload.get("path") or "").strip() or None
+        has_fetch_or_download = bool(payload.get("fetch") or payload.get("download") or payload.get("period"))
+        if path is None and not has_fetch_or_download:
+            raise ValueError(f"provider {provider_name} input {input_index} path or fetch/download parameters are required")
+        family = str(payload.get("data_family") or "").strip()
+        if not family:
+            raise ValueError(f"provider {provider_name} input {input_index} data_family is required")
+        symbol = str(payload.get("symbol")).strip().upper() if payload.get("symbol") is not None else None
+        interval = str(payload.get("interval")).strip() if payload.get("interval") is not None else None
+        passthrough_keys = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"path", "symbol", "data_family", "interval", "strict"}
+        }
+        return cls(path=path, symbol=symbol or None, data_family=family, interval=interval or None, strict=bool(payload.get("strict", False)), extra=passthrough_keys)
+
+    def to_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "data_family": self.data_family,
+            "strict": self.strict,
+        }
+        if self.extra:
+            payload.update(dict(self.extra))
+        if self.path is not None:
+            payload["path"] = self.path
+        if self.symbol is not None:
+            payload["symbol"] = self.symbol
+        if self.interval is not None:
+            payload["interval"] = self.interval
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderSpec:
+    source_name: str
+    enabled: bool
+    inputs: tuple[ProviderInputSpec, ...]
+    symbol: str | None = None
+    data_family: str | None = None
+    extra: Mapping[str, Any] | None = None
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any], *, index: int) -> ProviderSpec:
+        if not isinstance(payload, Mapping):
+            raise ValueError(f"provider {index} must be an object")
+        source_name = str(payload.get("source_name") or payload.get("name") or "").strip()
+        if not source_name:
+            raise ValueError(f"provider {index} source_name is required")
+        get_archive_source_descriptor(source_name)
+        raw_inputs = payload.get("inputs") or []
+        if not isinstance(raw_inputs, list):
+            raise ValueError(f"provider {source_name} inputs must be a list")
+        inputs = tuple(
+            ProviderInputSpec.from_payload(input_payload, provider_name=source_name, input_index=input_index)
+            for input_index, input_payload in enumerate(raw_inputs)
+        )
+        symbol = str(payload.get("symbol")).strip().upper() if payload.get("symbol") is not None else None
+        data_family = str(payload.get("data_family")).strip() if payload.get("data_family") is not None else None
+        passthrough_keys = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"source_name", "name", "enabled", "inputs", "symbol", "data_family"}
+        }
+        return cls(
+            source_name=source_name,
+            enabled=bool(payload.get("enabled", True)),
+            inputs=inputs,
+            symbol=symbol or None,
+            data_family=data_family or None,
+            extra=passthrough_keys,
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = dict(self.extra or {})
+        payload.update(
+            {
+                "source_name": self.source_name,
+                "enabled": self.enabled,
+                "inputs": [item.to_payload() for item in self.inputs],
+            }
+        )
+        if self.symbol is not None:
+            payload["symbol"] = self.symbol
+        if self.data_family is not None:
+            payload["data_family"] = self.data_family
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class DatasetStageSpec:
+    enabled: bool = False
+    research_config: str = "configs/v2_btc_research.json"
+    db_path: str | None = None
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any] | None) -> DatasetStageSpec:
+        payload = payload or {}
+        if not isinstance(payload, Mapping):
+            raise ValueError("dataset_stage must be an object")
+        return cls(
+            enabled=bool(payload.get("enabled", False)),
+            research_config=str(payload.get("research_config") or "configs/v2_btc_research.json"),
+            db_path=str(payload.get("db_path")) if payload.get("db_path") is not None else None,
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "enabled": self.enabled,
+            "research_config": self.research_config,
+        }
+        if self.db_path is not None:
+            payload["db_path"] = self.db_path
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceStageSpec:
+    enabled: bool = False
+    hmm_knn_config: str = "configs/v2_btc_hmm_multi_knn_research.json"
+    experiment_spec: str | None = None
+    dataset_path: str | None = None
+    workers: int = 1
+    write_monitoring: bool = True
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any] | None) -> EvidenceStageSpec:
+        payload = payload or {}
+        if not isinstance(payload, Mapping):
+            raise ValueError("evidence_stage must be an object")
+        workers = int(payload.get("workers", 1))
+        if workers < 1:
+            raise ValueError("evidence_stage.workers must be at least 1")
+        return cls(
+            enabled=bool(payload.get("enabled", False)),
+            hmm_knn_config=str(payload.get("hmm_knn_config") or "configs/v2_btc_hmm_multi_knn_research.json"),
+            experiment_spec=str(payload.get("experiment_spec")) if payload.get("experiment_spec") else None,
+            dataset_path=str(payload.get("dataset_path")) if payload.get("dataset_path") else None,
+            workers=workers,
+            write_monitoring=bool(payload.get("write_monitoring", True)),
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "enabled": self.enabled,
+            "hmm_knn_config": self.hmm_knn_config,
+            "experiment_spec": self.experiment_spec,
+            "dataset_path": self.dataset_path,
+            "workers": self.workers,
+            "write_monitoring": self.write_monitoring,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderPipelineSpec:
+    version: str
+    asset_scope: tuple[str, ...]
+    output_dir: Path
+    providers: tuple[ProviderSpec, ...]
+    dataset_stage: DatasetStageSpec
+    evidence_stage: EvidenceStageSpec
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any], *, spec_path: Path) -> ProviderPipelineSpec:
+        if not isinstance(payload, Mapping):
+            raise ValueError("pipeline spec must be a JSON object")
+        version = str(payload.get("version") or "").strip()
+        if not version:
+            raise ValueError("pipeline spec version is required")
+        asset_scope = tuple(str(symbol).strip().upper() for symbol in (payload.get("asset_scope") or []) if str(symbol).strip())
+        if not asset_scope:
+            raise ValueError("pipeline spec asset_scope must contain at least one symbol")
+        raw_output_dir = payload.get("output_dir") or Path("data/research") / version
+        output_dir = Path(str(raw_output_dir))
+        providers_payload = payload.get("providers") or []
+        if not isinstance(providers_payload, list):
+            raise ValueError("providers must be a list")
+        providers = tuple(ProviderSpec.from_payload(provider, index=index) for index, provider in enumerate(providers_payload))
+        return cls(
+            version=version,
+            asset_scope=asset_scope,
+            output_dir=output_dir,
+            providers=providers,
+            dataset_stage=DatasetStageSpec.from_payload(payload.get("dataset_stage")),
+            evidence_stage=EvidenceStageSpec.from_payload(payload.get("evidence_stage")),
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "asset_scope": list(self.asset_scope),
+            "output_dir": str(self.output_dir),
+            "providers": [provider.to_payload() for provider in self.providers],
+            "dataset_stage": self.dataset_stage.to_payload(),
+            "evidence_stage": self.evidence_stage.to_payload(),
+        }
 
 
 class ArchiveBackedResearchClient:
@@ -173,8 +391,9 @@ def prepare_hmm_knn_research_data(
     if stage not in DATA_PIPELINE_STAGES:
         raise ValueError(f"stage must be one of: {', '.join(DATA_PIPELINE_STAGES)}")
     spec_path = Path(spec_path)
-    spec = _read_json(spec_path)
-    output_dir = Path(str(spec.get("output_dir") or Path("data/research") / str(spec["version"])))
+    spec_model = ProviderPipelineSpec.from_payload(_read_json(spec_path), spec_path=spec_path)
+    spec = spec_model.to_payload()
+    output_dir = spec_model.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     run_intake = stage in {"intake", "dataset", "evidence", "all"}
@@ -223,6 +442,7 @@ def prepare_hmm_knn_research_data(
     if run_dataset:
         dataset_result = _run_dataset_stage(
             spec,
+            spec_path=spec_path,
             output_dir=output_dir,
             app_config=app_config or AppConfig.from_env(),
             archive_manifests=archive_manifests,
@@ -233,6 +453,7 @@ def prepare_hmm_knn_research_data(
     if run_evidence:
         evidence_result = _run_evidence_stage(
             spec,
+            spec_path=spec_path,
             output_dir=output_dir,
             dataset_manifest_path=dataset_manifest_path,
         )
@@ -262,12 +483,28 @@ def prepare_hmm_knn_research_data(
     }
     intake_manifest_path = output_dir / "data_intake_manifest.json"
     intake_manifest_path.write_text(_canonical_json(intake_manifest, indent=2) + "\n", encoding="utf-8")
+    summary = _build_pipeline_summary(
+        spec=spec,
+        spec_path=spec_path,
+        stage_requested=stage,
+        output_dir=output_dir,
+        intake_manifest_path=intake_manifest_path,
+        data_quality_report_path=data_quality_report_path,
+        market_journal_manifest_path=output_dir / "market_journal_manifest.json",
+        dataset_manifest_path=dataset_manifest_path,
+        evidence_manifest_path=evidence_manifest_path,
+        stage_status=stage_status,
+        data_quality_report=data_quality_report,
+    )
+    pipeline_summary_path = output_dir / "pipeline_summary.json"
+    pipeline_summary_path.write_text(_canonical_json(summary, indent=2) + "\n", encoding="utf-8")
 
     return ResearchDataPipelineResult(
         output_dir=output_dir,
         intake_manifest_path=intake_manifest_path,
         data_quality_report_path=data_quality_report_path,
         market_journal_manifest_path=output_dir / "market_journal_manifest.json",
+        pipeline_summary_path=pipeline_summary_path,
         dataset_manifest_path=dataset_manifest_path,
         evidence_manifest_path=evidence_manifest_path,
     )
@@ -303,7 +540,7 @@ def _run_intake_stage(spec: Mapping[str, Any], *, spec_path: Path, output_dir: P
         if not enabled:
             provider_records.append(record)
             continue
-        if source_name != "binance_vision":
+        if source_name not in IMPLEMENTED_LOCAL_INGESTION_PROVIDERS:
             manifest_path = _write_not_implemented_provider_manifest(
                 provider,
                 descriptor=descriptor,
@@ -324,13 +561,12 @@ def _run_intake_stage(spec: Mapping[str, Any], *, spec_path: Path, output_dir: P
         for input_index, input_payload in enumerate(inputs):
             if not isinstance(input_payload, Mapping):
                 raise ValueError("provider inputs must be objects")
-            result = ingest_binance_vision_archive(
-                _resolve_path(input_payload["path"], base_path=spec_path.parent),
-                symbol=str(input_payload.get("symbol") or (spec.get("asset_scope") or ["BTCUSDT"])[0]),
-                data_family=str(input_payload["data_family"]),
-                interval=input_payload.get("interval"),
+            result = _ingest_provider_input(
+                source_name=source_name,
+                input_payload=input_payload,
+                spec=spec,
+                spec_path=spec_path,
                 output_dir=archive_output_dir,
-                strict=bool(input_payload.get("strict", False)),
             )
             manifest = _read_json(result.manifest_path)
             assert_valid_archive_source_manifest(manifest)
@@ -340,7 +576,7 @@ def _run_intake_stage(spec: Mapping[str, Any], *, spec_path: Path, output_dir: P
             record.setdefault("inputs", []).append(
                 {
                     "input_index": input_index,
-                    "path": str(input_payload["path"]),
+                    "path": str(input_payload.get("path")) if input_payload.get("path") else None,
                     "manifest_path": str(result.manifest_path),
                     "row_count": result.row_count,
                     "gap_count": result.gap_count,
@@ -370,9 +606,80 @@ def _run_intake_stage(spec: Mapping[str, Any], *, spec_path: Path, output_dir: P
     }
 
 
+def _ingest_provider_input(
+    *,
+    source_name: str,
+    input_payload: Mapping[str, Any],
+    spec: Mapping[str, Any],
+    spec_path: Path,
+    output_dir: Path,
+) -> Any:
+    symbol = str(input_payload.get("symbol") or (spec.get("asset_scope") or ["BTCUSDT"])[0])
+    data_family = str(input_payload["data_family"])
+    interval = input_payload.get("interval")
+    strict = bool(input_payload.get("strict", False))
+    if source_name == "binance_vision":
+        if input_payload.get("path"):
+            return ingest_binance_vision_archive(
+                _resolve_path(input_payload["path"], base_path=spec_path.parent),
+                symbol=symbol,
+                data_family=data_family,
+                interval=interval,
+                output_dir=output_dir,
+                strict=strict,
+            )
+        download_payload = input_payload.get("download") if isinstance(input_payload.get("download"), Mapping) else input_payload
+        return download_and_ingest_binance_vision_archive(
+            symbol=symbol,
+            data_family=data_family,
+            period=str(download_payload["period"]),
+            output_dir=output_dir,
+            interval=interval,
+            cadence=str(download_payload.get("cadence") or input_payload.get("cadence") or "daily"),
+            market=str(download_payload.get("market") or input_payload.get("market") or "futures/um"),
+            strict=strict,
+            verify_checksum=bool(download_payload.get("verify_checksum", True)),
+        )
+    if source_name == "crypto_lake":
+        if input_payload.get("path"):
+            return ingest_crypto_lake_archive(
+                _resolve_path(input_payload["path"], base_path=spec_path.parent),
+                symbol=symbol,
+                data_family=data_family,
+                output_dir=output_dir,
+                interval=interval,
+                provider_symbol=(
+                    str(input_payload.get("provider_symbol"))
+                    if input_payload.get("provider_symbol") is not None
+                    else None
+                ),
+                strict=strict,
+            )
+        fetch_payload = input_payload.get("fetch")
+        if not isinstance(fetch_payload, Mapping):
+            raise ValueError("crypto_lake inputs require path or fetch object")
+        return fetch_crypto_lake_archive(
+            symbol=symbol,
+            data_family=data_family,
+            start_time=str(fetch_payload["start_time"]),
+            end_time=str(fetch_payload["end_time"]),
+            output_dir=output_dir,
+            interval=interval,
+            exchange=str(fetch_payload.get("exchange") or "BINANCE"),
+            table=str(fetch_payload.get("table")) if fetch_payload.get("table") is not None else None,
+            provider_symbol=(
+                str(fetch_payload.get("provider_symbol") or input_payload.get("provider_symbol"))
+                if (fetch_payload.get("provider_symbol") or input_payload.get("provider_symbol")) is not None
+                else None
+            ),
+        )
+    raise ValueError(f"unsupported implemented provider source: {source_name}")
+
+
 def _run_dataset_stage(
     spec: Mapping[str, Any],
     *,
+    spec_path: Path,
     output_dir: Path,
     app_config: AppConfig,
     archive_manifests: list[Mapping[str, Any]],
@@ -380,8 +687,8 @@ def _run_dataset_stage(
     dataset_spec = spec.get("dataset_stage") or {}
     if not dataset_spec or not bool(dataset_spec.get("enabled", False)):
         return {"stage_status": {"status": "skipped", "reason": "dataset_stage_disabled"}}
-    research_config = Path(str(dataset_spec.get("research_config") or "configs/v2_btc_research.json"))
-    db_path = Path(str(dataset_spec.get("db_path") or app_config.db_path))
+    research_config = _resolve_stage_path(dataset_spec.get("research_config") or "configs/v2_btc_research.json", spec_path=spec_path)
+    db_path = _resolve_stage_path(dataset_spec.get("db_path") or app_config.db_path, spec_path=spec_path)
     config = replace(
         app_config,
         db_path=db_path,
@@ -420,6 +727,7 @@ async def _build_dataset_with_archive_client(config: AppConfig, archive_manifest
 def _run_evidence_stage(
     spec: Mapping[str, Any],
     *,
+    spec_path: Path,
     output_dir: Path,
     dataset_manifest_path: Path | None,
 ) -> dict[str, Any]:
@@ -429,13 +737,13 @@ def _run_evidence_stage(
     dataset_path = _dataset_path_from_manifest(dataset_manifest_path)
     if dataset_path is None:
         explicit_dataset = evidence_spec.get("dataset_path")
-        dataset_path = Path(str(explicit_dataset)) if explicit_dataset else None
+        dataset_path = _resolve_stage_path(explicit_dataset, spec_path=spec_path) if explicit_dataset else None
     if dataset_path is None or not dataset_path.exists():
         return {"stage_status": {"status": "skipped", "reason": "dataset_not_available"}}
     try:
         if evidence_spec.get("experiment_spec"):
             result = run_hmm_knn_experiment_matrix(
-                spec_path=Path(str(evidence_spec["experiment_spec"])),
+                spec_path=_resolve_stage_path(evidence_spec["experiment_spec"], spec_path=spec_path),
                 dataset_path=dataset_path,
                 output_dir=output_dir / "evidence" / "experiments",
                 max_workers=int(evidence_spec.get("workers", 1)),
@@ -451,9 +759,14 @@ def _run_evidence_stage(
                 },
             }
         result = run_hmm_knn_research(
-            config_path=Path(str(evidence_spec.get("hmm_knn_config") or "configs/v2_btc_hmm_multi_knn_research.json")),
+            config_path=_resolve_stage_path(evidence_spec.get("hmm_knn_config") or "configs/v2_btc_hmm_multi_knn_research.json", spec_path=spec_path),
             dataset_path=dataset_path,
             output_dir=output_dir / "evidence",
+        )
+        monitoring_report_path = (
+            monitor_hmm_knn_artifact(result.artifact_manifest_path)
+            if bool(evidence_spec.get("write_monitoring", True))
+            else None
         )
     except Exception as exc:
         return {
@@ -470,8 +783,260 @@ def _run_evidence_stage(
             "mode": "hmm_knn_research",
             "manifest_path": str(result.artifact_manifest_path),
             "metrics_path": str(result.metrics_path),
+            "monitoring_report_path": str(monitoring_report_path) if monitoring_report_path is not None else None,
         },
     }
+
+
+def _build_pipeline_summary(
+    *,
+    spec: Mapping[str, Any],
+    spec_path: Path,
+    stage_requested: str,
+    output_dir: Path,
+    intake_manifest_path: Path,
+    data_quality_report_path: Path,
+    market_journal_manifest_path: Path,
+    dataset_manifest_path: Path | None,
+    evidence_manifest_path: Path | None,
+    stage_status: Mapping[str, Mapping[str, Any]],
+    data_quality_report: Mapping[str, Any],
+) -> dict[str, Any]:
+    evidence_summary = _summarize_evidence_manifest(evidence_manifest_path, stage_status.get("evidence") or {})
+    top_failure_reasons = _pipeline_failure_reasons(
+        stage_status=stage_status,
+        data_quality_report=data_quality_report,
+        evidence_summary=evidence_summary,
+    )
+    conclusion_status, conclusion_reason = _pipeline_conclusion(
+        stage_status=stage_status,
+        data_quality_report=data_quality_report,
+        evidence_summary=evidence_summary,
+        top_failure_reasons=top_failure_reasons,
+    )
+    artifact_links = {
+        "data_intake_manifest_path": str(intake_manifest_path),
+        "data_quality_report_path": str(data_quality_report_path),
+        "market_journal_manifest_path": str(market_journal_manifest_path),
+        "dataset_manifest_path": str(dataset_manifest_path) if dataset_manifest_path is not None else None,
+        "evidence_manifest_path": str(evidence_manifest_path) if evidence_manifest_path is not None else None,
+    }
+    return {
+        "pipeline_summary_version": DATA_PIPELINE_SUMMARY_VERSION,
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+        "version": str(spec["version"]),
+        "spec_path": str(spec_path),
+        "spec_sha256": _hash_file(spec_path),
+        "stage_requested": stage_requested,
+        "asset_scope": list(spec.get("asset_scope") or []),
+        "output_dir": str(output_dir),
+        "artifact_links": artifact_links,
+        "stage_status": stage_status,
+        "data_quality": {
+            "manifest_count": data_quality_report.get("manifest_count"),
+            "alert_count": len(data_quality_report.get("alerts") or []),
+            "alerts": data_quality_report.get("alerts") or [],
+            "gap_count_total": data_quality_report.get("gap_count_total"),
+            "duplicate_count_total": data_quality_report.get("duplicate_count_total"),
+            "non_promotable_count": data_quality_report.get("non_promotable_count"),
+            "zero_row_manifest_count": data_quality_report.get("zero_row_manifest_count"),
+        },
+        "evidence": evidence_summary,
+        "top_failure_reasons": top_failure_reasons,
+        "conclusion": {
+            "status": conclusion_status,
+            "reason": conclusion_reason,
+        },
+        "notes": [
+            "BTC Phase 1 research-only pipeline summary.",
+            "Archive data supplies bars and context only; SQLite TradingView research signals remain the labeled-event trigger source.",
+            "GPU/backend metadata is diagnostic and is not promotion evidence.",
+        ],
+    }
+
+
+def _summarize_evidence_manifest(
+    evidence_manifest_path: Path | None,
+    evidence_stage_status: Mapping[str, Any],
+) -> dict[str, Any]:
+    if evidence_manifest_path is None or not evidence_manifest_path.exists():
+        return {
+            "available": False,
+            "mode": evidence_stage_status.get("mode"),
+            "status": evidence_stage_status.get("status"),
+            "reason": evidence_stage_status.get("reason"),
+            "error": evidence_stage_status.get("error"),
+            "promotion_failure_counts": {},
+            "backend_metadata": {},
+            "monitoring_report_path": evidence_stage_status.get("monitoring_report_path"),
+            "monitoring_alert_count": 0,
+        }
+    manifest = _read_json(evidence_manifest_path)
+    if manifest.get("experiment_manifest_version"):
+        failed_count = sum(1 for record in manifest.get("experiments") or [] if record.get("status") == "failed")
+        return {
+            "available": True,
+            "mode": "experiment_matrix",
+            "status": manifest.get("overall_status"),
+            "manifest_path": str(evidence_manifest_path),
+            "summary_path": manifest.get("summary_path"),
+            "experiment_count": len(manifest.get("experiments") or []),
+            "failed_experiment_count": failed_count,
+            "effective_workers": manifest.get("effective_workers"),
+            "promotion_failure_counts": manifest.get("promotion_failure_counts") or {},
+            "research_boundary": manifest.get("research_boundary"),
+            "backend_metadata": {},
+            "monitoring_report_path": None,
+            "monitoring_alert_count": _experiment_monitoring_alert_count(manifest),
+        }
+
+    metrics_path = _resolve_manifest_path(evidence_manifest_path, manifest.get("metrics_path")) if manifest.get("metrics_path") else None
+    metrics = _read_json(metrics_path) if metrics_path is not None and metrics_path.exists() else {}
+    monitoring_path = evidence_stage_status.get("monitoring_report_path")
+    monitoring_report_path = Path(str(monitoring_path)) if monitoring_path else evidence_manifest_path.parent / "monitoring_report.json"
+    monitoring = _read_json(monitoring_report_path) if monitoring_report_path.exists() else {}
+    return {
+        "available": True,
+        "mode": "hmm_knn_research",
+        "status": "completed",
+        "manifest_path": str(evidence_manifest_path),
+        "metrics_path": str(metrics_path) if metrics_path is not None else None,
+        "monitoring_report_path": str(monitoring_report_path) if monitoring_report_path.exists() else None,
+        "monitoring_alert_count": len(monitoring.get("alerts") or []),
+        "promotion_failure_counts": _count_items(metrics.get("promotion_failures") or []),
+        "research_boundary": monitoring.get("research_boundary"),
+        "backend_metadata": {
+            "knn_distance_backend_requested": (manifest.get("dependencies") or {}).get("knn_distance_backend_requested"),
+            "knn_distance_backend": (manifest.get("dependencies") or {}).get("knn_distance_backend"),
+            "cupy_available": (manifest.get("dependencies") or {}).get("cupy_available"),
+            "xgboost_available": (manifest.get("dependencies") or {}).get("xgboost_available"),
+            "xgboost_cuda_available": (manifest.get("dependencies") or {}).get("xgboost_cuda_available"),
+            "xgboost_cuda_detection": (manifest.get("dependencies") or {}).get("xgboost_cuda_detection"),
+        },
+        "comparison": metrics.get("comparison") or {},
+    }
+
+
+def _experiment_monitoring_alert_count(experiment_manifest: Mapping[str, Any]) -> int:
+    total = 0
+    for record in experiment_manifest.get("experiments") or []:
+        monitoring_path = record.get("monitoring_report_path")
+        if not monitoring_path:
+            continue
+        path = Path(str(monitoring_path))
+        if not path.exists():
+            continue
+        try:
+            total += len((_read_json(path).get("alerts") or []))
+        except Exception:
+            continue
+    return total
+
+
+def _pipeline_failure_reasons(
+    *,
+    stage_status: Mapping[str, Mapping[str, Any]],
+    data_quality_report: Mapping[str, Any],
+    evidence_summary: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    reasons: list[dict[str, Any]] = []
+    for stage_name, status in stage_status.items():
+        if status.get("status") == "failed":
+            reasons.append(
+                {
+                    "source": "stage",
+                    "code": f"{stage_name}_failed",
+                    "count": 1,
+                    "detail": status.get("error") or status.get("error_type"),
+                }
+            )
+        elif status.get("status") == "skipped" and status.get("reason"):
+            reasons.append(
+                {
+                    "source": "stage",
+                    "code": f"{stage_name}_skipped:{status.get('reason')}",
+                    "count": 1,
+                    "detail": status.get("reason"),
+                }
+            )
+    for alert in data_quality_report.get("alerts") or []:
+        reasons.append(
+            {
+                "source": "data_quality",
+                "code": str(alert.get("code") or "unknown_alert"),
+                "count": int(((alert.get("details") or {}).get("manifest_count") or (alert.get("details") or {}).get("flag_count") or 1)),
+                "detail": alert.get("message"),
+            }
+        )
+    for code, count in (evidence_summary.get("promotion_failure_counts") or {}).items():
+        reasons.append(
+            {
+                "source": "evidence",
+                "code": str(code),
+                "count": int(count),
+                "detail": "promotion failure reported by HMM/KNN evidence",
+            }
+        )
+    if int(evidence_summary.get("failed_experiment_count") or 0) > 0:
+        reasons.append(
+            {
+                "source": "evidence",
+                "code": "experiment_matrix_failed_experiments",
+                "count": int(evidence_summary.get("failed_experiment_count") or 0),
+                "detail": "one or more matrix experiments failed",
+            }
+        )
+    return sorted(reasons, key=lambda item: (str(item["source"]), str(item["code"])))
+
+
+def _pipeline_conclusion(
+    *,
+    stage_status: Mapping[str, Mapping[str, Any]],
+    data_quality_report: Mapping[str, Any],
+    evidence_summary: Mapping[str, Any],
+    top_failure_reasons: list[Mapping[str, Any]],
+) -> tuple[str, str]:
+    failed_stages = [name for name, status in stage_status.items() if status.get("status") == "failed"]
+    if failed_stages:
+        missing_data_failure = any(
+            "no signals found" in str((stage_status.get(name) or {}).get("error") or "").lower()
+            for name in failed_stages
+        )
+        if missing_data_failure:
+            return "inconclusive", "dataset stage could not build because required research signals were unavailable"
+        return "rejected", f"pipeline stage failed: {', '.join(failed_stages)}"
+
+    evidence_status = str(evidence_summary.get("status") or "")
+    if evidence_status in {"skipped", "not_requested", ""} or not evidence_summary.get("available"):
+        return "inconclusive", "no completed evidence artifact was available"
+
+    substantive_evidence_failures = [
+        item
+        for item in top_failure_reasons
+        if item.get("source") == "evidence" and item.get("code") != "research_only_not_live_promotable"
+    ]
+    if evidence_status == "failed" or substantive_evidence_failures:
+        return "rejected", "completed evidence reported promotion or experiment failures"
+
+    warning_alerts = [
+        alert
+        for alert in data_quality_report.get("alerts") or []
+        if str(alert.get("severity") or "").lower() in {"warn", "error", "blocker"}
+    ]
+    if warning_alerts:
+        return "inconclusive", "data-quality alerts require review before interpreting evidence"
+    return "supported", "evidence completed without substantive promotion failures or data-quality warnings"
+
+
+def _count_items(items: list[Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        key = str(item)
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def _write_market_journal_from_archives(
@@ -607,11 +1172,28 @@ def _resolve_path(path: Any, *, base_path: Path) -> Path:
     return (base_path / candidate).resolve()
 
 
+def _resolve_stage_path(path: Any, *, spec_path: Path) -> Path:
+    candidate = Path(str(path)).expanduser()
+    if candidate.is_absolute() or candidate.exists():
+        return candidate
+    return (spec_path.parent / candidate).resolve()
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     payload = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     if not isinstance(payload, dict):
         raise ValueError(f"expected JSON object at {path}")
     return payload
+
+
+def _resolve_manifest_path(manifest_path: Path, raw: object) -> Path:
+    path = Path(str(raw))
+    if path.is_absolute():
+        return path
+    parent_candidate = manifest_path.parent / path
+    if parent_candidate.exists():
+        return parent_candidate
+    return path
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:

@@ -116,6 +116,19 @@ def _login(client: TestClient, secret: str) -> str:
     return match.group(1)
 
 
+def _wait_for_job(client: TestClient, job_id: str, *, timeout_seconds: float = 8.0) -> dict[str, object]:
+    deadline = time.time() + timeout_seconds
+    last_job: dict[str, object] | None = None
+    while time.time() < deadline:
+        response = client.get(f"/api/operator/research/jobs/{job_id}")
+        assert response.status_code == 200
+        last_job = response.json()
+        if last_job["status"] in {"succeeded", "failed"}:
+            return last_job
+        time.sleep(0.2)
+    raise AssertionError(f"job {job_id} did not finish; last state: {last_job}")
+
+
 def _operator_config(app_config: AppConfig, *, mode: RuntimeMode = RuntimeMode.PAPER) -> AppConfig:
     return AppConfig(
         runtime_mode=mode,
@@ -285,6 +298,145 @@ def test_operator_artifacts_include_hmm_knn_monitoring_summary(app_config, sampl
     assert item["monitoring"]["alerts"][0]["observe_only"] is True
 
 
+def test_operator_artifacts_include_provider_pipeline_outputs(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    pipeline_dir = research_dir / "v2-btc-hmm-knn-provider-pipeline-1"
+    experiment_dir = pipeline_dir / "evidence" / "experiments"
+    pipeline_dir.mkdir(parents=True)
+    experiment_dir.mkdir(parents=True)
+    (pipeline_dir / "data_intake_manifest.json").write_text(
+        json.dumps(
+            {
+                "data_pipeline_manifest_version": "v2-hmm-knn-provider-data-pipeline-1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "version": "fixture-pipeline",
+                "stage_requested": "all",
+                "providers": [{"source_name": "binance_vision", "status": "completed"}],
+                "stage_status": {"dataset": {"status": "completed"}, "evidence": {"status": "completed"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pipeline_dir / "data_quality_report.json").write_text(
+        json.dumps(
+            {
+                "data_quality_report_version": "v2-archive-market-data-quality-report-1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "manifest_count": 2,
+                "alerts": [{"severity": "warn", "code": "missing_receive_time"}],
+                "gap_count_total": 0,
+                "duplicate_count_total": 0,
+                "non_promotable_count": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pipeline_dir / "market_journal_manifest.json").write_text(
+        json.dumps(
+            {
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "event_count": 3,
+                "event_counts_by_source": {"binance_vision": 3},
+                "event_counts_by_symbol": {"BTCUSDT": 3},
+                "event_counts_by_family": {"kline": 3},
+                "duplicate_hash_count": 0,
+                "sequence_gap_count": 0,
+            }
+        ),
+        encoding="utf-8",
+    )
+    provider_dir = pipeline_dir / "archives" / "BTCUSDT" / "kline" / "15m"
+    provider_dir.mkdir(parents=True)
+    (provider_dir / "BTCUSDT_kline_15m_fixture.manifest.json").write_text(
+        json.dumps(
+            {
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "source_name": "binance_vision",
+                "symbol": "BTCUSDT",
+                "data_family": "kline",
+                "interval": "15m",
+                "row_count": 3,
+                "gap_count": 0,
+                "duplicate_count": 0,
+                "content_hash": "sha256:fixture",
+                "diagnostic_only": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (experiment_dir / "experiment_manifest.json").write_text(
+        json.dumps(
+            {
+                "experiment_manifest_version": "v2-hmm-knn-experiment-manifest-1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "name": "fixture matrix",
+                "overall_status": "passed",
+                "effective_workers": 2,
+                "promotion_failure_counts": {"research_only_not_live_promotable": 1},
+                "research_boundary": {"passed": True},
+                "experiments": [{"status": "passed", "metrics_digest": {"promotion_ready": False}}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pipeline_dir / "pipeline_summary.json").write_text(
+        json.dumps(
+            {
+                "pipeline_summary_version": "v2-hmm-knn-provider-data-pipeline-summary-1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "version": "fixture-pipeline",
+                "stage_requested": "all",
+                "data_quality": {"alert_count": 1},
+                "evidence": {"mode": "experiment_matrix", "status": "passed"},
+                "top_failure_reasons": [{"code": "missing_receive_time"}],
+                "conclusion": {"status": "inconclusive", "reason": "data-quality alerts require review"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_ui.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        payload = client.get("/api/operator/research/artifacts").json()
+
+    by_type = {artifact["type"]: artifact for artifact in payload["items"]}
+    assert by_type["research_pipeline"]["summary"]["conclusion_status"] == "inconclusive"
+    assert by_type["research_pipeline"]["summary"]["data_quality_alert_count"] == 1
+    assert by_type["data_pipeline_intake"]["summary"]["provider_count"] == 1
+    assert by_type["data_quality_report"]["summary"]["alert_count"] == 1
+    assert by_type["market_journal_manifest"]["summary"]["event_count"] == 3
+    assert by_type["market_journal_manifest"]["summary"]["event_counts_by_family"] == {"kline": 3}
+    assert by_type["provider_archive_manifest"]["summary"]["source_name"] == "binance_vision"
+    assert by_type["provider_archive_manifest"]["summary"]["row_count"] == 3
+    assert by_type["hmm_knn_experiment_matrix"]["summary"]["experiment_count"] == 1
+    assert by_type["hmm_knn_experiment_matrix"]["summary"]["research_boundary_passed"] is True
+
+
 def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config, sample_bars) -> None:
     config = _operator_config(app_config)
     app = create_app(config)
@@ -295,6 +447,8 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
 
     assert response.status_code == 200
     assert "HMM/KNN Monitoring" in response.text
+    assert "Provider Pipeline" in response.text
+    assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
     assert "hmm_knn_artifact" in response.text
     assert "observe_only" in response.text
     assert "/api/operator/commands/" not in response.text
@@ -532,7 +686,7 @@ def test_operator_feed_can_hide_health_and_execution_metrics(app_config, sample_
     assert "operator_command" in kinds
 
 
-def test_operator_research_job_blocked_for_live_open_position(app_config, sample_bars, tmp_path) -> None:
+def test_operator_research_job_blocked_in_live_mode_without_position(app_config, sample_bars, tmp_path) -> None:
     config = AppConfig(
         runtime_mode=RuntimeMode.LIVE,
         db_path=tmp_path / "operator_live.sqlite3",
@@ -548,25 +702,145 @@ def test_operator_research_job_blocked_for_live_open_position(app_config, sample
     app.state.engine.execution_adapter = FakeLiveAdapter()
     with TestClient(app) as client:
         csrf_token = _login(client, "operator-secret")
-        asyncio.run(
-            app.state.engine.store.upsert_position_state(
-                PositionState(
-                    symbol="BTCUSDT",
-                    status=TradeStatus.OPEN,
-                    direction=SignalDirection.LONG,
-                    position_size=Decimal("0.001"),
-                    entry_price=Decimal("70000"),
-                    last_updated_ms=1712665800000,
-                )
-            )
-        )
         response = client.post(
             "/api/operator/research/jobs/build-dataset",
             json={},
             headers={"X-CSRF-Token": csrf_token},
         )
     assert response.status_code == 409
-    assert "live position is open" in response.json()["detail"]
+    assert "live mode" in response.json()["detail"]
+
+
+def test_operator_provider_pipeline_job_defaults_to_intake_and_completes(app_config, sample_bars, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_pipeline.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    spec_path = research_dir / "pipeline_specs" / "pipeline_spec.json"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "version": "operator-pipeline",
+                "asset_scope": ["BTCUSDT"],
+                "output_dir": str(research_dir / "operator-pipeline"),
+                "providers": [],
+                "dataset_stage": {"enabled": False},
+                "evidence_stage": {"enabled": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/prepare-hmm-knn-research-data",
+            json={"spec_path": str(spec_path)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+        jobs = client.get("/api/operator/research/jobs").json()["items"]
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    pipeline_job = next(job for job in jobs if job["job_type"] == "prepare-hmm-knn-research-data")
+    assert pipeline_job["request"]["spec_path"] == str(spec_path)
+    assert pipeline_job["request"]["stage"] == "intake"
+    assert job["status"] == "succeeded"
+    assert Path(str(job["result"]["data_intake_manifest_path"])).exists()
+    assert Path(str(job["result"]["pipeline_summary_path"])).exists()
+
+
+def test_operator_provider_pipeline_rejects_unallowlisted_spec_path(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_pipeline_reject.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    spec_path = tmp_path / "outside_specs" / "pipeline_spec.json"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "version": "operator-pipeline",
+                "asset_scope": ["BTCUSDT"],
+                "output_dir": str(research_dir / "operator-pipeline"),
+                "providers": [],
+                "dataset_stage": {"enabled": False},
+                "evidence_stage": {"enabled": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/prepare-hmm-knn-research-data",
+            json={"spec_path": str(spec_path), "stage": "intake"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert response.status_code == 400
+    assert "spec_path must be inside" in response.json()["detail"]
+
+
+def test_operator_provider_pipeline_rejects_output_outside_research_root(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_pipeline_output_reject.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    spec_path = research_dir / "pipeline_specs" / "pipeline_spec.json"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "version": "operator-pipeline",
+                "asset_scope": ["BTCUSDT"],
+                "output_dir": str(tmp_path / "outside_output"),
+                "providers": [],
+                "dataset_stage": {"enabled": False},
+                "evidence_stage": {"enabled": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/prepare-hmm-knn-research-data",
+            json={"spec_path": str(spec_path), "stage": "intake"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert response.status_code == 400
+    assert "output_dir must be inside" in response.json()["detail"]
 
 
 def test_operator_snapshot_handles_microstructure_exception(app_config, sample_bars) -> None:

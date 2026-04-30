@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 from tradingbotsuite import main
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.research.data_pipeline import (
@@ -12,6 +14,7 @@ from tradingbotsuite.research.data_pipeline import (
     archive_provider_descriptors,
     prepare_hmm_knn_research_data,
 )
+from tradingbotsuite.research.deterministic_datasets import write_hmm_knn_sweep_dataset
 from tradingbotsuite.research.market_journal import read_market_journal_for_replay
 
 
@@ -47,12 +50,29 @@ def _base_spec(tmp_path: Path, **updates: object) -> dict[str, object]:
     return payload
 
 
+def _write_fast_hmm_knn_config(path: Path) -> Path:
+    payload = json.loads(Path("configs/v2_btc_hmm_multi_knn_research.json").read_text(encoding="utf-8"))
+    payload["version"] = "test-pipeline-hmm-knn"
+    payload["hmm"]["n_states"] = 3
+    payload["hmm"]["posterior_threshold"] = 0.45
+    payload["hmm"]["entropy_threshold"] = 0.95
+    payload["knn"]["primary_k"] = 12
+    payload["knn"]["k_values"] = [8, 12]
+    payload["knn"]["min_neighbor_count"] = 3
+    payload["evaluation"]["min_training_rows"] = 36
+    payload["evaluation"]["walk_forward_splits"] = 2
+    payload["evaluation"]["purge_embargo_bars"] = 2
+    payload["acceptance"]["min_trade_count"] = 1
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
 def test_archive_provider_descriptors_cover_expected_contract_sources() -> None:
     descriptors = {descriptor["source_name"]: descriptor for descriptor in archive_provider_descriptors()}
 
     assert set(descriptors) == {"binance_vision", "crypto_lake", "hyperliquid_archive"}
     assert descriptors["binance_vision"]["implemented_for_ingestion"] is True
-    assert descriptors["crypto_lake"]["implemented_for_ingestion"] is False
+    assert descriptors["crypto_lake"]["implemented_for_ingestion"] is True
     assert descriptors["hyperliquid_archive"]["implemented_for_ingestion"] is False
 
 
@@ -101,9 +121,10 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
     assert intake["observe_only"] is True
     assert intake["promotion_ready"] is False
     assert intake["stage_status"]["intake"]["status"] == "completed"
-    assert intake["stage_status"]["intake"]["archive_manifest_count"] == 3
+    assert intake["stage_status"]["intake"]["archive_manifest_count"] == 2
     assert {provider["status"] for provider in intake["providers"]} == {
         "completed",
+        "no_inputs",
         "not_implemented_for_ingestion",
     }
     unsupported_manifests = [
@@ -113,7 +134,6 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
         for path in provider["manifest_paths"]
     ]
     assert {manifest["source_name"] for manifest in unsupported_manifests} == {
-        "crypto_lake",
         "hyperliquid_archive",
     }
     assert all(manifest["ingestion_status"] == "not_implemented_for_ingestion" for manifest in unsupported_manifests)
@@ -128,9 +148,57 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
     assert quality["research_only"] is True
     assert quality["observe_only"] is True
     assert quality["promotion_ready"] is False
-    assert quality["manifest_count"] == 4
-    assert quality["zero_row_manifest_count"] == 2
-    assert quality["non_promotable_count"] == 4
+    assert quality["manifest_count"] == 3
+    assert quality["zero_row_manifest_count"] == 1
+    assert quality["non_promotable_count"] == 3
+
+
+def test_prepare_hmm_knn_research_data_intake_ingests_crypto_lake_export(tmp_path: Path) -> None:
+    source_path = tmp_path / "crypto_lake_candles.csv"
+    source_path.write_text(
+        "\n".join(
+            [
+                "origin_time,exchange,symbol,open,high,low,close,volume,received_time",
+                "2024-01-01T00:00:00+00:00,BINANCE,BTC-USDT-PERP,100,101,99,100.5,10,2024-01-01T00:00:01+00:00",
+                "2024-01-01T00:01:00+00:00,BINANCE,BTC-USDT-PERP,100.5,102,100,101.5,12,2024-01-01T00:01:01+00:00",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    spec_path = _write_spec(
+        tmp_path / "pipeline_spec.json",
+        _base_spec(
+            tmp_path,
+            providers=[
+                {
+                    "source_name": "crypto_lake",
+                    "inputs": [
+                        {
+                            "path": source_path.name,
+                            "symbol": "BTCUSDT",
+                            "provider_symbol": "BTC-USDT-PERP",
+                            "data_family": "kline",
+                            "interval": "1m",
+                        }
+                    ],
+                }
+            ],
+        ),
+    )
+
+    result = prepare_hmm_knn_research_data(spec_path=spec_path, stage="intake")
+    intake = json.loads(result.intake_manifest_path.read_text(encoding="utf-8"))
+    quality = json.loads(result.data_quality_report_path.read_text(encoding="utf-8"))
+    journal_manifest = json.loads(result.market_journal_manifest_path.read_text(encoding="utf-8"))
+    provider_manifest = json.loads(Path(intake["archive_manifest_paths"][0]).read_text(encoding="utf-8"))
+
+    assert intake["providers"][0]["status"] == "completed"
+    assert provider_manifest["source_name"] == "crypto_lake"
+    assert provider_manifest["row_count"] == 2
+    assert provider_manifest["receive_time_field"] == "receive_time_ms"
+    assert quality["source_counts"]["crypto_lake"] == 1
+    assert journal_manifest["event_count"] == 2
+    assert journal_manifest["event_counts_by_source"] == {"crypto_lake": 2}
 
 
 def test_archive_backed_research_client_excludes_future_bars_and_preserves_missing_context(tmp_path: Path) -> None:
@@ -227,6 +295,139 @@ def test_prepare_hmm_knn_research_data_evidence_stage_skips_without_dataset(tmp_
     }
 
 
+def test_prepare_hmm_knn_research_data_stage_all_writes_pipeline_summary(tmp_path: Path) -> None:
+    spec_path = _write_spec(
+        tmp_path / "pipeline_spec.json",
+        _base_spec(
+            tmp_path,
+            dataset_stage={
+                "enabled": True,
+                "research_config": "configs/v2_btc_research.json",
+                "db_path": str(tmp_path / "empty.sqlite3"),
+            },
+            evidence_stage={
+                "enabled": True,
+                "hmm_knn_config": "configs/v2_btc_hmm_multi_knn_research.json",
+                "write_monitoring": True,
+            },
+        ),
+    )
+
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="all",
+        app_config=AppConfig(
+            db_path=tmp_path / "empty.sqlite3",
+            research=ResearchConfig(output_dir=tmp_path / "research"),
+        ),
+    )
+    summary = json.loads(result.pipeline_summary_path.read_text(encoding="utf-8"))
+
+    assert summary["research_only"] is True
+    assert summary["observe_only"] is True
+    assert summary["promotion_ready"] is False
+    assert summary["stage_requested"] == "all"
+    assert summary["artifact_links"]["data_intake_manifest_path"] == str(result.intake_manifest_path)
+    assert summary["artifact_links"]["data_quality_report_path"] == str(result.data_quality_report_path)
+    assert summary["artifact_links"]["market_journal_manifest_path"] == str(result.market_journal_manifest_path)
+    assert summary["stage_status"]["intake"]["status"] == "completed"
+    assert summary["stage_status"]["dataset"]["status"] == "failed"
+    assert summary["stage_status"]["evidence"] == {"status": "skipped", "reason": "dataset_not_available"}
+    assert summary["conclusion"]["status"] == "inconclusive"
+    assert any(reason["code"] == "dataset_failed" for reason in summary["top_failure_reasons"])
+    assert result.dataset_manifest_path is None
+    assert result.evidence_manifest_path is None
+
+
+def test_prepare_hmm_knn_research_data_stage_all_runs_relative_evidence_matrix(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "fixtures" / "datasets", row_count=120)
+    config_path = _write_fast_hmm_knn_config(tmp_path / "fixtures" / "hmm_knn_config.json")
+    experiment_spec_path = _write_spec(
+        tmp_path / "fixtures" / "experiment_spec.json",
+        {
+            "name": "pipeline fixture matrix",
+            "base_config_path": config_path.name,
+            "experiments": [
+                {
+                    "name": "small k softmax",
+                    "slug": "small-k-softmax",
+                    "owning_agent": "KNN",
+                    "run_order": 1,
+                    "requires_new_data": False,
+                    "can_run_on_current_artifacts": True,
+                    "mutations": {
+                        "knn.primary_k": 8,
+                        "knn.k_values": [8, 12],
+                        "knn.primary_weighting": "softmax",
+                        "knn.neighbor_weighting": ["softmax"],
+                    },
+                }
+            ],
+        },
+    )
+    spec_path = _write_spec(
+        tmp_path / "fixtures" / "pipeline_spec.json",
+        _base_spec(
+            tmp_path,
+            providers=[],
+            dataset_stage={"enabled": False},
+            evidence_stage={
+                "enabled": True,
+                "dataset_path": str(Path("datasets") / dataset.parquet_path.name),
+                "experiment_spec": experiment_spec_path.name,
+                "workers": 1,
+                "write_monitoring": True,
+            },
+        ),
+    )
+
+    result = prepare_hmm_knn_research_data(spec_path=spec_path, stage="all")
+    intake = json.loads(result.intake_manifest_path.read_text(encoding="utf-8"))
+    summary = json.loads(result.pipeline_summary_path.read_text(encoding="utf-8"))
+    evidence = json.loads(Path(str(summary["artifact_links"]["evidence_manifest_path"])).read_text(encoding="utf-8"))
+
+    assert result.dataset_manifest_path is None
+    assert result.evidence_manifest_path is not None
+    assert intake["stage_status"]["dataset"] == {"status": "skipped", "reason": "dataset_stage_disabled"}
+    assert intake["stage_status"]["evidence"]["status"] == "completed"
+    assert intake["stage_status"]["evidence"]["mode"] == "experiment_matrix"
+    assert summary["stage_status"]["evidence"]["manifest_path"] == str(result.evidence_manifest_path)
+    assert summary["artifact_links"]["evidence_manifest_path"] == str(result.evidence_manifest_path)
+    assert summary["evidence"]["available"] is True
+    assert summary["evidence"]["mode"] == "experiment_matrix"
+    assert summary["evidence"]["experiment_count"] == 1
+    assert summary["evidence"]["effective_workers"] == 1
+    assert summary["conclusion"]["status"] in {"supported", "rejected", "inconclusive"}
+    assert evidence["experiment_manifest_version"] == "v2-hmm-knn-experiment-manifest-1"
+    assert evidence["spec_path"] == str(experiment_spec_path)
+    assert evidence["dataset_path"] == str(dataset.parquet_path.resolve())
+    assert Path(evidence["summary_path"]).exists()
+    assert Path(evidence["experiments"][0]["monitoring_report_path"]).exists()
+
+
+def test_prepare_hmm_knn_research_data_rejects_invalid_typed_provider_spec(tmp_path: Path) -> None:
+    spec_path = _write_spec(
+        tmp_path / "pipeline_spec.json",
+        _base_spec(
+            tmp_path,
+            providers=[
+                {
+                    "source_name": "binance_vision",
+                    "inputs": [
+                        {
+                            "path": "BTCUSDT-1m-klines.csv",
+                            "symbol": "BTCUSDT",
+                        }
+                    ],
+                }
+            ],
+        ),
+    )
+
+    with pytest.raises(ValueError, match="data_family is required"):
+        prepare_hmm_knn_research_data(spec_path=spec_path, stage="intake")
+
+
 def test_prepare_hmm_knn_research_data_cli_command_runs_intake(tmp_path: Path, monkeypatch) -> None:
     spec_path = _write_spec(tmp_path / "pipeline_spec.json", _base_spec(tmp_path))
     monkeypatch.setattr(
@@ -249,3 +450,4 @@ def test_prepare_hmm_knn_research_data_cli_command_runs_intake(tmp_path: Path, m
     assert Path(str(payload["data_intake_manifest_path"])).exists()
     assert Path(str(payload["data_quality_report_path"])).exists()
     assert Path(str(payload["market_journal_manifest_path"])).exists()
+    assert Path(str(payload["pipeline_summary_path"])).exists()
