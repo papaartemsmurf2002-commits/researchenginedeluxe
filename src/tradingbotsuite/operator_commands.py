@@ -81,7 +81,7 @@ async def build_manual_signal_with_options(
         source="manual-cli",
         symbol=symbol,
         direction=direction,
-        tv_bar_time_ms=latest_bar.time_ms,
+        signal_bar_time_ms=latest_bar.time_ms,
         received_time_ms=now_ms,
         raw_payload=raw_payload,
     )

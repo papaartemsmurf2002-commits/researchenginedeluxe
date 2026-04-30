@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import re
 from collections import deque
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -19,19 +18,6 @@ from tradingbotsuite.operator_commands import (
     execute_refresh_health,
     execute_smoke_live,
     execute_supervise,
-)
-from tradingbotsuite.research.entry_gate import (
-    DEFAULT_GATE_CANDIDATE_CAP,
-    GOLDILOCKS_GATE_FAMILY,
-    LEGACY_GATE_FAMILY,
-    GateParameters,
-    analyze_entry_gate_configuration,
-    default_visual_gate_parameters,
-    optimizer_exit_settings,
-    preferred_research_exit_settings,
-    run_entry_gate_optimizer,
-    run_entry_gate_preflight,
-    run_entry_gate_research,
 )
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, prepare_hmm_knn_research_data
 from tradingbotsuite.research.experiment_runner import run_research_experiment
@@ -463,161 +449,10 @@ class OperatorConsoleService:
                     },
                 }
             )
-        for entry_gate_metrics in sorted(base_dir.rglob("v2-btc-entry-gates-*/metrics.json")):
-            payload = json.loads(entry_gate_metrics.read_text(encoding="utf-8"))
-            artifacts.append(
-                {
-                    "type": "entry_gate_research",
-                    "path": str(entry_gate_metrics),
-                    "sort_time": entry_gate_metrics.stat().st_mtime,
-                    "manifest": payload,
-                    "summary": {
-                        "strategy_version": payload.get("strategy_version"),
-                        "selection_status": payload.get("selection_status"),
-                        "candidate_count": payload.get("candidate_count"),
-                        "candidate_full_pass_count": payload.get("candidate_full_pass_count"),
-                        "baseline_return": ((payload.get("baseline") or {}).get("return_on_capital_pct")),
-                        "best_return": ((payload.get("best") or {}).get("return_on_capital_pct")),
-                        "best_rejection_rate": ((payload.get("best") or {}).get("rejection_rate")),
-                    },
-                }
-            )
-        for optimizer_metrics in sorted(base_dir.rglob("v2-btc-entry-gate-optimizer-*/metrics.json")):
-            payload = json.loads(optimizer_metrics.read_text(encoding="utf-8"))
-            artifacts.append(
-                {
-                    "type": "entry_gate_optimizer",
-                    "path": str(optimizer_metrics),
-                    "sort_time": optimizer_metrics.stat().st_mtime,
-                    "manifest": payload,
-                    "summary": {
-                        "strategy_version": payload.get("strategy_version"),
-                        "exit_profile": payload.get("exit_profile"),
-                        "allowed_components": payload.get("allowed_components"),
-                        "evaluated_count": payload.get("evaluated_count"),
-                        "selection_status": payload.get("selection_status"),
-                        "candidate_full_pass_count": payload.get("candidate_full_pass_count"),
-                        "best_return": ((payload.get("best") or {}).get("return_on_capital_pct")),
-                        "best_rejection_rate": ((payload.get("best") or {}).get("rejection_rate")),
-                    },
-                }
-            )
-        for preflight_metrics in sorted(base_dir.rglob("v2-btc-entry-gate-preflight-*/metrics.json")):
-            payload = json.loads(preflight_metrics.read_text(encoding="utf-8"))
-            artifacts.append(
-                {
-                    "type": "entry_gate_preflight",
-                    "path": str(preflight_metrics),
-                    "sort_time": preflight_metrics.stat().st_mtime,
-                    "manifest": payload,
-                    "summary": {
-                        "strategy_version": payload.get("strategy_version"),
-                        "candidate_count": payload.get("candidate_count"),
-                        "component_count": payload.get("component_count"),
-                        "viable_components": payload.get("viable_components"),
-                    },
-                }
-            )
         artifacts.sort(key=lambda item: float(item.get("sort_time") or 0.0), reverse=True)
         for artifact in artifacts:
             artifact.pop("sort_time", None)
         return artifacts
-
-    def list_analysis_uploads(self) -> list[dict[str, Any]]:
-        upload_dir = self._analysis_upload_dir()
-        if not upload_dir.exists():
-            return []
-        items: list[dict[str, Any]] = []
-        for path in sorted(upload_dir.glob("*.csv"), key=lambda candidate: candidate.stat().st_mtime, reverse=True):
-            stat = path.stat()
-            items.append(
-                {
-                    "name": path.name,
-                    "path": str(path),
-                    "size_bytes": stat.st_size,
-                    "updated_at_ms": int(stat.st_mtime * 1000),
-                }
-            )
-        return items
-
-    async def upload_chart_export(self, filename: str, content: bytes) -> dict[str, Any]:
-        safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", Path(filename).name).strip("_") or "chart_export.csv"
-        if not safe_name.lower().endswith(".csv"):
-            safe_name = f"{safe_name}.csv"
-        upload_dir = self._analysis_upload_dir()
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        target = upload_dir / safe_name
-        await asyncio.to_thread(target.write_bytes, content)
-        return {
-            "name": target.name,
-            "path": str(target),
-            "size_bytes": len(content),
-            "updated_at_ms": self.engine.clock(),
-        }
-
-    async def analyze_entry_gates(self, payload: dict[str, Any]) -> dict[str, Any]:
-        path = Path(str(payload.get("path", "BINANCE_BTCUSDT.P, 15 (2).csv")))
-        symbol = str(payload.get("symbol", "BTCUSDT")).upper()
-        strategy_version = str(payload.get("strategy_version", "visual_analysis"))
-        gate_family = str(payload.get("gate_family", LEGACY_GATE_FAMILY)).strip().lower().replace("-", "_")
-        if gate_family not in {LEGACY_GATE_FAMILY, GOLDILOCKS_GATE_FAMILY}:
-            raise ValueError(f"unsupported gate_family: {gate_family}")
-        max_chart_points = max(200, min(int(payload.get("max_chart_points", 20_000)), 20_000))
-        max_visible_decisions = payload.get("max_visible_decisions", 2000)
-        if max_visible_decisions is not None:
-            max_visible_decisions = max(100, min(int(max_visible_decisions), 10000))
-
-        params = GateParameters(
-            gate_family=gate_family,
-            acf_window=int(payload.get("acf_window", 14)),
-            acf_block_below=float(payload.get("acf_block_below", -0.20)),
-            acf_trend_above=float(payload.get("acf_trend_above", 0.10)),
-            hvr_short_window=int(payload.get("hvr_short_window", 6)),
-            hvr_long_window=int(payload.get("hvr_long_window", 60)),
-            hvr_block_below=float(payload.get("hvr_block_below", 0.50)),
-            hvr_release_above=float(payload.get("hvr_release_above", 0.75)),
-            dsp_min_cycle_bars=int(payload.get("dsp_min_cycle_bars", 4)),
-            dsp_max_cycle_bars=int(payload.get("dsp_max_cycle_bars", 16)),
-            dsp_cycle_ratio_threshold=float(payload.get("dsp_cycle_ratio_threshold", 0.55)),
-            dsp_trend_slope_threshold=float(payload.get("dsp_trend_slope_threshold", 0.25)),
-            use_acf=bool(payload.get("use_acf", True)),
-            use_hvr=bool(payload.get("use_hvr", True)),
-            use_dsp=bool(payload.get("use_dsp", True)),
-            er_window=int(payload.get("er_window", 14)),
-            er_min=float(payload.get("er_min", 0.20)),
-            vwap_margin_bps=float(payload.get("vwap_margin_bps", 0.0)),
-            hv_window_bars=int(payload.get("hv_window_bars", 672)),
-            hvp_lookback_bars=int(payload.get("hvp_lookback_bars", 2880)),
-            hvp_min=float(payload.get("hvp_min", 20.0)),
-            hvp_max=float(payload.get("hvp_max", 80.0)),
-            use_er=bool(payload.get("use_er", True)),
-            use_vwap=bool(payload.get("use_vwap", True)),
-            use_hvp=bool(payload.get("use_hvp", True)),
-        )
-        settings = optimizer_exit_settings(str(payload.get("exit_profile", preferred_research_exit_settings().exit_mode)))
-        result = await asyncio.to_thread(
-            analyze_entry_gate_configuration,
-            path=path,
-            symbol=symbol,
-            strategy_version=strategy_version,
-            params=params,
-            settings=settings,
-            gate_family=gate_family,
-            ohlcv_cache_policy=payload.get("ohlcv_cache_policy"),
-            max_chart_points=max_chart_points,
-            max_visible_decisions=max_visible_decisions,
-        )
-        return result.payload
-
-    def analysis_defaults(self) -> dict[str, Any]:
-        gate = default_visual_gate_parameters()
-        settings = preferred_research_exit_settings()
-        return {
-            "gate_family": LEGACY_GATE_FAMILY,
-            "gate_parameters": asdict(gate),
-            "simulation_settings": asdict(settings),
-            "uploads": self.list_analysis_uploads(),
-        }
 
     def list_guide_documents(self) -> list[dict[str, Any]]:
         root = Path(__file__).resolve().parents[2]
@@ -630,18 +465,8 @@ class OperatorConsoleService:
             return root / "docs" / name
 
         docs = [
-            ("operator-console", "Operator Console", doc_path("OPERATOR_CONSOLE.md")),
             ("operator-guide", "Operator Guide", doc_path("OPERATOR_GUIDE.md")),
-            ("v2-stability-audit", "V2 Stability Audit", doc_path("V2_STABILITY_AUDIT.md")),
-            ("btc-runtime-reliability", "BTC Runtime Reliability Guide", doc_path("BTC_RUNTIME_RELIABILITY_GUIDE.md")),
-            ("testnet-full-stack-checklist", "Testnet Full-Stack Checklist", doc_path("TESTNET_FULL_STACK_CHECKLIST.md")),
-            ("v2-research-guide", "V2 Research Guide", doc_path("V2_RESEARCH_GUIDE.md")),
-            ("entry-gate-research", "Entry Gate Research", doc_path("ENTRY_GATE_RESEARCH.md")),
-            ("goldilocks-filter-research", "Goldilocks Filter Research", doc_path("GOLDILOCKS_FILTER_RESEARCH.md")),
-            ("tradingview-v2-data-framework", "TradingView to V2 Data Framework", doc_path("TRADINGVIEW_V2_DATA_FRAMEWORK.md")),
-            ("dataset-building-guide", "Dataset Building Guide", doc_path("DATASET_BUILDING_GUIDE.md")),
             ("microstructure-reliability", "Microstructure Reliability", doc_path("MICROSTRUCTURE_RELIABILITY.md")),
-            ("development-roadmap", "Development Roadmap", doc_path("DEVELOPMENT_ROADMAP.md")),
         ]
         result: list[dict[str, Any]] = []
         for slug, title, path in docs:
@@ -819,69 +644,7 @@ class OperatorConsoleService:
                 artifact_manifest_path=Path(request["artifact_manifest_path"]),
             )
             return {"metrics_path": str(metrics_path)}
-        if job_type == "research-entry-gates":
-            result = await asyncio.to_thread(
-                run_entry_gate_research,
-                path=Path(request.get("path", "BINANCE_BTCUSDT.P, 15 (2).csv")),
-                symbol=str(request.get("symbol", "BTCUSDT")).upper(),
-                strategy_version=str(request.get("strategy_version", "kernel_v1")),
-                output_dir=self.config.research.output_dir,
-                settings=optimizer_exit_settings(str(request.get("exit_profile", "runner"))),
-                max_candidates=int(request.get("max_candidates", DEFAULT_GATE_CANDIDATE_CAP)),
-                gate_family=str(request.get("gate_family", LEGACY_GATE_FAMILY)),
-                allowed_components=tuple(request["allowed_components"]) if request.get("allowed_components") is not None else None,
-                ohlcv_cache_policy=request.get("ohlcv_cache_policy"),
-            )
-            return {
-                "output_dir": str(result.output_dir),
-                "metrics_path": str(result.metrics_path),
-                "grid_results_path": str(result.grid_results_path),
-                "best_gate_manifest_path": str(result.best_gate_manifest_path),
-                "equity_curve_path": str(result.equity_curve_path),
-                "rejected_vs_accepted_path": str(result.rejected_vs_accepted_path),
-            }
-        if job_type == "preflight-entry-gates":
-            result = await asyncio.to_thread(
-                run_entry_gate_preflight,
-                path=Path(request.get("path", "BINANCE_BTCUSDT.P, 15 (2).csv")),
-                symbol=str(request.get("symbol", "BTCUSDT")).upper(),
-                strategy_version=str(request.get("strategy_version", "kernel_v1")),
-                output_dir=self.config.research.output_dir,
-                gate_family=str(request.get("gate_family", LEGACY_GATE_FAMILY)),
-                ohlcv_cache_policy=request.get("ohlcv_cache_policy"),
-            )
-            return {
-                "output_dir": str(result.output_dir),
-                "metrics_path": str(result.metrics_path),
-                "preflight_results_path": str(result.preflight_results_path),
-            }
-        if job_type == "optimize-entry-gates":
-            result = await asyncio.to_thread(
-                run_entry_gate_optimizer,
-                path=Path(request.get("path", "BINANCE_BTCUSDT.P, 15 (2).csv")),
-                symbol=str(request.get("symbol", "BTCUSDT")).upper(),
-                strategy_version=str(request.get("strategy_version", "kernel_v1")),
-                output_dir=self.config.research.output_dir,
-                max_gate_candidates=int(request.get("max_gate_candidates", DEFAULT_GATE_CANDIDATE_CAP)),
-                exit_profile=str(request.get("exit_profile", "runner")),
-                top_n=int(request.get("top_n", 5)),
-                workers=int(request.get("workers", 1)),
-                allowed_components=tuple(request["allowed_components"]) if request.get("allowed_components") is not None else None,
-                gate_family=str(request.get("gate_family", LEGACY_GATE_FAMILY)),
-                ohlcv_cache_policy=request.get("ohlcv_cache_policy"),
-            )
-            return {
-                "output_dir": str(result.output_dir),
-                "metrics_path": str(result.metrics_path),
-                "top_results_path": str(result.top_results_path),
-                "best_gate_manifest_path": str(result.best_gate_manifest_path),
-                "equity_curve_path": str(result.equity_curve_path),
-                "rejected_vs_accepted_path": str(result.rejected_vs_accepted_path),
-            }
         raise ValueError(f"unsupported job type: {job_type}")
-
-    def _analysis_upload_dir(self) -> Path:
-        return self.config.research.output_dir / "analysis_uploads"
 
     def _parse_markdown_sections(self, text: str) -> list[dict[str, Any]]:
         sections: list[dict[str, Any]] = []

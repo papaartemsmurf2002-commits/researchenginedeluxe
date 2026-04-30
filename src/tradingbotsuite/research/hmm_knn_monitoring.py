@@ -304,7 +304,7 @@ def _diagnostic_coverage(knn: pd.DataFrame, diagnostics: pd.DataFrame) -> float 
         return 0.0
     if "signal_id" in knn.columns and "signal_id" in diagnostics.columns:
         return float(diagnostics["signal_id"].dropna().nunique() / max(knn["signal_id"].dropna().nunique(), 1))
-    identity = [column for column in ("tv_bar_time_ms", "direction", "symbol") if column in knn.columns and column in diagnostics.columns]
+    identity = [column for column in ("signal_bar_time_ms", "direction", "symbol") if column in knn.columns and column in diagnostics.columns]
     if not identity:
         return None
     return float(diagnostics.drop_duplicates(identity).shape[0] / len(knn.drop_duplicates(identity)))

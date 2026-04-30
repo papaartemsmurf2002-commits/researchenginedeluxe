@@ -29,7 +29,7 @@ def _crossunder(left: pd.Series, right: pd.Series) -> pd.Series:
     return (left < right) & (left.shift(1) >= right.shift(1))
 
 
-def _pine_round(value: float) -> int:
+def _half_up_round(value: float) -> int:
     value = float(value)
     if not np.isfinite(value):
         return 0
@@ -38,21 +38,10 @@ def _pine_round(value: float) -> int:
     return int(np.ceil(value - 0.5))
 
 
-def _canonical_parity_mode(mode: str) -> str:
+def _canonical_lc_mode(mode: str) -> str:
     if mode in {
-        "pine_exact",
-        "pine_exact_static",
-        "tv_marker_tuned",
+        "static",
         "research_marker_tuned",
-        "pine_exact_offset_probe",
-        "pine_exact_adx_zero_prev_probe",
-        "pine_exact_label_inverted_probe",
-        "pine_exact_label_forward_probe",
-        "pine_exact_label_forward_inverted_probe",
-        "pine_exact_modulo_zero_probe",
-        "pine_exact_modulo_one_probe",
-        "pine_exact_modulo_two_probe",
-        "pine_exact_modulo_three_probe",
         "research_ann_modulo_0",
         "research_ann_modulo_1",
         "research_ann_modulo_2",
@@ -62,29 +51,23 @@ def _canonical_parity_mode(mode: str) -> str:
         "research_label_forward_inverted",
         "research_barsheld_start0",
     }:
-        return "pine_exact_static"
-    if mode in {"rolling_research", "pine_exact_rolling_probe", "research_ann_rolling"}:
-        return "pine_exact_rolling_probe"
+        return "static"
+    if mode in {"rolling_research", "research_ann_rolling"}:
+        return "rolling_research"
     raise ValueError(
-        "StrategyConfig.lc_parity_mode must be one of: "
-        "pine_exact, pine_exact_static, research_marker_tuned, tv_marker_tuned, pine_exact_rolling_probe, "
-        "pine_exact_offset_probe, pine_exact_adx_zero_prev_probe, "
-        "pine_exact_label_inverted_probe, "
-        "pine_exact_label_forward_probe, pine_exact_label_forward_inverted_probe, "
-        "pine_exact_modulo_zero_probe, pine_exact_modulo_one_probe, "
-        "pine_exact_modulo_two_probe, pine_exact_modulo_three_probe, "
-        "rolling_research, research_ann_modulo_0..3, research_ann_rolling, "
-        "research_label_inverted, research_label_forward, research_label_forward_inverted, "
-        "research_barsheld_start0."
+        "StrategyConfig.lc_mode must be one of: "
+        "static, rolling_research, research_ann_modulo_0..3, research_ann_rolling, "
+        "research_marker_tuned, research_label_inverted, research_label_forward, "
+        "research_label_forward_inverted, research_barsheld_start0."
     )
 
 
 def _training_labels(source: pd.Series, mode: str) -> np.ndarray:
-    if mode in {"pine_exact_label_inverted_probe", "research_label_inverted"}:
+    if mode == "research_label_inverted":
         labels = np.where(source.shift(4) < source, 1, np.where(source.shift(4) > source, -1, 0))
-    elif mode in {"pine_exact_label_forward_probe", "research_label_forward"}:
+    elif mode == "research_label_forward":
         labels = np.where(source.shift(-4) > source, 1, np.where(source.shift(-4) < source, -1, 0))
-    elif mode in {"pine_exact_label_forward_inverted_probe", "research_label_forward_inverted"}:
+    elif mode == "research_label_forward_inverted":
         labels = np.where(source.shift(-4) > source, -1, np.where(source.shift(-4) < source, 1, 0))
     else:
         labels = np.where(source.shift(4) < source, -1, np.where(source.shift(4) > source, 1, 0))
@@ -93,13 +76,13 @@ def _training_labels(source: pd.Series, mode: str) -> np.ndarray:
 
 def _accept_modulo(modulo_index: int, mode: str) -> bool:
     remainder = int(modulo_index) % 4
-    if mode in {"research_marker_tuned", "tv_marker_tuned", "pine_exact_modulo_zero_probe", "research_ann_modulo_0"}:
+    if mode in {"research_marker_tuned", "research_ann_modulo_0"}:
         return remainder == 0
-    if mode in {"pine_exact_modulo_one_probe", "research_ann_modulo_1"}:
+    if mode == "research_ann_modulo_1":
         return remainder == 1
-    if mode in {"pine_exact_modulo_two_probe", "research_ann_modulo_2"}:
+    if mode == "research_ann_modulo_2":
         return remainder == 2
-    if mode in {"pine_exact_modulo_three_probe", "research_ann_modulo_3"}:
+    if mode == "research_ann_modulo_3":
         return remainder == 3
     return bool(remainder)
 
@@ -160,8 +143,8 @@ def _apply_entry_cooldown(
 class LorentzianClassifier:
     def generate(self, df: pd.DataFrame, config: StrategyConfig) -> pd.DataFrame:
         frame = normalize_frame(df)
-        requested_parity_mode = getattr(config, "lc_parity_mode", "pine_exact")
-        parity_mode = _canonical_parity_mode(requested_parity_mode)
+        requested_lc_mode = getattr(config, "lc_mode", "static")
+        lc_mode = _canonical_lc_mode(requested_lc_mode)
         adx_zero_previous_on_first_bar = True
         feature_names = [f"f{i + 1}" for i in range(config.feature_count)]
         for idx, (name, param_a, param_b) in enumerate(config.feature_definitions[: config.feature_count]):
@@ -175,7 +158,7 @@ class LorentzianClassifier:
 
         feature_matrix = frame[feature_names].to_numpy(dtype=float)
         source = frame[config.source].astype(float)
-        y_train_series = _training_labels(source, requested_parity_mode)
+        y_train_series = _training_labels(source, requested_lc_mode)
 
         frame["volatility_filter"] = volatility_filter(frame, config.use_volatility_filter).fillna(False)
         frame["regime_filter"] = regime_filter(frame, config.regime_threshold, config.use_regime_filter).fillna(False)
@@ -219,7 +202,7 @@ class LorentzianClassifier:
             if current_idx >= max_bars_back_index:
                 current_features = feature_matrix[current_idx, :active_feature_count]
                 current_feature_has_na_values[current_idx] = bool(np.isnan(current_features).any())
-                if parity_mode == "pine_exact_rolling_probe":
+                if lc_mode == "rolling_research":
                     window_start = max(0, current_idx - size_loop)
                     historical_indices = np.arange(window_start, current_idx + 1, dtype=int)
                 else:
@@ -237,18 +220,18 @@ class LorentzianClassifier:
                 accepted_labels_this_bar: list[int] = []
                 for relative_idx, distance in enumerate(distances):
                     historical_idx = int(historical_indices[relative_idx])
-                    modulo_index = relative_idx if parity_mode == "pine_exact_rolling_probe" else historical_idx
-                    if np.isfinite(distance) and distance >= last_distance and _accept_modulo(modulo_index, requested_parity_mode):
+                    modulo_index = relative_idx if lc_mode == "rolling_research" else historical_idx
+                    if np.isfinite(distance) and distance >= last_distance and _accept_modulo(modulo_index, requested_lc_mode):
                         last_distance = float(distance)
                         distances_array.append(last_distance)
-                        label = _pine_round(float(y_train_series[historical_idx]))
+                        label = _half_up_round(float(y_train_series[historical_idx]))
                         predictions_array.append(label)
                         neighbor_indices_array.append(historical_idx)
                         accepted_indices_this_bar.append(historical_idx)
                         accepted_labels_this_bar.append(label)
                         accepted_this_bar += 1
                         if len(predictions_array) > config.neighbors_count:
-                            pivot = _pine_round(config.neighbors_count * 3 / 4)
+                            pivot = _half_up_round(config.neighbors_count * 3 / 4)
                             pivot = min(max(pivot, 0), len(distances_array) - 1)
                             last_distance = distances_array[pivot]
                             distances_array.pop(0)
@@ -275,7 +258,7 @@ class LorentzianClassifier:
                 current_signal = -1
             signals[current_idx] = current_signal
 
-            if current_idx == 0 and requested_parity_mode == "research_barsheld_start0":
+            if current_idx == 0 and requested_lc_mode == "research_barsheld_start0":
                 bars_held[current_idx] = 0
             elif current_idx == 0:
                 bars_held[current_idx] = 1
@@ -411,7 +394,7 @@ class LorentzianClassifier:
         result["neighbor_index_last"] = [state[-1] if state else np.nan for state in neighbor_index_states]
         result["neighbor_label_last"] = [state[-1] if state else np.nan for state in prediction_states]
         result["distance_last"] = [state[-1] if state else np.nan for state in distance_states]
-        diagnostic_tail_count = max(10, int(getattr(config, "parity_neighbor_diagnostics", 10)))
+        diagnostic_tail_count = max(10, int(getattr(config, "neighbor_diagnostics", 10)))
         for tail_offset in range(diagnostic_tail_count):
             result[f"neighbor_index_tail_{tail_offset}"] = [
                 _tail_value(state, tail_offset) for state in neighbor_index_states
@@ -426,8 +409,8 @@ class LorentzianClassifier:
         result["ann_window_end"] = ann_window_end_values
         result["ann_considered_count"] = ann_considered_values
         result["ann_accepted_count"] = ann_accepted_values
-        result["lc_parity_mode"] = requested_parity_mode
-        result["lc_parity_mode_resolved"] = parity_mode
+        result["lc_mode"] = requested_lc_mode
+        result["lc_mode_resolved"] = lc_mode
         result["start_long_trade"] = start_long.fillna(False) & config.allow_long
         result["start_short_trade"] = start_short.fillna(False) & config.allow_short
         result["end_long_trade"] = end_long.fillna(False)

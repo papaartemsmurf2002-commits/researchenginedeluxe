@@ -40,10 +40,11 @@ LABEL_OUTCOME_COLUMNS = [
     "barrier_hit_type",
 ]
 RESEARCH_SIGNAL_SOURCES = {
-    "tradingview",
-    "tradingview_chart_export",
-    "tradingview_strategy_export",
-    "tradingview_alert_log",
+    "external_signal",
+    "research_signal",
+    "manual-cli",
+    "operator_manual",
+    "provider_signal",
 }
 BTC_PHASE_1_SYMBOL = "BTCUSDT"
 CONTEXT_MANIFEST_FIELDS = {
@@ -591,7 +592,7 @@ class ResearchDatasetBuilder:
         if self.plan.symbol.upper() != BTC_PHASE_1_SYMBOL:
             raise ValueError("Phase 1 research dataset builds are BTCUSDT-only")
         await self.store.initialize()
-        all_rows = sorted(await self.store.list_research_signals(self.plan.symbol), key=lambda row: int(row["tv_bar_time_ms"]))
+        all_rows = sorted(await self.store.list_research_signals(self.plan.symbol), key=lambda row: int(row["signal_bar_time_ms"]))
         rows = [row for row in all_rows if str(row["source"]) in RESEARCH_SIGNAL_SOURCES]
         rows = self._dedupe_research_signals(rows)
         if not rows:
@@ -607,7 +608,7 @@ class ResearchDatasetBuilder:
         preloaded_bars, bar_times = await self._preload_bar_history(rows)
         contexts_by_signal_time = await self._prefetch_contexts(rows)
         for row in rows:
-            signal_time_ms = int(row["tv_bar_time_ms"])
+            signal_time_ms = int(row["signal_bar_time_ms"])
             raw_payload = row.get("raw_payload") or {}
             decision_packet = row.get("decision_packet") or {}
             decision_snapshot = decision_packet.get("feature_snapshot") or {}
@@ -710,7 +711,7 @@ class ResearchDatasetBuilder:
                 "asset_symbol": row["symbol"],
                 "symbol": row["symbol"],
                 "direction": row["direction"],
-                "tv_bar_time_ms": signal_time_ms,
+                "signal_bar_time_ms": signal_time_ms,
                 "received_time_ms": int(row["received_time_ms"]),
                 "signal_bar_open_time_ms": latest_bar.time_ms,
                 "signal_bar_close_time_ms": signal_bar_close_time_ms,
@@ -795,7 +796,7 @@ class ResearchDatasetBuilder:
         if not records:
             raise ValueError("dataset build produced no labeled rows")
 
-        frame = pd.DataFrame(records).sort_values("tv_bar_time_ms").reset_index(drop=True)
+        frame = pd.DataFrame(records).sort_values("signal_bar_time_ms").reset_index(drop=True)
         for column in RESEARCH_FEATURE_COLUMNS:
             if column not in frame.columns:
                 frame[column] = 0.0
@@ -884,7 +885,7 @@ class ResearchDatasetBuilder:
         return DatasetBuildResult(dataset_path=dataset_path, manifest_path=manifest_path, row_count=len(frame))
 
     async def _prefetch_contexts(self, rows: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
-        signal_times = sorted({int(row["tv_bar_time_ms"]) for row in rows})
+        signal_times = sorted({int(row["signal_bar_time_ms"]) for row in rows})
         contexts_by_signal_time: dict[int, dict[str, Any]] = {}
         semaphore = asyncio.Semaphore(16)
 
@@ -920,13 +921,13 @@ class ResearchDatasetBuilder:
         passthrough: list[dict[str, Any]] = []
         for row in rows:
             raw_payload = row.get("raw_payload") or {}
-            if raw_payload.get("source_mode") != "chart_export":
+            if raw_payload.get("source_mode") != "signal_export":
                 passthrough.append(row)
                 continue
             key = (
                 row["symbol"],
                 row["direction"],
-                int(row["tv_bar_time_ms"]),
+                int(row["signal_bar_time_ms"]),
                 raw_payload.get("strategy_version"),
             )
             current = selected.get(key)
@@ -936,7 +937,7 @@ class ResearchDatasetBuilder:
                 selected[key] = row
         return sorted(
             [*passthrough, *selected.values()],
-            key=lambda row: (int(row["tv_bar_time_ms"]), str(row["signal_id"])),
+            key=lambda row: (int(row["signal_bar_time_ms"]), str(row["signal_id"])),
         )
 
     def _planned_split_summary(self, row_count: int) -> dict[str, int]:
@@ -953,8 +954,8 @@ class ResearchDatasetBuilder:
     async def _preload_bar_history(self, rows: list[dict[str, Any]]) -> tuple[list[Bar], list[int]]:
         if not rows:
             return [], []
-        first_signal_time_ms = int(rows[0]["tv_bar_time_ms"])
-        last_signal_time_ms = int(rows[-1]["tv_bar_time_ms"])
+        first_signal_time_ms = int(rows[0]["signal_bar_time_ms"])
+        last_signal_time_ms = int(rows[-1]["signal_bar_time_ms"])
         lookback_start_ms = first_signal_time_ms - ((self.plan.dataset.bar_lookback - 1) * BAR_INTERVAL_MS)
         future_end_open_time_ms = last_signal_time_ms + (
             min(self.plan.dataset.future_bar_limit, self.config.strategy.time_barrier_bars) * BAR_INTERVAL_MS

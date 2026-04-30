@@ -64,7 +64,7 @@ class FakeLiveAdapter:
         return {"mid_price": "70000"}
 
 
-def _write_chart_export(path: Path, sample_bars) -> Path:
+def _write_signal_export(path: Path, sample_bars) -> Path:
     lines = ["time,open,high,low,close,Buy,Sell,StopBuy,StopSell,Shapes,Chars"]
     signal_rows = {70: ("65000", ""), 88: ("", "65500"), 104: ("64800", ""), 122: ("", "65200")}
     base_bars = list(sample_bars)
@@ -102,7 +102,7 @@ def _write_chart_export(path: Path, sample_bars) -> Path:
                 ]
             )
         )
-    export_path = path / "chart_export.csv"
+    export_path = path / "signal_export.csv"
     export_path.write_text("\n".join(lines), encoding="utf-8")
     return export_path
 
@@ -501,8 +501,8 @@ def test_operator_guides_page_includes_embedded_docs(app_config, sample_bars) ->
         _login(client, "operator-secret")
         response = client.get("/ui/guides")
     assert response.status_code == 200
-    assert "Operator Console" in response.text
-    assert "V2 Research Guide" in response.text
+    assert "Operator Guide" in response.text
+    assert "Microstructure Reliability" in response.text
 
 
 def test_operator_guides_api_returns_docs(app_config, sample_bars) -> None:
@@ -514,36 +514,7 @@ def test_operator_guides_api_returns_docs(app_config, sample_bars) -> None:
         response = client.get("/api/operator/guides")
     assert response.status_code == 200
     titles = [item["title"] for item in response.json()["items"]]
-    assert "Operator Console" in titles
-
-
-def test_operator_analysis_page_and_defaults_render(app_config, sample_bars) -> None:
-    config = _operator_config(app_config)
-    app = create_app(config)
-    app.state.engine.candle_client = FakeCandles(sample_bars)
-    with TestClient(app) as client:
-        _login(client, "operator-secret")
-        page = client.get("/ui/analysis")
-        defaults = client.get("/api/operator/research/analysis/defaults")
-    assert page.status_code == 200
-    assert "Interactive visual replay" in page.text
-    assert "Crosshair" in page.text
-    assert "candlestick-chart" in page.text
-    assert "drag left/right" in page.text
-    assert "Optimizer Setup" in page.text
-    assert "Research Exit Profile" in page.text
-    assert "Max Exit Candidates" not in page.text
-    assert "TP %" not in page.text
-    assert "Runner Activation" not in page.text
-    assert "Autocorrelation" in page.text
-    assert "Historical Volatility Ratio" in page.text
-    assert "DSP Cycle Filter" in page.text
-    assert "CHOP" not in page.text
-    assert "Load Latest Optimizer Best" in page.text
-    assert defaults.status_code == 200
-    payload = defaults.json()
-    assert payload["gate_parameters"]["use_acf"] is True
-    assert payload["simulation_settings"]["exit_mode"] == "runner"
+    assert "Operator Guide" in titles
 
 
 def test_operator_predictions_page_renders(app_config, sample_bars) -> None:
@@ -557,116 +528,6 @@ def test_operator_predictions_page_renders(app_config, sample_bars) -> None:
     assert page.status_code == 200
     assert "Live Predictions" in page.text
     assert "Microstructure-derived short-horizon pressure" in page.text
-
-
-def test_operator_analysis_upload_and_run(app_config, sample_bars, tmp_path) -> None:
-    config = _operator_config(app_config)
-    config = AppConfig(
-        runtime_mode=config.runtime_mode,
-        db_path=config.db_path,
-        webhook=config.webhook,
-        strategy=config.strategy,
-        binance=config.binance,
-        hyperliquid=config.hyperliquid,
-        research=replace(config.research, output_dir=tmp_path / "research"),
-        operator_ui=config.operator_ui,
-    )
-    app = create_app(config)
-    app.state.engine.candle_client = FakeCandles(sample_bars)
-    export_path = _write_chart_export(tmp_path, sample_bars)
-
-    with TestClient(app) as client:
-        csrf_token = _login(client, "operator-secret")
-        upload = client.post(
-            "/api/operator/research/analysis/upload-chart-export",
-            headers={"X-CSRF-Token": csrf_token},
-            files={"file": ("chart_export.csv", export_path.read_bytes(), "text/csv")},
-        )
-        assert upload.status_code == 200
-        stored_path = upload.json()["path"]
-
-        analyze = client.post(
-            "/api/operator/research/analysis/entry-gates",
-            headers={"X-CSRF-Token": csrf_token},
-            json={
-                "path": stored_path,
-                "symbol": "BTCUSDT",
-                "strategy_version": "visual_test",
-                "use_acf": True,
-                "use_hvr": True,
-                "use_dsp": True,
-                "acf_window": 14,
-                "acf_block_below": -0.20,
-                "acf_trend_above": 0.10,
-                "hvr_short_window": 6,
-                "hvr_long_window": 60,
-                "hvr_block_below": 0.50,
-                "hvr_release_above": 0.75,
-                "dsp_min_cycle_bars": 4,
-                "dsp_max_cycle_bars": 16,
-                "dsp_cycle_ratio_threshold": 0.55,
-                "dsp_trend_slope_threshold": 0.25,
-                "exit_profile": "runner",
-            },
-        )
-
-    assert analyze.status_code == 200
-    payload = analyze.json()
-    assert payload["source_metadata"]["source_file_name"] == "chart_export.csv"
-    assert payload["parameters"]["use_acf"] is True
-    assert payload["simulation_settings"]["exit_mode"] == "runner"
-    assert "baseline" in payload
-    assert "filtered" in payload
-    assert payload["chart"]["bars"]
-    assert payload["chart"]["filtered_decisions"]
-
-
-def test_operator_analysis_can_queue_preflight_and_optimizer(app_config, sample_bars, tmp_path) -> None:
-    config = _operator_config(app_config)
-    config = AppConfig(
-        runtime_mode=config.runtime_mode,
-        db_path=tmp_path / "operator_analysis_jobs.sqlite3",
-        webhook=config.webhook,
-        strategy=config.strategy,
-        binance=config.binance,
-        hyperliquid=config.hyperliquid,
-        research=replace(config.research, output_dir=tmp_path / "research"),
-        operator_ui=config.operator_ui,
-    )
-    app = create_app(config)
-    app.state.engine.candle_client = FakeCandles(sample_bars)
-    export_path = _write_chart_export(tmp_path, sample_bars)
-
-    with TestClient(app) as client:
-        csrf_token = _login(client, "operator-secret")
-        preflight = client.post(
-            "/api/operator/research/jobs/preflight-entry-gates",
-            headers={"X-CSRF-Token": csrf_token},
-            json={"path": str(export_path), "symbol": "BTCUSDT", "strategy_version": "analysis_preflight"},
-        )
-        optimizer = client.post(
-            "/api/operator/research/jobs/optimize-entry-gates",
-            headers={"X-CSRF-Token": csrf_token},
-            json={
-                "path": str(export_path),
-                "symbol": "BTCUSDT",
-                "strategy_version": "analysis_optimizer",
-                "max_gate_candidates": 10,
-                "exit_profile": "runner",
-                "top_n": 3,
-                "workers": 1,
-                "allowed_components": ["acf", "hvr"],
-            },
-        )
-        jobs = client.get("/api/operator/research/jobs").json()["items"]
-
-    assert preflight.status_code == 200
-    assert optimizer.status_code == 200
-    assert preflight.json()["status"] == "queued"
-    assert optimizer.json()["status"] == "queued"
-    optimizer_job = next(job for job in jobs if job["job_type"] == "optimize-entry-gates")
-    assert optimizer_job["request"]["allowed_components"] == ["acf", "hvr"]
-    assert optimizer_job["request"]["exit_profile"] == "runner"
 
 
 def test_server_monitor_auto_supervises_open_position(app_config, sample_bars, tmp_path, monkeypatch) -> None:

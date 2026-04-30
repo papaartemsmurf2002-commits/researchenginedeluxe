@@ -64,21 +64,6 @@
     <button class="secondary" onclick="queueResearchExperiment()">Run Research Experiment</button>
   </div>
   <div class="card wide">
-    <h3>Entry Gate Research</h3>
-    <p class="muted">Runs the observe-only trend/chop blocker replay on TradingView chart-export signals. This does not change live entries.</p>
-    <div class="grid">
-      <label>CSV Path <input id="entry-gate-path" value="BINANCE_BTCUSDT.P, 15 (2).csv"></label>
-      <label>Strategy Version <input id="entry-gate-version" value="kernel_v1"></label>
-      <label>Research Exit Profile
-        <select id="entry-gate-exit-profile">
-          <option value="runner">Runner: 0.5% SL, +0.5% activation, 0.3% trail</option>
-          <option value="fixed">Fixed: 1.5% TP, 0.5% SL</option>
-        </select>
-      </label>
-    </div>
-    <button class="secondary" onclick="queueEntryGateResearch()">Run Entry-Gate Research</button>
-  </div>
-  <div class="card wide">
     <h3>Latest Status</h3>
     <div id="research-status" class="stat-grid"></div>
   </div>
@@ -163,16 +148,6 @@
       return;
     }
     await queueJob("/api/operator/research/jobs/replay-eval", { artifact_manifest_path: artifact.path });
-  }
-
-  async function queueEntryGateResearch() {
-    await queueJob("/api/operator/research/jobs/research-entry-gates", {
-      path: document.getElementById("entry-gate-path").value,
-      strategy_version: document.getElementById("entry-gate-version").value,
-      symbol: "BTCUSDT",
-      exit_profile: document.getElementById("entry-gate-exit-profile").value,
-      max_candidates: 10000,
-    });
   }
 
   async function queueProviderPipeline() {
@@ -357,9 +332,6 @@
           ["Model", window.TBS.escapeHtml(String(summary.model_version || "n/a"))],
           ["Calibration", window.TBS.escapeHtml(String(summary.calibration_version || "n/a"))],
           ["V2 Expectancy", window.TBS.toMono(summary.v2_expectancy ?? "n/a")],
-          ["Gate Status", window.TBS.escapeHtml(String(summary.selection_status || "n/a"))],
-          ["Best Return", window.TBS.toMono(summary.best_return ?? "n/a")],
-          ["Best Rejection", window.TBS.toMono(summary.best_rejection_rate ?? "n/a")],
         ])}
         ${topMissing.length ? `<div class="muted" style="margin-top:8px;">Top missing feature rates: ${topMissing.map(([k, v]) => `${k}=${Number(v).toFixed(2)}`).join(", ")}</div>` : ""}
         <details class="details">

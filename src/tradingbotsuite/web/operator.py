@@ -5,7 +5,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
@@ -14,7 +14,6 @@ from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.models import RuntimeMode, SignalDirection
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, DATA_PIPELINE_STAGES
 from tradingbotsuite.operator_console import OperatorConsoleService
-from tradingbotsuite.research.entry_gate import DEFAULT_GATE_CANDIDATE_CAP
 
 
 def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorConsoleService) -> None:
@@ -202,15 +201,6 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
     async def operator_research(request: Request):
         return page_response(request, "research", "research.html")
 
-    @app.get("/ui/analysis", response_class=HTMLResponse)
-    async def operator_analysis(request: Request):
-        return page_response(
-            request,
-            "analysis",
-            "analysis.html",
-            extra={"analysis_defaults": service.analysis_defaults()},
-        )
-
     @app.get("/ui/predictions", response_class=HTMLResponse)
     async def operator_predictions(request: Request):
         return page_response(request, "predictions", "predictions.html")
@@ -249,29 +239,6 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
     async def operator_research_artifacts(request: Request):
         require_session_json(request)
         return {"items": service.list_artifacts()}
-
-    @app.get("/api/operator/research/analysis/defaults")
-    async def operator_analysis_defaults(request: Request):
-        require_session_json(request)
-        return service.analysis_defaults()
-
-    @app.post("/api/operator/research/analysis/upload-chart-export")
-    async def operator_analysis_upload_chart_export(request: Request, file: UploadFile = File(...)):
-        require_same_origin(request)
-        session = require_session_json(request)
-        require_csrf(request, session)
-        content = await file.read()
-        if not content:
-            raise HTTPException(status_code=400, detail="uploaded file is empty")
-        return await service.upload_chart_export(file.filename or "chart_export.csv", content)
-
-    @app.post("/api/operator/research/analysis/entry-gates")
-    async def operator_analysis_entry_gates(request: Request):
-        require_same_origin(request)
-        session = require_session_json(request)
-        require_csrf(request, session)
-        payload = await request.json()
-        return await service.analyze_entry_gates(payload)
 
     @app.get("/api/operator/research/jobs")
     async def operator_jobs(request: Request):
@@ -425,73 +392,5 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         payload = await request.json()
         try:
             return await service.queue_job("replay-eval", {"artifact_manifest_path": str(payload["artifact_manifest_path"])})
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    @app.post("/api/operator/research/jobs/research-entry-gates")
-    async def operator_research_entry_gates(request: Request):
-        require_same_origin(request)
-        session = require_session_json(request)
-        require_csrf(request, session)
-        payload = await request.json()
-        try:
-            return await service.queue_job(
-                "research-entry-gates",
-                {
-                    "path": str(payload.get("path", "BINANCE_BTCUSDT.P, 15 (2).csv")),
-                    "symbol": str(payload.get("symbol", "BTCUSDT")).upper(),
-                    "strategy_version": str(payload.get("strategy_version", "kernel_v1")),
-                    "exit_profile": str(payload.get("exit_profile", "runner")),
-                    "max_candidates": int(payload.get("max_candidates", DEFAULT_GATE_CANDIDATE_CAP)),
-                    "gate_family": str(payload.get("gate_family", "acf_hvr_dsp")),
-                    "allowed_components": list(payload["allowed_components"]) if payload.get("allowed_components") is not None else None,
-                    "ohlcv_cache_policy": payload.get("ohlcv_cache_policy"),
-                },
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    @app.post("/api/operator/research/jobs/preflight-entry-gates")
-    async def operator_preflight_entry_gates(request: Request):
-        require_same_origin(request)
-        session = require_session_json(request)
-        require_csrf(request, session)
-        payload = await request.json()
-        try:
-            return await service.queue_job(
-                "preflight-entry-gates",
-                {
-                    "path": str(payload.get("path", "BINANCE_BTCUSDT.P, 15 (2).csv")),
-                    "symbol": str(payload.get("symbol", "BTCUSDT")).upper(),
-                    "strategy_version": str(payload.get("strategy_version", "kernel_v1")),
-                    "gate_family": str(payload.get("gate_family", "acf_hvr_dsp")),
-                    "ohlcv_cache_policy": payload.get("ohlcv_cache_policy"),
-                },
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    @app.post("/api/operator/research/jobs/optimize-entry-gates")
-    async def operator_optimize_entry_gates(request: Request):
-        require_same_origin(request)
-        session = require_session_json(request)
-        require_csrf(request, session)
-        payload = await request.json()
-        try:
-            return await service.queue_job(
-                "optimize-entry-gates",
-                {
-                    "path": str(payload.get("path", "BINANCE_BTCUSDT.P, 15 (2).csv")),
-                    "symbol": str(payload.get("symbol", "BTCUSDT")).upper(),
-                    "strategy_version": str(payload.get("strategy_version", "kernel_v1")),
-                    "max_gate_candidates": int(payload.get("max_gate_candidates", DEFAULT_GATE_CANDIDATE_CAP)),
-                    "exit_profile": str(payload.get("exit_profile", "runner")),
-                    "top_n": int(payload.get("top_n", 5)),
-                    "workers": int(payload.get("workers", 1)),
-                    "allowed_components": list(payload["allowed_components"]) if payload.get("allowed_components") is not None else None,
-                    "gate_family": str(payload.get("gate_family", "acf_hvr_dsp")),
-                    "ohlcv_cache_policy": payload.get("ohlcv_cache_policy"),
-                },
-            )
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

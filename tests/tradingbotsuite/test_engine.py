@@ -48,7 +48,7 @@ def make_payload(signal_id: str, direction: str, bar_time_ms: int) -> dict[str, 
         "signal_id": signal_id,
         "symbol": "BTCUSDT",
         "direction": direction,
-        "tv_bar_time_ms": bar_time_ms,
+        "signal_bar_time_ms": bar_time_ms,
     }
 
 
@@ -76,8 +76,8 @@ def test_webhook_accepts_and_is_idempotent(test_client, app_config: AppConfig) -
     timestamp_ms = int(time.time() * 1000)
     signature = sign_payload(app_config.webhook.secret, payload, timestamp_ms)
     headers = {"X-Signature": signature, "X-Timestamp-Ms": str(timestamp_ms)}
-    first = test_client.post("/webhooks/tradingview", json=payload, headers=headers)
-    second = test_client.post("/webhooks/tradingview", json=payload, headers=headers)
+    first = test_client.post("/webhooks/signal", json=payload, headers=headers)
+    second = test_client.post("/webhooks/signal", json=payload, headers=headers)
     assert first.status_code == 200
     assert first.json()["accepted"] is True
     assert second.status_code == 200
@@ -122,7 +122,7 @@ async def test_flip_closes_then_reopens(app_config, sample_bars, tmp_path) -> No
         signal_id="long-1",
         symbol="BTCUSDT",
         direction=SignalDirection.LONG,
-        tv_bar_time_ms=1712662200000,
+        signal_bar_time_ms=1712662200000,
         received_time_ms=1712665800000,
         raw_payload={},
     )
@@ -130,7 +130,7 @@ async def test_flip_closes_then_reopens(app_config, sample_bars, tmp_path) -> No
         signal_id="short-1",
         symbol="BTCUSDT",
         direction=SignalDirection.SHORT,
-        tv_bar_time_ms=1712663100000,
+        signal_bar_time_ms=1712663100000,
         received_time_ms=1712665800001,
         raw_payload={},
     )
@@ -237,7 +237,7 @@ async def test_stale_data_enters_safe_mode(app_config, tmp_path) -> None:
             signal_id="stale-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -255,7 +255,7 @@ async def test_execution_path_parity() -> None:
             signal_id="p1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         ),
@@ -311,7 +311,7 @@ async def test_shadow_mode_does_not_persist_open_position(app_config, sample_bar
             signal_id="shadow-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -516,7 +516,7 @@ async def test_trace_sink_receives_pipeline_events(app_config, sample_bars, tmp_
             signal_id="trace-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -639,7 +639,7 @@ async def test_signal_is_rejected_when_spread_abnormality_hits_limit(app_config,
             signal_id="spread-block-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -697,7 +697,7 @@ async def test_signal_is_rejected_when_daily_loss_limit_hit(app_config, sample_b
             signal_id="daily-loss-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -781,7 +781,7 @@ async def test_barriers_anchor_to_filled_entry_price(app_config, sample_bars, tm
             signal_id="fill-anchor-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -821,7 +821,7 @@ async def test_manual_signal_builder_uses_latest_closed_bar(sample_bars) -> None
     signal = await _build_manual_signal(FakeEngine(), SignalDirection.SHORT, "BTCUSDT")
     assert signal.source == "manual-cli"
     assert signal.direction == SignalDirection.SHORT
-    assert signal.tv_bar_time_ms == sample_bars[-1].time_ms
+    assert signal.signal_bar_time_ms == sample_bars[-1].time_ms
     assert signal.signal_id.startswith("manual-short-")
 
 
@@ -1132,7 +1132,7 @@ async def test_signal_is_rejected_when_microstructure_veto_fails(app_config, sam
             signal_id="micro-veto-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -1175,7 +1175,7 @@ async def test_signal_can_still_be_accepted_when_queue_depth_is_degraded_but_ent
             signal_id="depth-degraded-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -1252,7 +1252,7 @@ async def test_signal_feature_snapshot_includes_hurst_microstructure_and_basis(a
             signal_id="feature-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -1327,7 +1327,7 @@ async def test_basis_dislocation_rejects_live_signal(app_config, sample_bars, tm
             signal_id="basis-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -1734,7 +1734,7 @@ async def test_hyperliquid_normalize_decision_packet_uses_exchange_valid_prices(
             signal_id="normalize-1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         ),
@@ -1777,7 +1777,7 @@ async def test_live_testnet_keeps_binance_barriers_when_exchange_fill_drifts(app
             signal_id="live-testnet-canonical",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         ),
@@ -1831,7 +1831,7 @@ async def test_live_testnet_position_state_keeps_binance_entry_and_records_excha
             signal_id="live-testnet-entry-state",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         ),
@@ -2057,7 +2057,7 @@ async def test_live_testnet_manual_validation_uses_fixed_protective_trigger_pric
             source="manual-cli",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=sample_bars[-1].time_ms,
+            signal_bar_time_ms=sample_bars[-1].time_ms,
             received_time_ms=1712665800000,
             raw_payload={
                 "manual_testnet_protection_test": {
@@ -2164,7 +2164,7 @@ async def test_live_mode_does_not_place_protective_orders_before_confirmed_entry
             signal_id="live-no-confirm",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -2187,7 +2187,7 @@ async def test_manual_signal_can_arm_short_lived_testnet_protection_cleanup(app_
             signal_id="manual-live-test",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         ),
@@ -2763,7 +2763,7 @@ async def test_live_filled_report_without_reconcile_does_not_persist_open_positi
             signal_id="live-false-fill",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         )
@@ -2808,7 +2808,7 @@ async def test_hyperliquid_adapter_fixture_contract() -> None:
             signal_id="l1",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=1712662200000,
+            signal_bar_time_ms=1712662200000,
             received_time_ms=1712665800000,
             raw_payload={},
         ),

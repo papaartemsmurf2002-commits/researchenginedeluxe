@@ -165,8 +165,8 @@ class StrategyConfig:
     fee_bps: float = 2.5
     slippage_bps: float = 1.0
     funding_rate_per_bar: float = 0.0
-    lc_parity_mode: str = "pine_exact"
-    parity_neighbor_diagnostics: int = 8
+    lc_mode: str = "static"
+    neighbor_diagnostics: int = 8
     min_prediction_magnitude: float = 0.0
     min_signal_persistence_bars: int = 1
     min_bars_between_entries: int = 0

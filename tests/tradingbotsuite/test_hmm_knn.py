@@ -115,11 +115,11 @@ def _synthetic_dataset(row_count: int = 120) -> pd.DataFrame:
         rows.append(
             {
                 "signal_id": f"sig-{index}",
-                "source": "tradingview",
+                "source": "external_signal",
                 "symbol": "BTCUSDT",
                 "direction": direction,
                 "direction_long": 1.0 if direction == "long" else 0.0,
-                "tv_bar_time_ms": start_ms + (index * 900_000),
+                "signal_bar_time_ms": start_ms + (index * 900_000),
                 "entry_price": price,
                 "label_accept": label,
                 "label_pnl_multiple": 1.4 if label else -0.9,
@@ -159,7 +159,7 @@ def test_hmm_knn_synthetic_fixture_contract_is_btc_phase_1_and_offline(tmp_path)
         "source",
         "symbol",
         "direction",
-        "tv_bar_time_ms",
+        "signal_bar_time_ms",
         "entry_price",
         plan.labels.label_column,
         plan.labels.pnl_column,
@@ -171,8 +171,8 @@ def test_hmm_knn_synthetic_fixture_contract_is_btc_phase_1_and_offline(tmp_path)
     assert set(frame["symbol"].astype(str).str.upper()) == {"BTCUSDT"}
     assert plan.symbol == "BTCUSDT"
     assert plan.asset_scope == ["BTCUSDT"]
-    assert frame["source"].eq("tradingview").all()
-    assert frame["tv_bar_time_ms"].diff().dropna().eq(900_000).all()
+    assert frame["source"].eq("external_signal").all()
+    assert frame["signal_bar_time_ms"].diff().dropna().eq(900_000).all()
     assert frame[plan.labels.label_column].nunique() == 2
     assert required_input_columns.issubset(frame.columns)
 
@@ -401,7 +401,7 @@ def test_uncertain_regime_posterior_sets_no_trade_flag() -> None:
             "signal_id": ["sig-1", "sig-2"],
             "symbol": ["BTCUSDT", "BTCUSDT"],
             "direction": ["long", "short"],
-            "tv_bar_time_ms": [1712649600000, 1712650500000],
+            "signal_bar_time_ms": [1712649600000, 1712650500000],
         },
         index=[10, 11],
     )
@@ -442,7 +442,7 @@ def test_degenerate_regime_posterior_normalizes_to_uniform_no_trade() -> None:
             "signal_id": ["degenerate-1", "degenerate-2"],
             "symbol": ["BTCUSDT", "BTCUSDT"],
             "direction": ["long", "short"],
-            "tv_bar_time_ms": [1712649600000, 1712650500000],
+            "signal_bar_time_ms": [1712649600000, 1712650500000],
         },
         index=[20, 21],
     )
@@ -484,7 +484,7 @@ def test_knn_primary_output_uses_primary_k_and_weighting(tmp_path) -> None:
             "signal_id": ["train-1", "train-2"],
             "symbol": ["BTCUSDT", "BTCUSDT"],
             "direction": ["long", "long"],
-            "tv_bar_time_ms": [1, 2],
+            "signal_bar_time_ms": [1, 2],
             "label_accept": [1, 0],
             "label_pnl_multiple": [1.0, -1.0],
         },
@@ -495,7 +495,7 @@ def test_knn_primary_output_uses_primary_k_and_weighting(tmp_path) -> None:
             "signal_id": ["test-1"],
             "symbol": ["BTCUSDT"],
             "direction": ["long"],
-            "tv_bar_time_ms": [3],
+            "signal_bar_time_ms": [3],
             "label_accept": [1],
             "label_pnl_multiple": [1.0],
         },
@@ -545,7 +545,7 @@ def test_knn_same_regime_blocks_cross_regime_neighbors_until_fallback_is_enabled
             "signal_id": ["train-1"],
             "symbol": ["BTCUSDT"],
             "direction": ["long"],
-            "tv_bar_time_ms": [1],
+            "signal_bar_time_ms": [1],
             "label_accept": [1],
             "label_pnl_multiple": [1.0],
         },
@@ -556,7 +556,7 @@ def test_knn_same_regime_blocks_cross_regime_neighbors_until_fallback_is_enabled
             "signal_id": ["test-1"],
             "symbol": ["BTCUSDT"],
             "direction": ["long"],
-            "tv_bar_time_ms": [2],
+            "signal_bar_time_ms": [2],
             "label_accept": [1],
             "label_pnl_multiple": [1.0],
         },
@@ -852,13 +852,13 @@ def test_hmm_knn_prepare_dataset_preserves_real_label_outcome_fields(tmp_path) -
 def test_hmm_knn_walk_forward_uses_label_exit_time_for_purge(tmp_path) -> None:
     plan = load_hmm_knn_plan(_write_test_config(tmp_path))
     frame = _synthetic_dataset(80)
-    frame["label_exit_time_ms"] = frame["tv_bar_time_ms"] + (12 * 900_000)
+    frame["label_exit_time_ms"] = frame["signal_bar_time_ms"] + (12 * 900_000)
 
     splits = _walk_forward_frames(frame, plan)
 
     assert splits
     train_frame, test_frame = splits[0]
-    assert train_frame["label_exit_time_ms"].max() + (plan.evaluation.purge_embargo_bars * 900_000) < test_frame["tv_bar_time_ms"].min()
+    assert train_frame["label_exit_time_ms"].max() + (plan.evaluation.purge_embargo_bars * 900_000) < test_frame["signal_bar_time_ms"].min()
 
 
 def test_backtest_metrics_use_realized_costed_returns_and_flag_split_concentration(tmp_path) -> None:

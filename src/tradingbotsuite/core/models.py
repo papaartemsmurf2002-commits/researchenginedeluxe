@@ -100,10 +100,10 @@ class Bar(ModelBase):
 
 class SignalIntent(ModelBase):
     signal_id: str
-    source: str = "tradingview"
+    source: str = "external_signal"
     symbol: str
     direction: SignalDirection
-    tv_bar_time_ms: int
+    signal_bar_time_ms: int
     received_time_ms: int
     raw_payload: dict[str, Any] = Field(default_factory=dict)
 

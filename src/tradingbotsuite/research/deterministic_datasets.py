@@ -67,14 +67,14 @@ def build_hmm_knn_sweep_dataset(*, row_count: int = 240, variant: str = "balance
         funding_rate = 0.00008 if regime == 1 else (-0.00005 if regime == 2 else 0.00001)
         row = {
             "signal_id": f"det-sweep-{variant}-{index:04d}",
-            "source": "tradingview",
+            "source": "external_signal",
             "source_mode": "deterministic_fixture",
             "strategy_version": DETERMINISTIC_SWEEP_DATASET_VERSION,
             "symbol": BTC_SYMBOL,
             "asset_symbol": BTC_SYMBOL,
             "direction": direction,
             "direction_long": 1.0 if direction == "long" else 0.0,
-            "tv_bar_time_ms": signal_time_ms,
+            "signal_bar_time_ms": signal_time_ms,
             "received_time_ms": signal_time_ms + 1_000,
             "signal_bar_open_time_ms": signal_time_ms,
             "signal_bar_close_time_ms": signal_time_ms + BAR_INTERVAL_MS,
@@ -154,7 +154,7 @@ def build_hmm_knn_sweep_dataset(*, row_count: int = 240, variant: str = "balance
         _add_raw_and_missing_context(row, variant=variant)
         rows.append(row)
 
-    frame = pd.DataFrame(rows).sort_values(["tv_bar_time_ms", "signal_id"]).reset_index(drop=True)
+    frame = pd.DataFrame(rows).sort_values(["signal_bar_time_ms", "signal_id"]).reset_index(drop=True)
     return frame[sorted(frame.columns)]
 
 
@@ -201,16 +201,16 @@ def write_hmm_knn_sweep_dataset(
         "missing_feature_rates": missing_feature_rates,
         "raw_context_available_counts": _raw_context_available_counts(frame),
         "exchange_context_summary": _exchange_context_summary(frame),
-        "source_counts": {"tradingview": int(len(frame))},
+        "source_counts": {"external_signal": int(len(frame))},
         "source_mode_counts": {"deterministic_fixture": int(len(frame))},
         "time_span": {
-            "first_signal_time_ms": int(frame["tv_bar_time_ms"].min()),
-            "last_signal_time_ms": int(frame["tv_bar_time_ms"].max()),
+            "first_signal_time_ms": int(frame["signal_bar_time_ms"].min()),
+            "last_signal_time_ms": int(frame["signal_bar_time_ms"].max()),
             "bar_interval_ms": BAR_INTERVAL_MS,
         },
         "determinism": {
             "no_random_inputs": True,
-            "sorted_rows": ["tv_bar_time_ms", "signal_id"],
+            "sorted_rows": ["signal_bar_time_ms", "signal_id"],
             "sorted_columns": True,
             "logical_hash_basis": "canonical csv payload",
             "live_fetch_used": False,

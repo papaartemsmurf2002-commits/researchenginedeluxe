@@ -78,19 +78,19 @@ def _write_many_kline_csv(path: Path, *, row_count: int = 520) -> list[dict[str,
     return rows
 
 
-async def _seed_tradingview_signals(db_path: Path, bars: list[dict[str, object]]) -> None:
+async def _seed_external_signal_signals(db_path: Path, bars: list[dict[str, object]]) -> None:
     store = SQLiteStore(db_path)
     await store.initialize()
     for offset, time_index in enumerate(range(400, 446), start=1):
         direction = SignalDirection.LONG if offset % 2 else SignalDirection.SHORT
         signal = SignalIntent(
             signal_id=f"pipeline-signal-{offset}",
-            source="tradingview_chart_export",
+            source="research_signal",
             symbol="BTCUSDT",
             direction=direction,
-            tv_bar_time_ms=int(bars[time_index]["open_time"]),
+            signal_bar_time_ms=int(bars[time_index]["open_time"]),
             received_time_ms=int(bars[time_index]["close_time"]) + 1,
-            raw_payload={"source_mode": "chart_export", "strategy_version": "fixture-v1"},
+            raw_payload={"source_mode": "signal_export", "strategy_version": "fixture-v1"},
         )
         await store.reserve_signal(signal)
         await store.update_signal_decision(signal, accepted=True, rejection_reason=None)
@@ -497,7 +497,7 @@ def test_prepare_hmm_knn_research_data_stage_all_builds_dataset_from_sqlite_sign
     source_path.parent.mkdir(parents=True)
     bars = _write_many_kline_csv(source_path)
     db_path = tmp_path / "signals.sqlite3"
-    asyncio.run(_seed_tradingview_signals(db_path, bars))
+    asyncio.run(_seed_external_signal_signals(db_path, bars))
     config_path = _write_fast_hmm_knn_config(tmp_path / "fixtures" / "hmm_knn_config.json")
     experiment_spec_path = _write_spec(
         tmp_path / "fixtures" / "experiment_spec.json",
@@ -567,8 +567,8 @@ def test_prepare_hmm_knn_research_data_stage_all_builds_dataset_from_sqlite_sign
 
     assert summary["stage_status"]["dataset"]["status"] == "completed"
     assert summary["stage_status"]["evidence"]["status"] == "completed"
-    assert dataset_manifest["source_counts"] == {"tradingview_chart_export": 46}
-    assert dataset_manifest["source_mode_counts"] == {"chart_export": 46}
+    assert dataset_manifest["source_counts"] == {"research_signal": 46}
+    assert dataset_manifest["source_mode_counts"] == {"signal_export": 46}
     assert summary["stage_status"]["dataset"]["archive_client_coverage"]["bar_series"] == {"BTCUSDT:15m": 520}
     assert Path(dataset_manifest["dataset_path"]).exists()
     assert evidence["dataset_path"] == dataset_manifest["dataset_path"]

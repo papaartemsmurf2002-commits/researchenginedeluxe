@@ -57,8 +57,8 @@ strategies:
     fee_bps: 2.5
     slippage_bps: 1.0
     funding_rate_per_bar: 0.0
-    lc_parity_mode: pine_exact
-    parity_neighbor_diagnostics: 8
+    lc_mode: static
+    neighbor_diagnostics: 8
     min_prediction_magnitude: 0.0
     min_signal_persistence_bars: 1
     min_bars_between_entries: 0

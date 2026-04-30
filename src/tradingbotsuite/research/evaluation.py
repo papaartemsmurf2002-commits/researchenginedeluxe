@@ -107,7 +107,7 @@ def _acceptance_rate_stability(scored_slices: list[pd.DataFrame]) -> dict[str, A
 def replay_eval(artifact_manifest_path: Path, plan: ResearchPlan) -> Path:
     manifest = json.loads(artifact_manifest_path.read_text(encoding="utf-8"))
     artifact_dir = artifact_manifest_path.parent
-    frame = pd.read_parquet(Path(manifest["dataset_path"])).sort_values("tv_bar_time_ms").reset_index(drop=True)
+    frame = pd.read_parquet(Path(manifest["dataset_path"])).sort_values("signal_bar_time_ms").reset_index(drop=True)
     validate_training_sources(frame)
     feature_columns = list(manifest.get("feature_columns") or RESEARCH_FEATURE_COLUMNS)
     initial_train = max(plan.evaluation.min_training_rows, int(len(frame) * plan.evaluation.train_fraction))
@@ -156,11 +156,11 @@ def replay_eval(artifact_manifest_path: Path, plan: ResearchPlan) -> Path:
                 "train_rows": len(train_frame),
                 "calibration_rows": len(calibration_frame),
                 "test_rows": len(test_frame),
-                "train_end_time_ms": int(train_frame["tv_bar_time_ms"].iloc[-1]),
-                "calibration_start_time_ms": int(calibration_frame["tv_bar_time_ms"].iloc[0]),
-                "calibration_end_time_ms": int(calibration_frame["tv_bar_time_ms"].iloc[-1]),
-                "test_start_time_ms": int(test_frame["tv_bar_time_ms"].iloc[0]),
-                "test_end_time_ms": int(test_frame["tv_bar_time_ms"].iloc[-1]),
+                "train_end_time_ms": int(train_frame["signal_bar_time_ms"].iloc[-1]),
+                "calibration_start_time_ms": int(calibration_frame["signal_bar_time_ms"].iloc[0]),
+                "calibration_end_time_ms": int(calibration_frame["signal_bar_time_ms"].iloc[-1]),
+                "test_start_time_ms": int(test_frame["signal_bar_time_ms"].iloc[0]),
+                "test_end_time_ms": int(test_frame["signal_bar_time_ms"].iloc[-1]),
                 "v2_expectancy_after_cost": split_metrics["expectancy_after_cost"],
                 "baseline_expectancy_after_cost": split_baseline_metrics["expectancy_after_cost"],
                 "trade_count": split_metrics["trade_count"],
@@ -177,7 +177,7 @@ def replay_eval(artifact_manifest_path: Path, plan: ResearchPlan) -> Path:
     calibration_frame = _bucket_calibration(scored)
     (artifact_dir / "calibration.csv").write_text(calibration_frame.to_csv(index=False), encoding="utf-8")
     scored[
-        ["signal_id", "tv_bar_time_ms", "accept_probability", "accepted_by_model", "label_accept", "label_exit_reason"]
+        ["signal_id", "signal_bar_time_ms", "accept_probability", "accepted_by_model", "label_accept", "label_exit_reason"]
     ].to_csv(artifact_dir / "rejected_vs_accepted.csv", index=False)
 
     comparison = {

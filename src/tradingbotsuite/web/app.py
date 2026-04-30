@@ -8,7 +8,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.operator_console import OperatorConsoleService, OperatorContext, TraceRecorder
-from tradingbotsuite.core.security import adapt_tradingview_payload, canonical_json_bytes, verify_hmac
+from tradingbotsuite.core.security import adapt_signal_payload, canonical_json_bytes, verify_hmac
 from tradingbotsuite.runtime import build_engine
 from tradingbotsuite.web.operator import register_operator_routes
 
@@ -65,8 +65,8 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         snapshot = await engine.collect_system_snapshot(symbol.upper())
         return snapshot
 
-    @app.post("/webhooks/tradingview")
-    async def tradingview_webhook(
+    @app.post("/webhooks/signal")
+    async def signal_webhook(
         request: Request,
         x_signature: str = Header(..., alias="X-Signature"),
         x_timestamp_ms: int = Header(..., alias="X-Timestamp-Ms"),
@@ -84,7 +84,7 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
         ):
             raise HTTPException(status_code=401, detail="invalid signature or stale timestamp")
         try:
-            signal = adapt_tradingview_payload(payload, received_time_ms=now_ms)
+            signal = adapt_signal_payload(payload, received_time_ms=now_ms)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         packet, reports, ticket = await engine.handle_signal(signal)

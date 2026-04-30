@@ -393,7 +393,7 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
             signal_id=f"research-{offset}",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=bars[time_index].time_ms,
+            signal_bar_time_ms=bars[time_index].time_ms,
             received_time_ms=bars[time_index].time_ms + 900_000,
             raw_payload={},
         )
@@ -477,9 +477,9 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
     assert "rule_acceptance_total_score" in frame.columns
     assert "rule_acceptance_accept_candidate" in frame.columns
     assert frame.iloc[0]["label_accept"] == 1
-    assert (frame["signal_bar_open_time_ms"] == frame["tv_bar_time_ms"]).all()
-    assert (frame["historical_feature_end_time_ms"] <= frame["tv_bar_time_ms"]).all()
-    assert (frame["label_future_start_time_ms"] > frame["tv_bar_time_ms"]).all()
+    assert (frame["signal_bar_open_time_ms"] == frame["signal_bar_time_ms"]).all()
+    assert (frame["historical_feature_end_time_ms"] <= frame["signal_bar_time_ms"]).all()
+    assert (frame["label_future_start_time_ms"] > frame["signal_bar_time_ms"]).all()
     assert (frame["label_interval_start_ms"] == frame["signal_bar_close_time_ms"]).all()
     assert (frame["label_interval_end_ms"] == frame["label_exit_time_ms"]).all()
     assert frame["entry_price_source"].tolist() == ["signal_bar_close", "signal_bar_close"]
@@ -501,8 +501,8 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
     assert manifest["entry_price_source_summary"]["source_counts"] == {"signal_bar_close": 2}
     assert manifest["entry_price_source_summary"]["non_promotable_label_row_count"] == 2
     assert manifest["entry_price_source_summary"]["all_label_entry_sources_promotable"] is False
-    assert manifest["source_counts"] == {"tradingview": 2}
-    assert manifest["source_mode_counts"] == {"tradingview": 2}
+    assert manifest["source_counts"] == {"external_signal": 2}
+    assert manifest["source_mode_counts"] == {"external_signal": 2}
     assert manifest["class_balance"]["label_accept_1"] == 2
     assert manifest["planned_split_summary"]["walk_forward_splits"] == plan.evaluation.walk_forward_splits
     assert "missing_feature_rates" in manifest
@@ -569,7 +569,7 @@ async def test_research_dataset_builder_uses_promotable_simulated_fill_metadata(
             signal_id=f"sim-fill-{offset}",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=bars[time_index].time_ms,
+            signal_bar_time_ms=bars[time_index].time_ms,
             received_time_ms=bars[time_index].time_ms + 900_000,
             raw_payload=raw_payload,
         )
@@ -658,7 +658,7 @@ async def test_research_dataset_builder_preserves_missing_exchange_context(app_c
         signal_id="missing-context-1",
         symbol="BTCUSDT",
         direction=SignalDirection.LONG,
-        tv_bar_time_ms=bars[59].time_ms,
+        signal_bar_time_ms=bars[59].time_ms,
         received_time_ms=bars[59].time_ms + 900_000,
         raw_payload={},
     )
@@ -748,7 +748,7 @@ def test_research_model_pipeline_and_shadow_scoring(app_config, tmp_path, sample
                 "signal_id": f"sig-{index}",
                 "symbol": "BTCUSDT",
                 "direction": "long" if label else "short",
-                "tv_bar_time_ms": 1712649600000 + (index * 900_000),
+                "signal_bar_time_ms": 1712649600000 + (index * 900_000),
                 "received_time_ms": 1712649600000 + (index * 900_000) + 1000,
                 "feature_version": "v2-btc-acceptance-2",
                 "model_version": "observe_only",
@@ -889,7 +889,7 @@ def test_research_model_pipeline_and_shadow_scoring(app_config, tmp_path, sample
                 signal_id="shadow-score-1",
                 symbol="BTCUSDT",
                 direction=SignalDirection.LONG,
-                tv_bar_time_ms=1712662200000,
+                signal_bar_time_ms=1712662200000,
                 received_time_ms=1712665800000,
                 raw_payload={},
             )
@@ -912,13 +912,13 @@ def test_train_model_rejects_manual_signal_sources(tmp_path) -> None:
                 "signal_id": "manual-test-1",
                 "source": "manual-cli",
                 "symbol": "BTCUSDT",
-                "tv_bar_time_ms": 1712649600000,
+                "signal_bar_time_ms": 1712649600000,
                 "label_accept": 1,
             }
         ]
     ).to_parquet(dataset_path, index=False)
 
-    with pytest.raises(ValueError, match="non-TrainingView research sources"):
+    with pytest.raises(ValueError, match="non-approved research sources"):
         train_base_model(dataset_path, plan, tmp_path / "artifacts")
 
 
@@ -953,7 +953,7 @@ async def test_research_dataset_builder_is_deterministic(app_config, tmp_path) -
             signal_id=f"det-{offset}",
             symbol="BTCUSDT",
             direction=SignalDirection.LONG,
-            tv_bar_time_ms=bars[time_index].time_ms,
+            signal_bar_time_ms=bars[time_index].time_ms,
             received_time_ms=bars[time_index].time_ms + 900_000,
             raw_payload={"source": "fixture"},
         )
@@ -1032,9 +1032,9 @@ async def test_hmm_knn_research_consumes_dataset_builder_output(app_config, tmp_
             signal_id=f"hmm-data-{offset}",
             symbol="BTCUSDT",
             direction=direction,
-            tv_bar_time_ms=bars[time_index].time_ms,
+            signal_bar_time_ms=bars[time_index].time_ms,
             received_time_ms=bars[time_index].time_ms + 900_000,
-            raw_payload={"source_mode": "chart_export", "strategy_version": "fixture-v1"},
+            raw_payload={"source_mode": "signal_export", "strategy_version": "fixture-v1"},
         )
         await store.reserve_signal(signal)
         await store.update_signal_decision(signal, accepted=True, rejection_reason=None)
@@ -1126,10 +1126,10 @@ def test_replay_eval_is_deterministic_and_has_promotion_reasons(tmp_path) -> Non
         row.update(
             {
                 "signal_id": f"rep-{index}",
-                "source": "tradingview",
+                "source": "external_signal",
                 "symbol": "BTCUSDT",
                 "direction": "long" if label else "short",
-                "tv_bar_time_ms": 1712649600000 + (index * 900_000),
+                "signal_bar_time_ms": 1712649600000 + (index * 900_000),
                 "received_time_ms": 1712649600000 + (index * 900_000) + 1000,
                 "feature_version": "v2-btc-acceptance-2",
                 "label_version": "triple_barrier_live_parity_v1",
@@ -1184,10 +1184,10 @@ def test_shadow_scoring_safe_skip_on_feature_version_mismatch(app_config, tmp_pa
         row.update(
             {
                 "signal_id": f"skip-{index}",
-                "source": "tradingview",
+                "source": "external_signal",
                 "symbol": "BTCUSDT",
                 "direction": "long" if label else "short",
-                "tv_bar_time_ms": 1712649600000 + (index * 900_000),
+                "signal_bar_time_ms": 1712649600000 + (index * 900_000),
                 "received_time_ms": 1712649600000 + (index * 900_000) + 1000,
                 "feature_version": "v2-btc-acceptance-2",
                 "label_version": "triple_barrier_live_parity_v1",
@@ -1277,7 +1277,7 @@ def test_shadow_scoring_safe_skip_on_feature_version_mismatch(app_config, tmp_pa
                 signal_id="shadow-score-skip-1",
                 symbol="BTCUSDT",
                 direction=SignalDirection.LONG,
-                tv_bar_time_ms=1712662200000,
+                signal_bar_time_ms=1712662200000,
                 received_time_ms=1712665800000,
                 raw_payload={},
             )

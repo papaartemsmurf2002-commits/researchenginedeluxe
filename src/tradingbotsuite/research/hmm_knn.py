@@ -544,7 +544,7 @@ def _posterior_frame(
             last_flip = idx
         if last_flip is not None and idx - last_flip <= plan.hmm.flip_cooldown_bars:
             recent_flip[idx] = True
-    result = base_frame.loc[:, [column for column in ("signal_id", "symbol", "direction", "tv_bar_time_ms") if column in base_frame.columns]].copy()
+    result = base_frame.loc[:, [column for column in ("signal_id", "symbol", "direction", "signal_bar_time_ms") if column in base_frame.columns]].copy()
     for state in range(model.n_states):
         result[f"regime_p_{state}"] = posterior[:, state]
     result["top_regime"] = top_state
@@ -727,7 +727,7 @@ def _identity_payload(row: pd.Series) -> dict[str, Any]:
         "signal_id": row.get("signal_id"),
         "symbol": row.get("symbol"),
         "direction": row.get("direction"),
-        "tv_bar_time_ms": int(row.get("tv_bar_time_ms", 0)),
+        "signal_bar_time_ms": int(row.get("signal_bar_time_ms", 0)),
     }
 
 
@@ -915,7 +915,7 @@ class _ConstantProbabilityModel:
 
 
 def _prepare_dataset(dataset_path: Path, plan: HmmKnnResearchPlan) -> pd.DataFrame:
-    frame = pd.read_parquet(dataset_path).sort_values("tv_bar_time_ms").reset_index(drop=True)
+    frame = pd.read_parquet(dataset_path).sort_values("signal_bar_time_ms").reset_index(drop=True)
     if plan.symbol not in set(frame["symbol"].astype(str).str.upper()):
         raise ValueError(f"dataset does not contain configured symbol {plan.symbol}")
     frame = frame.loc[frame["symbol"].astype(str).str.upper() == plan.symbol].reset_index(drop=True)
@@ -1173,11 +1173,11 @@ def _walk_forward_frames(frame: pd.DataFrame, plan: HmmKnnResearchPlan) -> list[
     train_end = initial_train
     for split_index in range(plan.evaluation.walk_forward_splits):
         test_start = min(len(frame), train_end + max(plan.evaluation.purge_embargo_bars, 0))
-        if {"label_exit_time_ms", "tv_bar_time_ms"}.issubset(frame.columns) and train_end > 0:
+        if {"label_exit_time_ms", "signal_bar_time_ms"}.issubset(frame.columns) and train_end > 0:
             train_label_end = pd.to_numeric(frame.iloc[:train_end]["label_exit_time_ms"], errors="coerce").dropna()
             if not train_label_end.empty:
                 first_allowed_time_ms = int(train_label_end.max()) + (max(plan.evaluation.purge_embargo_bars, 0) * BAR_INTERVAL_MS)
-                candidate_positions = np.where(frame["tv_bar_time_ms"].astype(int).to_numpy() > first_allowed_time_ms)[0]
+                candidate_positions = np.where(frame["signal_bar_time_ms"].astype(int).to_numpy() > first_allowed_time_ms)[0]
                 candidate_positions = candidate_positions[candidate_positions >= train_end]
                 if len(candidate_positions):
                     test_start = max(test_start, int(candidate_positions[0]))

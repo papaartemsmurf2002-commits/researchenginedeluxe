@@ -201,7 +201,7 @@ def run_research_experiment(
         "execution_environment": _execution_environment(spec.workers),
         "notes": [
             "BTC Phase 1 research-only experiment run bundle.",
-            "SQLite TradingView research signals remain the only labeled-event trigger source.",
+            "SQLite research signals remain the only labeled-event trigger source.",
             "Provider archives supply bars and context only.",
             "GPU/backend metadata is diagnostic and is not model-quality evidence.",
         ],

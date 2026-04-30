@@ -17,10 +17,9 @@ from tradingbotsuite.research.config import ResearchPlan
 TRAIN_MANIFEST_VERSION = "v2-train-manifest-1"
 ARTIFACT_MANIFEST_VERSION = "v2-artifact-manifest-1"
 ALLOWED_TRAINING_SOURCES = {
-    "tradingview",
-    "tradingview_chart_export",
-    "tradingview_strategy_export",
-    "tradingview_alert_log",
+    "external_signal",
+    "research_signal",
+    "provider_signal",
 }
 
 
@@ -69,7 +68,7 @@ def validate_training_sources(frame: pd.DataFrame) -> None:
     disallowed = sorted(sources - ALLOWED_TRAINING_SOURCES)
     if disallowed:
         raise ValueError(
-            "dataset contains non-TrainingView research sources and is unsafe for model training: "
+            "dataset contains non-approved research sources and is unsafe for model training: "
             + ", ".join(disallowed)
         )
 
@@ -111,7 +110,7 @@ def fit_model_and_calibrator(
 
 
 def train_base_model(dataset_path: Path, plan: ResearchPlan, output_dir: Path) -> TrainArtifacts:
-    frame = pd.read_parquet(dataset_path).sort_values("tv_bar_time_ms").reset_index(drop=True)
+    frame = pd.read_parquet(dataset_path).sort_values("signal_bar_time_ms").reset_index(drop=True)
     validate_training_sources(frame)
     feature_columns = [column for column in RESEARCH_FEATURE_COLUMNS if column in frame.columns]
     split_index = max(plan.evaluation.min_training_rows, int(len(frame) * plan.evaluation.train_fraction))
@@ -159,7 +158,7 @@ def train_base_model(dataset_path: Path, plan: ResearchPlan, output_dir: Path) -
 def calibrate_model(train_manifest_path: Path, plan: ResearchPlan) -> Path:
     manifest = json.loads(train_manifest_path.read_text(encoding="utf-8"))
     artifact_dir = train_manifest_path.parent
-    frame = pd.read_parquet(Path(manifest["dataset_path"])).sort_values("tv_bar_time_ms").reset_index(drop=True)
+    frame = pd.read_parquet(Path(manifest["dataset_path"])).sort_values("signal_bar_time_ms").reset_index(drop=True)
     validate_training_sources(frame)
     feature_columns = list(manifest["feature_columns"])
     split_index = int(manifest["split_index"])

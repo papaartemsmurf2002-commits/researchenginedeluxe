@@ -6,22 +6,22 @@ from collections.abc import Iterable
 import numpy as np
 import pandas as pd
 
-from tradingbot.features_tv import (
-    atr as tv_atr,
-    cci as tv_cci,
-    ema as tv_ema,
-    filter_adx as tv_filter_adx,
-    filter_volatility as tv_filter_volatility,
+from tradingbot.features_lc import (
+    atr as lc_atr,
+    cci as lc_cci,
+    ema as lc_ema,
+    filter_adx as lc_filter_adx,
+    filter_volatility as lc_filter_volatility,
     n_adx,
     n_cci,
     n_rsi,
     n_wt,
-    regime_filter as tv_regime_filter,
-    rma as tv_rma,
-    rsi as tv_rsi,
+    regime_filter as lc_regime_filter,
+    rma as lc_rma,
+    rsi as lc_rsi,
 )
-from tradingbot.kernels_tv import gaussian as tv_gaussian
-from tradingbot.kernels_tv import rational_quadratic as tv_rational_quadratic
+from tradingbot.kernels_lc import gaussian as lc_gaussian
+from tradingbot.kernels_lc import rational_quadratic as lc_rational_quadratic
 
 
 def _series(values: pd.Series | Iterable[float]) -> pd.Series:
@@ -42,7 +42,7 @@ def sma(values: pd.Series | Iterable[float], period: int) -> pd.Series:
     return _series(values).rolling(period, min_periods=period).mean()
 
 
-def _pine_ma(values: pd.Series | Iterable[float], period: int, alpha: float) -> pd.Series:
+def _seeded_ma(values: pd.Series | Iterable[float], period: int, alpha: float) -> pd.Series:
     series = _series(values)
     output = pd.Series(np.nan, index=series.index, dtype=float)
     if period <= 0 or len(series) < period:
@@ -58,19 +58,19 @@ def _pine_ma(values: pd.Series | Iterable[float], period: int, alpha: float) -> 
 
 
 def ema(values: pd.Series | Iterable[float], period: int) -> pd.Series:
-    return tv_ema(values, period)
+    return lc_ema(values, period)
 
 
 def rma(values: pd.Series | Iterable[float], period: int) -> pd.Series:
-    return tv_rma(values, period)
+    return lc_rma(values, period)
 
 
 def rsi(values: pd.Series | Iterable[float], period: int) -> pd.Series:
-    return tv_rsi(values, period)
+    return lc_rsi(values, period)
 
 
 def cci(values: pd.Series | Iterable[float], period: int) -> pd.Series:
-    return tv_cci(values, period)
+    return lc_cci(values, period)
 
 
 def true_range(df: pd.DataFrame) -> pd.Series:
@@ -86,7 +86,7 @@ def true_range(df: pd.DataFrame) -> pd.Series:
 
 
 def atr(df: pd.DataFrame, period: int) -> pd.Series:
-    return tv_atr(df, period)
+    return lc_atr(df, period)
 
 
 def adx(df: pd.DataFrame, period: int) -> pd.Series:
@@ -110,23 +110,23 @@ def wt(values: pd.Series | Iterable[float], channel_length: int, average_length:
 
 
 def rational_quadratic(values: pd.Series | Iterable[float], lookback: int, weight: float, start_at_bar: int) -> pd.Series:
-    return tv_rational_quadratic(values, lookback, weight, start_at_bar)
+    return lc_rational_quadratic(values, lookback, weight, start_at_bar)
 
 
 def gaussian(values: pd.Series | Iterable[float], lookback: int, start_at_bar: int) -> pd.Series:
-    return tv_gaussian(values, lookback, start_at_bar)
+    return lc_gaussian(values, lookback, start_at_bar)
 
 
 def volatility_filter(df: pd.DataFrame, enabled: bool) -> pd.Series:
-    return tv_filter_volatility(df, 1, 10, enabled).fillna(False)
+    return lc_filter_volatility(df, 1, 10, enabled).fillna(False)
 
 
 def regime_filter(df: pd.DataFrame, threshold: float, enabled: bool) -> pd.Series:
-    return tv_regime_filter(df, ohlc4(df), threshold, enabled).fillna(False)
+    return lc_regime_filter(df, ohlc4(df), threshold, enabled).fillna(False)
 
 
 def adx_filter(df: pd.DataFrame, threshold: int, enabled: bool) -> pd.Series:
-    return tv_filter_adx(df, df["close"], 14, threshold, enabled).fillna(False)
+    return lc_filter_adx(df, df["close"], 14, threshold, enabled).fillna(False)
 
 
 def feature_series(

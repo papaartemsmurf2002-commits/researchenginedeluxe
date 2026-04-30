@@ -35,12 +35,12 @@ class SQLiteStore:
                     source TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     direction TEXT NOT NULL,
-                    tv_bar_time_ms INTEGER NOT NULL,
+                    signal_bar_time_ms INTEGER NOT NULL,
                     received_time_ms INTEGER NOT NULL,
                     accepted INTEGER,
                     rejection_reason TEXT,
                     raw_payload_json TEXT NOT NULL,
-                    PRIMARY KEY (signal_id, symbol, tv_bar_time_ms)
+                    PRIMARY KEY (signal_id, symbol, signal_bar_time_ms)
                 );
 
                 CREATE TABLE IF NOT EXISTS trade_state (
@@ -205,7 +205,7 @@ class SQLiteStore:
             cursor = await db.execute(
                 """
                 INSERT OR IGNORE INTO signals (
-                    signal_id, source, symbol, direction, tv_bar_time_ms, received_time_ms,
+                    signal_id, source, symbol, direction, signal_bar_time_ms, received_time_ms,
                     accepted, rejection_reason, raw_payload_json
                 ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)
                 """,
@@ -214,7 +214,7 @@ class SQLiteStore:
                     signal.source,
                     signal.symbol,
                     signal.direction,
-                    signal.tv_bar_time_ms,
+                    signal.signal_bar_time_ms,
                     signal.received_time_ms,
                     payload_json,
                 ),
@@ -247,7 +247,7 @@ class SQLiteStore:
                           AND signal_id IN (
                               SELECT signal_id
                               FROM signals
-                              WHERE symbol = ? AND source = 'tradingview_chart_export' AND signal_id LIKE ?
+                              WHERE symbol = ? AND source = 'research_signal' AND signal_id LIKE ?
                           )
                         """,
                         (symbol, symbol, prefix),
@@ -255,7 +255,7 @@ class SQLiteStore:
                     await db.execute(
                         """
                         DELETE FROM signals
-                        WHERE symbol = ? AND source = 'tradingview_chart_export' AND signal_id LIKE ?
+                        WHERE symbol = ? AND source = 'research_signal' AND signal_id LIKE ?
                         """,
                         (symbol, prefix),
                     )
@@ -264,7 +264,7 @@ class SQLiteStore:
                     cursor = await db.execute(
                         """
                         INSERT OR IGNORE INTO signals (
-                            signal_id, source, symbol, direction, tv_bar_time_ms, received_time_ms,
+                            signal_id, source, symbol, direction, signal_bar_time_ms, received_time_ms,
                             accepted, rejection_reason, raw_payload_json
                         ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?)
                         """,
@@ -273,7 +273,7 @@ class SQLiteStore:
                             signal.source,
                             signal.symbol,
                             signal.direction,
-                            signal.tv_bar_time_ms,
+                            signal.signal_bar_time_ms,
                             signal.received_time_ms,
                             json.dumps(signal.raw_payload, default=_json_default, sort_keys=True),
                         ),
@@ -360,14 +360,14 @@ class SQLiteStore:
                 """
                 UPDATE signals
                 SET accepted = ?, rejection_reason = ?
-                WHERE signal_id = ? AND symbol = ? AND tv_bar_time_ms = ?
+                WHERE signal_id = ? AND symbol = ? AND signal_bar_time_ms = ?
                 """,
                 (
                     1 if accepted else 0,
                     rejection_reason,
                     signal.signal_id,
                     signal.symbol,
-                    signal.tv_bar_time_ms,
+                    signal.signal_bar_time_ms,
                 ),
             )
             await db.commit()
@@ -821,7 +821,7 @@ class SQLiteStore:
                     s.source,
                     s.symbol,
                     s.direction,
-                    s.tv_bar_time_ms,
+                    s.signal_bar_time_ms,
                     s.received_time_ms,
                     s.accepted,
                     s.rejection_reason,
@@ -835,7 +835,7 @@ class SQLiteStore:
                     ) AS decision_packet_json
                 FROM signals AS s
                 WHERE s.symbol = ?
-                ORDER BY s.tv_bar_time_ms ASC, s.received_time_ms ASC
+                ORDER BY s.signal_bar_time_ms ASC, s.received_time_ms ASC
                 """,
                 (symbol,),
             )
@@ -849,7 +849,7 @@ class SQLiteStore:
                     "source": row["source"],
                     "symbol": row["symbol"],
                     "direction": row["direction"],
-                    "tv_bar_time_ms": row["tv_bar_time_ms"],
+                    "signal_bar_time_ms": row["signal_bar_time_ms"],
                     "received_time_ms": row["received_time_ms"],
                     "accepted": None if row["accepted"] is None else bool(row["accepted"]),
                     "rejection_reason": row["rejection_reason"],

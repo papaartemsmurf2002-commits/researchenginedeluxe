@@ -26,7 +26,7 @@ from tradingbot.indicators import (
     volatility_filter,
 )
 from tradingbot.lorentz import LorentzianClassifier
-from tradingbot.lorentz_tv import _pine_round
+from tradingbot.lorentz_lc import _half_up_round
 from tradingbot.market_structure import MarketStructureEngine
 from tradingbot.models import AppConfig, ExitReason, OrderBlock, PositionState, Side, TradeResult
 from tradingbot.order_blocks import OrderBlockEngine
@@ -620,22 +620,22 @@ class Backtester:
             last_distance = -1.0
             size = min(strategy.max_bars_back - 1, current_index)
             size_loop = min(strategy.max_bars_back - 1, size)
-            if getattr(strategy, "lc_parity_mode", "pine_exact") == "rolling_research":
+            if getattr(strategy, "lc_mode", "static") == "rolling_research":
                 historical_indices = list(range(max(0, current_index - size_loop), current_index + 1))
             else:
                 historical_indices = list(range(0, size_loop + 1))
             for relative_idx, historical_idx in enumerate(historical_indices):
                 feature_row = all_features[historical_idx]
                 distance = float(np.log1p(np.abs(current_features_np - feature_row)).sum())
-                modulo_index = relative_idx if getattr(strategy, "lc_parity_mode", "pine_exact") == "rolling_research" else historical_idx
+                modulo_index = relative_idx if getattr(strategy, "lc_mode", "static") == "rolling_research" else historical_idx
                 if distance >= last_distance and modulo_index % 4:
                     last_distance = distance
                     distance_state.append(last_distance)
-                    prediction_state.append(_pine_round(float(all_labels[historical_idx])))
+                    prediction_state.append(_half_up_round(float(all_labels[historical_idx])))
                     neighbor_index_state.append(historical_idx)
                     accepted_this_bar += 1
                     if len(prediction_state) > strategy.neighbors_count:
-                        pivot = _pine_round(strategy.neighbors_count * 3 / 4)
+                        pivot = _half_up_round(strategy.neighbors_count * 3 / 4)
                         pivot = min(max(pivot, 0), len(distance_state) - 1)
                         last_distance = distance_state[pivot]
                         distance_state.pop(0)
@@ -768,11 +768,11 @@ class Backtester:
             "neighbor_label_last": prediction_state[-1] if prediction_state else np.nan,
             "distance_last": distance_state[-1] if distance_state else np.nan,
             "y_train": current_label,
-            "ann_window_start": max(0, current_index - min(strategy.max_bars_back - 1, current_index)) if getattr(strategy, "lc_parity_mode", "pine_exact") == "rolling_research" else 0,
-            "ann_window_end": current_index if getattr(strategy, "lc_parity_mode", "pine_exact") == "rolling_research" else min(strategy.max_bars_back - 1, current_index),
+            "ann_window_start": max(0, current_index - min(strategy.max_bars_back - 1, current_index)) if getattr(strategy, "lc_mode", "static") == "rolling_research" else 0,
+            "ann_window_end": current_index if getattr(strategy, "lc_mode", "static") == "rolling_research" else min(strategy.max_bars_back - 1, current_index),
             "ann_considered_count": min(strategy.max_bars_back, current_index + 1),
             "ann_accepted_count": accepted_this_bar,
-            "lc_parity_mode": getattr(strategy, "lc_parity_mode", "pine_exact"),
+            "lc_mode": getattr(strategy, "lc_mode", "static"),
             "start_long_trade": start_long_trade,
             "start_short_trade": start_short_trade,
             "end_long_trade": bool(end_long_trade),

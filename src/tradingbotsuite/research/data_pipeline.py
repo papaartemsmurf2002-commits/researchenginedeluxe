@@ -852,7 +852,7 @@ def _build_pipeline_summary(
         },
         "notes": [
             "BTC Phase 1 research-only pipeline summary.",
-            "Archive data supplies bars and context only; SQLite TradingView research signals remain the labeled-event trigger source.",
+            "Archive data supplies bars and context only; SQLite research signals remain the labeled-event trigger source.",
             "GPU/backend metadata is diagnostic and is not promotion evidence.",
         ],
     }

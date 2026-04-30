@@ -58,7 +58,7 @@ def _coerce_direction(payload: dict[str, Any]) -> SignalDirection:
     raise ValueError("direction is missing or unsupported")
 
 
-def adapt_tradingview_payload(payload: dict[str, Any], received_time_ms: int) -> SignalIntent:
+def adapt_signal_payload(payload: dict[str, Any], received_time_ms: int) -> SignalIntent:
     symbol = payload.get("symbol") or payload.get("ticker")
     if not symbol:
         raise ValueError("symbol is required")
@@ -66,17 +66,17 @@ def adapt_tradingview_payload(payload: dict[str, Any], received_time_ms: int) ->
     if not signal_id:
         raise ValueError("signal_id is required")
     bar_time_ms = _coerce_timestamp_ms(
-        payload.get("tv_bar_time_ms")
+        payload.get("signal_bar_time_ms")
         or payload.get("bar_time_ms")
         or payload.get("bar_timestamp")
         or payload.get("time")
     )
     return SignalIntent(
         signal_id=signal_id,
-        source=str(payload.get("source") or "tradingview"),
+        source=str(payload.get("source") or "external_signal"),
         symbol=str(symbol),
         direction=_coerce_direction(payload),
-        tv_bar_time_ms=bar_time_ms,
+        signal_bar_time_ms=bar_time_ms,
         received_time_ms=received_time_ms,
         raw_payload=payload,
     )

@@ -1018,7 +1018,7 @@ class TradingEngine:
                 sl_multiple=self.config.strategy.stop_loss_atr_multiple,
                 price_tick=self.config.strategy.price_tick,
             )
-            vertical_barrier_time_ms = build_vertical_barrier(signal.tv_bar_time_ms, self.config.strategy.time_barrier_bars)
+            vertical_barrier_time_ms = build_vertical_barrier(signal.signal_bar_time_ms, self.config.strategy.time_barrier_bars)
             current_position = await self.store.get_position_state(signal.symbol)
             self._trace(
                 "decision:inputs",
@@ -1089,7 +1089,7 @@ class TradingEngine:
                 feature_snapshot=await self._build_feature_snapshot(
                     symbol=signal.symbol,
                     direction=signal.direction,
-                    signal_time_ms=signal.tv_bar_time_ms,
+                    signal_time_ms=signal.signal_bar_time_ms,
                     latest_bar=latest_bar,
                     bars=bars,
                     atr=atr,
@@ -1851,7 +1851,7 @@ class TradingEngine:
             position_size=packet.intended_size,
             entry_price=entry_price,
             entry_time_ms=now_ms,
-            entry_bar_time_ms=packet.signal.tv_bar_time_ms,
+            entry_bar_time_ms=packet.signal.signal_bar_time_ms,
             entry_atr=packet.atr,
             hurst_at_entry=Decimal(str(packet.feature_snapshot["hurst"])) if packet.feature_snapshot.get("hurst") is not None else None,
             imbalance_at_entry=(
