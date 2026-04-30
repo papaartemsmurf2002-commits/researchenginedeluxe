@@ -23,6 +23,10 @@ from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_STAGES, prepare
 from tradingbotsuite.research.hmm_knn import replay_hmm_knn_artifact, run_hmm_knn_research
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
+from tradingbotsuite.research.experiment_runner import (
+    run_research_experiment,
+    write_research_experiment_benchmark_report,
+)
 from tradingbotsuite.research.market_data import (
     collect_binance_usdm_bars,
     download_and_ingest_binance_vision_archive,
@@ -192,6 +196,14 @@ def parse_args() -> argparse.Namespace:
     prepare_hmm_knn_data.add_argument("--spec", required=True)
     prepare_hmm_knn_data.add_argument("--stage", choices=list(DATA_PIPELINE_STAGES), default="intake")
 
+    research_experiment = subparsers.add_parser("run-research-experiment", help="Run a bundled BTC Phase 1 research experiment")
+    research_experiment.add_argument("--spec", required=True)
+
+    benchmark_experiment = subparsers.add_parser("benchmark-research-experiment", help="Run repeated research experiment timing reports")
+    benchmark_experiment.add_argument("--spec", required=True)
+    benchmark_experiment.add_argument("--output-dir", default=None)
+    benchmark_experiment.add_argument("--repeat", type=int, default=1)
+
     return parser.parse_args()
 
 
@@ -322,6 +334,29 @@ def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict
         "dataset_manifest_path": str(result.dataset_manifest_path) if result.dataset_manifest_path is not None else None,
         "evidence_manifest_path": str(result.evidence_manifest_path) if result.evidence_manifest_path is not None else None,
     }
+
+
+def _run_research_experiment_command(args: argparse.Namespace) -> dict[str, object]:
+    result = run_research_experiment(
+        spec_path=Path(args.spec),
+        app_config=AppConfig.from_env(),
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "experiment_run_manifest_path": str(result.manifest_path),
+        "conclusion_path": str(result.conclusion_path),
+        "pipeline_summary_path": str(result.pipeline_summary_path),
+    }
+
+
+def _run_benchmark_research_experiment_command(args: argparse.Namespace) -> dict[str, object]:
+    report_path = write_research_experiment_benchmark_report(
+        spec_path=Path(args.spec),
+        output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+        repeat=args.repeat,
+        app_config=AppConfig.from_env(),
+    )
+    return {"benchmark_report_path": str(report_path)}
 
 
 if __name__ == "__main__":
@@ -600,6 +635,14 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_prepare_hmm_knn_research_data_command(args), indent=2))
+    elif args.command == "run-research-experiment":
+        import json
+
+        print(json.dumps(_run_research_experiment_command(args), indent=2))
+    elif args.command == "benchmark-research-experiment":
+        import json
+
+        print(json.dumps(_run_benchmark_research_experiment_command(args), indent=2))
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)

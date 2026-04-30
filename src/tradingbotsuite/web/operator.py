@@ -93,6 +93,43 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             raise HTTPException(status_code=400, detail="pipeline output_dir must be inside the configured research output directory")
         return spec_path
 
+    def validate_research_experiment_request(payload: dict[str, Any]) -> Path:
+        spec_path = resolve_operator_path(payload.get("spec_path") or "configs/experiments/v2_btc_phase1_research_experiment.json")
+        research_root = resolve_operator_path(active_config().research.output_dir)
+        allowed_spec_roots = [
+            (repo_root / "configs" / "experiments").resolve(),
+            research_root,
+        ]
+        if not spec_path.is_file():
+            raise HTTPException(status_code=400, detail="experiment spec_path does not exist")
+        if not any(is_relative_to(spec_path, root) for root in allowed_spec_roots):
+            raise HTTPException(status_code=400, detail="experiment spec_path must be inside configs/experiments or the research output directory")
+        try:
+            spec_payload = json.loads(spec_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"experiment spec is not valid JSON: {exc}") from exc
+        if not isinstance(spec_payload, dict):
+            raise HTTPException(status_code=400, detail="experiment spec must be a JSON object")
+        raw_output_dir = spec_payload.get("output_dir") or research_root / "experiments"
+        output_dir = resolve_operator_path(raw_output_dir)
+        if not is_relative_to(output_dir, research_root):
+            raise HTTPException(status_code=400, detail="experiment output_dir must be inside the configured research output directory")
+        raw_pipeline_spec = Path(str(spec_payload.get("pipeline_spec") or "")).expanduser()
+        pipeline_spec = (
+            raw_pipeline_spec.resolve()
+            if raw_pipeline_spec.is_absolute()
+            else (spec_path.parent / raw_pipeline_spec).resolve()
+        )
+        allowed_pipeline_roots = [
+            (repo_root / "configs" / "data").resolve(),
+            research_root,
+        ]
+        if not pipeline_spec.is_file():
+            raise HTTPException(status_code=400, detail="experiment pipeline_spec does not exist")
+        if not any(is_relative_to(pipeline_spec, root) for root in allowed_pipeline_roots):
+            raise HTTPException(status_code=400, detail="experiment pipeline_spec must be inside configs/data or the research output directory")
+        return spec_path
+
     def template_context(request: Request, page: str, *, session: dict[str, Any] | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         session = session or load_session(request) or {}
         execution_target = "paper"
@@ -336,6 +373,23 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
                 {
                     "spec_path": str(spec_path),
                     "stage": stage,
+                },
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/operator/research/jobs/run-research-experiment")
+    async def operator_run_research_experiment(request: Request):
+        require_same_origin(request)
+        session = require_session_json(request)
+        require_csrf(request, session)
+        payload = await request.json()
+        spec_path = validate_research_experiment_request(payload)
+        try:
+            return await service.queue_job(
+                "run-research-experiment",
+                {
+                    "spec_path": str(spec_path),
                 },
             )
         except ValueError as exc:

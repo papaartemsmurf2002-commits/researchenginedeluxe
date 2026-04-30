@@ -843,6 +843,125 @@ def test_operator_provider_pipeline_rejects_output_outside_research_root(app_con
     assert "output_dir must be inside" in response.json()["detail"]
 
 
+def test_operator_research_experiment_job_queues_completes_and_lists_artifact(app_config, sample_bars, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_experiment.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    pipeline_spec = research_dir / "experiment_specs" / "pipeline.json"
+    experiment_spec = research_dir / "experiment_specs" / "research_experiment.json"
+    pipeline_spec.parent.mkdir(parents=True)
+    pipeline_spec.write_text(
+        json.dumps(
+            {
+                "version": "operator-experiment-pipeline",
+                "asset_scope": ["BTCUSDT"],
+                "output_dir": str(research_dir / "will-be-overridden"),
+                "providers": [],
+                "dataset_stage": {"enabled": False},
+                "evidence_stage": {"enabled": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    experiment_spec.write_text(
+        json.dumps(
+            {
+                "version": "operator-experiment",
+                "name": "Operator Experiment",
+                "pipeline_spec": str(pipeline_spec),
+                "pipeline_stage": "all",
+                "output_dir": str(research_dir / "experiments" / "operator-experiment"),
+                "required_artifacts": {"data_quality": True, "dataset": False, "evidence": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-experiment",
+            json={"spec_path": str(experiment_spec)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert job["status"] == "succeeded"
+    assert Path(str(job["result"]["experiment_run_manifest_path"])).exists()
+    assert Path(str(job["result"]["conclusion_path"])).exists()
+    assert any(item["type"] == "research_experiment_run" for item in artifacts)
+
+
+def test_operator_research_experiment_rejects_live_mode(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.LIVE,
+        db_path=tmp_path / "operator_experiment_live.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    app.state.engine.execution_adapter = FakeLiveAdapter()
+    pipeline_spec = research_dir / "experiment_specs" / "pipeline.json"
+    experiment_spec = research_dir / "experiment_specs" / "research_experiment.json"
+    pipeline_spec.parent.mkdir(parents=True)
+    pipeline_spec.write_text(
+        json.dumps(
+            {
+                "version": "operator-experiment-pipeline",
+                "asset_scope": ["BTCUSDT"],
+                "output_dir": str(research_dir / "will-be-overridden"),
+                "providers": [],
+                "dataset_stage": {"enabled": False},
+                "evidence_stage": {"enabled": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    experiment_spec.write_text(
+        json.dumps(
+            {
+                "version": "operator-experiment",
+                "name": "Operator Experiment",
+                "pipeline_spec": str(pipeline_spec),
+                "output_dir": str(research_dir / "experiments" / "operator-experiment"),
+                "required_artifacts": {"data_quality": True, "dataset": False, "evidence": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-experiment",
+            json={"spec_path": str(experiment_spec)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert response.status_code == 409
+    assert "live mode" in response.json()["detail"]
+
+
 def test_operator_snapshot_handles_microstructure_exception(app_config, sample_bars) -> None:
     config = _operator_config(app_config)
     app = create_app(config)

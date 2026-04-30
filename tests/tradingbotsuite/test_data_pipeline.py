@@ -9,6 +9,8 @@ import pytest
 
 from tradingbotsuite import main
 from tradingbotsuite.config import AppConfig, ResearchConfig
+from tradingbotsuite.core.models import DecisionAction, DecisionPacket, RuntimeMode, SignalDirection, SignalIntent
+from tradingbotsuite.persistence.sqlite_store import SQLiteStore
 from tradingbotsuite.research.data_pipeline import (
     ArchiveBackedResearchClient,
     archive_provider_descriptors,
@@ -30,6 +32,91 @@ def _write_kline_csv(path: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _write_many_kline_csv(path: Path, *, row_count: int = 520) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    start_ms = 1712649600000
+    price = 70000.0
+    for index in range(row_count):
+        open_price = price
+        close_price = price + 55.0
+        high_price = max(open_price, close_price) + 80.0
+        low_price = min(open_price, close_price) - 80.0
+        open_time_ms = start_ms + (index * 900_000)
+        close_time_ms = open_time_ms + 899_999
+        rows.append(
+            {
+                "open_time": open_time_ms,
+                "open": open_price,
+                "high": high_price,
+                "low": low_price,
+                "close": close_price,
+                "volume": 10 + index,
+                "close_time": close_time_ms,
+                "quote_asset_volume": 1000 + index,
+                "number_of_trades": 100 + index,
+                "taker_buy_base_asset_volume": 5,
+                "taker_buy_quote_asset_volume": 500,
+                "ignore": 0,
+            }
+        )
+        price = close_price
+    path.write_text(
+        "\n".join(
+            [
+                "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,"
+                "taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                *[
+                    ",".join(str(row[field]) for field in row)
+                    for row in rows
+                ],
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return rows
+
+
+async def _seed_tradingview_signals(db_path: Path, bars: list[dict[str, object]]) -> None:
+    store = SQLiteStore(db_path)
+    await store.initialize()
+    for offset, time_index in enumerate(range(400, 446), start=1):
+        direction = SignalDirection.LONG if offset % 2 else SignalDirection.SHORT
+        signal = SignalIntent(
+            signal_id=f"pipeline-signal-{offset}",
+            source="tradingview_chart_export",
+            symbol="BTCUSDT",
+            direction=direction,
+            tv_bar_time_ms=int(bars[time_index]["open_time"]),
+            received_time_ms=int(bars[time_index]["close_time"]) + 1,
+            raw_payload={"source_mode": "chart_export", "strategy_version": "fixture-v1"},
+        )
+        await store.reserve_signal(signal)
+        await store.update_signal_decision(signal, accepted=True, rejection_reason=None)
+        await store.save_decision_packet(
+            DecisionPacket(
+                signal=signal,
+                mode=RuntimeMode.PAPER,
+                action=DecisionAction.ACCEPT,
+                accepted=True,
+                feature_snapshot={
+                    "microstructure": {
+                        "spread_bps": "3.0",
+                        "top_of_book_imbalance": "0.12" if direction == SignalDirection.LONG else "-0.12",
+                        "queue_imbalance_l5": "0.08" if direction == SignalDirection.LONG else "-0.08",
+                        "windows": {
+                            "20": {
+                                "signed_ratio": "0.20" if direction == SignalDirection.LONG else "-0.20",
+                                "sqrt_signed_ratio": "0.15" if direction == SignalDirection.LONG else "-0.15",
+                            }
+                        },
+                    },
+                    "basis": {"basis_bps": "2.0"},
+                },
+            ),
+            signal.received_time_ms,
+        )
 
 
 def _write_spec(path: Path, payload: dict[str, object]) -> Path:
@@ -403,6 +490,88 @@ def test_prepare_hmm_knn_research_data_stage_all_runs_relative_evidence_matrix(t
     assert evidence["dataset_path"] == str(dataset.parquet_path.resolve())
     assert Path(evidence["summary_path"]).exists()
     assert Path(evidence["experiments"][0]["monitoring_report_path"]).exists()
+
+
+def test_prepare_hmm_knn_research_data_stage_all_builds_dataset_from_sqlite_signals_and_archive_bars(tmp_path: Path) -> None:
+    source_path = tmp_path / "fixtures" / "BTCUSDT-15m-klines.csv"
+    source_path.parent.mkdir(parents=True)
+    bars = _write_many_kline_csv(source_path)
+    db_path = tmp_path / "signals.sqlite3"
+    asyncio.run(_seed_tradingview_signals(db_path, bars))
+    config_path = _write_fast_hmm_knn_config(tmp_path / "fixtures" / "hmm_knn_config.json")
+    experiment_spec_path = _write_spec(
+        tmp_path / "fixtures" / "experiment_spec.json",
+        {
+            "name": "sqlite signal pipeline matrix",
+            "base_config_path": config_path.name,
+            "experiments": [
+                {
+                    "name": "small k softmax",
+                    "slug": "small-k-softmax",
+                    "owning_agent": "KNN",
+                    "run_order": 1,
+                    "requires_new_data": False,
+                    "can_run_on_current_artifacts": True,
+                    "mutations": {
+                        "knn.primary_k": 8,
+                        "knn.k_values": [8, 12],
+                        "knn.primary_weighting": "softmax",
+                        "knn.neighbor_weighting": ["softmax"],
+                    },
+                }
+            ],
+        },
+    )
+    spec_path = _write_spec(
+        tmp_path / "fixtures" / "pipeline_spec.json",
+        _base_spec(
+            tmp_path,
+            providers=[
+                {
+                    "source_name": "binance_vision",
+                    "inputs": [
+                        {
+                            "path": source_path.name,
+                            "symbol": "BTCUSDT",
+                            "data_family": "kline",
+                            "interval": "15m",
+                        }
+                    ],
+                }
+            ],
+            dataset_stage={
+                "enabled": True,
+                "research_config": "configs/v2_btc_research.json",
+                "db_path": str(db_path),
+            },
+            evidence_stage={
+                "enabled": True,
+                "experiment_spec": experiment_spec_path.name,
+                "workers": 1,
+                "write_monitoring": True,
+            },
+        ),
+    )
+
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="all",
+        app_config=AppConfig(
+            db_path=db_path,
+            research=ResearchConfig(output_dir=tmp_path / "research"),
+        ),
+    )
+    summary = json.loads(result.pipeline_summary_path.read_text(encoding="utf-8"))
+    dataset_manifest = json.loads(Path(str(summary["artifact_links"]["dataset_manifest_path"])).read_text(encoding="utf-8"))
+    evidence = json.loads(Path(str(summary["artifact_links"]["evidence_manifest_path"])).read_text(encoding="utf-8"))
+
+    assert summary["stage_status"]["dataset"]["status"] == "completed"
+    assert summary["stage_status"]["evidence"]["status"] == "completed"
+    assert dataset_manifest["source_counts"] == {"tradingview_chart_export": 46}
+    assert dataset_manifest["source_mode_counts"] == {"chart_export": 46}
+    assert summary["stage_status"]["dataset"]["archive_client_coverage"]["bar_series"] == {"BTCUSDT:15m": 520}
+    assert Path(dataset_manifest["dataset_path"]).exists()
+    assert evidence["dataset_path"] == dataset_manifest["dataset_path"]
 
 
 def test_prepare_hmm_knn_research_data_rejects_invalid_typed_provider_spec(tmp_path: Path) -> None:

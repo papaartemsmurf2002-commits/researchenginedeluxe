@@ -57,6 +57,13 @@
     <button class="secondary" onclick="queueProviderPipeline()">Run Pipeline</button>
   </div>
   <div class="card wide">
+    <h3>Research Experiment</h3>
+    <div class="grid">
+      <label>Spec Path <input id="research-experiment-spec" value="configs/experiments/v2_btc_phase1_research_experiment.json"></label>
+    </div>
+    <button class="secondary" onclick="queueResearchExperiment()">Run Research Experiment</button>
+  </div>
+  <div class="card wide">
     <h3>Entry Gate Research</h3>
     <p class="muted">Runs the observe-only trend/chop blocker replay on TradingView chart-export signals. This does not change live entries.</p>
     <div class="grid">
@@ -179,6 +186,12 @@
     });
   }
 
+  async function queueResearchExperiment() {
+    await queueJob("/api/operator/research/jobs/run-research-experiment", {
+      spec_path: document.getElementById("research-experiment-spec").value,
+    });
+  }
+
   function renderJobRow(job) {
     const stateClass = job.status === "succeeded" ? "ok" : (job.status === "failed" ? "bad" : "warn");
     const summary = job.result ? Object.entries(job.result).map(([k, v]) => `${k}: ${v}`).join(" | ") : (job.error_text || "waiting");
@@ -272,6 +285,32 @@
           <details class="details">
             <summary>Experiment manifest</summary>
             <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "research_experiment_run") {
+      const providers = summary.provider_statuses || [];
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>Research experiment run</strong>
+            ${window.TBS.pill(summary.conclusion_status || "inconclusive", summary.conclusion_status === "supported" ? "ok" : (summary.conclusion_status === "rejected" ? "bad" : "warn"))}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Name", window.TBS.escapeHtml(String(summary.name || "n/a"))],
+            ["Run", window.TBS.escapeHtml(String(summary.run_id || "n/a"))],
+            ["Pipeline", window.TBS.escapeHtml(String(summary.pipeline_status || "n/a"))],
+            ["Evidence", window.TBS.escapeHtml(String(summary.evidence_status || "n/a"))],
+            ["Data Alerts", window.TBS.toMono(summary.data_quality_alert_count ?? "n/a")],
+            ["Boundary", window.TBS.escapeHtml(summary.research_boundary_passed ? "passed" : "failed")],
+          ])}
+          ${providers.length ? `<div class="muted" style="margin-top:8px;">Providers: ${providers.map(provider => `${window.TBS.escapeHtml(provider.source_name || "unknown")}=${window.TBS.escapeHtml(provider.status || "unknown")}`).join(", ")}</div>` : ""}
+          <div class="muted" style="margin-top:8px;">${window.TBS.escapeHtml(summary.conclusion_reason || "")}</div>
+          <details class="details">
+            <summary>Run manifest / conclusion</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, conclusion: item.conclusion_text || null }))}</pre>
           </details>
         </div>
       `;
@@ -408,6 +447,7 @@
     const latestTrain = pickLatest("train_artifact");
     const latestModel = pickLatest("model_artifact");
     const latestHmm = pickLatest("hmm_knn_artifact");
+    const latestExperiment = pickLatest("research_experiment_run");
     document.getElementById("research-status").innerHTML = [
       ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
       ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
@@ -415,6 +455,7 @@
       ["Promotion Ready", latestModel?.summary?.promotion_ready ? "yes" : "no"],
       ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
       ["HMM/KNN Alerts", latestHmm?.summary?.monitoring_alert_count ?? "n/a"],
+      ["Latest Experiment", latestExperiment?.summary?.conclusion_status ?? "n/a"],
     ].map(([label, value]) => `
       <div class="stat">
         <div class="label">${label}</div>

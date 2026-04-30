@@ -34,6 +34,7 @@ from tradingbotsuite.research.entry_gate import (
     run_entry_gate_research,
 )
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, prepare_hmm_knn_research_data
+from tradingbotsuite.research.experiment_runner import run_research_experiment
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 
 AMBIGUOUS_SAFETY_REASONS = {
@@ -437,6 +438,31 @@ class OperatorConsoleService:
                     },
                 }
             )
+        for experiment_run_manifest in sorted(base_dir.rglob("experiment_run_manifest.json")):
+            payload = json.loads(experiment_run_manifest.read_text(encoding="utf-8"))
+            conclusion_path = Path(str((payload.get("artifact_links") or {}).get("conclusion_path") or experiment_run_manifest.parent / "conclusion.md"))
+            conclusion_text = conclusion_path.read_text(encoding="utf-8") if conclusion_path.exists() else None
+            artifacts.append(
+                {
+                    "type": "research_experiment_run",
+                    "path": str(experiment_run_manifest),
+                    "sort_time": experiment_run_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "conclusion_path": str(conclusion_path) if conclusion_path.exists() else None,
+                    "conclusion_text": conclusion_text,
+                    "summary": {
+                        "name": payload.get("name"),
+                        "run_id": payload.get("run_id"),
+                        "conclusion_status": ((payload.get("conclusion") or {}).get("status")),
+                        "conclusion_reason": ((payload.get("conclusion") or {}).get("reason")),
+                        "pipeline_status": ((payload.get("pipeline_conclusion") or {}).get("status")),
+                        "data_quality_alert_count": ((payload.get("data_quality") or {}).get("alert_count")),
+                        "evidence_status": ((payload.get("evidence") or {}).get("status")),
+                        "provider_statuses": payload.get("provider_statuses") or [],
+                        "research_boundary_passed": ((payload.get("research_boundary") or {}).get("passed")),
+                    },
+                }
+            )
         for entry_gate_metrics in sorted(base_dir.rglob("v2-btc-entry-gates-*/metrics.json")):
             payload = json.loads(entry_gate_metrics.read_text(encoding="utf-8"))
             artifacts.append(
@@ -691,6 +717,9 @@ class OperatorConsoleService:
         if safety and safety.in_safe_mode and safety.reason in AMBIGUOUS_SAFETY_REASONS:
             raise ValueError(f"research jobs are blocked while safety is ambiguous: {safety.reason}")
         if self.config.runtime_mode == RuntimeMode.LIVE:
+            positions = await self.store.list_position_states()
+            if any(position.status == TradeStatus.OPEN for position in positions):
+                raise ValueError("research jobs are blocked while a live position is open")
             raise ValueError("research jobs are blocked in live mode")
 
     async def _job_loop(self) -> None:
@@ -759,6 +788,18 @@ class OperatorConsoleService:
                 "pipeline_summary_path": str(result.pipeline_summary_path),
                 "dataset_manifest_path": str(result.dataset_manifest_path) if result.dataset_manifest_path is not None else None,
                 "evidence_manifest_path": str(result.evidence_manifest_path) if result.evidence_manifest_path is not None else None,
+            }
+        if job_type == "run-research-experiment":
+            result = await asyncio.to_thread(
+                run_research_experiment,
+                spec_path=Path(str(request["spec_path"])),
+                app_config=self.config,
+            )
+            return {
+                "output_dir": str(result.output_dir),
+                "experiment_run_manifest_path": str(result.manifest_path),
+                "conclusion_path": str(result.conclusion_path),
+                "pipeline_summary_path": str(result.pipeline_summary_path),
             }
         if job_type == "train-model":
             dataset_path = Path(request["dataset_path"])

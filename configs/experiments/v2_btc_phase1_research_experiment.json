@@ -1,0 +1,15 @@
+{
+  "version": "v2-btc-phase1-research-experiment-1",
+  "name": "v2 BTC Phase 1 Research Experiment",
+  "pipeline_spec": "../data/v2_btc_hmm_knn_provider_pipeline.json",
+  "pipeline_stage": "all",
+  "experiment_spec": "v2_btc_hmm_knn_current_artifact_experiments.json",
+  "workers": 1,
+  "write_monitoring": true,
+  "required_artifacts": {
+    "data_quality": true,
+    "dataset": false,
+    "evidence": true
+  },
+  "conclusion_policy": "default"
+}

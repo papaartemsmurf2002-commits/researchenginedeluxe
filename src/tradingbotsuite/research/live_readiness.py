@@ -16,6 +16,7 @@ RESEARCH_JOB_NAMES = frozenset(
         "monitor-hmm-knn",
         "build-dataset",
         "prepare-hmm-knn-research-data",
+        "run-research-experiment",
         "train",
         "backtest",
         "optimize",
@@ -345,6 +346,7 @@ def _validate_research_artifact_manifest(payload: Mapping[str, Any]) -> list[str
         payload.get("artifact_manifest_version")
         or payload.get("schema_version")
         or payload.get("experiment_manifest_version")
+        or payload.get("experiment_run_manifest_version")
         or payload.get("pipeline_summary_version")
         or payload.get("data_pipeline_manifest_version")
         or payload.get("data_quality_report_version")
