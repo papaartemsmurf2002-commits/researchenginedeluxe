@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tradingbot-framework"
 version = "0.1.0"
-description = "Hyperliquid Lorentzian trading bot, backtester, and optimizer"
+description = "Trading bot runtime, backtester, optimizer, and research pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

@@ -42,6 +42,15 @@ Run the BTC research experiment bundle:
 python -m tradingbotsuite.main run-research-experiment --spec configs\experiments\v2_btc_phase1_research_experiment.json
 ```
 
+Provider and archive intake:
+
+```powershell
+python -m tradingbotsuite.main collect-binance-bars --help
+python -m tradingbotsuite.main fetch-binance-vision --help
+python -m tradingbotsuite.main fetch-crypto-lake --help
+python -m tradingbotsuite.main prepare-hmm-knn-research-data --help
+```
+
 Runtime operator console:
 
 ```powershell

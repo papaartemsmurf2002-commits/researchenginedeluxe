@@ -10,7 +10,8 @@ __pycache__/
 .vscode/
 *.swp
 *.tmp
-tradingbot/
+# Repo-root local scratch folder only. Do not ignore src/tradingbot package files.
+/tradingbot/
 
 # Local credentials
 tradingbotsuite_v1_legacy/hyperliquidtestnet.txt
