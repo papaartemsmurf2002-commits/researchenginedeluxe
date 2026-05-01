@@ -48,7 +48,7 @@ Stage 2 must formalize import and artifact contracts. Stage 10/11 must keep live
 
 ### Resolution notes
 
-Open as of 2026-05-01.
+Stage 2 added `docs/contracts/boundary_contract.md` and `tests/contracts/test_import_boundaries.py` to prevent research modules from importing order-placement paths. The broader branch-level live surface remains open for Stage 10/11 enforcement.
 
 ## ISSUE-R1-002: Research CLI and live/operator CLI are coupled in one entry module
 
@@ -72,7 +72,7 @@ Stage 2 should document command ownership and boundary rules. Stage 10 should en
 
 ### Resolution notes
 
-Open as of 2026-05-01.
+Stage 2 documented command ownership in `docs/contracts/boundary_contract.md`. Runtime rejection of research jobs in live mode remains open for Stage 10.
 
 ## Issue template
 
