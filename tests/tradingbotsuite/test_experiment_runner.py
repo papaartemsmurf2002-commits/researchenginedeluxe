@@ -4,11 +4,23 @@ import json
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 from tradingbotsuite import main
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.research.deterministic_datasets import write_hmm_knn_sweep_dataset
 from tradingbotsuite.research.experiment_runner import (
+    DatasetSpec,
+    ExperimentSpec,
+    FeatureSpec,
+    StrategySpec,
+    BacktestSpec,
+    ValidationSpec,
+    SearchSpec,
+    ReportSpec,
     ResearchExperimentSpec,
+    deterministic_experiment_cache_key,
+    expand_search_candidates,
     run_research_experiment,
     write_research_experiment_benchmark_report,
 )
@@ -171,7 +183,23 @@ def test_run_research_experiment_writes_bundle_and_conclusion(tmp_path: Path) ->
     assert manifest["provider_statuses"][0]["source_name"] == "binance_vision"
     assert manifest["execution_environment"]["packages"]["cupy_available"] in {True, False}
     assert any("GPU/backend metadata is diagnostic" in note for note in manifest["notes"])
+    assert Path(manifest["generic_experiment_outputs"]["experiment_manifest_path"]).exists()
+    assert Path(manifest["generic_experiment_outputs"]["metrics_by_split_path"]).exists()
     assert "Status:" in conclusion
+
+    experiment_manifest = json.loads(result.experiment_manifest_path.read_text(encoding="utf-8"))
+    summary = pd.read_csv(result.experiment_summary_path)
+    split = pd.read_parquet(result.metrics_by_split_path)
+    regime = pd.read_parquet(result.metrics_by_regime_path)
+    side = pd.read_parquet(result.metrics_by_side_path)
+
+    assert experiment_manifest["experiment_manifest_version"] == "v3-generic-research-experiment-manifest-1"
+    assert experiment_manifest["research_only"] is True
+    assert {"baseline_no_trade", "trend_following_v1", "hmm_knn_diagnostic_v1"} == set(summary["strategy_id"])
+    assert {"anchored_walk_forward", "rolling_walk_forward", "purged_embargoed_split"}.issubset(set(split["validation_method"]))
+    assert {"bull_trend", "bear_trend", "volatility_shock"}.issubset(set(regime["regime"]))
+    assert {"long", "short"} == set(side["side"])
+    assert "research_only_not_promotable" in experiment_manifest["orchestrator_decision"]["failure_reasons"]
 
 
 def test_run_research_experiment_reports_missing_required_dataset_as_inconclusive(tmp_path: Path) -> None:
@@ -249,3 +277,33 @@ def test_research_experiment_benchmark_report_records_runs(tmp_path: Path) -> No
     assert report["promotion_ready"] is False
     assert len(report["runs"]) == 1
     assert Path(report["runs"][0]["manifest_path"]).exists()
+
+
+def test_generic_experiment_specs_cache_and_search_are_deterministic() -> None:
+    spec = ExperimentSpec(
+        experiment_name="deterministic generic experiment",
+        dataset=DatasetSpec(dataset_manifest_hash="dataset-a"),
+        feature=FeatureSpec(feature_manifest_hash="feature-a"),
+        strategies=(StrategySpec("baseline_no_trade"), StrategySpec("hmm_knn_diagnostic_v1", strategy_type="hmm_knn_research")),
+        backtest=BacktestSpec(engine_version="engine-a"),
+        validation=ValidationSpec(purge_embargo_bars=3),
+        search=SearchSpec(method="latin_hypercube", parameter_space={"k": (8, 12), "distance": ("lorentzian", "euclidean_robust_z")}, max_candidates=3),
+        report=ReportSpec(),
+    )
+    validation_hash = deterministic_experiment_cache_key(
+        dataset_manifest_hash=spec.dataset.dataset_manifest_hash,
+        feature_manifest_hash=spec.feature.feature_manifest_hash,
+        strategy_config_hash="strategy-a",
+        backtest_engine_version=spec.backtest.engine_version,
+        validation_spec_hash="validation-a",
+    )
+
+    assert validation_hash == deterministic_experiment_cache_key(
+        dataset_manifest_hash="dataset-a",
+        feature_manifest_hash="feature-a",
+        strategy_config_hash="strategy-a",
+        backtest_engine_version="engine-a",
+        validation_spec_hash="validation-a",
+    )
+    assert len(expand_search_candidates(spec.search)) == 3
+    assert ExperimentSpec.from_payload(spec.to_payload()).to_payload() == spec.to_payload()

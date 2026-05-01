@@ -28,6 +28,18 @@ from tradingbotsuite.research.hmm_knn import run_hmm_knn_research
 from tradingbotsuite.research.inference import AcceptanceScorer
 from tradingbotsuite.research.modeling import calibrate_model, train_base_model
 from tradingbotsuite.research.evaluation import replay_eval
+from tradingbotsuite.research.experiment_runner import (
+    DatasetSpec,
+    ExperimentSpec,
+    FeatureSpec,
+    SearchSpec,
+    StrategySpec,
+    BacktestSpec,
+    ValidationSpec,
+    ReportSpec,
+    deterministic_experiment_cache_key,
+    expand_search_candidates,
+)
 
 
 def _make_bar(time_ms: int, open_price: Decimal, close_price: Decimal) -> dict:
@@ -71,6 +83,38 @@ def _write_hmm_knn_test_config(tmp_path: Path) -> Path:
     config_path = tmp_path / "hmm_knn_config.json"
     config_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return config_path
+
+
+def test_stage8_generic_experiment_spec_cache_and_search_contract() -> None:
+    spec = ExperimentSpec(
+        experiment_name="stage8-contract",
+        dataset=DatasetSpec(dataset_manifest_hash="dataset-hash"),
+        feature=FeatureSpec(feature_manifest_hash="feature-hash"),
+        strategies=(StrategySpec("trend_following_v1"), StrategySpec("hmm_knn_diagnostic_v1", strategy_type="hmm_knn_research")),
+        backtest=BacktestSpec(engine_version="engine-version"),
+        validation=ValidationSpec(methods=("anchored_walk_forward", "purged_embargoed_split")),
+        search=SearchSpec(method="grid", parameter_space={"spacing_bars": (8, 12), "distance": ("lorentzian", "euclidean_robust_z")}),
+        report=ReportSpec(),
+    )
+
+    first = deterministic_experiment_cache_key(
+        dataset_manifest_hash=spec.dataset.dataset_manifest_hash,
+        feature_manifest_hash=spec.feature.feature_manifest_hash,
+        strategy_config_hash="strategy-hash",
+        backtest_engine_version=spec.backtest.engine_version,
+        validation_spec_hash="validation-hash",
+    )
+    second = deterministic_experiment_cache_key(
+        dataset_manifest_hash="dataset-hash",
+        feature_manifest_hash="feature-hash",
+        strategy_config_hash="strategy-hash",
+        backtest_engine_version="engine-version",
+        validation_spec_hash="validation-hash",
+    )
+
+    assert first == second
+    assert len(expand_search_candidates(spec.search)) == 4
+    assert ExperimentSpec.from_payload(spec.to_payload()).to_payload() == spec.to_payload()
 
 
 def test_funding_paid_or_received_uses_trade_direction_sign() -> None:

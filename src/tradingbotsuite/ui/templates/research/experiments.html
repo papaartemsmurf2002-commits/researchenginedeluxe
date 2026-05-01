@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+</head>
+<body>
+  <main>
+    <h1>{{ title }}</h1>
+    <table>
+      <thead><tr><th>Experiment</th><th>Status</th><th>Summary</th><th>Split</th><th>Regime</th><th>Side</th><th>Manifest</th></tr></thead>
+      <tbody>
+      {% for metric in metrics %}
+        <tr>
+          <td>{{ metric.experiment_name }}</td>
+          <td>{{ metric.status }}</td>
+          <td>{{ metric.summary_path }}</td>
+          <td>{{ metric.split_metrics_path }}</td>
+          <td>{{ metric.regime_metrics_path }}</td>
+          <td>{{ metric.side_metrics_path }}</td>
+          <td><a href="/research/api/experiments">{{ metric.manifest_path }}</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

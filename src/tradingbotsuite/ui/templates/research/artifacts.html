@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+</head>
+<body>
+  <main>
+    <h1>{{ title }}</h1>
+    <table>
+      <thead><tr><th>Artifact</th><th>Manifest</th></tr></thead>
+      <tbody>
+      {% for item in items %}
+        <tr>
+          <td>{{ item.path }}</td>
+          <td>{% if item.manifest_path %}<a href="/research/api/manifests">{{ item.manifest_path }}</a>{% else %}missing{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

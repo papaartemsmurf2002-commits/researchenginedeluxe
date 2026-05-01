@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+</head>
+<body>
+  <main>
+    <h1>{{ title }}</h1>
+    <table>
+      <thead><tr><th>Job</th><th>Type</th><th>Status</th><th>Spec</th></tr></thead>
+      <tbody>
+      {% for job in jobs %}
+        <tr>
+          <td>{{ job.job_id }}</td>
+          <td>{{ job.job_type }}</td>
+          <td>{{ job.status }}</td>
+          <td>{{ job.spec_path }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>
