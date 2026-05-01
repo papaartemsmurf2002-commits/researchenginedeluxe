@@ -1,0 +1,44 @@
+{
+  "benchmark_report_version": "research-backtest-benchmark-v1",
+  "dataset_path": "data\\research\\benchmarks\\fixtures\\btcusdt_hmm_knn_sweep_balanced.parquet",
+  "dataset_sha256": "214e627e8dd9f8fe6ecddc43ca13f461ea246d6e4d365bed3c33e7d54bb092bf",
+  "dimensions": {
+    "cache_hit_speedup": 1.0,
+    "deterministic_repeat_hash": "2f080ae249598dab0aa1f2b3ef0777bbc80ffb7f5e69d1a3f2739cfcee017638",
+    "memory_peak": "not_measured_stage5_baseline",
+    "process_scaling": {
+      "workers_1": 1.0,
+      "workers_n": "not_measured_stage5_baseline"
+    },
+    "rows_processed_per_second": [
+      2588.583483,
+      3740.671696
+    ],
+    "strategies_per_minute": [
+      1294.291742,
+      1870.335848
+    ]
+  },
+  "engine": "tradingbotsuite.backtesting.BacktestEngine",
+  "observe_only": true,
+  "promotion_ready": false,
+  "research_only": true,
+  "runs": [
+    {
+      "elapsed_ms": 46.3574,
+      "manifest_path": "data\\research\\benchmarks\\runs\\benchmark-trend-0\\backtest_manifest.json",
+      "result_sha256": "b7c964b9672b15558e02f9f56a974aa30f01ae83d4f6531446fd55af6387b736",
+      "rows_processed_per_second": 2588.583483,
+      "run_id": "benchmark-trend-0",
+      "strategies_per_minute": 1294.291742
+    },
+    {
+      "elapsed_ms": 32.0798,
+      "manifest_path": "data\\research\\benchmarks\\runs\\benchmark-trend-1\\backtest_manifest.json",
+      "result_sha256": "b7c964b9672b15558e02f9f56a974aa30f01ae83d4f6531446fd55af6387b736",
+      "rows_processed_per_second": 3740.671696,
+      "run_id": "benchmark-trend-1",
+      "strategies_per_minute": 1870.335848
+    }
+  ]
+}

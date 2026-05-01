@@ -1,0 +1,10 @@
+{
+  "backtest_engine_baseline_path": "data\\research\\benchmarks\\backtest_engine_baseline.json",
+  "benchmark_report_version": "research-optimizer-benchmark-v1",
+  "deterministic_repeat_hash": "2f080ae249598dab0aa1f2b3ef0777bbc80ffb7f5e69d1a3f2739cfcee017638",
+  "observe_only": true,
+  "promotion_ready": false,
+  "reason": "Stage 5 creates the engine baseline; optimizer implementation begins after engine correctness is stable.",
+  "research_only": true,
+  "status": "registered_baseline"
+}
