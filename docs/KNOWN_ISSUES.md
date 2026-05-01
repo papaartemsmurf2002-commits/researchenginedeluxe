@@ -22,11 +22,57 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 0 | 0 |
-| P1 | 0 | 0 | 0 | 0 |
+| P1 | 2 | 0 | 0 | 0 |
 | P2 | 0 | 0 | 0 | 0 |
 | P3 | 0 | 0 | 0 | 0 |
 
-No issues are currently recorded.
+## ISSUE-R1-001: Research branch still contains live execution surfaces
+
+Severity: P1
+Stage discovered: Stage 1 - Repo cartography
+Owner: Orchestrator Agent / Live Safety Agent
+Status: open
+Paths affected: `run_manual.py`, `run_live_smoke.py`, `src/tradingbotsuite/adapters/execution.py`, `src/tradingbotsuite/core/engine.py`, `src/tradingbotsuite/runtime.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbot/live.py`, `src/tradingbot/data/hyperliquid.py`
+
+### Problem
+
+The research branch carries live-adjacent launchers and execution adapters. This does not prove research modules are placing orders, but it increases branch-boundary risk and must be isolated or guarded before any later research artifact can be interpreted as live-ready.
+
+### Evidence
+
+Stage 1 cartography identified Hyperliquid execution adapters, manual runtime launchers, operator commands, and legacy `tradingbot` live paths on `research/v3-experimental-engine`.
+
+### Required resolution
+
+Stage 2 must formalize import and artifact contracts. Stage 10/11 must keep live execution on the live branch and require promotion/shadow validation before any research output reaches live runtime behavior.
+
+### Resolution notes
+
+Open as of 2026-05-01.
+
+## ISSUE-R1-002: Research CLI and live/operator CLI are coupled in one entry module
+
+Severity: P1
+Stage discovered: Stage 1 - Repo cartography
+Owner: Orchestrator Agent / Documentation Agent
+Status: open
+Paths affected: `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`
+
+### Problem
+
+`src/tradingbotsuite/main.py` exposes live/operator commands and research commands in the same module, and the operator UI can queue research jobs. This needs explicit contract documentation and later enforcement so live mode cannot run research jobs.
+
+### Evidence
+
+Stage 1 command inventory found `serve`, `manual`, `smoke-live`, `build-dataset`, `train-model`, `calibrate-model`, `replay-eval`, HMM/KNN commands, provider fetch commands, and experiment commands in the same CLI module.
+
+### Required resolution
+
+Stage 2 should document command ownership and boundary rules. Stage 10 should enforce live-mode rejection of research jobs.
+
+### Resolution notes
+
+Open as of 2026-05-01.
 
 ## Issue template
 
