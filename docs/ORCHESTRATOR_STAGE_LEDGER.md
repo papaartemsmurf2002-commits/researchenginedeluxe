@@ -1,6 +1,6 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage 5 - Fast modular backtesting engine
+Current stage: Stage 6 - Strategy plugin system and baseline strategy library
 Current stage owner: Orchestrator Agent
 Stage status: complete
 Last updated: 2026-05-01
@@ -9,17 +9,17 @@ Last updated: 2026-05-01
 
 - Prior stage completed: yes
 - Evidence links:
-  - `docs/stage_reports/STAGE_4_EXIT_REPORT.md`
-  - `src/tradingbotsuite/backtesting/engine.py`
-  - `src/tradingbotsuite/backtesting/execution_sim.py`
-  - `src/tradingbotsuite/backtesting/costs.py`
-  - `src/tradingbotsuite/backtesting/metrics.py`
-  - `src/tradingbotsuite/backtesting/benchmark.py`
-  - `tests/contracts/test_backtest_contracts.py`
-  - `tests/unit/test_execution_simulator.py`
-  - `tests/integration/test_backtest_engine_fixture.py`
-  - `docs/work_packets/WP5-01-backtesting-engine.md`
   - `docs/stage_reports/STAGE_5_EXIT_REPORT.md`
+  - `src/tradingbotsuite/strategies/contracts.py`
+  - `src/tradingbotsuite/strategies/registry.py`
+  - `src/tradingbotsuite/strategies/trend.py`
+  - `src/tradingbotsuite/strategies/volatility_breakout.py`
+  - `src/tradingbotsuite/strategies/range_reversion.py`
+  - `src/tradingbotsuite/strategies/funding_basis.py`
+  - `tests/contracts/test_strategy_contracts.py`
+  - `tests/integration/test_backtest_engine_fixture.py`
+  - `docs/work_packets/WP6-01-strategy-plugin-library.md`
+  - `docs/stage_reports/STAGE_6_EXIT_REPORT.md`
 - Known blockers accepted into this stage:
   - None.
 
@@ -34,27 +34,26 @@ Last updated: 2026-05-01
 | WP3-01-data-manifest-consolidation | Data Agent | closed | `src/tradingbotsuite/data/**`, `tests/contracts/test_data_contracts.py`, `tests/integration/test_provider_intake_smoke.py`, `docs/stage_reports/STAGE_3_EXIT_REPORT.md` | Normalized data package, data manifest validator, partitioned Parquet store, Binance REST intake smoke, and registered-only provider manifests created. |
 | WP4-01-feature-registry | Feature Agent | closed | `src/tradingbotsuite/features/**`, `configs/features/**`, `tests/contracts/test_feature_contracts.py`, `docs/stage_reports/STAGE_4_EXIT_REPORT.md` | Point-in-time alignment package, feature registry, feature packs, preset manifests, and train-only preprocessing tests created. |
 | WP5-01-backtesting-engine | Backtest Agent | closed | `src/tradingbotsuite/backtesting/**`, `tests/contracts/test_backtest_contracts.py`, `tests/unit/test_execution_simulator.py`, `tests/integration/test_backtest_engine_fixture.py`, `docs/stage_reports/STAGE_5_EXIT_REPORT.md` | Modular research backtest engine, execution simulator, cost model, metrics, deterministic outputs, and benchmark baselines created. |
+| WP6-01-strategy-plugin-library | Strategy Agent | closed | `src/tradingbotsuite/strategies/**`, `configs/strategies/**`, `tests/contracts/test_strategy_contracts.py`, `tests/integration/test_backtest_engine_fixture.py`, `docs/stage_reports/STAGE_6_EXIT_REPORT.md` | Strategy plugin contract, registry, configs, four baseline plugins, LC reference, HMM/KNN diagnostic plugin, and engine integration created. |
 
 ## Gate checklist
 
 | Requirement | Evidence | Passed |
 | --- | --- | --- |
-| Stage 4 completed | `docs/stage_reports/STAGE_4_EXIT_REPORT.md` | yes |
-| Modular backtest engine added | `src/tradingbotsuite/backtesting/engine.py` | yes |
-| Execution simulator added | `src/tradingbotsuite/backtesting/execution_sim.py` | yes |
-| Fees/slippage/spread/funding cost model added | `src/tradingbotsuite/backtesting/costs.py` | yes |
-| Required metrics implemented | `src/tradingbotsuite/backtesting/metrics.py` | yes |
-| Required artifact filenames produced | `tests/contracts/test_backtest_contracts.py` | yes |
-| Deterministic result hashes tested | `tests/contracts/test_backtest_contracts.py` | yes |
-| Baseline trend and no-trade share engine | `tests/integration/test_backtest_engine_fixture.py` | yes |
-| Holding windows 1h/24h/72h/7d supported | `tests/contracts/test_backtest_contracts.py` | yes |
-| Benchmark artifacts written | `data/research/benchmarks/*.json` | yes |
-| Backtesting package boundary tested | `tests/contracts/test_import_boundaries.py` | yes |
-| Stage exit report written | `docs/stage_reports/STAGE_5_EXIT_REPORT.md` | yes |
+| Stage 5 completed | `docs/stage_reports/STAGE_5_EXIT_REPORT.md` | yes |
+| Strategy plugin contract added | `src/tradingbotsuite/strategies/contracts.py` | yes |
+| Strategy registry added | `src/tradingbotsuite/strategies/registry.py` | yes |
+| Four baseline strategies run through same engine | `tests/integration/test_backtest_engine_fixture.py` | yes |
+| Strategy outputs standardized | `tests/contracts/test_strategy_contracts.py` | yes |
+| KNN/HMM implemented as plugin | `src/tradingbotsuite/strategies/hmm_knn.py` | yes |
+| WT3D include/exclude controlled by config | `configs/strategies/*.json` | yes |
+| Baseline strategy metrics available | `tests/integration/test_backtest_engine_fixture.py` | yes |
+| Strategy package boundary tested | `tests/contracts/test_import_boundaries.py` | yes |
+| Stage exit report written | `docs/stage_reports/STAGE_6_EXIT_REPORT.md` | yes |
 | No P0 issues open | `docs/KNOWN_ISSUES.md` | yes |
 | Fewer than four unresolved P1 issues | `docs/KNOWN_ISSUES.md` | yes |
 
 ## Orchestrator decision
 
 Decision: advance
-Reason: Stage 5 fast modular backtesting engine is complete on the research branch. Stage 6 strategy plugin system and baseline strategy library may begin; unresolved live-boundary enforcement risks remain assigned to Stage 10 and Stage 11.
+Reason: Stage 6 strategy plugin system and baseline strategy library are complete on the research branch. Stage 7 HMM/KNN refactor and feature-agnostic analog engine may begin; unresolved live-boundary enforcement risks remain assigned to Stage 10 and Stage 11.

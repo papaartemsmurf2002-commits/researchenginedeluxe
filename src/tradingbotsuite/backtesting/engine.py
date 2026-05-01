@@ -5,7 +5,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,6 +13,7 @@ import pandas as pd
 from tradingbotsuite.backtesting.costs import CostModel
 from tradingbotsuite.backtesting.execution_sim import ExecutionAssumptions, ExecutionSimulator
 from tradingbotsuite.backtesting.metrics import REQUIRED_BACKTEST_METRICS, calculate_backtest_metrics
+from tradingbotsuite.strategies import get_strategy_plugin, validate_signal_frame
 
 BACKTEST_ENGINE_VERSION = "research-backtest-engine-v1"
 BACKTEST_MANIFEST_VERSION = "backtest-manifest-v1"
@@ -22,7 +23,6 @@ SUPPORTED_HOLDING_WINDOWS_MS = {
     "72h": 72 * 60 * 60 * 1000,
     "7d": 7 * 24 * 60 * 60 * 1000,
 }
-StrategyId = Literal["baseline_trend", "baseline_no_trade"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +31,7 @@ class BacktestSpec:
     symbol: str
     output_dir: Path
     dataset_path: Path | None = None
-    strategy_id: StrategyId = "baseline_trend"
+    strategy_id: str = "baseline_trend"
     holding_window: str = "24h"
     interval_ms: int = 900_000
     initial_equity: float = 10_000.0
@@ -88,8 +88,8 @@ class BacktestEngine:
         output_dir.mkdir(parents=True, exist_ok=True)
         source_frame = self._load_source_frame(spec, dataset=dataset, market_data=market_data)
         market = _market_frame(source_frame, symbol=spec.symbol)
-        signals = _signals_for_strategy(source_frame, market, spec)
         assumptions = _execution_assumptions(spec)
+        signals, strategy_metadata = _signals_for_strategy(source_frame, spec)
         cost_model = CostModel(
             fee_bps=spec.fee_bps,
             slippage_bps=spec.slippage_bps,
@@ -157,6 +157,7 @@ class BacktestEngine:
             "promotion_ready": False,
             "symbol": spec.symbol,
             "strategy_id": spec.strategy_id,
+            "strategy_metadata": strategy_metadata,
             "holding_window": spec.holding_window,
             "entry_price_source": spec.entry_price_source,
             "same_bar_entry_exit_allowed": False,
@@ -269,46 +270,38 @@ def _market_frame(source: pd.DataFrame, *, symbol: str) -> pd.DataFrame:
     return frame.sort_values("bar_time_ms", kind="mergesort").drop_duplicates("bar_time_ms").reset_index(drop=True)
 
 
-def _signals_for_strategy(source: pd.DataFrame, market: pd.DataFrame, spec: BacktestSpec) -> pd.DataFrame:
-    if spec.strategy_id == "baseline_no_trade":
-        return pd.DataFrame(columns=["signal_id", "symbol", "decision_time_ms", "side", "signal_bar_close"])
-    if spec.strategy_id != "baseline_trend":
-        raise ValueError(f"unsupported_strategy_id:{spec.strategy_id}")
-    threshold = float(spec.strategy_config.get("slope_threshold", 0.15))
-    spacing_bars = int(spec.strategy_config.get("spacing_bars", 16))
-    signal_rows: list[dict[str, object]] = []
-    if "signal_bar_time_ms" in source.columns:
-        source_time = source["signal_bar_time_ms"]
-    elif "bar_time_ms" in source.columns:
-        source_time = source["bar_time_ms"]
+def _signals_for_strategy(source: pd.DataFrame, spec: BacktestSpec) -> tuple[pd.DataFrame, dict[str, Any]]:
+    plugin_config = {
+        **dict(spec.strategy_config),
+        "symbol": spec.symbol.upper(),
+        "feature_set_id": spec.feature_set_id or spec.strategy_config.get("feature_set_id", "features_full_context_no_wt"),
+        "holding_period": spec.holding_window,
+        "entry_policy": spec.entry_price_source,
+    }
+    plugin = get_strategy_plugin(spec.strategy_id, config=plugin_config)
+    plugin.prepare(None)
+    predictions = plugin.predict(source.copy())
+    validation = validate_signal_frame(predictions)
+    if not validation.valid:
+        raise ValueError("; ".join(validation.errors))
+    if predictions.empty:
+        signals = pd.DataFrame(columns=["signal_id", "symbol", "decision_time_ms", "side", "signal_bar_close", "strategy_id"])
     else:
-        source_time = pd.Series([], dtype="int64")
-    source_by_time = source.set_index(pd.to_numeric(source_time, errors="coerce")) if len(source_time) else pd.DataFrame()
-    for index, row in market.iterrows():
-        if index % max(spacing_bars, 1) != 0:
-            continue
-        slope = float(row.get("directional_slope_atr", 0.0) if not pd.isna(row.get("directional_slope_atr", np.nan)) else 0.0)
-        if abs(slope) < threshold:
-            continue
-        bar_time = int(row["bar_time_ms"])
-        side = "long" if slope > 0.0 else "short"
-        signal_id = f"{spec.strategy_id}-{bar_time}"
-        if bar_time in source_by_time.index and "signal_id" in source_by_time.columns:
-            raw_id = source_by_time.loc[bar_time, "signal_id"]
-            if isinstance(raw_id, pd.Series):
-                raw_id = raw_id.iloc[0]
-            signal_id = str(raw_id)
-        signal_rows.append(
-            {
-                "signal_id": signal_id,
-                "symbol": spec.symbol.upper(),
-                "decision_time_ms": bar_time + int(spec.interval_ms),
-                "side": side,
-                "signal_bar_close": float(row["close"]),
-                "strategy_id": spec.strategy_id,
-            }
-        )
-    return pd.DataFrame(signal_rows)
+        signals = predictions.loc[
+            (predictions["side"].astype(str).str.lower() != "flat")
+            & (predictions["skip_reason"].fillna("").astype(str) == "")
+        ].copy()
+        signals["decision_time_ms"] = pd.to_numeric(signals["signal_time_ms"], errors="coerce").astype("int64")
+        signals["side"] = signals["side"].astype(str).str.lower()
+    metadata = {
+        "strategy_id": getattr(plugin, "strategy_id", spec.strategy_id),
+        "strategy_version": getattr(plugin, "strategy_version", "unknown"),
+        "allowed_holding_periods": list(getattr(plugin, "allowed_holding_periods", ())),
+        "required_feature_sets": list(getattr(plugin, "required_feature_sets", ())),
+        "signal_contract_valid": validation.valid,
+        "signal_contract_errors": list(validation.errors),
+    }
+    return signals, metadata
 
 
 def _enrich_trades(trades: pd.DataFrame, market: pd.DataFrame) -> pd.DataFrame:

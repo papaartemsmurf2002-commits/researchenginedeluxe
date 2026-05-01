@@ -1,0 +1,8 @@
+{
+  "strategy_id": "baseline_no_trade",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_price_trend_vol",
+  "holding_period": "24h",
+  "parameters": {}
+}

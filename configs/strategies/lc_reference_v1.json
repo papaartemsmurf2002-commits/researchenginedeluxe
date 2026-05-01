@@ -1,0 +1,11 @@
+{
+  "strategy_id": "lc_reference_v1",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_price_trend_vol_wt3d",
+  "holding_period": "24h",
+  "parameters": {
+    "slope_threshold": 0.1,
+    "spacing_bars": 10
+  }
+}

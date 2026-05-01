@@ -1,0 +1,12 @@
+{
+  "strategy_id": "hmm_knn_diagnostic_v1",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_full_context_no_wt",
+  "holding_period": "24h",
+  "parameters": {
+    "probability_threshold": 0.55,
+    "expected_value_threshold": 0.0,
+    "spacing_bars": 8
+  }
+}

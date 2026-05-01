@@ -2,6 +2,13 @@
 
 Strategy research must be plugin-shaped and independent from the backtest engine core.
 
+Implementation:
+
+- Contracts: `src/tradingbotsuite/strategies/contracts.py`
+- Registry: `src/tradingbotsuite/strategies/registry.py`
+- Baseline configs: `configs/strategies/*.json`
+- Backtest integration: `src/tradingbotsuite/backtesting/engine.py`
+
 ## Plugin shape
 
 ```python
@@ -42,3 +49,5 @@ Allowed sides are `long`, `short`, and `flat`.
 - Strategy plugins must not place orders.
 - Strategy plugins must not import live execution adapters.
 - Strategy claims require baseline comparison and out-of-sample evidence.
+- KNN/HMM must be a strategy plugin, not hardcoded into the backtest engine.
+- WT3D inclusion must be controlled by `feature_set_id` / config, not by engine code.

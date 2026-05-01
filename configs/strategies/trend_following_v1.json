@@ -1,0 +1,13 @@
+{
+  "strategy_id": "trend_following_v1",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_price_trend_vol",
+  "holding_period": "24h",
+  "parameters": {
+    "slope_threshold": 0.1,
+    "max_choppiness": 58.0,
+    "spacing_bars": 10,
+    "funding_penalty_threshold": 0.00025
+  }
+}

@@ -9,6 +9,7 @@ RESEARCH_ROOT = ROOT / "src" / "tradingbotsuite" / "research"
 DATA_ROOT = ROOT / "src" / "tradingbotsuite" / "data"
 FEATURES_ROOT = ROOT / "src" / "tradingbotsuite" / "features"
 BACKTESTING_ROOT = ROOT / "src" / "tradingbotsuite" / "backtesting"
+STRATEGIES_ROOT = ROOT / "src" / "tradingbotsuite" / "strategies"
 CONTRACT_ROOT = ROOT / "docs" / "contracts"
 
 FORBIDDEN_RESEARCH_IMPORTS = {
@@ -78,6 +79,17 @@ def test_feature_modules_do_not_import_order_placement_paths() -> None:
 def test_backtesting_modules_do_not_import_order_placement_paths() -> None:
     offenders: list[str] = []
     for path in sorted(BACKTESTING_ROOT.rglob("*.py")):
+        for module in _imports(path):
+            for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
+                if module == forbidden or module.startswith(f"{forbidden}."):
+                    offenders.append(f"{path.relative_to(ROOT)} imports {module}")
+
+    assert offenders == []
+
+
+def test_strategy_modules_do_not_import_order_placement_paths() -> None:
+    offenders: list[str] = []
+    for path in sorted(STRATEGIES_ROOT.rglob("*.py")):
         for module in _imports(path):
             for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
                 if module == forbidden or module.startswith(f"{forbidden}."):

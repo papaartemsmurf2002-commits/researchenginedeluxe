@@ -45,6 +45,44 @@ def test_baseline_trend_and_no_trade_share_engine(tmp_path: Path) -> None:
     )["engine_version"]
 
 
+def test_stage_six_baseline_plugins_share_backtest_engine(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
+    engine = BacktestEngine()
+    strategies = {
+        "trend_following_v1": {"slope_threshold": 0.1, "spacing_bars": 10},
+        "volatility_breakout_v1": {"shock_threshold": 0.7, "atr_percentile_threshold": 0.25, "spacing_bars": 10},
+        "range_reversion_v1": {"choppiness_threshold": 55.0, "stretch_threshold": 0.04, "spacing_bars": 8},
+        "funding_basis_v1": {"funding_threshold": 0.00003, "basis_bps_threshold": 1.0, "spacing_bars": 10},
+    }
+    trade_counts = {}
+
+    for strategy_id, parameters in strategies.items():
+        result = engine.run(
+            BacktestSpec(
+                run_id=strategy_id,
+                symbol="BTCUSDT",
+                output_dir=tmp_path / "backtests",
+                dataset_path=dataset.parquet_path,
+                dataset_sha256=dataset.parquet_sha256,
+                strategy_id=strategy_id,
+                holding_window="24h",
+                feature_set_id="features_full_context_no_wt",
+                strategy_config=parameters,
+            )
+        )
+        manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+        metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+        signals = pd.read_parquet(result.signals_path)
+        trade_counts[strategy_id] = int(metrics["trade_count"])
+
+        assert manifest["strategy_metadata"]["signal_contract_valid"] is True
+        assert manifest["strategy_metadata"]["strategy_id"] == strategy_id
+        assert {"signal_time_ms", "side", "feature_set_id", "research_only"} <= set(signals.columns)
+
+    assert len(trade_counts) == 4
+    assert all(count > 0 for count in trade_counts.values())
+
+
 def test_future_rows_do_not_change_prior_trades(tmp_path: Path) -> None:
     frame = build_hmm_knn_sweep_dataset(row_count=120, variant="balanced")
     baseline = BacktestEngine().run(

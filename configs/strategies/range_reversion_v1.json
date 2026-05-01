@@ -1,0 +1,12 @@
+{
+  "strategy_id": "range_reversion_v1",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_price_trend_vol",
+  "holding_period": "12h",
+  "parameters": {
+    "choppiness_threshold": 55.0,
+    "stretch_threshold": 0.04,
+    "spacing_bars": 8
+  }
+}
