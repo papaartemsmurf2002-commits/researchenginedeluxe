@@ -17,6 +17,10 @@ from sklearn.mixture import GaussianMixture
 from tradingbotsuite.core.math import BAR_INTERVAL_MS
 from tradingbotsuite.research.dataset import LABEL_OUTCOME_COLUMNS, LABEL_VERSION
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
+from tradingbotsuite.strategies.hmm_knn.artifacts import benchmark_against_stage6_baselines
+from tradingbotsuite.strategies.hmm_knn.config import resolve_feature_columns
+from tradingbotsuite.strategies.hmm_knn.diagnostics import build_hmm_knn_artifact_diagnostics
+from tradingbotsuite.strategies.hmm_knn.distances import DISTANCE_FUNCTIONS, resolve_distance_function
 
 try:  # optional research extra
     from hmmlearn.hmm import GaussianHMM
@@ -106,6 +110,7 @@ class KnnSettings:
     expected_value_threshold: float
     feature_columns: list[str]
     distance_backend: str = "cpu"
+    feature_pack: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,6 +204,9 @@ class RobustScalerState:
 
 def load_hmm_knn_plan(path: Path) -> HmmKnnResearchPlan:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    knn_payload = dict(payload["knn"])
+    if knn_payload.get("feature_pack"):
+        knn_payload["feature_columns"] = list(resolve_feature_columns(str(knn_payload["feature_pack"])))
     plan = HmmKnnResearchPlan(
         version=str(payload["version"]),
         asset_scope=[str(symbol).upper() for symbol in payload["asset_scope"]],
@@ -207,7 +215,7 @@ def load_hmm_knn_plan(path: Path) -> HmmKnnResearchPlan:
         regimes=[RegimeDefinition(**item) for item in payload["regimes"]],
         hmm=HmmSettings(**payload["hmm"]),
         wt3d=Wt3dSettings(**payload["wt3d"]),
-        knn=KnnSettings(**payload["knn"]),
+        knn=KnnSettings(**knn_payload),
         labels=LabelSettings(**payload["labels"]),
         meta_model=MetaModelSettings(**payload["meta_model"]),
         evaluation=HmmKnnEvaluationSettings(**payload["evaluation"]),
@@ -218,8 +226,8 @@ def load_hmm_knn_plan(path: Path) -> HmmKnnResearchPlan:
 
 
 def _validate_knn_settings(plan: HmmKnnResearchPlan) -> None:
-    if plan.knn.distance != "lorentzian":
-        raise ValueError("knn.distance must be 'lorentzian'")
+    if plan.knn.distance not in DISTANCE_FUNCTIONS:
+        raise ValueError(f"knn.distance must be one of: {', '.join(sorted(DISTANCE_FUNCTIONS))}")
     if plan.knn.distance_backend not in {"cpu", "auto", "cupy"}:
         raise ValueError("knn.distance_backend must be one of: cpu, auto, cupy")
     if not plan.knn.k_values:
@@ -477,6 +485,11 @@ def _normalize_posterior(probabilities: np.ndarray, n_states: int) -> np.ndarray
 def _fit_regime_model(train_matrix: np.ndarray, train_frame: pd.DataFrame, plan: HmmKnnResearchPlan) -> RegimeModel:
     n_states = min(max(int(plan.hmm.n_states), 1), max(len(train_matrix), 1))
     requested = plan.hmm.backend
+    if requested == "deterministic_rule_baseline":
+        model = _DeterministicMatrixRegimeModel(n_states=n_states)
+        posterior = model.predict_proba(train_matrix)
+        state_labels = _label_states(train_frame, posterior, n_states, plan)
+        return RegimeModel(backend="deterministic_rule_baseline", model=model, n_states=n_states, state_labels=state_labels)
     use_hmmlearn = requested in {"auto", "hmmlearn"} and GaussianHMM is not None and len(train_matrix) >= n_states * 3
     if use_hmmlearn:
         model = GaussianHMM(
@@ -495,6 +508,32 @@ def _fit_regime_model(train_matrix: np.ndarray, train_frame: pd.DataFrame, plan:
         posterior = model.predict_proba(train_matrix)
     state_labels = _label_states(train_frame, posterior, n_states, plan)
     return RegimeModel(backend=backend, model=model, n_states=n_states, state_labels=state_labels)
+
+
+class _DeterministicMatrixRegimeModel:
+    def __init__(self, *, n_states: int):
+        self.n_states = int(n_states)
+
+    def predict_proba(self, matrix: np.ndarray) -> np.ndarray:
+        matrix = np.asarray(matrix, dtype=float)
+        posterior = np.zeros((len(matrix), self.n_states), dtype=float)
+        if len(matrix) == 0:
+            return posterior
+        slope = matrix[:, 0] if matrix.shape[1] else np.zeros(len(matrix))
+        vol = matrix[:, 2] if matrix.shape[1] > 2 else np.zeros(len(matrix))
+        for row_index, (slope_value, vol_value) in enumerate(zip(slope, vol, strict=False)):
+            if self.n_states == 1:
+                state = 0
+            elif vol_value >= 1.5 and self.n_states >= 4:
+                state = 3
+            elif slope_value >= 0.0 and self.n_states >= 2:
+                state = 1
+            elif self.n_states >= 3:
+                state = 2
+            else:
+                state = 0
+            posterior[row_index, min(state, self.n_states - 1)] = 1.0
+        return posterior
 
 
 def _label_states(train_frame: pd.DataFrame, posterior: np.ndarray, n_states: int, plan: HmmKnnResearchPlan) -> dict[int, str]:
@@ -608,7 +647,10 @@ def _knn_predict(
     diagnostics: list[dict[str, Any]] = []
     sweep_rows: list[dict[str, Any]] = []
     resolved_distance_backend = distance_backend or _resolve_lorentzian_distance_backend(plan.knn.distance_backend)
-    distance_matrix = lorentzian_distance_matrix(test_matrix, train_matrix, backend=resolved_distance_backend)
+    if plan.knn.distance in {"lorentzian", "log_lorentzian"}:
+        distance_matrix = lorentzian_distance_matrix(test_matrix, train_matrix, backend=resolved_distance_backend)
+    else:
+        distance_matrix = resolve_distance_function(plan.knn.distance)(test_matrix, train_matrix, None)
     combinations = _knn_combinations(plan, include_sweep=include_sweep)
     for local_index, (_, test_row) in enumerate(test_frame.iterrows()):
         current_regime = int(test_regimes.iloc[local_index])
@@ -1092,6 +1134,19 @@ def run_hmm_knn_research(
     neighbor_diagnostics.to_csv(neighbor_diagnostics_path, index=False)
 
     metrics = _overall_metrics(meta_predictions, split_metrics, plan, knn_sweep=knn_sweep_results)
+    artifact_diagnostics = build_hmm_knn_artifact_diagnostics(
+        meta_predictions=meta_predictions,
+        regime_posteriors=regime_posteriors,
+        neighbor_diagnostics=neighbor_diagnostics,
+        feature_columns=list(plan.knn.feature_columns),
+    )
+    stage6_baseline_benchmark = benchmark_against_stage6_baselines(
+        dataset_path=resolved_dataset_path,
+        output_dir=output_path / "stage6_baseline_benchmarks",
+        symbol=plan.symbol,
+    )
+    metrics["artifact_diagnostics"] = artifact_diagnostics
+    metrics["stage6_baseline_benchmark"] = stage6_baseline_benchmark
     metrics["metrics_version"] = HMM_KNN_METRICS_VERSION
     metrics["latency_ms_per_row"] = round(((time.perf_counter() - start_time) * 1000.0) / max(len(meta_predictions), 1), 6)
     metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
@@ -1111,6 +1166,7 @@ def run_hmm_knn_research(
         "dataset_path": str(resolved_dataset_path),
         "row_count": int(len(meta_predictions)),
         "feature_version": HMM_KNN_FEATURE_VERSION,
+        "feature_pack": plan.knn.feature_pack,
         "feature_columns": list(plan.knn.feature_columns),
         "wt3d_feature_columns": list(WT3D_FEATURE_COLUMNS),
         "label_version": str(meta_predictions["label_version"].iloc[0]) if "label_version" in meta_predictions.columns and len(meta_predictions) else LABEL_VERSION,
@@ -1119,6 +1175,7 @@ def run_hmm_knn_research(
         "label_outcome_fields": [column for column in LABEL_OUTCOME_COLUMNS if column in meta_predictions.columns],
         "knn_settings": {
             "distance": plan.knn.distance,
+            "available_distances": sorted(DISTANCE_FUNCTIONS),
             "k_values": [int(k) for k in plan.knn.k_values],
             "primary_k": int(plan.knn.primary_k),
             "neighbor_weighting": list(plan.knn.neighbor_weighting),
@@ -1146,9 +1203,11 @@ def run_hmm_knn_research(
             "training_summaries": meta_training_summaries,
             "promotion_failures": metrics["promotion_failures"],
         },
+        "artifact_diagnostics": artifact_diagnostics,
+        "stage6_baseline_benchmark": stage6_baseline_benchmark,
         "outputs": {
             "regime_posteriors": "posterior probabilities, entropy, top regime, and no-trade flags",
-            "knn_predictions": "regime-local Lorentzian KNN probabilities, EV, agreement, and distance quality",
+            "knn_predictions": "regime-local pluggable-distance KNN probabilities, EV, agreement, and distance quality",
             "meta_predictions": "XGBoost/fallback meta probabilities and accepted_by_meta research decisions",
             "neighbor_diagnostics": "top neighbor ranks, distances, weights, labels, and regimes",
         },

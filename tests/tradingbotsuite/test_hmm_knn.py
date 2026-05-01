@@ -43,6 +43,8 @@ from tradingbotsuite.research.deterministic_datasets import (
 )
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
+from tradingbotsuite.strategies.hmm_knn.config import resolve_feature_columns
+from tradingbotsuite.strategies.hmm_knn.distances import resolve_distance_function
 
 
 def _write_test_config(tmp_path: Path) -> Path:
@@ -459,11 +461,31 @@ def test_degenerate_regime_posterior_normalizes_to_uniform_no_trade() -> None:
     assert regimes["hmm_fit_end_row"].tolist() == [19, 19]
 
 
-def test_knn_config_rejects_non_lorentzian_distance(tmp_path) -> None:
-    config_path = _write_modified_test_config(tmp_path, knn__distance="euclidean")
+def test_knn_config_accepts_pluggable_distances_and_rejects_unknown_distance(tmp_path) -> None:
+    euclidean_config = _write_modified_test_config(tmp_path, knn__distance="euclidean_robust_z")
+    euclidean_plan = load_hmm_knn_plan(euclidean_config)
 
-    with pytest.raises(ValueError, match="knn.distance must be 'lorentzian'"):
-        load_hmm_knn_plan(config_path)
+    assert euclidean_plan.knn.distance == "euclidean_robust_z"
+
+    bad_config = _write_modified_test_config(tmp_path, knn__distance="euclidean")
+    with pytest.raises(ValueError, match="knn.distance must be one of"):
+        load_hmm_knn_plan(bad_config)
+
+
+def test_hmm_knn_feature_packs_and_distance_functions_are_resolvable() -> None:
+    with_wt3d = resolve_feature_columns("full_context_wt3d")
+    without_wt3d = resolve_feature_columns("full_context_no_wt3d")
+    query = np.array([[0.0, 1.0, 0.5]])
+    train = np.array([[0.0, 1.0, 0.5], [3.0, -1.0, 0.25]])
+
+    lorentzian = resolve_distance_function("lorentzian")(query, train, None)
+    euclidean = resolve_distance_function("euclidean_robust_z")(query, train, None)
+    cosine = resolve_distance_function("cosine")(query, train, None)
+
+    assert any(column.startswith("wt3d_") for column in with_wt3d)
+    assert not any(column.startswith("wt3d_") for column in without_wt3d)
+    assert lorentzian.shape == euclidean.shape == cosine.shape == (1, 2)
+    assert not np.allclose(lorentzian, euclidean)
 
 
 def test_knn_primary_output_uses_primary_k_and_weighting(tmp_path) -> None:
@@ -713,6 +735,37 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
     assert metrics["comparison"]["hmm_knn_meta_model"]["pnl_source"] == "realized_label_return_after_fee_slippage_funding"
     assert "meta_validation" in metrics
     assert "research_only_not_live_promotable" in metrics["promotion_failures"]
+
+
+def test_hmm_knn_research_runs_without_wt3d_and_with_euclidean_distance(tmp_path) -> None:
+    config_path = _write_modified_test_config(
+        tmp_path,
+        hmm__backend="deterministic_rule_baseline",
+        knn__distance="euclidean_robust_z",
+        knn__feature_pack="full_context_no_wt3d",
+        knn__primary_k=8,
+        knn__k_values=[8],
+        knn__neighbor_weighting=["inverse_distance"],
+        knn__primary_weighting="inverse_distance",
+    )
+    dataset_path = tmp_path / "dataset.parquet"
+    _synthetic_dataset().to_parquet(dataset_path, index=False)
+
+    result = run_hmm_knn_research(config_path=config_path, dataset_path=dataset_path, output_dir=tmp_path)
+    manifest = json.loads(result.artifact_manifest_path.read_text(encoding="utf-8"))
+    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+
+    assert manifest["research_only"] is True
+    assert manifest["feature_pack"] == "full_context_no_wt3d"
+    assert manifest["knn_settings"]["distance"] == "euclidean_robust_z"
+    assert "euclidean_robust_z" in manifest["knn_settings"]["available_distances"]
+    assert not any(column.startswith("wt3d_") for column in manifest["feature_columns"])
+    assert manifest["dependencies"]["hmm_backend"] == ["deterministic_rule_baseline"]
+    assert manifest["artifact_diagnostics"]["neighbor_distance_quality_distribution"]["p50"] is not None
+    assert "no_trade_reason_breakdown" in manifest["artifact_diagnostics"]
+    assert manifest["stage6_baseline_benchmark"]["research_only"] is True
+    assert {"trend_following_v1", "baseline_no_trade"} == set(manifest["stage6_baseline_benchmark"]["strategies"])
+    assert metrics["stage6_baseline_benchmark"]["observe_only"] is True
 
 
 def test_meta_model_records_random_forest_fallback_when_xgboost_is_unavailable(tmp_path, monkeypatch) -> None:
