@@ -3,7 +3,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from tradingbotsuite.research.feature_alignment import (
+from tradingbotsuite.features.alignment import (
     align_completed_bar_features_to_events,
     feature_availability_column,
     prepare_completed_bar_feature_input,
