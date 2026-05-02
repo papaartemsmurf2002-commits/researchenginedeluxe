@@ -33,6 +33,7 @@ def test_root_run_manual_runtime_override_preserves_full_config(monkeypatch, tmp
         captured["config"] = config
 
     monkeypatch.setattr(run_manual.AppConfig, "from_env", classmethod(lambda cls: base_config))
+    monkeypatch.setattr(run_manual, "assert_live_preflight", lambda *args, **kwargs: None)
     monkeypatch.setattr(run_manual, "run_manual_shell", fake_run_manual_shell)
     monkeypatch.setattr(sys, "argv", ["run_manual.py", "live"])
 

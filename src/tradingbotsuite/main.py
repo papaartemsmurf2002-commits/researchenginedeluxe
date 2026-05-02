@@ -5,6 +5,7 @@ from pathlib import Path
 
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.models import RuntimeMode
+from tradingbotsuite.live.preflight import assert_live_preflight, assert_research_command_not_live
 from tradingbotsuite.live_smoke import run_live_smoke
 from tradingbotsuite.manual_cli import run_manual_shell
 from tradingbotsuite.research.deterministic_datasets import (
@@ -29,7 +30,7 @@ from tradingbotsuite.research.market_data import (
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.web.app import create_app
 
-app = create_app()
+app = create_app() if __name__ != "__main__" else None
 
 
 def parse_args() -> argparse.Namespace:
@@ -161,7 +162,15 @@ def _config_with_research_config_path(config: AppConfig, config_path: str) -> Ap
     return replace(config, research=replace(config.research, config_path=Path(config_path)))
 
 
+def _config_for_command(command: str | None) -> AppConfig:
+    config = AppConfig.from_env()
+    if command is not None:
+        assert_research_command_not_live(config, command)
+    return config
+
+
 def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, object]:
+    assert_research_command_not_live(AppConfig.from_env(), "collect-binance-bars")
     result = asyncio.run(
         collect_binance_usdm_bars(
             symbol=args.symbol,
@@ -196,6 +205,7 @@ def _archive_payload(result: object) -> dict[str, object]:
 
 
 def _run_fetch_binance_vision_command(args: argparse.Namespace) -> dict[str, object]:
+    assert_research_command_not_live(AppConfig.from_env(), "fetch-binance-vision")
     output_dir = Path(args.output_dir) if args.output_dir is not None else None
     if args.download_only:
         result = download_binance_vision_archive(
@@ -231,6 +241,7 @@ def _run_fetch_binance_vision_command(args: argparse.Namespace) -> dict[str, obj
 
 
 def _run_fetch_crypto_lake_command(args: argparse.Namespace) -> dict[str, object]:
+    assert_research_command_not_live(AppConfig.from_env(), "fetch-crypto-lake")
     if args.path is not None:
         result = ingest_crypto_lake_archive(
             Path(args.path),
@@ -259,10 +270,11 @@ def _run_fetch_crypto_lake_command(args: argparse.Namespace) -> dict[str, object
 
 
 def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("prepare-hmm-knn-research-data")
     result = prepare_hmm_knn_research_data(
         spec_path=Path(args.spec),
         stage=args.stage,
-        app_config=AppConfig.from_env(),
+        app_config=config,
     )
     return {
         "output_dir": str(result.output_dir),
@@ -276,9 +288,10 @@ def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict
 
 
 def _run_research_experiment_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("run-research-experiment")
     result = run_research_experiment(
         spec_path=Path(args.spec),
-        app_config=AppConfig.from_env(),
+        app_config=config,
     )
     return {
         "output_dir": str(result.output_dir),
@@ -289,11 +302,12 @@ def _run_research_experiment_command(args: argparse.Namespace) -> dict[str, obje
 
 
 def _run_benchmark_research_experiment_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("benchmark-research-experiment")
     report_path = write_research_experiment_benchmark_report(
         spec_path=Path(args.spec),
         output_dir=Path(args.output_dir) if args.output_dir is not None else None,
         repeat=args.repeat,
-        app_config=AppConfig.from_env(),
+        app_config=config,
     )
     return {"benchmark_report_path": str(report_path)}
 
@@ -303,21 +317,23 @@ if __name__ == "__main__":
 
     args = parse_args()
     if args.command == "manual":
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
         if args.mode is not None:
             config = _config_with_runtime_mode(config, args.mode)
+        assert_live_preflight(config, command="manual")
         asyncio.run(run_manual_shell(config))
     elif args.command == "smoke-live":
         from decimal import Decimal
         import json
 
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
+        assert_live_preflight(config, command="smoke-live")
         result = asyncio.run(run_live_smoke(config, size=Decimal(args.size) if args.size is not None else None))
         print(json.dumps(result, indent=2, default=str))
     elif args.command == "build-dataset":
         import json
 
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
         if args.research_config is not None:
             config = _config_with_research_config_path(config, args.research_config)
         result = asyncio.run(build_dataset(config))
@@ -325,7 +341,7 @@ if __name__ == "__main__":
     elif args.command == "train-model":
         import json
 
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
         if args.research_config is not None:
             config = _config_with_research_config_path(config, args.research_config)
         manifest_path = train_model(config, dataset_path=Path(args.dataset))
@@ -333,7 +349,7 @@ if __name__ == "__main__":
     elif args.command == "calibrate-model":
         import json
 
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
         if args.research_config is not None:
             config = _config_with_research_config_path(config, args.research_config)
         artifact_manifest_path = calibrate_model_artifact(config, train_manifest_path=Path(args.train_manifest))
@@ -341,7 +357,7 @@ if __name__ == "__main__":
     elif args.command == "replay-eval":
         import json
 
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
         if args.research_config is not None:
             config = _config_with_research_config_path(config, args.research_config)
         metrics_path = replay_eval_artifact(config, artifact_manifest_path=Path(args.artifact_manifest))
@@ -349,7 +365,7 @@ if __name__ == "__main__":
     elif args.command == "research-hmm-knn":
         import json
 
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
         result = run_hmm_knn_research(
             config_path=Path(args.config),
             dataset_path=Path(args.dataset) if args.dataset is not None else None,
@@ -372,17 +388,19 @@ if __name__ == "__main__":
     elif args.command == "replay-hmm-knn":
         import json
 
+        assert_research_command_not_live(AppConfig.from_env(), args.command)
         metrics_path = replay_hmm_knn_artifact(Path(args.manifest))
         print(json.dumps({"metrics_path": str(metrics_path)}, indent=2))
     elif args.command == "monitor-hmm-knn":
         import json
 
+        assert_research_command_not_live(AppConfig.from_env(), args.command)
         report_path = monitor_hmm_knn_artifact(Path(args.manifest))
         print(json.dumps({"monitoring_report_path": str(report_path)}, indent=2))
     elif args.command == "run-hmm-knn-experiments":
         import json
 
-        config = AppConfig.from_env()
+        config = _config_for_command(args.command)
         result = run_hmm_knn_experiment_matrix(
             spec_path=Path(args.spec),
             dataset_path=Path(args.dataset) if args.dataset is not None else None,
@@ -406,6 +424,7 @@ if __name__ == "__main__":
     elif args.command == "write-hmm-knn-sweep-datasets":
         import json
 
+        assert_research_command_not_live(AppConfig.from_env(), args.command)
         variants = DETERMINISTIC_SWEEP_VARIANTS if args.variant == "all" else (args.variant,)
         results = write_hmm_knn_sweep_datasets(
             output_dir=Path(args.output_dir),
@@ -462,4 +481,5 @@ if __name__ == "__main__":
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)
+        assert_live_preflight(AppConfig.from_env(), command="serve")
         uvicorn.run("tradingbotsuite.main:app", host=host, port=port, reload=False)

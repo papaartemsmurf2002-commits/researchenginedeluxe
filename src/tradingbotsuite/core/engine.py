@@ -39,6 +39,7 @@ from tradingbotsuite.core.models import (
     SignalIntent,
     TradeStatus,
 )
+from tradingbotsuite.live.preflight import assert_live_preflight
 from tradingbotsuite.persistence.sqlite_store import SQLiteStore
 from tradingbotsuite.research.config import FeatureSettings, ResearchPlan, load_research_plan
 from tradingbotsuite.research.inference import AcceptanceScorer
@@ -164,6 +165,7 @@ class TradingEngine:
             if mode == RuntimeMode.LIVE:
                 refreshed_hyperliquid = AppConfig.from_env().hyperliquid
             new_config = replace(self.config, runtime_mode=mode, hyperliquid=refreshed_hyperliquid)
+            assert_live_preflight(new_config, command="set-runtime-mode")
             new_adapter = make_execution_adapter(
                 mode,
                 entry_slippage_bps=new_config.strategy.entry_slippage_bps,

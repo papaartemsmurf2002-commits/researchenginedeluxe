@@ -22,6 +22,12 @@ The browser console is now the primary local operator surface. The shell is stil
 
 For Hyperliquid testnet setup, the runtime first honors explicit `TBS_HL_*` environment variables. If they are missing, it also falls back to a local repo-root `hyperliquidtestnet.txt` file so live testnet preflight can still resolve the signer key and canonical account address.
 
+## Live Preflight
+
+Every live entry path now runs the canonical live preflight before engine startup, live runtime-mode switching, or live smoke execution. Live mode fails closed when webhook or operator secrets are unset/default, risk caps are zero, Hyperliquid signer/account indicators are missing, reconciliation is disabled, basis thresholds are disabled, a research command is requested, or a research-only artifact is configured as a live input.
+
+For Hyperliquid testnet, keep `TBS_RUNTIME_MODE=live`, `TBS_HL_ENABLE_LIVE=true`, signer/account values, non-default secrets, and positive `TBS_MAX_DAILY_LOSS_QUOTE` plus `TBS_MAX_OPEN_RISK_NOTIONAL` set before using `manual`, `serve`, or `smoke-live`.
+
 Console pages:
 
 - `Overview`: health, position, safety, stream status, microstructure, recommendations, and recent traces in readable status cards
@@ -145,6 +151,7 @@ python -m tradingbotsuite.main smoke-live
 
 What it does:
 
+- runs the canonical live preflight
 - runs account preflight
 - starts Hyperliquid user streams
 - submits one tiny long market entry

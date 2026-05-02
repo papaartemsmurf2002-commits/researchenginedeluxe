@@ -12,12 +12,14 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from tradingbotsuite.config import AppConfig
+from tradingbotsuite.live.preflight import assert_live_preflight
 from tradingbotsuite.live_smoke import run_live_smoke
 
 
 def main() -> None:
     config = AppConfig.from_env()
     size = Decimal(sys.argv[1]) if len(sys.argv) > 1 else None
+    assert_live_preflight(config, command="smoke-live")
     result = asyncio.run(run_live_smoke(config, size=size))
     print(json.dumps(result, indent=2, default=str))
 

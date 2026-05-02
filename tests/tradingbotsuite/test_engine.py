@@ -2641,7 +2641,11 @@ async def test_engine_live_mode_switch_reloads_hyperliquid_config_from_env(app_c
         runtime_mode=RuntimeMode.PAPER,
         db_path=tmp_path / "switch_mode_live_reload.sqlite3",
         webhook=app_config.webhook,
-        strategy=app_config.strategy,
+        strategy=replace(
+            app_config.strategy,
+            max_daily_loss_quote=Decimal("25"),
+            max_open_risk_notional=Decimal("100"),
+        ),
         binance=app_config.binance,
         hyperliquid=app_config.hyperliquid,
         research=app_config.research,
@@ -2660,7 +2664,7 @@ async def test_engine_live_mode_switch_reloads_hyperliquid_config_from_env(app_c
     reloaded_hyperliquid = replace(
         app_config.hyperliquid,
         base_url="https://api.hyperliquid-testnet.xyz",
-        enable_live=False,
+        enable_live=True,
         account_address="0x1111111111111111111111111111111111111111",
         private_key="0x2222222222222222222222222222222222222222222222222222222222222222",
     )
@@ -2675,6 +2679,21 @@ async def test_engine_live_mode_switch_reloads_hyperliquid_config_from_env(app_c
         operator_ui=config.operator_ui,
     )
     monkeypatch.setattr("tradingbotsuite.core.engine.AppConfig.from_env", classmethod(lambda cls: reloaded_config))
+
+    class FakeLiveAdapter(PaperExecutionAdapter):
+        mode = RuntimeMode.LIVE
+
+    def fake_make_execution_adapter(mode: RuntimeMode, **kwargs):
+        if mode == RuntimeMode.LIVE:
+            return FakeLiveAdapter(
+                entry_slippage_bps=kwargs["entry_slippage_bps"],
+                exit_slippage_bps=kwargs["exit_slippage_bps"],
+                price_tick=kwargs["price_tick"],
+                size_step=kwargs["size_step"],
+            )
+        raise AssertionError(f"unexpected mode in test adapter factory: {mode}")
+
+    monkeypatch.setattr("tradingbotsuite.core.engine.make_execution_adapter", fake_make_execution_adapter)
 
     engine = TradingEngine(
         config,

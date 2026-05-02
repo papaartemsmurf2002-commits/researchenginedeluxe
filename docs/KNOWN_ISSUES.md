@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-01
+Last updated: 2026-05-02
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 0 | 0 |
-| P1 | 2 | 0 | 0 | 0 |
+| P1 | 1 | 0 | 1 | 0 |
 | P2 | 0 | 0 | 0 | 0 |
 | P3 | 0 | 0 | 0 | 0 |
 
@@ -31,7 +31,7 @@ Stage advancement stop rule:
 Severity: P1
 Stage discovered: Stage 1 - Repo cartography
 Owner: Orchestrator Agent / Live Safety Agent
-Status: open
+Status: resolved
 Paths affected: `run_manual.py`, `run_live_smoke.py`, `src/tradingbotsuite/adapters/execution.py`, `src/tradingbotsuite/core/engine.py`, `src/tradingbotsuite/runtime.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbot/live.py`, `src/tradingbot/data/hyperliquid.py`
 
 ### Problem
@@ -72,7 +72,7 @@ Stage 2 should document command ownership and boundary rules. Stage 10 should en
 
 ### Resolution notes
 
-Stage 2 documented command ownership in `docs/contracts/boundary_contract.md`. Runtime rejection of research jobs in live mode remains open for Stage 10.
+Stage 2 documented command ownership in `docs/contracts/boundary_contract.md`. Stage 10 added `src/tradingbotsuite/live/preflight.py`, CLI guards in `src/tradingbotsuite/main.py`, and tests in `tests/live/test_preflight.py` so live mode rejects research commands before execution.
 
 ## Issue template
 

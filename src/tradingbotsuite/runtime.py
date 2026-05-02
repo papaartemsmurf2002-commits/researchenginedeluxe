@@ -4,11 +4,13 @@ from tradingbotsuite.adapters.binance import BinanceCandleClient
 from tradingbotsuite.adapters.execution import make_execution_adapter
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.engine import TradingEngine
+from tradingbotsuite.live.preflight import assert_live_preflight
 from tradingbotsuite.persistence.sqlite_store import SQLiteStore
 from tradingbotsuite.research.inference import AcceptanceScorer
 
 
 def build_engine(config: AppConfig, trace_sink=None) -> TradingEngine:
+    assert_live_preflight(config, command="serve")
     store = SQLiteStore(config.db_path)
     candle_client = BinanceCandleClient(
         config.binance.base_url,

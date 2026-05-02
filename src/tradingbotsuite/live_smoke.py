@@ -7,6 +7,7 @@ from typing import Any
 from tradingbotsuite.adapters.execution import build_close_intents, make_execution_adapter
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.models import ExecutionIntent, ExecutionIntentType, ExitReason, PositionState, RuntimeMode, SignalDirection, TradeStatus
+from tradingbotsuite.live.preflight import assert_live_preflight
 
 
 async def run_live_smoke(
@@ -17,6 +18,7 @@ async def run_live_smoke(
 ) -> dict[str, Any]:
     if config.runtime_mode != RuntimeMode.LIVE:
         raise ValueError("live smoke requires TBS_RUNTIME_MODE=live or a live AppConfig")
+    assert_live_preflight(config, command="smoke-live")
 
     adapter = make_execution_adapter(
         RuntimeMode.LIVE,
