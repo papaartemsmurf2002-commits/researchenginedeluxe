@@ -64,6 +64,15 @@ class FakeLiveAdapter:
         return {"mid_price": "70000"}
 
 
+def _patch_runtime_live_adapter(monkeypatch) -> None:
+    def fake_make_execution_adapter(mode: RuntimeMode, **kwargs):
+        if mode == RuntimeMode.LIVE:
+            return FakeLiveAdapter()
+        raise AssertionError(f"unexpected mode in live adapter test: {mode}")
+
+    monkeypatch.setattr("tradingbotsuite.runtime.make_execution_adapter", fake_make_execution_adapter)
+
+
 def _write_signal_export(path: Path, sample_bars) -> Path:
     lines = ["time,open,high,low,close,Buy,Sell,StopBuy,StopSell,Shapes,Chars"]
     signal_rows = {70: ("65000", ""), 88: ("", "65500"), 104: ("64800", ""), 122: ("", "65200")}
@@ -116,13 +125,28 @@ def _login(client: TestClient, secret: str) -> str:
 
 
 def _operator_config(app_config: AppConfig, *, mode: RuntimeMode = RuntimeMode.PAPER) -> AppConfig:
+    strategy = app_config.strategy
+    hyperliquid = app_config.hyperliquid
+    if mode == RuntimeMode.LIVE:
+        strategy = replace(
+            strategy,
+            max_daily_loss_quote=Decimal("25"),
+            max_open_risk_notional=Decimal("100"),
+        )
+        hyperliquid = replace(
+            hyperliquid,
+            base_url="https://api.hyperliquid-testnet.xyz",
+            enable_live=True,
+            account_address="0x1111111111111111111111111111111111111111",
+            private_key="0x" + "2" * 64,
+        )
     return AppConfig(
         runtime_mode=mode,
         db_path=app_config.db_path,
         webhook=app_config.webhook,
-        strategy=app_config.strategy,
+        strategy=strategy,
         binance=app_config.binance,
-        hyperliquid=app_config.hyperliquid,
+        hyperliquid=hyperliquid,
         research=app_config.research,
         operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
     )
@@ -258,6 +282,7 @@ def test_operator_manual_signal_matches_direct_command_shape(app_config, sample_
 
 
 def test_operator_manual_signal_forwards_testnet_protection_toggle(app_config, sample_bars, monkeypatch) -> None:
+    _patch_runtime_live_adapter(monkeypatch)
     config = _operator_config(app_config, mode=RuntimeMode.LIVE)
     config = AppConfig(
         runtime_mode=config.runtime_mode,
@@ -438,14 +463,25 @@ def test_operator_feed_can_hide_health_and_execution_metrics(app_config, sample_
     assert "operator_command" in kinds
 
 
-def test_operator_research_job_blocked_for_live_open_position(app_config, sample_bars, tmp_path) -> None:
+def test_operator_research_job_blocked_for_live_open_position(app_config, sample_bars, tmp_path, monkeypatch) -> None:
+    _patch_runtime_live_adapter(monkeypatch)
     config = AppConfig(
         runtime_mode=RuntimeMode.LIVE,
         db_path=tmp_path / "operator_live.sqlite3",
         webhook=app_config.webhook,
-        strategy=app_config.strategy,
+        strategy=replace(
+            app_config.strategy,
+            max_daily_loss_quote=Decimal("25"),
+            max_open_risk_notional=Decimal("100"),
+        ),
         binance=app_config.binance,
-        hyperliquid=app_config.hyperliquid,
+        hyperliquid=replace(
+            app_config.hyperliquid,
+            base_url="https://api.hyperliquid-testnet.xyz",
+            enable_live=True,
+            account_address="0x1111111111111111111111111111111111111111",
+            private_key="0x" + "2" * 64,
+        ),
         research=app_config.research,
         operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
     )

@@ -22,6 +22,7 @@ from tradingbotsuite.research.experiment_runner import (
 )
 from tradingbotsuite.research.feature_ablation import write_feature_ablation_plan
 from tradingbotsuite.research.stage12_research import write_stage12_research_plan
+from tradingbotsuite.promotion.stage13_readiness import write_stage13_readiness_plan
 from tradingbotsuite.research.market_data import (
     collect_binance_usdm_bars,
     download_and_ingest_binance_vision_archive,
@@ -153,6 +154,9 @@ def parse_args() -> argparse.Namespace:
     stage12 = subparsers.add_parser("plan-stage12-research", help="Write Stage 12 research manifests for substages 12.1 through 12.7")
     stage12.add_argument("--output-dir", default=None)
     stage12.add_argument("--dataset-manifest-hash", default="dataset_manifest_unavailable")
+
+    stage13 = subparsers.add_parser("plan-stage13-readiness", help="Write Stage 13 readiness templates without running paper, shadow, testnet, or live")
+    stage13.add_argument("--output-dir", default=None)
 
     return parser.parse_args()
 
@@ -354,6 +358,22 @@ def _run_plan_stage12_research_command(args: argparse.Namespace) -> dict[str, ob
     }
 
 
+def _run_plan_stage13_readiness_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("plan-stage13-readiness")
+    result = write_stage13_readiness_plan(
+        output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir / "stage13" / "readiness",
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "paper_manifest_template_path": str(result.paper_manifest_template_path),
+        "shadow_archive_manifest_template_path": str(result.shadow_archive_manifest_template_path),
+        "testnet_validation_manifest_template_path": str(result.testnet_validation_manifest_template_path),
+        "readiness_report_path": str(result.readiness_report_path),
+        "rollback_runbook_checklist_path": str(result.rollback_runbook_checklist_path),
+        "operator_readiness_checklist_path": str(result.operator_readiness_checklist_path),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -528,6 +548,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_plan_stage12_research_command(args), indent=2))
+    elif args.command == "plan-stage13-readiness":
+        import json
+
+        print(json.dumps(_run_plan_stage13_readiness_command(args), indent=2))
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)

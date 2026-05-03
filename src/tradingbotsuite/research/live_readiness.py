@@ -5,23 +5,12 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from tradingbotsuite.research.command_registry import RESEARCH_COMMANDS
+
 LIVE_READINESS_REPORT_VERSION = "hmm-multi-knn-live-readiness-contract-v1"
 RESEARCH_BOUNDARY_REPORT_VERSION = "hmm-multi-knn-research-boundary-contract-v1"
 
-RESEARCH_JOB_NAMES = frozenset(
-    {
-        "research",
-        "research-hmm-knn",
-        "replay-hmm-knn",
-        "monitor-hmm-knn",
-        "build-dataset",
-        "prepare-hmm-knn-research-data",
-        "run-research-experiment",
-        "train",
-        "backtest",
-        "optimize",
-    }
-)
+RESEARCH_JOB_NAMES = RESEARCH_COMMANDS
 DEFAULT_WEBHOOK_SECRET_VALUES = frozenset({"", "change-me", "changeme", "default", "secret", "test", "todo"})
 REQUIRED_RISK_CAP_FIELDS = (
     "max_daily_loss_quote",

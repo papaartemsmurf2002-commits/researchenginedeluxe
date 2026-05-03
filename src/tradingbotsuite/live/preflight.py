@@ -8,28 +8,12 @@ from typing import Any, Mapping
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.models import RuntimeMode
 from tradingbotsuite.promotion.artifact_validator import load_artifact_manifest, validate_artifact_for_live_input
-from tradingbotsuite.research.live_readiness import DEFAULT_WEBHOOK_SECRET_VALUES, RESEARCH_JOB_NAMES
+from tradingbotsuite.research.command_registry import RESEARCH_COMMANDS
+from tradingbotsuite.research.live_readiness import DEFAULT_WEBHOOK_SECRET_VALUES
 
 
 LIVE_PREFLIGHT_VERSION = "live-preflight-stage10-v1"
-LIVE_RESEARCH_COMMANDS = frozenset(RESEARCH_JOB_NAMES) | frozenset(
-    {
-        "benchmark-research-experiment",
-        "build-dataset",
-        "calibrate-model",
-        "collect-binance-bars",
-        "fetch-binance-vision",
-        "fetch-crypto-lake",
-        "monitor-hmm-knn",
-        "plan-feature-ablation",
-        "plan-stage12-research",
-        "replay-eval",
-        "replay-hmm-knn",
-        "run-hmm-knn-experiments",
-        "train-model",
-        "write-hmm-knn-sweep-datasets",
-    }
-)
+LIVE_RESEARCH_COMMANDS = RESEARCH_COMMANDS
 
 
 class LivePreflightError(RuntimeError):

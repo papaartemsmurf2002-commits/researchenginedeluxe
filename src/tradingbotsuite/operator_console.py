@@ -19,6 +19,7 @@ from tradingbotsuite.operator_commands import (
     execute_smoke_live,
     execute_supervise,
 )
+from tradingbotsuite.promotion.stage13_readiness import build_stage13_readiness_report
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, prepare_hmm_knn_research_data
 from tradingbotsuite.research.experiment_runner import run_research_experiment
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
@@ -271,6 +272,34 @@ class OperatorConsoleService:
             },
             "items": items,
         }
+
+    def stage13_readiness_diagnostics(self) -> dict[str, Any]:
+        readiness_dir = self.config.research.output_dir / "stage13" / "readiness"
+        report_path = readiness_dir / "stage13_readiness_report.json"
+        if report_path.exists():
+            payload = json.loads(report_path.read_text(encoding="utf-8-sig"))
+            if isinstance(payload, dict):
+                payload.setdefault("report_path", str(report_path))
+                payload.setdefault("research_only", True)
+                payload.setdefault("observe_only", True)
+                payload.setdefault("promotion_ready", False)
+                payload.setdefault("operator_control_input", False)
+                payload.setdefault("live_execution_input", False)
+                payload.setdefault("runtime_control_input", False)
+                payload.setdefault("live_canary_authorized", False)
+                return payload
+        report = build_stage13_readiness_report(
+            manifest_paths={
+                "expected_readiness_report": str(report_path),
+                "expected_output_dir": str(readiness_dir),
+            }
+        ).to_payload()
+        report["report_path"] = str(report_path)
+        report["notes"] = [
+            "Read-only diagnostic. Run plan-stage13-readiness to write local templates.",
+            "Stage 13 execution remains blocked until paper, shadow, testnet, rollback, and approval artifacts exist.",
+        ]
+        return report
 
     def list_artifacts(self) -> list[dict[str, Any]]:
         base_dir = self.config.research.output_dir

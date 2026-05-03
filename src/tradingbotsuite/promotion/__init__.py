@@ -10,6 +10,15 @@ from tradingbotsuite.promotion.artifact_validator import (
     validate_promotion_candidate_for_live_input,
     validate_promotion_candidate_for_shadow,
 )
+from tradingbotsuite.promotion.stage13_readiness import (
+    PaperRunManifest,
+    ShadowRunArchiveManifest,
+    Stage13ReadinessReport,
+    TestnetValidationManifest,
+    validate_stage12_oos_stress_evidence,
+    verify_execution_journal_evidence,
+    write_stage13_readiness_plan,
+)
 
 __all__ = [
     "ArtifactValidationResult",
@@ -20,4 +29,11 @@ __all__ = [
     "validate_artifact_for_live_input",
     "validate_promotion_candidate_for_live_input",
     "validate_promotion_candidate_for_shadow",
+    "PaperRunManifest",
+    "ShadowRunArchiveManifest",
+    "Stage13ReadinessReport",
+    "TestnetValidationManifest",
+    "validate_stage12_oos_stress_evidence",
+    "verify_execution_journal_evidence",
+    "write_stage13_readiness_plan",
 ]

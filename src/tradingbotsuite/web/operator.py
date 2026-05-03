@@ -245,6 +245,11 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_session_json(request)
         return await service.shadow_diagnostics(symbol.upper(), limit=max(1, min(limit, 100)))
 
+    @app.get("/api/operator/stage13/readiness")
+    async def operator_stage13_readiness(request: Request):
+        require_session_json(request)
+        return service.stage13_readiness_diagnostics()
+
     @app.get("/api/operator/research/jobs")
     async def operator_jobs(request: Request):
         require_session_json(request)

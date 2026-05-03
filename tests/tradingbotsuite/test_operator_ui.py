@@ -472,7 +472,9 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert response.status_code == 200
     assert "HMM/KNN Monitoring" in response.text
     assert "Shadow Diagnostics" in response.text
+    assert "Stage 13 Readiness" in response.text
     assert "/api/operator/shadow/diagnostics" in response.text
+    assert "/api/operator/stage13/readiness" in response.text
     assert "Provider Pipeline" in response.text
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
     assert "hmm_knn_artifact" in response.text
@@ -481,6 +483,33 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "set-mode" not in response.text
     assert "manual-signal" not in response.text
     assert "smoke-live" not in response.text
+
+
+def test_operator_stage13_readiness_api_is_read_only_blocked(app_config, sample_bars, tmp_path) -> None:
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_stage13.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=tmp_path / "research"),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        payload = client.get("/api/operator/stage13/readiness").json()
+
+    assert payload["ready"] is False
+    assert payload["blocked"] is True
+    assert payload["operator_control_input"] is False
+    assert payload["live_execution_input"] is False
+    assert payload["runtime_control_input"] is False
+    assert payload["live_canary_authorized"] is False
 
 
 def test_operator_shadow_diagnostics_api_is_observe_only(app_config, sample_bars) -> None:

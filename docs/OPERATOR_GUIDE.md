@@ -52,6 +52,16 @@ python -m tradingbotsuite.main plan-stage12-research --output-dir data/research/
 
 This writes manifests and experiment specs for substages 12.1 through 12.7 plus a completion-limitations artifact. It does not mark empirical hypotheses as accepted unless OOS and stress evidence is supplied.
 
+## Stage 13 Readiness Planning
+
+Stage 13 readiness planning is blocked-by-default and writes templates only:
+
+```powershell
+python -m tradingbotsuite.main plan-stage13-readiness --output-dir data/research/stage13/readiness
+```
+
+The command creates paper-run, shadow-archive, and testnet-validation manifest templates, a blocked readiness report, and rollback/operator checklists. It does not start paper, shadow, testnet, or live execution. The Research page displays the readiness report as a read-only diagnostic and does not expose mode switches, order controls, or canary controls there.
+
 Console pages:
 
 - `Overview`: health, position, safety, stream status, microstructure, recommendations, and recent traces in readable status cards

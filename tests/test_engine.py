@@ -2641,7 +2641,11 @@ async def test_engine_live_mode_switch_reloads_hyperliquid_config_from_env(app_c
         runtime_mode=RuntimeMode.PAPER,
         db_path=tmp_path / "switch_mode_live_reload.sqlite3",
         webhook=app_config.webhook,
-        strategy=app_config.strategy,
+        strategy=replace(
+            app_config.strategy,
+            max_daily_loss_quote=Decimal("25"),
+            max_open_risk_notional=Decimal("100"),
+        ),
         binance=app_config.binance,
         hyperliquid=app_config.hyperliquid,
         research=app_config.research,
@@ -2660,7 +2664,7 @@ async def test_engine_live_mode_switch_reloads_hyperliquid_config_from_env(app_c
     reloaded_hyperliquid = replace(
         app_config.hyperliquid,
         base_url="https://api.hyperliquid-testnet.xyz",
-        enable_live=False,
+        enable_live=True,
         account_address="0x1111111111111111111111111111111111111111",
         private_key="0x2222222222222222222222222222222222222222222222222222222222222222",
     )
@@ -2668,13 +2672,39 @@ async def test_engine_live_mode_switch_reloads_hyperliquid_config_from_env(app_c
         runtime_mode=RuntimeMode.PAPER,
         db_path=config.db_path,
         webhook=config.webhook,
-        strategy=config.strategy,
+        strategy=replace(
+            config.strategy,
+            max_daily_loss_quote=Decimal("25"),
+            max_open_risk_notional=Decimal("100"),
+        ),
         binance=config.binance,
         hyperliquid=reloaded_hyperliquid,
         research=config.research,
         operator_ui=config.operator_ui,
     )
     monkeypatch.setattr("tradingbotsuite.core.engine.AppConfig.from_env", classmethod(lambda cls: reloaded_config))
+
+    class FakeLiveExecutionAdapter:
+        mode = RuntimeMode.LIVE
+
+        async def shutdown(self):
+            return None
+
+        async def start_user_streams(self):
+            return None
+
+        async def preflight_account(self):
+            return {"ok": True}
+
+        def get_stream_status(self):
+            return {"enabled": False, "started": False}
+
+    def fake_make_execution_adapter(mode: RuntimeMode, **kwargs):
+        if mode == RuntimeMode.LIVE:
+            return FakeLiveExecutionAdapter()
+        raise AssertionError(f"unexpected mode: {mode}")
+
+    monkeypatch.setattr("tradingbotsuite.core.engine.make_execution_adapter", fake_make_execution_adapter)
 
     engine = TradingEngine(
         config,

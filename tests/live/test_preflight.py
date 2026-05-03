@@ -9,6 +9,7 @@ import pytest
 from tradingbotsuite.config import AppConfig, HyperliquidConfig, StrategyConfig, WebhookConfig
 from tradingbotsuite.core.models import RuntimeMode
 from tradingbotsuite.live.preflight import LivePreflightError, assert_live_preflight, build_live_preflight_report
+from tradingbotsuite.research.command_registry import RESEARCH_COMMANDS
 
 
 def _safe_live_config(tmp_path: Path) -> AppConfig:
@@ -55,7 +56,7 @@ def test_live_preflight_passes_safe_testnet_config_and_surfaces_basis_checks(tmp
     assert report.live_basis_checks["max_basis_bps"] == "75"
 
 
-@pytest.mark.parametrize("command", ["run-hmm-knn-experiments", "plan-feature-ablation", "plan-stage12-research"])
+@pytest.mark.parametrize("command", sorted(RESEARCH_COMMANDS))
 def test_live_preflight_rejects_research_command_even_when_other_live_checks_pass(tmp_path: Path, command: str) -> None:
     with pytest.raises(LivePreflightError) as exc_info:
         assert_live_preflight(_safe_live_config(tmp_path), command=command)

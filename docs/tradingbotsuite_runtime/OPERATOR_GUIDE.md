@@ -22,6 +22,16 @@ The browser console is now the primary local operator surface. The shell is stil
 
 For Hyperliquid testnet setup, the runtime first honors explicit `TBS_HL_*` environment variables. If they are missing, it also falls back to a local repo-root `hyperliquidtestnet.txt` file so live testnet preflight can still resolve the signer key and canonical account address.
 
+## Stage 13 Readiness Planning
+
+Stage 13 readiness planning writes templates and checklists only:
+
+```powershell
+python -m tradingbotsuite.main plan-stage13-readiness --output-dir data/research/stage13/readiness
+```
+
+The command does not start paper, shadow, testnet, or live execution. The Research page displays the readiness report as a read-only diagnostic and keeps mode switches, order controls, and canary controls out of that surface.
+
 Console pages:
 
 - `Overview`: health, position, safety, stream status, microstructure, recommendations, and recent traces in readable status cards

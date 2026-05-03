@@ -184,6 +184,7 @@ def _artifact_type(manifest: Mapping[str, Any]) -> str:
         "experiment_run_manifest_version",
         "backtest_manifest_version",
         "dataset_manifest_version",
+        "manifest_version",
     ):
         if manifest.get(key):
             return key.removesuffix("_version")

@@ -72,6 +72,10 @@
     <div id="shadow-diagnostics-panel" class="empty">No shadow diagnostics found.</div>
   </div>
   <div class="card wide">
+    <h3>Stage 13 Readiness</h3>
+    <div id="stage13-readiness-panel" class="empty">Stage 13 readiness has not been planned.</div>
+  </div>
+  <div class="card wide">
     <h3>HMM/KNN Monitoring</h3>
     <div id="hmm-monitoring-panel" class="empty">No HMM/KNN monitoring report found.</div>
   </div>
@@ -438,11 +442,31 @@
     `;
   }
 
+  function renderStage13ReadinessPanel(payload) {
+    if (!payload) {
+      return '<div class="empty">Stage 13 readiness has not been planned.</div>';
+    }
+    const blockers = payload.blockers || [];
+    const required = payload.required_artifacts || [];
+    const paths = payload.manifest_paths || {};
+    return `
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Status</div><div class="value">${window.TBS.pill(payload.ready ? "ready" : "blocked", payload.ready ? "ok" : "warn")}</div></div>
+        <div class="stat"><div class="label">Blockers</div><div class="value">${window.TBS.escapeHtml(String(blockers.length))}</div></div>
+        <div class="stat"><div class="label">Live Canary</div><div class="value">${window.TBS.escapeHtml(payload.live_canary_authorized ? "authorized" : "blocked")}</div></div>
+      </div>
+      <div class="muted" style="margin-top:12px;">Required: ${window.TBS.escapeHtml(required.join(", ") || "n/a")}</div>
+      <div class="muted">Templates: ${window.TBS.escapeHtml(Object.values(paths).join(", ") || payload.report_path || "not written")}</div>
+      ${blockers.length ? `<div class="stack" style="margin-top:12px;">${blockers.slice(0, 8).map(reason => `<div class="list-item">${window.TBS.escapeHtml(reason)}</div>`).join("")}</div>` : ""}
+    `;
+  }
+
   async function refreshResearch() {
-    const [jobsIndex, artifactsIndex, shadowDiagnostics] = await Promise.all([
+    const [jobsIndex, artifactsIndex, shadowDiagnostics, stage13Readiness] = await Promise.all([
       window.TBS.getJson("/api/operator/research/jobs"),
       window.TBS.getJson("/api/operator/research/artifacts"),
-      window.TBS.getJson("/api/operator/shadow/diagnostics?symbol=BTCUSDT&limit=20")
+      window.TBS.getJson("/api/operator/shadow/diagnostics?symbol=BTCUSDT&limit=20"),
+      window.TBS.getJson("/api/operator/stage13/readiness")
     ]);
     latestArtifacts = artifactsIndex.items || [];
 
@@ -473,6 +497,7 @@
       </div>
     `).join("");
     document.getElementById("shadow-diagnostics-panel").innerHTML = renderShadowDiagnosticsPanel(shadowDiagnostics);
+    document.getElementById("stage13-readiness-panel").innerHTML = renderStage13ReadinessPanel(stage13Readiness);
     document.getElementById("hmm-monitoring-panel").innerHTML = renderHmmMonitoringPanel(latestHmm);
   }
 
