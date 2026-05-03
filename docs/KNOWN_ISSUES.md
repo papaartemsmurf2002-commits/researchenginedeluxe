@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-02
+Last updated: 2026-05-03
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 0 | 0 |
-| P1 | 1 | 0 | 1 | 0 |
+| P1 | 0 | 0 | 2 | 0 |
 | P2 | 0 | 0 | 0 | 0 |
 | P3 | 0 | 0 | 0 | 0 |
 
@@ -48,14 +48,14 @@ Stage 2 must formalize import and artifact contracts. Stage 10/11 must keep live
 
 ### Resolution notes
 
-Stage 2 added `docs/contracts/boundary_contract.md` and `tests/contracts/test_import_boundaries.py` to prevent research modules from importing order-placement paths. The broader branch-level live surface remains open for Stage 10/11 enforcement.
+Stage 2 added `docs/contracts/boundary_contract.md` and `tests/contracts/test_import_boundaries.py` to prevent research modules from importing order-placement paths. Stage 10/11 added live preflight and promotion/shadow validation so research outputs cannot become live execution inputs without explicit later approval.
 
 ## ISSUE-R1-002: Research CLI and live/operator CLI are coupled in one entry module
 
 Severity: P1
 Stage discovered: Stage 1 - Repo cartography
 Owner: Orchestrator Agent / Documentation Agent
-Status: open
+Status: resolved
 Paths affected: `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`
 
 ### Problem
@@ -72,7 +72,7 @@ Stage 2 should document command ownership and boundary rules. Stage 10 should en
 
 ### Resolution notes
 
-Stage 2 documented command ownership in `docs/contracts/boundary_contract.md`. Stage 10 added `src/tradingbotsuite/live/preflight.py`, CLI guards in `src/tradingbotsuite/main.py`, and tests in `tests/live/test_preflight.py` so live mode rejects research commands before execution.
+Stage 2 documented command ownership in `docs/contracts/boundary_contract.md`. Stage 10 added `src/tradingbotsuite/live/preflight.py`, CLI guards in `src/tradingbotsuite/main.py`, and tests in `tests/live/test_preflight.py` so live mode rejects research commands before execution. Stage 12.1 added the new `plan-feature-ablation` research command to the same live rejection set.
 
 ## Issue template
 

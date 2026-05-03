@@ -1,21 +1,20 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage 11 - Promotion pipeline and shadow-only integration
+Current stage: Stage 12 - Later-stage research expansion and institutional tuning
 Current stage owner: Orchestrator Agent
-Stage status: complete
+Stage status: in progress
 Last updated: 2026-05-03
 
 ## Stage entry decision
 
 - Prior stage completed: yes
 - Evidence links:
-  - `docs/stage_reports/STAGE_11_EXIT_REPORT.md`
-  - `src/tradingbotsuite/promotion/artifact_validator.py`
-  - `src/tradingbotsuite/live/shadow_loader.py`
-  - `src/tradingbotsuite/runtime.py`
-  - `tests/live/test_promotion_candidate_validator.py`
-  - `tests/live/test_shadow_loader.py`
-  - `tests/tradingbotsuite/test_operator_ui.py`
+  - `docs/stage_reports/STAGE_12_1_EXIT_REPORT.md`
+  - `src/tradingbotsuite/research/feature_ablation.py`
+  - `configs/features/features_microstructure_filter_only.json`
+  - `configs/features/features_cross_asset_context.json`
+  - `tests/tradingbotsuite/test_feature_ablation.py`
+  - `tests/contracts/test_feature_contracts.py`
 - Known blockers accepted into this stage:
   - None.
 
@@ -36,23 +35,22 @@ Last updated: 2026-05-03
 | WP9-01-research-ui-command-layer | Orchestrator Agent | closed | `src/tradingbotsuite/ui/**`, `docs/runbooks/research_ui_runbook.md`, `tests/integration/test_research_ui.py`, `docs/stage_reports/STAGE_9_EXIT_REPORT.md` | Research UI pages, manifest-linked metrics, visible queued research jobs, and live-adapter import boundary tests added. |
 | WP10-01-live-preflight-hardening | Orchestrator Agent | closed | `src/tradingbotsuite/live/preflight.py`, `src/tradingbotsuite/promotion/artifact_validator.py`, `tests/live/**`, `docs/stage_reports/STAGE_10_EXIT_REPORT.md` | Live mode fails closed on unsafe config, research commands and research artifacts are rejected, root launchers delegate through canonical preflight, and testnet smoke remains documented. |
 | WP11-01-promotion-shadow-bridge | Orchestrator Agent | closed | `src/tradingbotsuite/promotion/artifact_validator.py`, `src/tradingbotsuite/live/shadow_loader.py`, `src/tradingbotsuite/runtime.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/**`, `tests/live/**`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/stage_reports/STAGE_11_EXIT_REPORT.md` | Promotion candidates validate against Stage 11 evidence floors, load only in shadow mode without execution changes, are rejected as live order inputs, and display read-only shadow diagnostics in the operator UI. |
+| WP12-01-feature-ablation-and-replacement | Orchestrator Agent | closed | `src/tradingbotsuite/research/feature_ablation.py`, `configs/features/**`, `tests/tradingbotsuite/test_feature_ablation.py`, `docs/stage_reports/STAGE_12_1_EXIT_REPORT.md` | Stage 12.1 feature ablation tracks produce reproducible manifests, pending/rejected hypothesis records, per-hypothesis experiment specs, and OOS/stress-only acceptance rules. |
 
 ## Gate checklist
 
 | Requirement | Evidence | Passed |
 | --- | --- | --- |
-| Stage 11 completed | `docs/stage_reports/STAGE_11_EXIT_REPORT.md` | yes |
-| Promotion candidate manifest validator exists | `src/tradingbotsuite/promotion/artifact_validator.py` | yes |
-| Development-plan evidence floors are enforced | `tests/live/test_promotion_candidate_validator.py` | yes |
-| Candidate can be accepted/rejected for shadow-only use | `tests/live/test_promotion_candidate_validator.py` | yes |
-| Live branch loads shadow-only candidate without execution changes | `src/tradingbotsuite/live/shadow_loader.py`, `src/tradingbotsuite/runtime.py`, `tests/live/test_shadow_loader.py` | yes |
-| Same candidate is rejected as a live order input | `tests/live/test_promotion_candidate_validator.py` | yes |
-| Operator UI displays shadow diagnostics without live controls | `tests/tradingbotsuite/test_operator_ui.py` | yes |
-| Stage exit report written | `docs/stage_reports/STAGE_11_EXIT_REPORT.md` | yes |
+| Stage 12.1 completed | `docs/stage_reports/STAGE_12_1_EXIT_REPORT.md` | yes |
+| Required feature ablation tracks represented | `tests/tradingbotsuite/test_feature_ablation.py` | yes |
+| Reproducible ablation manifests and experiment specs are written | `src/tradingbotsuite/research/feature_ablation.py` | yes |
+| Rejected/pending hypotheses are documented | `tests/tradingbotsuite/test_feature_ablation.py` | yes |
+| In-sample-only acceptance is rejected | `tests/tradingbotsuite/test_feature_ablation.py` | yes |
+| Stage 12 remains open for 12.2-12.7 | Development plan and carry-forward note | yes |
 | No P0 issues open | `docs/KNOWN_ISSUES.md` | yes |
 | Fewer than four unresolved P1 issues | `docs/KNOWN_ISSUES.md` | yes |
 
 ## Orchestrator decision
 
-Decision: advance
-Reason: Stage 11 Promotion pipeline and shadow-only integration is complete on the research branch. Promotion candidates now have explicit manifest validation, development-plan evidence floors, a live-branch shadow loader, runtime recognition that does not instantiate execution inputs, live-order rejection, and read-only operator diagnostics. Stage 12 Later-stage research expansion and institutional tuning may begin next.
+Decision: continue
+Reason: Stage 12.1 Feature ablation and replacement is complete. Stage 12 remains in progress because regime comparison, KNN alternatives, meta-model testing, exit model research, portfolio/capital allocation, and ETH/multi-asset expansion are not complete yet. Stage 12.2 Regime model comparison is next.

@@ -34,6 +34,16 @@ Promotion candidates are shadow-only review artifacts. The operator Research pag
 
 Live mode rejects promotion candidates as live order inputs. A candidate must pass the promotion validator and then load through the shadow loader before any shadow comparison report is considered useful.
 
+## Stage 12 Research Planning
+
+Feature ablation planning is research-only:
+
+```powershell
+python -m tradingbotsuite.main plan-feature-ablation --output-dir data/research/stage12/feature_ablation
+```
+
+The command writes a Stage 12.1 feature ablation manifest, per-hypothesis experiment specs, a CSV summary, and rejected/pending hypothesis notes. It does not run live, paper, or shadow execution and it cannot promote a model.
+
 Console pages:
 
 - `Overview`: health, position, safety, stream status, microstructure, recommendations, and recent traces in readable status cards

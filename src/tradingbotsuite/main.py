@@ -20,6 +20,7 @@ from tradingbotsuite.research.experiment_runner import (
     run_research_experiment,
     write_research_experiment_benchmark_report,
 )
+from tradingbotsuite.research.feature_ablation import write_feature_ablation_plan
 from tradingbotsuite.research.market_data import (
     collect_binance_usdm_bars,
     download_and_ingest_binance_vision_archive,
@@ -143,6 +144,10 @@ def parse_args() -> argparse.Namespace:
     benchmark_experiment.add_argument("--spec", required=True)
     benchmark_experiment.add_argument("--output-dir", default=None)
     benchmark_experiment.add_argument("--repeat", type=int, default=1)
+
+    feature_ablation = subparsers.add_parser("plan-feature-ablation", help="Write Stage 12.1 feature ablation manifests")
+    feature_ablation.add_argument("--output-dir", default=None)
+    feature_ablation.add_argument("--dataset-manifest-hash", default="dataset_manifest_unavailable")
 
     return parser.parse_args()
 
@@ -312,6 +317,21 @@ def _run_benchmark_research_experiment_command(args: argparse.Namespace) -> dict
     return {"benchmark_report_path": str(report_path)}
 
 
+def _run_plan_feature_ablation_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("plan-feature-ablation")
+    result = write_feature_ablation_plan(
+        output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir / "stage12" / "feature_ablation",
+        dataset_manifest_hash=args.dataset_manifest_hash,
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "feature_ablation_manifest_path": str(result.manifest_path),
+        "summary_path": str(result.summary_path),
+        "rejected_hypotheses_path": str(result.rejected_hypotheses_path),
+        "experiment_spec_dir": str(result.experiment_spec_dir),
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
@@ -478,6 +498,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_benchmark_research_experiment_command(args), indent=2))
+    elif args.command == "plan-feature-ablation":
+        import json
+
+        print(json.dumps(_run_plan_feature_ablation_command(args), indent=2))
     else:
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)

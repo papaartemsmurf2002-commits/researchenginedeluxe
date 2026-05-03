@@ -131,6 +131,8 @@ def feature_set_presets() -> dict[str, tuple[str, ...]]:
             "calendar_v1",
         ),
         "features_perp_context_only": ("perp_context_v1",),
+        "features_microstructure_filter_only": ("microstructure_context_v1",),
+        "features_cross_asset_context": ("cross_asset_v1",),
         "features_price_perp_micro_no_wt": (
             "price_path_v1",
             "trend_chop_v1",

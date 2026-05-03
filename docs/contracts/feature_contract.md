@@ -41,6 +41,23 @@ Implementation:
 - `features_price_trend_vol`
 - `features_price_trend_vol_wt3d`
 - `features_perp_context_only`
+- `features_microstructure_filter_only`
+- `features_cross_asset_context`
 - `features_price_perp_micro_no_wt`
 - `features_full_context_wt3d`
 - `features_full_context_no_wt`
+
+## Stage 12.1 ablation contract
+
+Feature ablation plans must cover every required Stage 12.1 track and write reproducible experiment specs before any hypothesis is accepted. Missing OOS evidence must leave a hypothesis in `pending_evidence`, not accepted. Weak or in-sample-only evidence must be documented under rejected hypotheses.
+
+Required tracks:
+
+- full WT3D feature pack
+- no WT3D
+- price/trend/vol only
+- perp context only
+- microstructure context only as filter
+- full context no WT
+- full context with WT
+- cross-asset context

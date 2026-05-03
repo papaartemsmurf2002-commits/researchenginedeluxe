@@ -55,11 +55,12 @@ def test_live_preflight_passes_safe_testnet_config_and_surfaces_basis_checks(tmp
     assert report.live_basis_checks["max_basis_bps"] == "75"
 
 
-def test_live_preflight_rejects_research_command_even_when_other_live_checks_pass(tmp_path: Path) -> None:
+@pytest.mark.parametrize("command", ["run-hmm-knn-experiments", "plan-feature-ablation"])
+def test_live_preflight_rejects_research_command_even_when_other_live_checks_pass(tmp_path: Path, command: str) -> None:
     with pytest.raises(LivePreflightError) as exc_info:
-        assert_live_preflight(_safe_live_config(tmp_path), command="run-hmm-knn-experiments")
+        assert_live_preflight(_safe_live_config(tmp_path), command=command)
 
-    assert "live_runtime_rejects_research_command:run-hmm-knn-experiments" in exc_info.value.report.blockers
+    assert f"live_runtime_rejects_research_command:{command}" in exc_info.value.report.blockers
 
 
 def test_execution_journal_evidence_contract_reports_missing_live_order_evidence(tmp_path: Path) -> None:
@@ -72,4 +73,3 @@ def test_execution_journal_evidence_contract_reports_missing_live_order_evidence
     assert not report.passed
     assert "missing_execution_journal_evidence:reconciliation" in report.blockers
     assert "missing_execution_journal_evidence:schedule_cancel_set" in report.blockers
-

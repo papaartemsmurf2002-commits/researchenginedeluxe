@@ -1,0 +1,35 @@
+{
+  "manifest_version": "feature-manifest-v1",
+  "feature_set_id": "features_microstructure_filter_only",
+  "feature_set_version": "v1",
+  "feature_packs": [
+    "microstructure_context_v1"
+  ],
+  "input_families": [
+    "trade",
+    "agg_trade",
+    "book_ticker",
+    "depth_snapshot"
+  ],
+  "feature_columns": [
+    "primary_signed_imbalance_ratio",
+    "primary_sqrt_signed_imbalance_ratio",
+    "top_of_book_imbalance",
+    "queue_imbalance_l5",
+    "spread_bps"
+  ],
+  "availability_columns": [
+    "missing_primary_signed_imbalance_ratio",
+    "missing_primary_sqrt_signed_imbalance_ratio",
+    "missing_top_of_book_imbalance",
+    "missing_queue_imbalance_l5",
+    "missing_spread_bps"
+  ],
+  "point_in_time_safe": true,
+  "max_feature_age_ms": null,
+  "fit_scope": "stateless",
+  "imputation_policy": "explicit_missingness_plus_train_only_neutral",
+  "leakage_risks": [],
+  "tests": [],
+  "manifest_sha256": "7697aca4c7d856200d0a59ff01eaed35c72166f65d3b5a9e619bcbf0399851a0"
+}

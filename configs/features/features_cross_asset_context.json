@@ -1,0 +1,26 @@
+{
+  "manifest_version": "feature-manifest-v1",
+  "feature_set_id": "features_cross_asset_context",
+  "feature_set_version": "v1",
+  "feature_packs": [
+    "cross_asset_v1"
+  ],
+  "input_families": [
+    "kline"
+  ],
+  "feature_columns": [
+    "btc_eth_lead_lag_corr_24",
+    "eth_btc_relative_return_24"
+  ],
+  "availability_columns": [
+    "missing_btc_eth_lead_lag_corr_24",
+    "missing_eth_btc_relative_return_24"
+  ],
+  "point_in_time_safe": true,
+  "max_feature_age_ms": null,
+  "fit_scope": "stateless",
+  "imputation_policy": "explicit_missingness_plus_train_only_neutral",
+  "leakage_risks": [],
+  "tests": [],
+  "manifest_sha256": "ffd1fbeff8c7247bb27eed2b90238679301e2ebbd7e889441600537fae9d8954"
+}

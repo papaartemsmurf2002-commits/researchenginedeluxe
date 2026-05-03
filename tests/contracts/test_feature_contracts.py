@@ -59,6 +59,8 @@ def test_feature_registry_contains_stage_four_packs_and_presets() -> None:
     assert tuple(WT3D_FEATURE_COLUMNS) == WT3D_COLUMNS
     assert "wt3d_v1" not in feature_set_presets()["features_full_context_no_wt"]
     assert "wt3d_v1" in feature_set_presets()["features_full_context_wt3d"]
+    assert feature_set_presets()["features_microstructure_filter_only"] == ("microstructure_context_v1",)
+    assert feature_set_presets()["features_cross_asset_context"] == ("cross_asset_v1",)
 
 
 def test_feature_manifest_hash_is_deterministic_and_valid() -> None:
