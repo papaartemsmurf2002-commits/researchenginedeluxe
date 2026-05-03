@@ -471,6 +471,8 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
 
     assert response.status_code == 200
     assert "HMM/KNN Monitoring" in response.text
+    assert "Shadow Diagnostics" in response.text
+    assert "/api/operator/shadow/diagnostics" in response.text
     assert "Provider Pipeline" in response.text
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
     assert "hmm_knn_artifact" in response.text
@@ -479,6 +481,33 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "set-mode" not in response.text
     assert "manual-signal" not in response.text
     assert "smoke-live" not in response.text
+
+
+def test_operator_shadow_diagnostics_api_is_observe_only(app_config, sample_bars) -> None:
+    config = _operator_config(app_config, mode=RuntimeMode.SHADOW)
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        signal_response = client.post(
+            "/api/operator/commands/manual-signal",
+            json={"symbol": "BTCUSDT", "direction": "long"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        diagnostics_response = client.get("/api/operator/shadow/diagnostics?symbol=BTCUSDT")
+
+    assert signal_response.status_code == 200
+    assert diagnostics_response.status_code == 200
+    payload = diagnostics_response.json()
+    assert payload["observe_only"] is True
+    assert payload["promotion_ready"] is False
+    assert payload["live_execution_input"] is False
+    assert payload["operator_control_input"] is False
+    assert payload["summary"]["shadow_decision_count"] == 1
+    assert payload["summary"]["skipped_count"] == 1
+    assert payload["summary"]["skip_reasons"] == {"no_artifact_loaded": 1}
+    assert payload["items"][0]["status"] == "skipped"
+    assert payload["items"][0]["scoring_fallback_reason"] == "no_artifact_loaded"
 
 
 def test_operator_manual_signal_matches_direct_command_shape(app_config, sample_bars, tmp_path) -> None:

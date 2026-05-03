@@ -240,6 +240,11 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_session_json(request)
         return {"items": service.list_artifacts()}
 
+    @app.get("/api/operator/shadow/diagnostics")
+    async def operator_shadow_diagnostics(request: Request, symbol: str = "BTCUSDT", limit: int = 20):
+        require_session_json(request)
+        return await service.shadow_diagnostics(symbol.upper(), limit=max(1, min(limit, 100)))
+
     @app.get("/api/operator/research/jobs")
     async def operator_jobs(request: Request):
         require_session_json(request)

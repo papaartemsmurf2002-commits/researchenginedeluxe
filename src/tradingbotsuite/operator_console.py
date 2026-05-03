@@ -207,6 +207,71 @@ class OperatorConsoleService:
     async def get_job(self, job_id: str) -> dict[str, Any] | None:
         return await self.store.get_operator_job(job_id)
 
+    async def shadow_diagnostics(self, symbol: str, *, limit: int = 20) -> dict[str, Any]:
+        rows = await self.store.list_research_signals(symbol.upper())
+        items: list[dict[str, Any]] = []
+        skip_reasons: dict[str, int] = {}
+        confidence_buckets: dict[str, int] = {}
+        scored_count = 0
+        skipped_count = 0
+        accepted_count = 0
+        for row in reversed(rows):
+            packet = row.get("decision_packet")
+            if not isinstance(packet, dict) or str(packet.get("mode")) != str(RuntimeMode.SHADOW):
+                continue
+            feature_snapshot = packet.get("feature_snapshot") if isinstance(packet.get("feature_snapshot"), dict) else {}
+            score = feature_snapshot.get("v2_acceptance") if isinstance(feature_snapshot.get("v2_acceptance"), dict) else {}
+            status = str(score.get("status") or "skipped")
+            if status == "scored":
+                scored_count += 1
+            else:
+                skipped_count += 1
+            if packet.get("accepted") is True:
+                accepted_count += 1
+            reason = str(score.get("scoring_fallback_reason") or ("none" if status == "scored" else "missing_shadow_score"))
+            if reason != "none":
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+            bucket = str(score.get("confidence_bucket") or packet.get("confidence_bucket") or "unscored")
+            confidence_buckets[bucket] = confidence_buckets.get(bucket, 0) + 1
+            items.append(
+                {
+                    "signal_id": row.get("signal_id"),
+                    "time_ms": row.get("received_time_ms") or row.get("signal_bar_time_ms"),
+                    "direction": row.get("direction"),
+                    "action": packet.get("action"),
+                    "accepted": bool(packet.get("accepted")),
+                    "status": status,
+                    "accept_probability": score.get("accept_probability"),
+                    "base_probability": score.get("base_probability"),
+                    "confidence_bucket": bucket,
+                    "model_version": score.get("model_version") or packet.get("model_version"),
+                    "calibration_version": score.get("calibration_version") or packet.get("calibration_version"),
+                    "scoring_fallback_reason": score.get("scoring_fallback_reason"),
+                    "observe_only": True,
+                }
+            )
+            if len(items) >= limit:
+                break
+        items.sort(key=lambda item: int(item.get("time_ms") or 0), reverse=True)
+        return {
+            "symbol": symbol.upper(),
+            "runtime_mode": str(self.config.runtime_mode),
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "operator_control_input": False,
+            "live_execution_input": False,
+            "summary": {
+                "shadow_decision_count": len(items),
+                "scored_count": scored_count,
+                "skipped_count": skipped_count,
+                "accepted_count": accepted_count,
+                "skip_reasons": skip_reasons,
+                "confidence_buckets": confidence_buckets,
+            },
+            "items": items,
+        }
+
     def list_artifacts(self) -> list[dict[str, Any]]:
         base_dir = self.config.research.output_dir
         if not base_dir.exists():

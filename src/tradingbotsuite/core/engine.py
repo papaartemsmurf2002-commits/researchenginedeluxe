@@ -60,6 +60,7 @@ class TradingEngine:
         clock: Callable[[], int] | None = None,
         trace_sink: Callable[[str, dict[str, Any]], None] | None = None,
         scorer: AcceptanceScorer | None = None,
+        shadow_promotion_report: dict[str, Any] | None = None,
     ):
         self.config = config
         self.store = store
@@ -68,6 +69,7 @@ class TradingEngine:
         self.clock = clock or (lambda: int(time.time() * 1000))
         self.trace_sink = trace_sink
         self.scorer = scorer
+        self.shadow_promotion_report = shadow_promotion_report
         self.research_plan: ResearchPlan | None = (
             scorer.plan
             if scorer is not None and hasattr(scorer.plan, "features") and hasattr(scorer.plan, "exit_supervision")

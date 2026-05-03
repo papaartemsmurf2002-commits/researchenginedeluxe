@@ -68,6 +68,10 @@
     <div id="research-status" class="stat-grid"></div>
   </div>
   <div class="card wide">
+    <h3>Shadow Diagnostics</h3>
+    <div id="shadow-diagnostics-panel" class="empty">No shadow diagnostics found.</div>
+  </div>
+  <div class="card wide">
     <h3>HMM/KNN Monitoring</h3>
     <div id="hmm-monitoring-panel" class="empty">No HMM/KNN monitoring report found.</div>
   </div>
@@ -401,10 +405,44 @@
     `;
   }
 
+  function renderShadowDiagnosticsPanel(payload) {
+    if (!payload || !payload.summary || !payload.items || payload.items.length === 0) {
+      return '<div class="empty">No shadow decisions have been recorded.</div>';
+    }
+    const summary = payload.summary || {};
+    const skipReasons = summary.skip_reasons || {};
+    const buckets = summary.confidence_buckets || {};
+    const latestRows = (payload.items || []).slice(0, 6).map(item => `
+      <tr>
+        <td>${window.TBS.formatTime(item.time_ms)}</td>
+        <td>${window.TBS.escapeHtml(item.direction || "n/a")}</td>
+        <td>${window.TBS.escapeHtml(item.action || "n/a")}</td>
+        <td>${window.TBS.pill(item.status || "skipped", item.status === "scored" ? "ok" : "warn")}</td>
+        <td>${window.TBS.toMono(item.accept_probability ?? "n/a")}</td>
+        <td>${window.TBS.escapeHtml(item.scoring_fallback_reason || "")}</td>
+      </tr>
+    `).join("");
+    return `
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Shadow Decisions</div><div class="value">${window.TBS.escapeHtml(summary.shadow_decision_count ?? 0)}</div></div>
+        <div class="stat"><div class="label">Scored</div><div class="value">${window.TBS.escapeHtml(summary.scored_count ?? 0)}</div></div>
+        <div class="stat"><div class="label">Skipped</div><div class="value">${window.TBS.escapeHtml(summary.skipped_count ?? 0)}</div></div>
+        <div class="stat"><div class="label">Accepted</div><div class="value">${window.TBS.escapeHtml(summary.accepted_count ?? 0)}</div></div>
+      </div>
+      <div class="muted" style="margin-top:12px;">Skip reasons: ${window.TBS.escapeHtml(Object.entries(skipReasons).map(([key, value]) => `${key}=${value}`).join(", ") || "none")}</div>
+      <div class="muted">Confidence buckets: ${window.TBS.escapeHtml(Object.entries(buckets).map(([key, value]) => `${key}=${value}`).join(", ") || "none")}</div>
+      <table style="margin-top:12px;">
+        <thead><tr><th>Time</th><th>Direction</th><th>Action</th><th>Status</th><th>Probability</th><th>Skip Reason</th></tr></thead>
+        <tbody>${latestRows}</tbody>
+      </table>
+    `;
+  }
+
   async function refreshResearch() {
-    const [jobsIndex, artifactsIndex] = await Promise.all([
+    const [jobsIndex, artifactsIndex, shadowDiagnostics] = await Promise.all([
       window.TBS.getJson("/api/operator/research/jobs"),
-      window.TBS.getJson("/api/operator/research/artifacts")
+      window.TBS.getJson("/api/operator/research/artifacts"),
+      window.TBS.getJson("/api/operator/shadow/diagnostics?symbol=BTCUSDT&limit=20")
     ]);
     latestArtifacts = artifactsIndex.items || [];
 
@@ -434,6 +472,7 @@
         <div class="value">${window.TBS.escapeHtml(String(value))}</div>
       </div>
     `).join("");
+    document.getElementById("shadow-diagnostics-panel").innerHTML = renderShadowDiagnosticsPanel(shadowDiagnostics);
     document.getElementById("hmm-monitoring-panel").innerHTML = renderHmmMonitoringPanel(latestHmm);
   }
 

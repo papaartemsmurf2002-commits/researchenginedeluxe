@@ -5,7 +5,9 @@ from tradingbotsuite.adapters.execution import make_execution_adapter
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.engine import TradingEngine
 from tradingbotsuite.live.preflight import assert_live_preflight
+from tradingbotsuite.live.shadow_loader import load_shadow_promotion_candidate
 from tradingbotsuite.persistence.sqlite_store import SQLiteStore
+from tradingbotsuite.promotion.artifact_validator import load_artifact_manifest
 from tradingbotsuite.research.inference import AcceptanceScorer
 
 
@@ -37,8 +39,15 @@ def build_engine(config: AppConfig, trace_sink=None) -> TradingEngine:
         hyperliquid_config=config.hyperliquid,
     )
     scorer = None
-    if config.research.artifact_manifest_path is not None and config.research.artifact_manifest_path.exists():
-        scorer = AcceptanceScorer.from_manifest_path(config.research.artifact_manifest_path)
+    shadow_promotion_report = None
+    artifact_path = config.research.artifact_manifest_path
+    if artifact_path is not None and artifact_path.exists():
+        manifest = load_artifact_manifest(artifact_path)
+        if manifest.get("promotion_candidate_manifest_version"):
+            loaded_candidate = load_shadow_promotion_candidate(config, artifact_path)
+            shadow_promotion_report = loaded_candidate.report.to_payload()
+        else:
+            scorer = AcceptanceScorer.from_manifest_path(artifact_path)
     return TradingEngine(
         config,
         store,
@@ -46,4 +55,5 @@ def build_engine(config: AppConfig, trace_sink=None) -> TradingEngine:
         execution_adapter,
         trace_sink=trace_sink,
         scorer=scorer,
+        shadow_promotion_report=shadow_promotion_report,
     )

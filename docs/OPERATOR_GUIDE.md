@@ -28,6 +28,12 @@ Every live entry path now runs the canonical live preflight before engine startu
 
 For Hyperliquid testnet, keep `TBS_RUNTIME_MODE=live`, `TBS_HL_ENABLE_LIVE=true`, signer/account values, non-default secrets, and positive `TBS_MAX_DAILY_LOSS_QUOTE` plus `TBS_MAX_OPEN_RISK_NOTIONAL` set before using `manual`, `serve`, or `smoke-live`.
 
+## Promotion And Shadow Diagnostics
+
+Promotion candidates are shadow-only review artifacts. The operator Research page displays shadow diagnostics from stored shadow decision packets, including score status, confidence buckets, and operator-visible skip reasons. This panel is read-only and does not expose runtime-mode switches, manual signals, smoke-live, sizing, or order controls.
+
+Live mode rejects promotion candidates as live order inputs. A candidate must pass the promotion validator and then load through the shadow loader before any shadow comparison report is considered useful.
+
 Console pages:
 
 - `Overview`: health, position, safety, stream status, microstructure, recommendations, and recent traces in readable status cards

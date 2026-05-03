@@ -1,20 +1,21 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage 10 - Live branch hardening and preflight enforcement
+Current stage: Stage 11 - Promotion pipeline and shadow-only integration
 Current stage owner: Orchestrator Agent
 Stage status: complete
-Last updated: 2026-05-02
+Last updated: 2026-05-03
 
 ## Stage entry decision
 
 - Prior stage completed: yes
 - Evidence links:
-  - `docs/stage_reports/STAGE_10_EXIT_REPORT.md`
-  - `src/tradingbotsuite/live/preflight.py`
+  - `docs/stage_reports/STAGE_11_EXIT_REPORT.md`
   - `src/tradingbotsuite/promotion/artifact_validator.py`
-  - `tests/live/test_preflight.py`
-  - `tests/live/test_reject_research_artifacts.py`
-  - `tests/live/test_root_launchers_delegate.py`
+  - `src/tradingbotsuite/live/shadow_loader.py`
+  - `src/tradingbotsuite/runtime.py`
+  - `tests/live/test_promotion_candidate_validator.py`
+  - `tests/live/test_shadow_loader.py`
+  - `tests/tradingbotsuite/test_operator_ui.py`
 - Known blockers accepted into this stage:
   - None.
 
@@ -34,23 +35,24 @@ Last updated: 2026-05-02
 | WP8-01-generic-experiment-runner | Orchestrator Agent | closed | `src/tradingbotsuite/research/experiment_runner.py`, `tests/tradingbotsuite/test_experiment_runner.py`, `tests/tradingbotsuite/test_research.py`, `docs/stage_reports/STAGE_8_EXIT_REPORT.md` | Generic experiment specs, deterministic cache keys, search expansion, split/regime/side/cost stress outputs, and explicit rejection reasons added. |
 | WP9-01-research-ui-command-layer | Orchestrator Agent | closed | `src/tradingbotsuite/ui/**`, `docs/runbooks/research_ui_runbook.md`, `tests/integration/test_research_ui.py`, `docs/stage_reports/STAGE_9_EXIT_REPORT.md` | Research UI pages, manifest-linked metrics, visible queued research jobs, and live-adapter import boundary tests added. |
 | WP10-01-live-preflight-hardening | Orchestrator Agent | closed | `src/tradingbotsuite/live/preflight.py`, `src/tradingbotsuite/promotion/artifact_validator.py`, `tests/live/**`, `docs/stage_reports/STAGE_10_EXIT_REPORT.md` | Live mode fails closed on unsafe config, research commands and research artifacts are rejected, root launchers delegate through canonical preflight, and testnet smoke remains documented. |
+| WP11-01-promotion-shadow-bridge | Orchestrator Agent | closed | `src/tradingbotsuite/promotion/artifact_validator.py`, `src/tradingbotsuite/live/shadow_loader.py`, `src/tradingbotsuite/runtime.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/**`, `tests/live/**`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/stage_reports/STAGE_11_EXIT_REPORT.md` | Promotion candidates validate against Stage 11 evidence floors, load only in shadow mode without execution changes, are rejected as live order inputs, and display read-only shadow diagnostics in the operator UI. |
 
 ## Gate checklist
 
 | Requirement | Evidence | Passed |
 | --- | --- | --- |
-| Stage 10 completed | `docs/stage_reports/STAGE_10_EXIT_REPORT.md` | yes |
-| Live mode fails closed on unsafe config | `tests/live/test_preflight.py` | yes |
-| Research commands are rejected in live mode | `src/tradingbotsuite/live/preflight.py` | yes |
-| Research-only artifacts are rejected before live runtime load | `tests/live/test_reject_research_artifacts.py` | yes |
-| Root launchers delegate through live preflight | `tests/live/test_root_launchers_delegate.py` | yes |
-| Operator mode switching cannot bypass engine preflight | `src/tradingbotsuite/core/engine.py` | yes |
-| Testnet smoke remains documented | `docs/OPERATOR_GUIDE.md` | yes |
-| Stage exit report written | `docs/stage_reports/STAGE_10_EXIT_REPORT.md` | yes |
+| Stage 11 completed | `docs/stage_reports/STAGE_11_EXIT_REPORT.md` | yes |
+| Promotion candidate manifest validator exists | `src/tradingbotsuite/promotion/artifact_validator.py` | yes |
+| Development-plan evidence floors are enforced | `tests/live/test_promotion_candidate_validator.py` | yes |
+| Candidate can be accepted/rejected for shadow-only use | `tests/live/test_promotion_candidate_validator.py` | yes |
+| Live branch loads shadow-only candidate without execution changes | `src/tradingbotsuite/live/shadow_loader.py`, `src/tradingbotsuite/runtime.py`, `tests/live/test_shadow_loader.py` | yes |
+| Same candidate is rejected as a live order input | `tests/live/test_promotion_candidate_validator.py` | yes |
+| Operator UI displays shadow diagnostics without live controls | `tests/tradingbotsuite/test_operator_ui.py` | yes |
+| Stage exit report written | `docs/stage_reports/STAGE_11_EXIT_REPORT.md` | yes |
 | No P0 issues open | `docs/KNOWN_ISSUES.md` | yes |
 | Fewer than four unresolved P1 issues | `docs/KNOWN_ISSUES.md` | yes |
 
 ## Orchestrator decision
 
 Decision: advance
-Reason: Stage 10 Live branch hardening and preflight enforcement is complete on the research branch. Live startup and live mode switching now fail closed on unsafe config, reject research commands, reject research-only artifacts, preserve root launcher delegation, and keep the documented Hyperliquid testnet smoke path. Stage 11 Promotion and shadow validation may begin next.
+Reason: Stage 11 Promotion pipeline and shadow-only integration is complete on the research branch. Promotion candidates now have explicit manifest validation, development-plan evidence floors, a live-branch shadow loader, runtime recognition that does not instantiate execution inputs, live-order rejection, and read-only operator diagnostics. Stage 12 Later-stage research expansion and institutional tuning may begin next.
