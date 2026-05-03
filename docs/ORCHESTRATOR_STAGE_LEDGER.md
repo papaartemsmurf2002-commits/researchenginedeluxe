@@ -2,7 +2,7 @@
 
 Current stage: Stage 12 - Later-stage research expansion and institutional tuning
 Current stage owner: Orchestrator Agent
-Stage status: in progress
+Stage status: partial - empirical acceptance blocked
 Last updated: 2026-05-03
 
 ## Stage entry decision
@@ -10,10 +10,14 @@ Last updated: 2026-05-03
 - Prior stage completed: yes
 - Evidence links:
   - `docs/stage_reports/STAGE_12_1_EXIT_REPORT.md`
+  - `docs/stage_reports/STAGE_12_EXIT_REPORT.md`
+  - `docs/stage_reports/STAGE_12_COMPLETION_LIMITATIONS.md`
   - `src/tradingbotsuite/research/feature_ablation.py`
+  - `src/tradingbotsuite/research/stage12_research.py`
   - `configs/features/features_microstructure_filter_only.json`
   - `configs/features/features_cross_asset_context.json`
   - `tests/tradingbotsuite/test_feature_ablation.py`
+  - `tests/tradingbotsuite/test_stage12_research_plan.py`
   - `tests/contracts/test_feature_contracts.py`
 - Known blockers accepted into this stage:
   - None.
@@ -36,6 +40,7 @@ Last updated: 2026-05-03
 | WP10-01-live-preflight-hardening | Orchestrator Agent | closed | `src/tradingbotsuite/live/preflight.py`, `src/tradingbotsuite/promotion/artifact_validator.py`, `tests/live/**`, `docs/stage_reports/STAGE_10_EXIT_REPORT.md` | Live mode fails closed on unsafe config, research commands and research artifacts are rejected, root launchers delegate through canonical preflight, and testnet smoke remains documented. |
 | WP11-01-promotion-shadow-bridge | Orchestrator Agent | closed | `src/tradingbotsuite/promotion/artifact_validator.py`, `src/tradingbotsuite/live/shadow_loader.py`, `src/tradingbotsuite/runtime.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/**`, `tests/live/**`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/stage_reports/STAGE_11_EXIT_REPORT.md` | Promotion candidates validate against Stage 11 evidence floors, load only in shadow mode without execution changes, are rejected as live order inputs, and display read-only shadow diagnostics in the operator UI. |
 | WP12-01-feature-ablation-and-replacement | Orchestrator Agent | closed | `src/tradingbotsuite/research/feature_ablation.py`, `configs/features/**`, `tests/tradingbotsuite/test_feature_ablation.py`, `docs/stage_reports/STAGE_12_1_EXIT_REPORT.md` | Stage 12.1 feature ablation tracks produce reproducible manifests, pending/rejected hypothesis records, per-hypothesis experiment specs, and OOS/stress-only acceptance rules. |
+| WP12-02-research-track-gates-and-limitations | Orchestrator Agent | closed with empirical limitations | `src/tradingbotsuite/research/stage12_research.py`, `tests/tradingbotsuite/test_stage12_research_plan.py`, `docs/stage_reports/STAGE_12_EXIT_REPORT.md`, `docs/stage_reports/STAGE_12_COMPLETION_LIMITATIONS.md` | Substages 12.2-12.7 produce reproducible manifests/specs and documented blocked/pending hypotheses; empirical acceptance remains blocked until real OOS/stress evidence exists. |
 
 ## Gate checklist
 
@@ -46,11 +51,13 @@ Last updated: 2026-05-03
 | Reproducible ablation manifests and experiment specs are written | `src/tradingbotsuite/research/feature_ablation.py` | yes |
 | Rejected/pending hypotheses are documented | `tests/tradingbotsuite/test_feature_ablation.py` | yes |
 | In-sample-only acceptance is rejected | `tests/tradingbotsuite/test_feature_ablation.py` | yes |
-| Stage 12 remains open for 12.2-12.7 | Development plan and carry-forward note | yes |
+| Substages 12.2-12.7 have reproducible manifests/specs | `src/tradingbotsuite/research/stage12_research.py`, `tests/tradingbotsuite/test_stage12_research_plan.py` | yes |
+| Empirical Stage 12 acceptance limitation documented | `docs/stage_reports/STAGE_12_COMPLETION_LIMITATIONS.md` | yes |
+| Live mode rejects Stage 12 planning commands | `tests/live/test_preflight.py` | yes |
 | No P0 issues open | `docs/KNOWN_ISSUES.md` | yes |
 | Fewer than four unresolved P1 issues | `docs/KNOWN_ISSUES.md` | yes |
 
 ## Orchestrator decision
 
-Decision: continue
-Reason: Stage 12.1 Feature ablation and replacement is complete. Stage 12 remains in progress because regime comparison, KNN alternatives, meta-model testing, exit model research, portfolio/capital allocation, and ETH/multi-asset expansion are not complete yet. Stage 12.2 Regime model comparison is next.
+Decision: hold before Stage 13
+Reason: Stage 12 reproducible planning, manifest generation, and evidence gates are complete for substages 12.1-12.7. Full empirical Stage 12 completion is blocked because the repository does not contain sufficient new OOS/stress evidence, accepted optional dependency decisions, single-strategy evidence for portfolio allocation, or ETH-specific data artifacts. Do not advance to Stage 13 until the empirical evidence limitation is resolved or explicitly accepted.

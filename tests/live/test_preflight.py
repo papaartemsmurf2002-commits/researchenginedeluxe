@@ -55,7 +55,7 @@ def test_live_preflight_passes_safe_testnet_config_and_surfaces_basis_checks(tmp
     assert report.live_basis_checks["max_basis_bps"] == "75"
 
 
-@pytest.mark.parametrize("command", ["run-hmm-knn-experiments", "plan-feature-ablation"])
+@pytest.mark.parametrize("command", ["run-hmm-knn-experiments", "plan-feature-ablation", "plan-stage12-research"])
 def test_live_preflight_rejects_research_command_even_when_other_live_checks_pass(tmp_path: Path, command: str) -> None:
     with pytest.raises(LivePreflightError) as exc_info:
         assert_live_preflight(_safe_live_config(tmp_path), command=command)

@@ -44,6 +44,14 @@ python -m tradingbotsuite.main plan-feature-ablation --output-dir data/research/
 
 The command writes a Stage 12.1 feature ablation manifest, per-hypothesis experiment specs, a CSV summary, and rejected/pending hypothesis notes. It does not run live, paper, or shadow execution and it cannot promote a model.
 
+Full Stage 12 planning is also research-only:
+
+```powershell
+python -m tradingbotsuite.main plan-stage12-research --output-dir data/research/stage12
+```
+
+This writes manifests and experiment specs for substages 12.1 through 12.7 plus a completion-limitations artifact. It does not mark empirical hypotheses as accepted unless OOS and stress evidence is supplied.
+
 Console pages:
 
 - `Overview`: health, position, safety, stream status, microstructure, recommendations, and recent traces in readable status cards

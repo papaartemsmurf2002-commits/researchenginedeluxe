@@ -22,6 +22,7 @@ LIVE_RESEARCH_COMMANDS = frozenset(RESEARCH_JOB_NAMES) | frozenset(
         "fetch-crypto-lake",
         "monitor-hmm-knn",
         "plan-feature-ablation",
+        "plan-stage12-research",
         "replay-eval",
         "replay-hmm-knn",
         "run-hmm-knn-experiments",

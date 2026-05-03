@@ -24,3 +24,4 @@ Research artifacts must be explicit about non-live status.
 - Generated artifacts must include content hashes or config hashes where applicable.
 - Generated artifacts must not be committed unless they are small deterministic fixtures explicitly listed in a work packet.
 - Stage 12 ablation manifests must remain `research_only`, `observe_only`, and `promotion_ready: false`; accepted hypotheses require OOS and stress evidence and cannot be based on in-sample tuning only.
+- Stage 12 aggregate research manifests must include a completion-limitations artifact when empirical OOS/stress evidence is not available. Planning artifacts alone are not promotion evidence.
