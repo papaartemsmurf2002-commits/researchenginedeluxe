@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R63 liquidation context feature pack
+Current stage: Stage R64 checked liquidation fixture evidence
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR63 complete; checked liquidation fixture evidence required before classifier or cycle wiring
+Stage status: closed - WPR64 complete; ready to open classifier implementation packet without checked provider-cycle wiring
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -103,6 +103,7 @@ Last updated: 2026-05-05
 | WPR61-01-split-safe-knn-local-analog-filter | Codex Research Agent | closed | `src/tradingbotsuite/strategies/hmm_knn_local_analog_filter.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `configs/strategies/hmm_knn_local_analog_filter_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `docs/work_packets/WPR61-01-split-safe-knn-local-analog-filter.md`, `docs/stage_reports/STAGE_R61_SPLIT_SAFE_KNN_LOCAL_ANALOG_FILTER_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `hmm_knn_local_analog_filter_v2` as a research-only split-safe KNN local analog strategy without recomputing neighbors or changing checked provider-cycle wiring. |
 | WPR62-01-liquidation-fixture-intake-foundation | Codex Research Agent | closed | `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `src/tradingbotsuite/main.py`, `tests/tradingbotsuite/test_market_data_collection.py`, `tests/contracts/test_historical_fixture_pack_contract.py`, `docs/work_packets/WPR62-01-liquidation-fixture-intake-foundation.md`, `docs/stage_reports/STAGE_R62_LIQUIDATION_FIXTURE_INTAKE_FOUNDATION_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added research-only liquidation archive intake and optional fixture-pack context materialization without implementing the classifier or changing checked provider-cycle wiring. |
 | WPR63-01-liquidation-context-feature-pack | Codex Research Agent | closed | `src/tradingbotsuite/features/registry.py`, `src/tradingbotsuite/features/packs.py`, `src/tradingbotsuite/features/builders.py`, `configs/features/features_liquidation_context_v1.json`, `tests/features/test_feature_builders.py`, `tests/contracts/test_feature_contracts.py`, `docs/work_packets/WPR63-01-liquidation-context-feature-pack.md`, `docs/stage_reports/STAGE_R63_LIQUIDATION_CONTEXT_FEATURE_PACK_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added registered `features_liquidation_context_v1` with windowed liquidation materialization, explicit missingness, and no classifier or checked cycle wiring. |
+| WPR64-01-checked-liquidation-fixture-evidence | Codex Research Agent | closed | `.gitignore`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `data/research/fixtures/btcusdt_liquidation_free_sample_v1/**`, `docs/runbooks/crypto_lake_free_data_runbook.md`, `tests/contracts/test_historical_fixture_pack_contract.py`, `docs/work_packets/WPR64-01-checked-liquidation-fixture-evidence.md`, `docs/stage_reports/STAGE_R64_CHECKED_LIQUIDATION_FIXTURE_EVIDENCE_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added checked BTCUSDT Crypto Lake free-sample liquidation fixture evidence with 1,440 primary bars, 1,162 liquidation context rows, diagnostic-only provenance, and validation recorded in Stage R64 report. |
 
 ## Gate checklist
 
@@ -360,3 +361,8 @@ Reason: The branch now accepts research-only Crypto Lake `liquidation` archive r
 
 Decision: R63 liquidation context feature pack complete; checked liquidation fixture evidence required before classifier or cycle wiring
 Reason: The branch now has a registered `features_liquidation_context_v1` feature set backed by `liquidation_context_v1`, with event-window materialization for optional liquidation context and explicit missingness for unknown windows. Checked BTCUSDT/ETHUSDT cycles, classifier work, live behavior, and promotion evidence remain unchanged.
+
+## Checked liquidation fixture evidence wave
+
+Decision: R64 checked liquidation fixture evidence complete; ready to open classifier implementation packet
+Reason: The branch now has a checked BTCUSDT Crypto Lake free-sample liquidation fixture pack with matching 1m candles and real liquidation context rows. The fixture is research-only, observe-only, promotion-ready false, and diagnostic-only free-sample evidence. It is sufficient to support local classifier implementation and tests, but not broad OOS/stress acceptance, checked BTCUSDT/ETHUSDT provider-cycle wiring, candidate-pack eligibility, promotion evidence, or live behavior.

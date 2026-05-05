@@ -55,5 +55,7 @@ lc_ui_server*.log
 !/data/research/fixtures/btcusdt_context_provider_latest_month_v1/**
 !/data/research/fixtures/ethusdt_context_provider_latest_month_v1/
 !/data/research/fixtures/ethusdt_context_provider_latest_month_v1/**
+!/data/research/fixtures/btcusdt_liquidation_free_sample_v1/
+!/data/research/fixtures/btcusdt_liquidation_free_sample_v1/**
 !tests/fixtures/**/*.csv
 tests/fixtures/btc_15m_fixture.json

@@ -24,6 +24,9 @@ CHECKED_IN_FIXTURE_MANIFEST = REPO_ROOT / "data" / "research" / "fixtures" / "bt
 CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST = (
     REPO_ROOT / "data" / "research" / "fixtures" / "ethusdt_context_provider_latest_month_v1" / "fixture_pack_manifest.json"
 )
+CHECKED_IN_BTC_LIQUIDATION_FREE_SAMPLE_FIXTURE_MANIFEST = (
+    REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_liquidation_free_sample_v1" / "fixture_pack_manifest.json"
+)
 REMOVED_CHART_SOURCE = "trading" + "view"
 REMOVED_CHART_SOURCE_FLAG = REMOVED_CHART_SOURCE + "_source_used"
 REMOVED_CHART_EXPORT_SOURCE = REMOVED_CHART_SOURCE + "_" + "chart" + "_export"
@@ -192,6 +195,87 @@ def test_checked_in_ethusdt_context_provider_fixture_pack_manifest_validates() -
     assert pd.to_numeric(cycle["source_row_index"]).diff().dropna().eq(1).all()
     assert int(cycle["time_ms"].min()) == manifest["derivation"]["first_time_ms"]
     assert int(cycle["time_ms"].max()) == manifest["derivation"]["last_time_ms"]
+
+
+def test_checked_in_btcusdt_liquidation_free_sample_fixture_manifest_validates() -> None:
+    manifest = json.loads(CHECKED_IN_BTC_LIQUIDATION_FREE_SAMPLE_FIXTURE_MANIFEST.read_text(encoding="utf-8"))
+
+    validation = assert_valid_historical_fixture_pack_manifest(
+        manifest,
+        manifest_path=CHECKED_IN_BTC_LIQUIDATION_FREE_SAMPLE_FIXTURE_MANIFEST,
+    )
+    payload = validation.to_payload()
+
+    assert validation.valid is True
+    assert validation.fixture_id == "btcusdt-liquidation-free-sample-v1"
+    assert validation.row_count == 1440
+    assert validation.cycle_dataset_path == CHECKED_IN_BTC_LIQUIDATION_FREE_SAMPLE_FIXTURE_MANIFEST.parent / "cycle_dataset.parquet"
+    assert payload["lower_timeframe_family"] == {}
+    assert set(payload["optional_context_families"]) == {"liquidation"}
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["symbol"] == "BTCUSDT"
+    assert manifest["base_interval"] == "1m"
+    assert manifest["source"]["source_name"] == "crypto_lake"
+    assert manifest["source"]["source_raw"] == "crypto_lake"
+    assert manifest["source"]["data_family"] == "kline"
+    assert manifest["source"]["source_access_mode"] == "free_sample"
+    assert manifest["source"]["free_sample_data"] is True
+    assert manifest["source"]["coverage_scope"] == "free_sample_diagnostic"
+    assert manifest["source"]["diagnostic_only"] is True
+    assert manifest["source"]["latest_window_only"] is False
+    assert manifest["source"]["retention_policy"]["scope"] == "anonymous_free_sample"
+    assert manifest["source"]["stream_health"]["status"] == "not_applicable_batch_backfill"
+    assert manifest["derivation"][REMOVED_CHART_SOURCE_FLAG] is False
+    assert manifest["derivation"]["synthetic_source_used"] is False
+    assert set(manifest["omitted_optional_families"]) == {
+        "lower_timeframe_bars",
+        "funding_rate",
+        "premium_index",
+        "open_interest",
+        "agg_trade",
+    }
+
+    family_manifest = manifest["families"]["liquidation"]
+    family_payload = payload["optional_context_families"]["liquidation"]
+    assert family_manifest["data_family"] == "liquidation"
+    assert family_manifest["row_count"] == 1162
+    assert family_manifest["source_access_mode"] == "free_sample"
+    assert family_manifest["free_sample_data"] is True
+    assert family_manifest["coverage_scope"] == "free_sample_diagnostic"
+    assert family_manifest["diagnostic_only"] is True
+    assert family_manifest["context_family_role"] == "perp_context"
+    assert family_manifest["research_only"] is True
+    assert family_manifest["observe_only"] is True
+    assert family_manifest["promotion_ready"] is False
+    assert family_manifest["latest_window_only"] is False
+    assert family_manifest["retention_policy"]["scope"] == "anonymous_free_sample"
+    assert family_manifest["stream_health"]["status"] == "not_applicable_batch_backfill"
+    assert family_payload["research_only"] is True
+    assert family_payload["observe_only"] is True
+    assert family_payload["promotion_ready"] is False
+
+    context_sources = manifest["source"]["context_sources"]
+    assert len(context_sources) == 1
+    assert context_sources[0]["data_family"] == "liquidation"
+    assert context_sources[0]["source_access_mode"] == "free_sample"
+    assert context_sources[0]["fixture_row_count"] == 1162
+
+    liquidation_path = CHECKED_IN_BTC_LIQUIDATION_FREE_SAMPLE_FIXTURE_MANIFEST.parent / family_manifest["path"]
+    liquidation = pd.read_parquet(liquidation_path)
+    assert len(liquidation) == 1162
+    assert {
+        "liquidation_event_count",
+        "liquidation_quote_notional",
+        "liquidation_buy_notional",
+        "liquidation_sell_notional",
+        "liquidation_side_imbalance",
+    } <= set(liquidation.columns)
+    assert float(liquidation["liquidation_event_count"].sum()) >= 1162.0
+    assert float(liquidation["liquidation_quote_notional"].sum()) > 0.0
+    assert int(liquidation["event_time_ms"].min()) >= int(manifest["derivation"]["first_time_ms"])
+    assert int(liquidation["event_time_ms"].max()) <= int(manifest["derivation"]["last_time_ms"])
 
 
 def test_provider_kline_fixture_pack_builder_accepts_binance_usdm_cache_manifest(tmp_path: Path) -> None:

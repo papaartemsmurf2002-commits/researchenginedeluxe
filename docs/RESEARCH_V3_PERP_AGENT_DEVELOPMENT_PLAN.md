@@ -91,7 +91,7 @@ Prefer existing family names unless there is a hard reason to add a new one.
 | `funding_info` | Future addition. | Add only after manifest and collector semantics are clear. Missing rows must not silently imply default cap/floor/interval values. |
 | `long_short_ratios` | Future addition. | Useful for crowding, but retention-limited direct endpoints must be flagged. |
 | `spot_context` | Future addition. | Needed for true spot/perp basis work and ETH/BTC residuals. Keep single-leg perp strategies named directional convergence proxies. |
-| `liquidations` | Future addition. | Requires stream/vendor archive and stream-health evidence. Crypto Lake free sample may help diagnose schema support, but unknown windows are missing, not zero. |
+| `liquidation` | Supported as optional diagnostic fixture context after WPR62-WPR64. | Crypto Lake/local archive rows can be normalized, `features_liquidation_context_v1` exists, and WPR64 adds a checked BTCUSDT free-sample fixture for local classifier development. Broad durable provider-cycle evidence, stream coverage, and checked BTCUSDT/ETHUSDT cycle wiring remain future work. Unknown windows are missing, not zero. |
 | `l2_orderbook_optional` | Future addition. | Requires durable snapshots/events, depth aggregation, and stream-health evidence. |
 | `cross_exchange_perp_context_optional` | Future addition. | Later cross-exchange context only; not part of the first BTC/ETH provider-backed pass. |
 
@@ -463,9 +463,11 @@ Add only after WPR49-WPR52 are stable:
 7. Split-safe HMM router - complete in WPR60 as `hmm_routed_alpha_sleeves_v2`, a research-only strategy that consumes split-safe posterior columns and is not wired into checked provider cycles until posterior materialization exists
 8. Split-safe KNN local analog filter - complete in WPR61 as `hmm_knn_local_analog_filter_v2`, a research-only strategy that consumes split-safe KNN/HMM artifact columns and is not wired into checked provider cycles until KNN prediction materialization exists
 9. Liquidation fixture intake foundation - complete in WPR62 for Crypto Lake/local archive normalization and optional fixture-pack materialization
-10. Liquidation context feature pack - complete in WPR63 as `features_liquidation_context_v1` with event-window materialization; `liquidation_absorption_classifier_v1` remains gated on checked liquidation fixture evidence
-11. L2 liquidity filter after durable order-book fixtures
-12. Cross-exchange/cross-sectional context after BTC/ETH cycles are stable
+10. Liquidation context feature pack - complete in WPR63 as `features_liquidation_context_v1` with event-window materialization
+11. Checked liquidation fixture evidence - complete in WPR64 as `btcusdt_liquidation_free_sample_v1`, a diagnostic-only Crypto Lake free-sample fixture with 1,440 primary bars and 1,162 liquidation context rows
+12. `liquidation_absorption_classifier_v1` after WPR64 as a separate research-only classifier packet, without checked BTCUSDT/ETHUSDT provider-cycle wiring until the classifier passes local fixture and contract validation
+13. L2 liquidity filter after durable order-book fixtures
+14. Cross-exchange/cross-sectional context after BTC/ETH cycles are stable
 
 ## Future Data Guardrails
 

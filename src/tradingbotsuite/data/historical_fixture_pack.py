@@ -249,6 +249,11 @@ def build_provider_kline_fixture_pack(
         source_non_promotable_reasons.append("optional_context_family_manifests_are_research_only")
     else:
         source_non_promotable_reasons.append("ohlcv_only_optional_context_omitted")
+    source_metadata = _provider_source_metadata(
+        source_manifest,
+        source_name=source_name,
+        data_family=data_family,
+    )
 
     manifest = {
         "manifest_version": HISTORICAL_FIXTURE_PACK_MANIFEST_VERSION,
@@ -279,6 +284,7 @@ def build_provider_kline_fixture_pack(
             "source_first_time_ms": int(source["time_ms"].min()),
             "source_last_time_ms": int(source["time_ms"].max()),
             "context_sources": context_source_records,
+            **source_metadata,
         },
         "derivation": {
             "derivation_type": "contiguous_tail_slice",
@@ -583,6 +589,48 @@ def _selected_context_metadata(entry: Mapping[str, Any]) -> dict[str, Any]:
         for field in CONTEXT_MANIFEST_METADATA_FIELDS
         if field in entry
     }
+
+
+def _provider_source_metadata(
+    manifest: Mapping[str, Any],
+    *,
+    source_name: str,
+    data_family: str,
+) -> dict[str, Any]:
+    metadata = _selected_context_metadata(manifest)
+    metadata.pop("context_family_role", None)
+    if source_name == "crypto_lake":
+        free_sample = metadata.get("source_access_mode") == "free_sample" or manifest.get("free_sample_data") is True
+        if free_sample:
+            metadata["source_access_mode"] = "free_sample"
+            metadata["free_sample_data"] = True
+            metadata.setdefault("diagnostic_only", True)
+            metadata.setdefault("coverage_scope", "free_sample_diagnostic")
+            metadata.setdefault(
+                "retention_policy",
+                {
+                    "scope": "anonymous_free_sample",
+                    "claim": "sample_coverage_only",
+                },
+            )
+        else:
+            metadata.setdefault("coverage_scope", "local_vendor_export")
+            metadata.setdefault(
+                "retention_policy",
+                {
+                    "scope": "local_export_file",
+                    "claim": "coverage_limited_to_local_export",
+                },
+            )
+        metadata.setdefault("latest_window_only", False)
+        metadata.setdefault(
+            "stream_health",
+            {
+                "status": "not_applicable_batch_backfill",
+                "reason": f"{data_family} rows are archive/backfill research data; no live stream continuity is claimed",
+            },
+        )
+    return metadata
 
 
 def _provider_context_metadata(

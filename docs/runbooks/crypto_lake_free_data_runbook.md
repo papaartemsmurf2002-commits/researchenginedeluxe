@@ -12,7 +12,8 @@ diagnostic fallback.
 
 - Local Crypto Lake-style export ingestion: `.csv`, `.json`, `.jsonl`, or `.parquet`.
 - Direct free sample-data fetch through optional `lakeapi`.
-- Supported normalized families: `kline`, `trade`, `funding_rate`, `open_interest`.
+- Supported normalized families: `kline`, `trade`, `funding_rate`,
+  `open_interest`, `liquidation`.
 - Research-only output under ignored `data/` paths with manifests, hashes, gap checks, and duplicate checks.
 
 Crypto Lake free sample output remains `research_only`, `observe_only`,
@@ -82,9 +83,31 @@ Verified locally on 2026-05-05: this command wrote 1,440 one-minute rows with
 `gap_count: 0`, `duplicate_count: 0`, `source_access_mode: free_sample`, and
 `free_sample_data: true`.
 
+The free sample also includes a small BTCUSDT liquidation partition for
+2023-02-01. This command writes the liquidation context manifest used by the
+checked WPR64 fixture:
+
+```powershell
+$env:PYTHONPATH="src"
+
+python -m tradingbotsuite.main fetch-crypto-lake `
+  --symbol BTCUSDT `
+  --provider-symbol BTC-USDT-PERP `
+  --data-family liquidation `
+  --start-time "2023-02-01" `
+  --end-time "2023-02-02" `
+  --exchange BINANCE_FUTURES `
+  --table liquidations `
+  --output-dir data/research/market_data/crypto_lake/wpr64_btcusdt_liquidation_free_sample
+```
+
+Verified locally on 2026-05-05: this liquidation command wrote 1,162 rows with
+`source_access_mode: free_sample`, `coverage_scope: free_sample_diagnostic`,
+and `free_sample_data: true`.
+
 If the result is empty, check Crypto Lake free-data coverage for the exact table,
 symbol, and date. Free sample data is intentionally limited and may not contain
-the same perpetual symbols or windows as full provider coverage.
+the same perpetual symbols, families, or windows as full provider coverage.
 
 ## Local Export Ingestion
 
