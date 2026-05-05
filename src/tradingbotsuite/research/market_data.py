@@ -5,6 +5,8 @@ import hashlib
 import io
 import json
 import time
+import asyncio
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
@@ -26,6 +28,7 @@ from tradingbotsuite.research.market_journal import (
 BINANCE_USDM_FAPI_URL = "https://fapi.binance.com"
 BINANCE_VISION_BASE_URL = "https://data.binance.vision"
 COLLECTOR_VERSION = "binance-usdm-chart-bars-v1"
+BINANCE_USDM_CONTEXT_COLLECTOR_VERSION = "binance-usdm-context-rest-v1"
 BINANCE_VISION_ARCHIVE_SCHEMA_VERSION = "binance-vision-archive-jsonl-v1"
 BINANCE_VISION_ARCHIVE_INGESTOR_VERSION = "binance-vision-local-ingestor-v1"
 BINANCE_VISION_DOWNLOADER_VERSION = "binance-vision-downloader-v1"
@@ -37,6 +40,8 @@ RESEARCH_CRYPTO_LAKE_DATA_ROOT = Path("data/research/market_data/crypto_lake")
 SUPPORTED_RESEARCH_SYMBOLS = frozenset({"BTCUSDT", "ETHUSDT"})
 SUPPORTED_BINANCE_VISION_DATA_FAMILIES = frozenset({"kline", "agg_trade", "trade"})
 SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES = frozenset({"kline", "trade", "funding_rate", "open_interest"})
+SUPPORTED_BINANCE_USDM_CONTEXT_FAMILIES = frozenset({"funding_rate", "premium_index", "open_interest"})
+SUPPORTED_BINANCE_USDM_CONTEXT_PERIODS = frozenset({"5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"})
 
 _KLINE_HEADER = (
     "open_time_ms",
@@ -135,6 +140,19 @@ class BinanceHistoricalBarClient(Protocol):
         ...
 
 
+class BinanceUsdMContextFetcher(Protocol):
+    async def fetch_context_rows(
+        self,
+        *,
+        symbol: str,
+        data_family: str,
+        start_time_ms: int,
+        end_time_ms: int,
+        interval: str,
+    ) -> list[Any]:
+        ...
+
+
 class MarketDataValidationError(ValueError):
     pass
 
@@ -228,6 +246,12 @@ def _canonical_hash(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(_canonical_json_bytes(payload)).hexdigest()
 
 
+def _canonical_payload_hash(payload: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str).encode("utf-8")
+    ).hexdigest()
+
+
 def _spacing_report(bars: list[Bar], *, interval_ms: int) -> dict[str, Any]:
     sorted_times = sorted(int(bar.time_ms) for bar in bars)
     seen: set[int] = set()
@@ -288,6 +312,32 @@ def _validate_crypto_lake_data_family(data_family: str) -> str:
     if normalized not in SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES:
         raise ValueError(
             f"crypto lake data_family must be one of: {', '.join(sorted(SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES))}"
+        )
+    return normalized
+
+
+def _validate_binance_usdm_context_data_family(data_family: str) -> str:
+    normalized = data_family.strip().lower().replace("-", "_")
+    if normalized in {"funding", "funding_rates"}:
+        normalized = "funding_rate"
+    elif normalized in {"premium", "premiumindex"}:
+        normalized = "premium_index"
+    elif normalized in {"oi", "openinterest"}:
+        normalized = "open_interest"
+    if normalized not in SUPPORTED_BINANCE_USDM_CONTEXT_FAMILIES:
+        raise ValueError(
+            "binance context data_family must be one of: "
+            + ", ".join(sorted(SUPPORTED_BINANCE_USDM_CONTEXT_FAMILIES))
+        )
+    return normalized
+
+
+def _validate_binance_usdm_context_interval(interval: str, *, data_family: str) -> str:
+    normalized = _validate_interval(interval)
+    if data_family == "open_interest" and normalized not in SUPPORTED_BINANCE_USDM_CONTEXT_PERIODS:
+        raise ValueError(
+            "open_interest period must be one of: "
+            + ", ".join(sorted(SUPPORTED_BINANCE_USDM_CONTEXT_PERIODS))
         )
     return normalized
 
@@ -354,6 +404,10 @@ def binance_vision_archive_url(
 def _fetch_bytes(url: str, *, timeout_seconds: float = 60.0) -> bytes:
     with urllib.request.urlopen(url, timeout=timeout_seconds) as response:  # nosec B310 - research CLI fetcher
         return response.read()
+
+
+def _fetch_json(url: str, *, timeout_seconds: float = 60.0) -> Any:
+    return json.loads(_fetch_bytes(url, timeout_seconds=timeout_seconds).decode("utf-8"))
 
 
 def _parse_checksum_payload(payload: bytes) -> str | None:
@@ -952,6 +1006,13 @@ def _timestamp_to_ms(value: Any) -> int:
     return numeric * 1000
 
 
+def _optional_string_value(row: Mapping[str, Any], names: tuple[str, ...]) -> str | None:
+    value = _first_present(row, names)
+    if value is None:
+        return None
+    return str(value)
+
+
 def _normalize_crypto_lake_row(
     row: Mapping[str, Any],
     *,
@@ -1293,6 +1354,410 @@ def read_market_journal(
         manifest_path=manifest_path,
         validate_manifest=validate_manifest,
     )
+
+
+class BinanceUsdMRestContextFetcher:
+    def __init__(self, base_url: str = BINANCE_USDM_FAPI_URL, *, timeout_seconds: float = 60.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.timeout_seconds = timeout_seconds
+
+    async def fetch_context_rows(
+        self,
+        *,
+        symbol: str,
+        data_family: str,
+        start_time_ms: int,
+        end_time_ms: int,
+        interval: str,
+    ) -> list[Any]:
+        return await asyncio.to_thread(
+            self._fetch_context_rows_sync,
+            symbol=symbol,
+            data_family=data_family,
+            start_time_ms=start_time_ms,
+            end_time_ms=end_time_ms,
+            interval=interval,
+        )
+
+    def _fetch_context_rows_sync(
+        self,
+        *,
+        symbol: str,
+        data_family: str,
+        start_time_ms: int,
+        end_time_ms: int,
+        interval: str,
+    ) -> list[Any]:
+        if data_family == "funding_rate":
+            return self._fetch_paginated(
+                path="/fapi/v1/fundingRate",
+                params={"symbol": symbol, "limit": 1000},
+                start_time_ms=start_time_ms,
+                end_time_ms=end_time_ms,
+                event_time_getter=lambda row: _timestamp_to_ms(_required_present(row, ("fundingTime", "funding_time_ms", "event_time_ms"))),
+                next_start_delta_ms=1,
+            )
+        if data_family == "premium_index":
+            return self._fetch_paginated(
+                path="/fapi/v1/premiumIndexKlines",
+                params={"symbol": symbol, "interval": interval, "limit": 1500},
+                start_time_ms=start_time_ms,
+                end_time_ms=end_time_ms,
+                event_time_getter=lambda row: _timestamp_to_ms(row[0] if isinstance(row, list) else _required_present(row, ("open_time", "open_time_ms", "event_time_ms"))),
+                next_start_delta_ms=INTERVAL_TO_MS[interval],
+            )
+        if data_family == "open_interest":
+            return self._fetch_paginated_backward(
+                path="/futures/data/openInterestHist",
+                params={"symbol": symbol, "period": interval, "limit": 500},
+                start_time_ms=start_time_ms,
+                end_time_ms=end_time_ms,
+                event_time_getter=lambda row: _timestamp_to_ms(_required_present(row, ("timestamp", "time_ms", "event_time_ms"))),
+                previous_end_delta_ms=INTERVAL_TO_MS[interval],
+            )
+        raise ValueError(f"unsupported_binance_usdm_context_family:{data_family}")
+
+    def _fetch_paginated(
+        self,
+        *,
+        path: str,
+        params: dict[str, object],
+        start_time_ms: int,
+        end_time_ms: int,
+        event_time_getter: Callable[[Any], int],
+        next_start_delta_ms: int,
+    ) -> list[Any]:
+        rows: list[Any] = []
+        cursor = start_time_ms
+        max_pages = 1000
+        for _ in range(max_pages):
+            query = dict(params)
+            query["startTime"] = cursor
+            query["endTime"] = end_time_ms
+            url = f"{self.base_url}{path}?{urllib.parse.urlencode(query)}"
+            payload = _fetch_json(url, timeout_seconds=self.timeout_seconds)
+            if not isinstance(payload, list):
+                raise MarketDataValidationError(f"binance context endpoint returned non-list payload:{path}")
+            if not payload:
+                break
+            rows.extend(payload)
+            last_event_time_ms = max(event_time_getter(row) for row in payload)
+            next_cursor = last_event_time_ms + next_start_delta_ms
+            if next_cursor > end_time_ms or next_cursor <= cursor:
+                break
+            cursor = next_cursor
+            if len(payload) < int(params.get("limit", len(payload))):
+                break
+        else:
+            raise MarketDataValidationError(f"binance context pagination exceeded page limit:{path}")
+        return rows
+
+    def _fetch_paginated_backward(
+        self,
+        *,
+        path: str,
+        params: dict[str, object],
+        start_time_ms: int,
+        end_time_ms: int,
+        event_time_getter: Callable[[Any], int],
+        previous_end_delta_ms: int,
+    ) -> list[Any]:
+        rows: list[Any] = []
+        cursor_end = end_time_ms
+        max_pages = 1000
+        for _ in range(max_pages):
+            query = dict(params)
+            query["startTime"] = start_time_ms
+            query["endTime"] = cursor_end
+            url = f"{self.base_url}{path}?{urllib.parse.urlencode(query)}"
+            payload = _fetch_json(url, timeout_seconds=self.timeout_seconds)
+            if not isinstance(payload, list):
+                raise MarketDataValidationError(f"binance context endpoint returned non-list payload:{path}")
+            if not payload:
+                break
+            rows.extend(payload)
+            event_times = [event_time_getter(row) for row in payload]
+            first_event_time_ms = min(event_times)
+            next_cursor_end = first_event_time_ms - previous_end_delta_ms
+            if first_event_time_ms <= start_time_ms or next_cursor_end < start_time_ms or next_cursor_end >= cursor_end:
+                break
+            cursor_end = next_cursor_end
+            if len(payload) < int(params.get("limit", len(payload))):
+                break
+        else:
+            raise MarketDataValidationError(f"binance context pagination exceeded page limit:{path}")
+        return rows
+
+
+async def collect_binance_usdm_context(
+    *,
+    symbol: str,
+    data_family: str,
+    start_time_ms: int,
+    end_time_ms: int,
+    output_dir: Path | None = None,
+    interval: str = "5m",
+    strict: bool = False,
+    fetcher: BinanceUsdMContextFetcher | None = None,
+) -> MarketDataArchiveIngestionResult:
+    """Collect research-only Binance USD-M context rows for fixture-pack construction."""
+
+    normalized_symbol = _normalize_symbol(symbol)
+    normalized_family = _validate_binance_usdm_context_data_family(data_family)
+    normalized_interval = _validate_binance_usdm_context_interval(interval, data_family=normalized_family)
+    if start_time_ms < 0 or end_time_ms < 0:
+        raise ValueError("start_time_ms and end_time_ms must be non-negative")
+    if end_time_ms < start_time_ms:
+        raise ValueError("end_time_ms must be greater than or equal to start_time_ms")
+
+    context_fetcher = fetcher or BinanceUsdMRestContextFetcher()
+    raw_rows = await context_fetcher.fetch_context_rows(
+        symbol=normalized_symbol,
+        data_family=normalized_family,
+        start_time_ms=start_time_ms,
+        end_time_ms=end_time_ms,
+        interval=normalized_interval,
+    )
+    normalized_rows = [
+        _normalize_binance_usdm_context_row(
+            row,
+            symbol=normalized_symbol,
+            data_family=normalized_family,
+            source_row_index=source_row_index,
+        )
+        for source_row_index, row in enumerate(raw_rows)
+    ]
+    normalized_rows = [
+        row
+        for row in normalized_rows
+        if start_time_ms <= int(row["event_time_ms"]) <= end_time_ms
+    ]
+    normalized_rows = sorted(normalized_rows, key=lambda row: (int(row["event_time_ms"]), int(row["source_row_index"])))
+    report = _context_quality_report(
+        normalized_rows,
+        data_family=normalized_family,
+        interval=normalized_interval,
+    )
+    if strict and (report["duplicate_count"] or report["gap_count"]):
+        raise MarketDataGapError(
+            f"Binance USD-M context duplicate events or gaps for {normalized_symbol} {normalized_family}: "
+            f"gaps={report['gaps']} duplicates={report['duplicates']}"
+        )
+
+    output_root = output_dir if output_dir is not None else RESEARCH_MARKET_DATA_ROOT
+    interval_part = "" if normalized_family == "funding_rate" else f"_{normalized_interval}"
+    data_dir = output_root / normalized_symbol / normalized_family
+    if normalized_family != "funding_rate":
+        data_dir = data_dir / normalized_interval
+    stem = f"{normalized_symbol}_{normalized_family}{interval_part}_{start_time_ms}_{end_time_ms}"
+    data_path = data_dir / f"{stem}.jsonl"
+    manifest_path = data_dir / f"{stem}.manifest.json"
+    content_hash = _write_jsonl(data_path, normalized_rows)
+    source_hash = _canonical_payload_hash({"source": "binance_usdm_rest", "rows": raw_rows})
+    normalized_fields = sorted({key for row in normalized_rows for key in row if key != "raw_payload"})
+    first_event_time_ms = int(normalized_rows[0]["event_time_ms"]) if normalized_rows else None
+    last_event_time_ms = int(normalized_rows[-1]["event_time_ms"]) if normalized_rows else None
+
+    manifest = {
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+        "source_name": "binance_usdm_rest",
+        "source_type": "rest_backfill",
+        "symbol": normalized_symbol,
+        "data_family": normalized_family,
+        "interval": None if normalized_family == "funding_rate" else normalized_interval,
+        "start_time_ms": start_time_ms,
+        "end_time_ms": end_time_ms,
+        "row_count": len(normalized_rows),
+        "first_event_time_ms": first_event_time_ms,
+        "last_event_time_ms": last_event_time_ms,
+        "content_hash": f"sha256:{content_hash}",
+        "source_hash": f"sha256:{source_hash}",
+        "gap_count": int(report["gap_count"]),
+        "duplicate_count": int(report["duplicate_count"]),
+        "gaps": report["gaps"],
+        "duplicates": report["duplicates"],
+        "gap_check_applicable": bool(report["gap_check_applicable"]),
+        "gap_check_status": report["gap_check_status"],
+        "expected_interval_ms": report["expected_interval_ms"],
+        "duplicate_check_applicable": True,
+        "duplicate_event_id_field": "symbol_event_time_ms",
+        "event_time_field": "event_time_ms",
+        "receive_time_field": None,
+        "receive_time_unavailable_reason": (
+            "Binance USD-M REST backfill rows include exchange event time but no original local receive timestamp."
+        ),
+        "schema_version": "binance-usdm-context-jsonl-v1",
+        "collector_version": BINANCE_USDM_CONTEXT_COLLECTOR_VERSION,
+        "endpoint_family": _binance_usdm_context_endpoint_family(normalized_family),
+        "data_path": str(data_path),
+        "manifest_path": str(manifest_path),
+        "schema_fields": normalized_fields,
+        "normalized_fields": normalized_fields,
+        "missing_fields": ["receive_time_ms"],
+        "zero_filled_fields": [],
+        "quality_flags": ["receive_time_unavailable_non_promotable"],
+        "non_promotable_notes": [
+            "Research-only Binance USD-M REST context backfill.",
+            "No legacy chart export, Pine marker, or parity artifact is used.",
+            "No live runtime state, execution state, model pointer, or trading behavior is updated.",
+            "Receive timestamps are unavailable, so rows are diagnostic and not live-promotable.",
+        ],
+    }
+    manifest = {key: value for key, value in manifest.items() if value is not None}
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    return MarketDataArchiveIngestionResult(
+        output_dir=data_dir,
+        data_path=data_path,
+        manifest_path=manifest_path,
+        row_count=len(normalized_rows),
+        gap_count=int(report["gap_count"]),
+        duplicate_count=int(report["duplicate_count"]),
+        content_hash=f"sha256:{content_hash}",
+        source_hash=f"sha256:{source_hash}",
+    )
+
+
+def _normalize_binance_usdm_context_row(
+    row: Any,
+    *,
+    symbol: str,
+    data_family: str,
+    source_row_index: int,
+) -> dict[str, Any]:
+    if data_family == "premium_index" and isinstance(row, list):
+        if len(row) < 5:
+            raise MarketDataValidationError("premium index kline row must contain at least five fields")
+        event_time_ms = _timestamp_to_ms(row[0])
+        premium_close = str(row[4])
+        return {
+            "source_name": "binance_usdm_rest",
+            "symbol": symbol,
+            "data_family": data_family,
+            "source_row_index": source_row_index,
+            "event_time_ms": event_time_ms,
+            "premium_open": str(row[1]),
+            "premium_high": str(row[2]),
+            "premium_low": str(row[3]),
+            "premium_close": premium_close,
+            "premium_index": premium_close,
+            "premium_basis_rate": premium_close,
+            "raw_payload": row,
+        }
+    if not isinstance(row, Mapping):
+        raise MarketDataValidationError(f"context row must be mapping for {data_family}")
+    row_symbol = str(row.get("symbol") or symbol).strip().upper()
+    if row_symbol != symbol:
+        raise MarketDataValidationError(f"context symbol mismatch:{row_symbol}:{symbol}")
+    raw_payload = {str(key): _json_scalar(value) for key, value in row.items()}
+    if data_family == "funding_rate":
+        event_time_ms = _timestamp_to_ms(
+            _required_present(row, ("event_time_ms", "fundingTime", "funding_time_ms", "funding_time"))
+        )
+        normalized = {
+            "source_name": "binance_usdm_rest",
+            "symbol": symbol,
+            "data_family": data_family,
+            "source_row_index": source_row_index,
+            "event_time_ms": event_time_ms,
+            "funding_time_ms": event_time_ms,
+            "funding_rate": str(_required_present(row, ("funding_rate", "fundingRate", "rate"))),
+            "mark_price": _optional_string_value(row, ("mark_price", "markPrice")),
+            "raw_payload": raw_payload,
+        }
+    elif data_family == "premium_index":
+        event_time_ms = _timestamp_to_ms(
+            _required_present(row, ("event_time_ms", "open_time_ms", "openTime", "time", "timestamp"))
+        )
+        premium_value = str(_required_present(row, ("premium_index", "premium_basis_rate", "premium_close", "close")))
+        normalized = {
+            "source_name": "binance_usdm_rest",
+            "symbol": symbol,
+            "data_family": data_family,
+            "source_row_index": source_row_index,
+            "event_time_ms": event_time_ms,
+            "premium_index": premium_value,
+            "premium_basis_rate": premium_value,
+            "premium_close": premium_value,
+            "mark_price": _optional_string_value(row, ("mark_price", "markPrice")),
+            "index_price": _optional_string_value(row, ("index_price", "indexPrice")),
+            "raw_payload": raw_payload,
+        }
+    else:
+        event_time_ms = _timestamp_to_ms(_required_present(row, ("event_time_ms", "timestamp", "time_ms", "time")))
+        normalized = {
+            "source_name": "binance_usdm_rest",
+            "symbol": symbol,
+            "data_family": data_family,
+            "source_row_index": source_row_index,
+            "event_time_ms": event_time_ms,
+            "open_interest": str(_required_present(row, ("open_interest", "sumOpenInterest", "sum_open_interest", "oi"))),
+            "open_interest_value": _optional_string_value(
+                row,
+                ("open_interest_value", "sumOpenInterestValue", "sum_open_interest_value", "open_interest_value_usd"),
+            ),
+            "open_interest_value_usd": _optional_string_value(
+                row,
+                ("open_interest_value_usd", "sumOpenInterestValue", "sum_open_interest_value", "open_interest_value"),
+            ),
+            "raw_payload": raw_payload,
+        }
+    return {key: value for key, value in normalized.items() if value is not None}
+
+
+def _context_quality_report(
+    rows: list[dict[str, Any]],
+    *,
+    data_family: str,
+    interval: str,
+) -> dict[str, Any]:
+    seen: set[tuple[str, int]] = set()
+    duplicates: list[dict[str, Any]] = []
+    for row in rows:
+        key = (str(row["symbol"]), int(row["event_time_ms"]))
+        if key in seen:
+            duplicates.append({"symbol": key[0], "event_time_ms": key[1]})
+        seen.add(key)
+    gaps: list[dict[str, int]] = []
+    expected_interval_ms = INTERVAL_TO_MS.get(interval) if data_family in {"premium_index", "open_interest"} else None
+    if expected_interval_ms is not None:
+        unique_times = sorted({int(row["event_time_ms"]) for row in rows})
+        for previous_time_ms, next_time_ms in zip(unique_times, unique_times[1:]):
+            delta_ms = int(next_time_ms - previous_time_ms)
+            if delta_ms > expected_interval_ms:
+                gaps.append(
+                    {
+                        "previous_event_time_ms": int(previous_time_ms),
+                        "next_event_time_ms": int(next_time_ms),
+                        "delta_ms": delta_ms,
+                        "missing_event_count": max(0, int(delta_ms // expected_interval_ms) - 1),
+                    }
+                )
+        gap_check_status = "checked_fixed_interval"
+    else:
+        gap_check_status = "not_applicable_variable_cadence"
+    return {
+        "gap_count": len(gaps),
+        "duplicate_count": len(duplicates),
+        "gaps": gaps,
+        "duplicates": duplicates,
+        "gap_check_applicable": expected_interval_ms is not None,
+        "gap_check_status": gap_check_status,
+        "expected_interval_ms": expected_interval_ms,
+    }
+
+
+def _binance_usdm_context_endpoint_family(data_family: str) -> str:
+    if data_family == "funding_rate":
+        return "/fapi/v1/fundingRate"
+    if data_family == "premium_index":
+        return "/fapi/v1/premiumIndexKlines"
+    if data_family == "open_interest":
+        return "/futures/data/openInterestHist"
+    raise ValueError(f"unsupported_binance_usdm_context_family:{data_family}")
 
 
 async def collect_binance_usdm_bars(

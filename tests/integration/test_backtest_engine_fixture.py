@@ -83,6 +83,36 @@ def test_stage_six_baseline_plugins_share_backtest_engine(tmp_path: Path) -> Non
     assert all(count > 0 for count in trade_counts.values())
 
 
+def test_backtest_spec_exit_metadata_is_propagated_to_signal_artifact(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
+    result = BacktestEngine().run(
+        BacktestSpec(
+            run_id="exit-metadata",
+            symbol="BTCUSDT",
+            output_dir=tmp_path / "backtests",
+            dataset_path=dataset.parquet_path,
+            dataset_sha256=dataset.parquet_sha256,
+            strategy_id="trend_following_v1",
+            holding_window="24h",
+            feature_set_id="features_price_trend_vol",
+            exit_policy_id="custom_time_exit",
+            target_return=0.02,
+            stop_return=0.01,
+            strategy_config={"slope_threshold": 0.1, "spacing_bars": 10},
+        )
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    signals = pd.read_parquet(result.signals_path)
+
+    assert manifest["exit_policy_id"] == "custom_time_exit"
+    assert manifest["execution_assumptions"]["target_return"] == 0.02
+    assert not signals.empty
+    assert set(signals["exit_policy_id"]) == {"custom_time_exit"}
+    assert set(signals["target_return"]) == {0.02}
+    assert set(signals["stop_return"]) == {0.01}
+
+
 def test_future_rows_do_not_change_prior_trades(tmp_path: Path) -> None:
     frame = build_hmm_knn_sweep_dataset(row_count=120, variant="balanced")
     baseline = BacktestEngine().run(

@@ -3,9 +3,12 @@ from __future__ import annotations
 RESEARCH_COMMANDS = frozenset(
     {
         "benchmark-research-experiment",
+        "benchmark-historical-research-cycle",
+        "build-historical-fixture-pack",
         "build-dataset",
         "calibrate-model",
         "collect-binance-bars",
+        "collect-binance-context",
         "fetch-binance-vision",
         "fetch-crypto-lake",
         "monitor-hmm-knn",
@@ -18,6 +21,7 @@ RESEARCH_COMMANDS = frozenset(
         "research",
         "research-hmm-knn",
         "run-hmm-knn-experiments",
+        "run-historical-research-cycle",
         "run-research-experiment",
         "train-model",
         "write-hmm-knn-sweep-datasets",

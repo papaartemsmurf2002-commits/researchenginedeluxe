@@ -8,6 +8,7 @@ from tradingbotsuite.core.models import RuntimeMode
 from tradingbotsuite.live.preflight import assert_live_preflight, assert_research_command_not_live
 from tradingbotsuite.live_smoke import run_live_smoke
 from tradingbotsuite.manual_cli import run_manual_shell
+from tradingbotsuite.data.historical_fixture_pack import build_provider_kline_fixture_pack
 from tradingbotsuite.research.deterministic_datasets import (
     DETERMINISTIC_SWEEP_VARIANTS,
     write_hmm_knn_sweep_datasets,
@@ -22,9 +23,12 @@ from tradingbotsuite.research.experiment_runner import (
 )
 from tradingbotsuite.research.feature_ablation import write_feature_ablation_plan
 from tradingbotsuite.research.stage12_research import write_stage12_research_plan
+from tradingbotsuite.research_cycle import run_historical_research_cycle, write_research_cycle_benchmark_report
+from tradingbotsuite.research_cycle.benchmark import BENCHMARK_TIERS
 from tradingbotsuite.promotion.stage13_readiness import write_stage13_readiness_plan
 from tradingbotsuite.research.market_data import (
     collect_binance_usdm_bars,
+    collect_binance_usdm_context,
     download_and_ingest_binance_vision_archive,
     download_binance_vision_archive,
     fetch_crypto_lake_archive,
@@ -107,6 +111,18 @@ def parse_args() -> argparse.Namespace:
     collect_bars.add_argument("--output-dir", default=None)
     collect_bars.add_argument("--strict", action="store_true")
 
+    collect_context = subparsers.add_parser(
+        "collect-binance-context",
+        help="Collect research-only Binance USD-M historical context rows",
+    )
+    collect_context.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
+    collect_context.add_argument("--data-family", required=True, choices=["funding_rate", "premium_index", "open_interest"])
+    collect_context.add_argument("--start-time-ms", required=True, type=int)
+    collect_context.add_argument("--end-time-ms", required=True, type=int)
+    collect_context.add_argument("--interval", default="5m")
+    collect_context.add_argument("--output-dir", default=None)
+    collect_context.add_argument("--strict", action="store_true")
+
     binance_vision = subparsers.add_parser("fetch-binance-vision", help="Download and optionally ingest a Binance Vision research archive")
     binance_vision.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
     binance_vision.add_argument("--data-family", required=True, choices=["kline", "trade", "agg_trade"])
@@ -139,6 +155,22 @@ def parse_args() -> argparse.Namespace:
     prepare_hmm_knn_data.add_argument("--spec", required=True)
     prepare_hmm_knn_data.add_argument("--stage", choices=list(DATA_PIPELINE_STAGES), default="intake")
 
+    build_fixture_pack = subparsers.add_parser(
+        "build-historical-fixture-pack",
+        help="Build a research-only historical fixture pack from a local provider kline manifest",
+    )
+    build_fixture_pack.add_argument("--source-manifest", required=True)
+    build_fixture_pack.add_argument("--output-dir", required=True)
+    build_fixture_pack.add_argument("--fixture-id", default=None)
+    build_fixture_pack.add_argument("--row-limit", type=int, default=144)
+    build_fixture_pack.add_argument("--slice-mode", choices=["tail"], default="tail")
+    build_fixture_pack.add_argument(
+        "--context-manifest",
+        action="append",
+        default=[],
+        help="Repeatable local provider context manifest for funding, premium, open interest, or aggregate trades",
+    )
+
     research_experiment = subparsers.add_parser("run-research-experiment", help="Run a bundled BTC Phase 1 research experiment")
     research_experiment.add_argument("--spec", required=True)
 
@@ -146,6 +178,22 @@ def parse_args() -> argparse.Namespace:
     benchmark_experiment.add_argument("--spec", required=True)
     benchmark_experiment.add_argument("--output-dir", default=None)
     benchmark_experiment.add_argument("--repeat", type=int, default=1)
+
+    historical_cycle = subparsers.add_parser("run-historical-research-cycle", help="Run a research-only historical strategy cycle")
+    historical_cycle.add_argument("--spec", required=True)
+
+    historical_cycle_benchmark = subparsers.add_parser(
+        "benchmark-historical-research-cycle",
+        help="Run a research-only historical cycle benchmark gate",
+    )
+    historical_cycle_benchmark.add_argument("--tier", choices=sorted(BENCHMARK_TIERS), default="small")
+    historical_cycle_benchmark.add_argument("--output-dir", default=None)
+    historical_cycle_benchmark.add_argument("--repeat", type=int, default=2)
+    historical_cycle_benchmark.add_argument(
+        "--allow-failed-gate",
+        action="store_true",
+        help="Write a report-only benchmark payload even when the benchmark gate fails",
+    )
 
     feature_ablation = subparsers.add_parser("plan-feature-ablation", help="Write Stage 12.1 feature ablation manifests")
     feature_ablation.add_argument("--output-dir", default=None)
@@ -203,6 +251,22 @@ def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, obj
         "gap_count": result.gap_count,
         "duplicate_count": result.duplicate_count,
     }
+
+
+def _run_collect_binance_context_command(args: argparse.Namespace) -> dict[str, object]:
+    assert_research_command_not_live(AppConfig.from_env(), "collect-binance-context")
+    result = asyncio.run(
+        collect_binance_usdm_context(
+            symbol=args.symbol,
+            data_family=args.data_family,
+            start_time_ms=args.start_time_ms,
+            end_time_ms=args.end_time_ms,
+            interval=args.interval,
+            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            strict=args.strict,
+        )
+    )
+    return _archive_payload(result)
 
 
 def _archive_payload(result: object) -> dict[str, object]:
@@ -301,6 +365,19 @@ def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict
     }
 
 
+def _run_build_historical_fixture_pack_command(args: argparse.Namespace) -> dict[str, object]:
+    assert_research_command_not_live(AppConfig.from_env(), "build-historical-fixture-pack")
+    result = build_provider_kline_fixture_pack(
+        source_manifest_path=Path(args.source_manifest),
+        output_dir=Path(args.output_dir),
+        fixture_id=args.fixture_id,
+        row_limit=args.row_limit,
+        slice_mode=args.slice_mode,
+        context_manifest_paths=[Path(path) for path in getattr(args, "context_manifest", [])],
+    )
+    return result.to_payload()
+
+
 def _run_research_experiment_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("run-research-experiment")
     result = run_research_experiment(
@@ -324,6 +401,59 @@ def _run_benchmark_research_experiment_command(args: argparse.Namespace) -> dict
         app_config=config,
     )
     return {"benchmark_report_path": str(report_path)}
+
+
+def _run_historical_research_cycle_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("run-historical-research-cycle")
+    result = run_historical_research_cycle(
+        spec_path=Path(args.spec),
+        app_config=config,
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "research_cycle_manifest_path": str(result.manifest_path),
+        "candidate_rankings_path": str(result.candidate_rankings_path),
+        "backtest_index_path": str(result.backtest_index_path),
+        "rejection_report_path": str(result.rejection_report_path),
+    }
+
+
+def _run_benchmark_historical_research_cycle_command(args: argparse.Namespace) -> dict[str, object]:
+    import json
+
+    config = _config_for_command("benchmark-historical-research-cycle")
+    result = write_research_cycle_benchmark_report(
+        output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+        tier=args.tier,
+        repeat=args.repeat,
+        app_config=config,
+    )
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    gate = dict(report.get("benchmark_gate") or {})
+    payload = {
+        "output_dir": str(result.output_dir),
+        "benchmark_report_path": str(result.report_path),
+        "tier": str(report.get("tier") or args.tier),
+        "repeat": int(report.get("repeat") or args.repeat),
+        "benchmark_gate_passed": bool(gate.get("passed", False)),
+        "evidence_complete": bool(gate.get("evidence_complete", False)),
+        "failure_reasons": list(gate.get("failure_reasons") or []),
+        "skipped_reasons": list(gate.get("skipped_reasons") or []),
+        "incomplete_evidence_reasons": list(gate.get("incomplete_evidence_reasons") or []),
+        "allow_failed_gate": bool(getattr(args, "allow_failed_gate", False)),
+    }
+    if not payload["benchmark_gate_passed"] and not payload["allow_failed_gate"]:
+        reasons = []
+        for reason in [
+            *payload["failure_reasons"],
+            *payload["skipped_reasons"],
+            *payload["incomplete_evidence_reasons"],
+        ]:
+            if reason not in reasons:
+                reasons.append(reason)
+        detail = ",".join(str(reason) for reason in reasons) or "benchmark_gate_failed"
+        raise ValueError(f"benchmark_historical_research_cycle_gate_failed:{detail}")
+    return payload
 
 
 def _run_plan_feature_ablation_command(args: argparse.Namespace) -> dict[str, object]:
@@ -520,6 +650,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_collect_binance_bars_command(args), indent=2))
+    elif args.command == "collect-binance-context":
+        import json
+
+        print(json.dumps(_run_collect_binance_context_command(args), indent=2))
     elif args.command == "fetch-binance-vision":
         import json
 
@@ -532,6 +666,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_prepare_hmm_knn_research_data_command(args), indent=2))
+    elif args.command == "build-historical-fixture-pack":
+        import json
+
+        print(json.dumps(_run_build_historical_fixture_pack_command(args), indent=2))
     elif args.command == "run-research-experiment":
         import json
 
@@ -540,6 +678,14 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_benchmark_research_experiment_command(args), indent=2))
+    elif args.command == "run-historical-research-cycle":
+        import json
+
+        print(json.dumps(_run_historical_research_cycle_command(args), indent=2))
+    elif args.command == "benchmark-historical-research-cycle":
+        import json
+
+        print(json.dumps(_run_benchmark_historical_research_cycle_command(args), indent=2))
     elif args.command == "plan-feature-ablation":
         import json
 

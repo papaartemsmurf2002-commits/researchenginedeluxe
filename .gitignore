@@ -42,5 +42,15 @@ lc_ui_server*.log
 /data/parity/**/btc_parity_merged.csv
 /data/parity/**/*_python_dump.csv
 /data/parity/reports_*/
+!/data/
+/data/*
+!/data/research/
+/data/research/*
+!/data/research/fixtures/
+/data/research/fixtures/*
+!/data/research/fixtures/btcusdt_v1/
+!/data/research/fixtures/btcusdt_v1/**
+!/data/research/fixtures/btcusdt_context_provider_latest_month_v1/
+!/data/research/fixtures/btcusdt_context_provider_latest_month_v1/**
 !tests/fixtures/**/*.csv
 tests/fixtures/btc_15m_fixture.json

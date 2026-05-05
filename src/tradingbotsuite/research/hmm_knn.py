@@ -20,7 +20,17 @@ from tradingbotsuite.research.live_readiness import research_boundary_metadata
 from tradingbotsuite.strategies.hmm_knn.artifacts import benchmark_against_stage6_baselines
 from tradingbotsuite.strategies.hmm_knn.config import resolve_feature_columns
 from tradingbotsuite.strategies.hmm_knn.diagnostics import build_hmm_knn_artifact_diagnostics
-from tradingbotsuite.strategies.hmm_knn.distances import DISTANCE_FUNCTIONS, resolve_distance_function
+from tradingbotsuite.strategies.hmm_knn.distances import (
+    DISTANCE_FUNCTIONS,
+    available_distance_metrics,
+    resolve_distance_function,
+    resolve_distance_metric,
+)
+from tradingbotsuite.strategies.hmm_knn.neighbors import (
+    build_neighbor_pool,
+    resolve_regime_match_mode,
+    select_neighbor_positions,
+)
 
 try:  # optional research extra
     from hmmlearn.hmm import GaussianHMM
@@ -111,6 +121,8 @@ class KnnSettings:
     feature_columns: list[str]
     distance_backend: str = "cpu"
     feature_pack: str | None = None
+    regime_match_mode: str | None = None
+    compatible_regimes: dict[str, list[str]] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,10 +238,15 @@ def load_hmm_knn_plan(path: Path) -> HmmKnnResearchPlan:
 
 
 def _validate_knn_settings(plan: HmmKnnResearchPlan) -> None:
-    if plan.knn.distance not in DISTANCE_FUNCTIONS:
-        raise ValueError(f"knn.distance must be one of: {', '.join(sorted(DISTANCE_FUNCTIONS))}")
+    try:
+        metric = resolve_distance_metric(plan.knn.distance)
+    except ValueError as exc:
+        raise ValueError(f"knn.distance must be one of: {', '.join(sorted(DISTANCE_FUNCTIONS))}") from exc
     if plan.knn.distance_backend not in {"cpu", "auto", "cupy"}:
         raise ValueError("knn.distance_backend must be one of: cpu, auto, cupy")
+    if plan.knn.distance_backend not in metric.supports_backend:
+        raise ValueError(f"knn.distance_backend {plan.knn.distance_backend} is not supported by {metric.id}")
+    _resolved_knn_regime_match_mode(plan)
     if not plan.knn.k_values:
         raise ValueError("knn.k_values must contain at least one k value")
     if any(int(k) <= 0 for k in plan.knn.k_values):
@@ -242,6 +259,14 @@ def _validate_knn_settings(plan: HmmKnnResearchPlan) -> None:
         raise ValueError("knn.neighbor_weighting must contain only inverse_distance or softmax")
     if plan.knn.primary_weighting not in configured_weighting:
         raise ValueError("knn.primary_weighting must be included in knn.neighbor_weighting")
+
+
+def _resolved_knn_regime_match_mode(plan: HmmKnnResearchPlan) -> str:
+    return resolve_regime_match_mode(
+        regime_match_mode=plan.knn.regime_match_mode,
+        same_regime_only=bool(plan.knn.same_regime_only),
+        allow_cross_regime_fallback=bool(plan.knn.allow_cross_regime_fallback),
+    )
 
 
 def _numeric_feature_matrix(frame: pd.DataFrame, columns: list[str]) -> np.ndarray:
@@ -636,6 +661,8 @@ def _knn_predict(
     test_frame: pd.DataFrame,
     train_regimes: pd.Series,
     test_regimes: pd.Series,
+    train_regime_labels: pd.Series | None = None,
+    test_regime_labels: pd.Series | None = None,
     plan: HmmKnnResearchPlan,
     include_sweep: bool = True,
     distance_backend: str | None = None,
@@ -646,29 +673,44 @@ def _knn_predict(
     rows: list[dict[str, Any]] = []
     diagnostics: list[dict[str, Any]] = []
     sweep_rows: list[dict[str, Any]] = []
+    regime_match_mode = _resolved_knn_regime_match_mode(plan)
+    train_regime_values = train_regimes.astype(int).to_numpy()
+    train_regime_label_values = train_regime_labels.astype(str).to_numpy() if train_regime_labels is not None else None
     resolved_distance_backend = distance_backend or _resolve_lorentzian_distance_backend(plan.knn.distance_backend)
-    if plan.knn.distance in {"lorentzian", "log_lorentzian"}:
+    distance_metric = resolve_distance_metric(plan.knn.distance)
+    if distance_metric.id == "lorentzian":
         distance_matrix = lorentzian_distance_matrix(test_matrix, train_matrix, backend=resolved_distance_backend)
     else:
-        distance_matrix = resolve_distance_function(plan.knn.distance)(test_matrix, train_matrix, None)
+        distance_matrix = distance_metric.function(test_matrix, train_matrix, None)
     combinations = _knn_combinations(plan, include_sweep=include_sweep)
+    effective_same_regime_only = _effective_same_regime_only(regime_match_mode)
     for local_index, (_, test_row) in enumerate(test_frame.iterrows()):
         current_regime = int(test_regimes.iloc[local_index])
-        fallback_used = False
-        candidate_mask = train_regimes.astype(int).to_numpy() == current_regime if plan.knn.same_regime_only else np.ones(len(train_frame), dtype=bool)
-        if not candidate_mask.any() and plan.knn.same_regime_only and plan.knn.allow_cross_regime_fallback:
-            candidate_mask = np.ones(len(train_frame), dtype=bool)
-            fallback_used = True
-        candidate_positions = np.where(candidate_mask)[0]
-        distances = distance_matrix[local_index, candidate_positions]
-        order = np.argsort(distances)
+        current_regime_label = (
+            str(test_regime_labels.iloc[local_index])
+            if test_regime_labels is not None and not pd.isna(test_regime_labels.iloc[local_index])
+            else None
+        )
+        pool = build_neighbor_pool(
+            train_regimes=train_regime_values,
+            train_regime_labels=train_regime_label_values,
+            query_regime=current_regime,
+            query_regime_label=current_regime_label,
+            regime_match_mode=regime_match_mode,
+            compatible_regimes=plan.knn.compatible_regimes or {},
+        )
         primary_row: dict[str, Any] | None = None
         for k, weighting in combinations:
             is_primary = k == int(plan.knn.primary_k) and weighting == plan.knn.primary_weighting
-            selected_positions = candidate_positions[order[: min(k, len(order))]]
-            selected_distances = distances[order[: min(k, len(order))]]
-            if len(candidate_positions) == 0:
-                row = _empty_knn_row(test_row, reason="no_same_regime_neighbors")
+            selected_positions, selected_distances = select_neighbor_positions(
+                distance_matrix[local_index],
+                candidate_positions=pool.candidate_positions,
+                k=k,
+            )
+            pool_diagnostics = pool.diagnostics.with_selected_count(len(selected_positions))
+            pool_payload = _knn_pool_payload(pool_diagnostics)
+            if len(pool.candidate_positions) == 0:
+                row = _empty_knn_row(test_row, reason=pool.diagnostics.skip_reason or "no_neighbors")
             elif len(selected_positions) < plan.knn.min_neighbor_count:
                 row = _empty_knn_row(test_row, reason="insufficient_neighbors", neighbor_count=len(selected_positions))
             else:
@@ -703,14 +745,14 @@ def _knn_predict(
                     diagnostics.append(
                         {
                             **_identity_payload(test_row),
+                            **pool_payload,
                             "k": int(k),
                             "weighting": weighting,
                             "is_primary": bool(is_primary),
-                            "same_regime_only": bool(plan.knn.same_regime_only),
-                            "fallback_used": bool(fallback_used),
+                            "same_regime_only": bool(effective_same_regime_only),
+                            "configured_same_regime_only": bool(plan.knn.same_regime_only),
                             "knn_skip_reason": None,
                             "source_row_index": int(test_row.name),
-                            "query_regime": current_regime,
                             "neighbor_rank": rank,
                             "neighbor_source_index": int(train_indices[position]),
                             "neighbor_distance": float(distance),
@@ -721,15 +763,15 @@ def _knn_predict(
                             "neighbor_regime": int(train_regimes.iloc[position]),
                         }
                     )
+            row = {**row, **pool_payload}
             sweep_row = {
                 **row,
                 "k": int(k),
                 "weighting": weighting,
                 "is_primary": bool(is_primary),
-                "same_regime_only": bool(plan.knn.same_regime_only),
-                "fallback_used": bool(fallback_used),
+                "same_regime_only": bool(effective_same_regime_only),
+                "configured_same_regime_only": bool(plan.knn.same_regime_only),
                 "source_row_index": int(test_row.name),
-                "query_regime": current_regime,
                 plan.labels.label_column: test_row.get(plan.labels.label_column),
                 plan.labels.pnl_column: test_row.get(plan.labels.pnl_column),
                 "gross_return": test_row.get("gross_return", test_row.get(plan.labels.pnl_column)),
@@ -740,14 +782,14 @@ def _knn_predict(
                 diagnostics.append(
                     {
                         **_identity_payload(test_row),
+                        **pool_payload,
                         "k": int(k),
                         "weighting": weighting,
                         "is_primary": bool(is_primary),
-                        "same_regime_only": bool(plan.knn.same_regime_only),
-                        "fallback_used": bool(fallback_used),
+                        "same_regime_only": bool(effective_same_regime_only),
+                        "configured_same_regime_only": bool(plan.knn.same_regime_only),
                         "knn_skip_reason": row["knn_skip_reason"],
                         "source_row_index": int(test_row.name),
-                        "query_regime": current_regime,
                         "neighbor_rank": None,
                         "neighbor_source_index": None,
                         "neighbor_distance": None,
@@ -762,6 +804,38 @@ def _knn_predict(
                 primary_row = row
         rows.append(primary_row or _empty_knn_row(test_row, reason="primary_combination_not_evaluated"))
     return pd.DataFrame(rows), pd.DataFrame(diagnostics), pd.DataFrame(sweep_rows)
+
+
+def _knn_pool_payload(diagnostics: Any) -> dict[str, Any]:
+    payload = diagnostics.to_payload()
+    payload["selected_neighbor_count"] = payload.pop("selected_count")
+    payload["neighbor_pool_skip_reason"] = payload.pop("skip_reason")
+    return payload
+
+
+def _effective_same_regime_only(regime_match_mode: str) -> bool:
+    return regime_match_mode in {"same", "same_with_all_fallback"}
+
+
+def _feature_set_variant_payload(*, plan: HmmKnnResearchPlan, dataset: pd.DataFrame) -> dict[str, Any]:
+    missingness_columns = sorted(column for column in dataset.columns if column.startswith("missing_"))
+    variant_id = plan.knn.feature_pack or "inline_feature_columns"
+    payload = {
+        "feature_set_variant_id": variant_id,
+        "feature_set_source": "registered_feature_pack" if plan.knn.feature_pack else "inline_config",
+        "feature_pack": plan.knn.feature_pack,
+        "feature_columns": list(plan.knn.feature_columns),
+        "feature_count": int(len(plan.knn.feature_columns)),
+        "wt3d_enabled": any(column.startswith("wt3d_") for column in plan.knn.feature_columns),
+        "missingness_columns_present": missingness_columns,
+    }
+    identity_payload = {
+        "feature_pack": payload["feature_pack"],
+        "feature_columns": payload["feature_columns"],
+        "missingness_columns_present": missingness_columns,
+    }
+    payload["feature_set_variant_sha256"] = sha256(json.dumps(identity_payload, sort_keys=True).encode("utf-8")).hexdigest()
+    return payload
 
 
 def _identity_payload(row: pd.Series) -> dict[str, Any]:
@@ -921,6 +995,16 @@ def _leakage_safe_meta_knn_features(
             test_frame=train_frame.iloc[[local_index]],
             train_regimes=train_posterior["top_regime"].iloc[:candidate_end],
             test_regimes=train_posterior["top_regime"].iloc[[local_index]],
+            train_regime_labels=(
+                train_posterior["top_regime_label"].iloc[:candidate_end]
+                if "top_regime_label" in train_posterior.columns
+                else None
+            ),
+            test_regime_labels=(
+                train_posterior["top_regime_label"].iloc[[local_index]]
+                if "top_regime_label" in train_posterior.columns
+                else None
+            ),
             plan=plan,
             include_sweep=False,
         )
@@ -1070,6 +1154,8 @@ def run_hmm_knn_research(
             test_frame=test_frame,
             train_regimes=train_posterior["top_regime"],
             test_regimes=test_posterior["top_regime"],
+            train_regime_labels=train_posterior["top_regime_label"],
+            test_regime_labels=test_posterior["top_regime_label"],
             plan=plan,
             distance_backend=knn_distance_backend,
         )
@@ -1121,6 +1207,7 @@ def run_hmm_knn_research(
     meta_predictions = pd.concat(all_meta, ignore_index=True)
     neighbor_diagnostics = pd.concat(all_diagnostics, ignore_index=True) if all_diagnostics else pd.DataFrame()
     knn_sweep_results = pd.concat(all_knn_sweeps, ignore_index=True) if all_knn_sweeps else pd.DataFrame()
+    feature_set_variant = _feature_set_variant_payload(plan=plan, dataset=frame)
 
     regime_posteriors_path = output_path / "regime_posteriors.parquet"
     knn_predictions_path = output_path / "knn_predictions.parquet"
@@ -1139,6 +1226,7 @@ def run_hmm_knn_research(
         regime_posteriors=regime_posteriors,
         neighbor_diagnostics=neighbor_diagnostics,
         feature_columns=list(plan.knn.feature_columns),
+        feature_variant=feature_set_variant,
     )
     stage6_baseline_benchmark = benchmark_against_stage6_baselines(
         dataset_path=resolved_dataset_path,
@@ -1147,6 +1235,7 @@ def run_hmm_knn_research(
     )
     metrics["artifact_diagnostics"] = artifact_diagnostics
     metrics["stage6_baseline_benchmark"] = stage6_baseline_benchmark
+    metrics["feature_set_variant"] = feature_set_variant
     metrics["metrics_version"] = HMM_KNN_METRICS_VERSION
     metrics["latency_ms_per_row"] = round(((time.perf_counter() - start_time) * 1000.0) / max(len(meta_predictions), 1), 6)
     metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")
@@ -1168,6 +1257,12 @@ def run_hmm_knn_research(
         "feature_version": HMM_KNN_FEATURE_VERSION,
         "feature_pack": plan.knn.feature_pack,
         "feature_columns": list(plan.knn.feature_columns),
+        "feature_set_variant_id": feature_set_variant["feature_set_variant_id"],
+        "feature_set_variant_sha256": feature_set_variant["feature_set_variant_sha256"],
+        "feature_set_source": feature_set_variant["feature_set_source"],
+        "feature_count": feature_set_variant["feature_count"],
+        "wt3d_enabled": feature_set_variant["wt3d_enabled"],
+        "missingness_columns_present": feature_set_variant["missingness_columns_present"],
         "wt3d_feature_columns": list(WT3D_FEATURE_COLUMNS),
         "label_version": str(meta_predictions["label_version"].iloc[0]) if "label_version" in meta_predictions.columns and len(meta_predictions) else LABEL_VERSION,
         "label_horizons": list(plan.labels.horizons),
@@ -1176,12 +1271,17 @@ def run_hmm_knn_research(
         "knn_settings": {
             "distance": plan.knn.distance,
             "available_distances": sorted(DISTANCE_FUNCTIONS),
+            "available_distance_metrics": available_distance_metrics(),
+            "distance_metric": resolve_distance_metric(plan.knn.distance).to_payload(),
             "k_values": [int(k) for k in plan.knn.k_values],
             "primary_k": int(plan.knn.primary_k),
             "neighbor_weighting": list(plan.knn.neighbor_weighting),
             "primary_weighting": plan.knn.primary_weighting,
-            "same_regime_only": bool(plan.knn.same_regime_only),
+            "same_regime_only": bool(_effective_same_regime_only(_resolved_knn_regime_match_mode(plan))),
+            "configured_same_regime_only": bool(plan.knn.same_regime_only),
             "allow_cross_regime_fallback": bool(plan.knn.allow_cross_regime_fallback),
+            "regime_match_mode": _resolved_knn_regime_match_mode(plan),
+            "compatible_regimes": plan.knn.compatible_regimes or {},
             "distance_backend": plan.knn.distance_backend,
         },
         "regime_posteriors_path": str(regime_posteriors_path),

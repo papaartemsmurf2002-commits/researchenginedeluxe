@@ -10,9 +10,11 @@ import pytest
 
 from tradingbotsuite.core.models import Bar
 from tradingbotsuite.research.market_data import (
+    BinanceUsdMRestContextFetcher,
     MARKET_JOURNAL_SCHEMA_VERSION,
     MARKET_JOURNAL_WRITER_VERSION,
     MarketDataCollectionResult,
+    MarketDataArchiveIngestionResult,
     MarketJournalValidationError,
     MarketJournalWriter,
     MarketDataGapError,
@@ -23,8 +25,11 @@ from tradingbotsuite.research.market_data import (
     ingest_binance_vision_archive,
     read_market_journal,
     collect_binance_usdm_bars,
+    collect_binance_usdm_context,
 )
 from tradingbotsuite.research.archive_sources import assert_valid_archive_source_manifest
+
+REMOVED_CHART_SOURCE = "trading" + "view"
 
 
 class FakeHistoricalBinanceClient:
@@ -49,6 +54,32 @@ class FakeHistoricalBinanceClient:
             }
         )
         return self.bars
+
+
+class FakeBinanceContextFetcher:
+    def __init__(self, rows: list[object]) -> None:
+        self.rows = rows
+        self.calls: list[dict[str, object]] = []
+
+    async def fetch_context_rows(
+        self,
+        *,
+        symbol: str,
+        data_family: str,
+        start_time_ms: int,
+        end_time_ms: int,
+        interval: str,
+    ) -> list[object]:
+        self.calls.append(
+            {
+                "symbol": symbol,
+                "data_family": data_family,
+                "start_time_ms": start_time_ms,
+                "end_time_ms": end_time_ms,
+                "interval": interval,
+            }
+        )
+        return self.rows
 
 
 def _bar(time_ms: int, close: str = "101") -> Bar:
@@ -160,6 +191,278 @@ async def test_collect_binance_usdm_bars_rejects_unapproved_inputs(tmp_path: Pat
         )
 
 
+@pytest.mark.asyncio
+async def test_collect_binance_usdm_context_writes_sorted_funding_manifest(tmp_path: Path) -> None:
+    start = 1_712_649_600_000
+    fetcher = FakeBinanceContextFetcher(
+        [
+            {"symbol": "BTCUSDT", "fundingRate": "0.0002", "fundingTime": start + 120_000, "markPrice": "101.5"},
+            {"symbol": "BTCUSDT", "fundingRate": "0.0001", "fundingTime": start + 60_000, "markPrice": "100.5"},
+        ]
+    )
+
+    first = await collect_binance_usdm_context(
+        symbol="btcusdt",
+        data_family="funding",
+        start_time_ms=start,
+        end_time_ms=start + 180_000,
+        output_dir=tmp_path / "first",
+        fetcher=fetcher,
+    )
+    second = await collect_binance_usdm_context(
+        symbol="BTCUSDT",
+        data_family="funding_rate",
+        start_time_ms=start,
+        end_time_ms=start + 180_000,
+        output_dir=tmp_path / "second",
+        fetcher=FakeBinanceContextFetcher(fetcher.rows),
+    )
+
+    assert fetcher.calls == [
+        {
+            "symbol": "BTCUSDT",
+            "data_family": "funding_rate",
+            "start_time_ms": start,
+            "end_time_ms": start + 180_000,
+            "interval": "5m",
+        }
+    ]
+    assert first.content_hash == second.content_hash
+    assert first.source_hash == second.source_hash
+    rows = [json.loads(line) for line in first.data_path.read_text(encoding="utf-8").splitlines()]
+    assert [row["event_time_ms"] for row in rows] == [start + 60_000, start + 120_000]
+    assert rows[0]["source_name"] == "binance_usdm_rest"
+    assert rows[0]["data_family"] == "funding_rate"
+    assert rows[0]["funding_rate"] == "0.0001"
+    assert rows[0]["funding_time_ms"] == start + 60_000
+
+    manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["source_name"] == "binance_usdm_rest"
+    assert manifest["source_type"] == "rest_backfill"
+    assert manifest["data_family"] == "funding_rate"
+    assert manifest["event_time_field"] == "event_time_ms"
+    assert manifest["row_count"] == 2
+    assert manifest["first_event_time_ms"] == start + 60_000
+    assert manifest["last_event_time_ms"] == start + 120_000
+    assert manifest["content_hash"] == first.content_hash
+    assert manifest["collector_version"] == "binance-usdm-context-rest-v1"
+    assert "receive_time_unavailable_non_promotable" in manifest["quality_flags"]
+    assert not any(REMOVED_CHART_SOURCE in str(note).lower() for note in manifest["non_promotable_notes"])
+    assert any("No legacy chart export" in note for note in manifest["non_promotable_notes"])
+
+
+@pytest.mark.asyncio
+async def test_collect_binance_usdm_context_normalizes_premium_and_open_interest(tmp_path: Path) -> None:
+    start = 1_712_649_600_000
+    premium = await collect_binance_usdm_context(
+        symbol="BTCUSDT",
+        data_family="premium_index",
+        interval="15m",
+        start_time_ms=start,
+        end_time_ms=start + 60_000,
+        output_dir=tmp_path / "premium",
+        fetcher=FakeBinanceContextFetcher(
+            [
+                [start + 60_000, "-0.0001", "0.0002", "-0.0002", "0.00015", "0", start + 119_999, "0", 1, "0", "0", "0"],
+                {
+                    "symbol": "BTCUSDT",
+                    "event_time_ms": start,
+                    "premium_index": "0.0001",
+                    "mark_price": "101",
+                    "index_price": "100",
+                },
+            ]
+        ),
+    )
+    premium_rows = [json.loads(line) for line in premium.data_path.read_text(encoding="utf-8").splitlines()]
+    assert [row["event_time_ms"] for row in premium_rows] == [start, start + 60_000]
+    assert premium_rows[0]["premium_basis_rate"] == "0.0001"
+    assert premium_rows[0]["mark_price"] == "101"
+    assert premium_rows[0]["index_price"] == "100"
+    assert premium_rows[1]["premium_index"] == "0.00015"
+
+    open_interest = await collect_binance_usdm_context(
+        symbol="ETHUSDT",
+        data_family="open_interest",
+        interval="5m",
+        start_time_ms=start,
+        end_time_ms=start + 60_000,
+        output_dir=tmp_path / "oi",
+        fetcher=FakeBinanceContextFetcher(
+            [
+                {
+                    "symbol": "ETHUSDT",
+                    "timestamp": str(start + 60_000),
+                    "sumOpenInterest": "20403.63700000",
+                    "sumOpenInterestValue": "150570784.07809979",
+                }
+            ]
+        ),
+    )
+    oi_rows = [json.loads(line) for line in open_interest.data_path.read_text(encoding="utf-8").splitlines()]
+    assert oi_rows == [
+        {
+            "data_family": "open_interest",
+            "event_time_ms": start + 60_000,
+            "open_interest": "20403.63700000",
+            "open_interest_value": "150570784.07809979",
+            "open_interest_value_usd": "150570784.07809979",
+            "raw_payload": {
+                "sumOpenInterest": "20403.63700000",
+                "sumOpenInterestValue": "150570784.07809979",
+                "symbol": "ETHUSDT",
+                "timestamp": str(start + 60_000),
+            },
+            "source_name": "binance_usdm_rest",
+            "source_row_index": 0,
+            "symbol": "ETHUSDT",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_collect_binance_usdm_context_detects_fixed_interval_gaps(tmp_path: Path) -> None:
+    start = 1_712_649_600_000
+
+    result = await collect_binance_usdm_context(
+        symbol="BTCUSDT",
+        data_family="premium_index",
+        interval="15m",
+        start_time_ms=start,
+        end_time_ms=start + 30 * 60_000,
+        output_dir=tmp_path / "premium-gap",
+        fetcher=FakeBinanceContextFetcher(
+            [
+                [start, "-0.0001", "0.0002", "-0.0002", "0.00015"],
+                [start + 30 * 60_000, "-0.0001", "0.0002", "-0.0002", "0.00016"],
+            ]
+        ),
+    )
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert result.gap_count == 1
+    assert manifest["gap_check_applicable"] is True
+    assert manifest["gap_check_status"] == "checked_fixed_interval"
+    assert manifest["expected_interval_ms"] == 15 * 60_000
+    assert manifest["gaps"] == [
+        {
+            "delta_ms": 30 * 60_000,
+            "missing_event_count": 1,
+            "next_event_time_ms": start + 30 * 60_000,
+            "previous_event_time_ms": start,
+        }
+    ]
+
+    with pytest.raises(MarketDataGapError, match="gaps"):
+        await collect_binance_usdm_context(
+            symbol="BTCUSDT",
+            data_family="open_interest",
+            interval="15m",
+            start_time_ms=start,
+            end_time_ms=start + 30 * 60_000,
+            output_dir=tmp_path / "oi-gap",
+            strict=True,
+            fetcher=FakeBinanceContextFetcher(
+                [
+                    {"symbol": "BTCUSDT", "timestamp": str(start), "sumOpenInterest": "1"},
+                    {"symbol": "BTCUSDT", "timestamp": str(start + 30 * 60_000), "sumOpenInterest": "2"},
+                ]
+            ),
+        )
+
+
+def test_binance_usdm_open_interest_fetcher_pages_backward_from_endpoint_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    interval_ms = 15 * 60 * 1000
+    start = 1_775_574_000_000
+    row_count = 672
+    event_times = [start + (index * interval_ms) for index in range(row_count)]
+    calls: list[dict[str, int]] = []
+
+    def fake_fetch_json(url: str, *, timeout_seconds: float) -> list[dict[str, str]]:
+        del timeout_seconds
+        from urllib.parse import parse_qs, urlparse
+
+        query = parse_qs(urlparse(url).query)
+        call = {
+            "startTime": int(query["startTime"][0]),
+            "endTime": int(query["endTime"][0]),
+            "limit": int(query["limit"][0]),
+        }
+        calls.append(call)
+        available = [time_ms for time_ms in event_times if call["startTime"] <= time_ms <= call["endTime"]]
+        page = available[-call["limit"] :]
+        return [
+            {
+                "symbol": "BTCUSDT",
+                "sumOpenInterest": str(100_000 + index),
+                "sumOpenInterestValue": str(1_000_000 + index),
+                "timestamp": str(time_ms),
+            }
+            for index, time_ms in enumerate(page)
+        ]
+
+    monkeypatch.setattr("tradingbotsuite.research.market_data._fetch_json", fake_fetch_json)
+
+    fetcher = BinanceUsdMRestContextFetcher(base_url="https://example.test")
+    rows = fetcher._fetch_context_rows_sync(
+        symbol="BTCUSDT",
+        data_family="open_interest",
+        start_time_ms=start,
+        end_time_ms=event_times[-1],
+        interval="15m",
+    )
+
+    assert len(rows) == row_count
+    assert len(calls) == 2
+    assert calls[0] == {"startTime": start, "endTime": event_times[-1], "limit": 500}
+    assert calls[1] == {"startTime": start, "endTime": event_times[171], "limit": 500}
+    assert {int(row["timestamp"]) for row in rows} == set(event_times)
+
+
+@pytest.mark.asyncio
+async def test_collect_binance_usdm_context_rejects_inputs_and_strict_duplicates(tmp_path: Path) -> None:
+    start = 1_712_649_600_000
+    with pytest.raises(ValueError, match="binance context data_family must be one of"):
+        await collect_binance_usdm_context(
+            symbol="BTCUSDT",
+            data_family="trade",
+            start_time_ms=0,
+            end_time_ms=60_000,
+            output_dir=tmp_path,
+            fetcher=FakeBinanceContextFetcher([]),
+        )
+
+    with pytest.raises(ValueError, match="open_interest period must be one of"):
+        await collect_binance_usdm_context(
+            symbol="BTCUSDT",
+            data_family="open_interest",
+            interval="1m",
+            start_time_ms=0,
+            end_time_ms=60_000,
+            output_dir=tmp_path,
+            fetcher=FakeBinanceContextFetcher([]),
+        )
+
+    with pytest.raises(MarketDataGapError, match="duplicate events"):
+        await collect_binance_usdm_context(
+            symbol="BTCUSDT",
+            data_family="funding_rate",
+            start_time_ms=start,
+            end_time_ms=start + 60_000,
+            output_dir=tmp_path,
+            strict=True,
+            fetcher=FakeBinanceContextFetcher(
+                [
+                    {"symbol": "BTCUSDT", "fundingRate": "0.0001", "fundingTime": start + 60_000},
+                    {"symbol": "BTCUSDT", "fundingRate": "0.0002", "fundingTime": start + 60_000},
+                ]
+            ),
+        )
+
+
 def test_collect_binance_bars_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from tradingbotsuite import main
 
@@ -212,6 +515,68 @@ def test_collect_binance_bars_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch,
         "row_count": 2,
         "gap_count": 0,
         "duplicate_count": 0,
+    }
+
+
+def test_collect_binance_context_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from tradingbotsuite import main
+
+    async def fake_collect_binance_usdm_context(**kwargs):
+        assert kwargs == {
+            "symbol": "BTCUSDT",
+            "data_family": "open_interest",
+            "start_time_ms": 1000,
+            "end_time_ms": 2000,
+            "interval": "15m",
+            "output_dir": tmp_path,
+            "strict": True,
+        }
+        return MarketDataArchiveIngestionResult(
+            output_dir=tmp_path / "BTCUSDT" / "open_interest" / "15m",
+            data_path=tmp_path / "BTCUSDT" / "open_interest" / "15m" / "context.jsonl",
+            manifest_path=tmp_path / "BTCUSDT" / "open_interest" / "15m" / "context.manifest.json",
+            row_count=2,
+            gap_count=0,
+            duplicate_count=0,
+            content_hash="sha256:content",
+            source_hash="sha256:source",
+        )
+
+    monkeypatch.setattr(main, "collect_binance_usdm_context", fake_collect_binance_usdm_context)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tradingbot",
+            "collect-binance-context",
+            "--symbol",
+            "BTCUSDT",
+            "--data-family",
+            "open_interest",
+            "--start-time-ms",
+            "1000",
+            "--end-time-ms",
+            "2000",
+            "--interval",
+            "15m",
+            "--output-dir",
+            str(tmp_path),
+            "--strict",
+        ],
+    )
+
+    args = main.parse_args()
+    payload = main._run_collect_binance_context_command(args)
+
+    assert payload == {
+        "output_dir": str(tmp_path / "BTCUSDT" / "open_interest" / "15m"),
+        "data_path": str(tmp_path / "BTCUSDT" / "open_interest" / "15m" / "context.jsonl"),
+        "manifest_path": str(tmp_path / "BTCUSDT" / "open_interest" / "15m" / "context.manifest.json"),
+        "row_count": 2,
+        "gap_count": 0,
+        "duplicate_count": 0,
+        "content_hash": "sha256:content",
+        "source_hash": "sha256:source",
     }
 
 

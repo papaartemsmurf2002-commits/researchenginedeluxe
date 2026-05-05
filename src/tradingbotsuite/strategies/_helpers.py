@@ -7,6 +7,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from tradingbotsuite.strategies.parameters import defaults_for_holding_window
+
 HOLDING_MS = {
     "1h": 60 * 60 * 1000,
     "4h": 4 * 60 * 60 * 1000,
@@ -33,9 +35,19 @@ class RuleBasedStrategy:
     required_feature_sets: tuple[str, ...] = ("features_full_context_no_wt",)
 
     def __init__(self, *, config: dict[str, Any] | None = None) -> None:
-        self.config = dict(config or {})
-        self.feature_set_id = str(self.config.get("feature_set_id", self.required_feature_sets[0]))
-        self.holding_period = str(self.config.get("holding_period", self.allowed_holding_periods[0]))
+        raw_config = dict(config or {})
+        self.feature_set_id = str(raw_config.get("feature_set_id", self.required_feature_sets[0]))
+        self.holding_period = str(raw_config.get("holding_period", self.allowed_holding_periods[0]))
+        if self.holding_period not in self.allowed_holding_periods:
+            raise ValueError(f"invalid_holding_period:{self.strategy_id}:{self.holding_period}")
+        if self.feature_set_id not in self.required_feature_sets:
+            raise ValueError(f"invalid_feature_set:{self.strategy_id}:{self.feature_set_id}")
+        self.config = {
+            **defaults_for_holding_window(self.strategy_id, self.holding_period),
+            **raw_config,
+            "feature_set_id": self.feature_set_id,
+            "holding_period": self.holding_period,
+        }
 
     def prepare(self, train_context: pd.DataFrame | None = None) -> None:
         _ = train_context
@@ -59,6 +71,8 @@ class RuleBasedStrategy:
                     "target_holding_max_ms": holding_ms,
                     "entry_policy": str(self.config.get("entry_policy", "next_bar_open")),
                     "exit_policy_id": str(self.config.get("exit_policy_id", f"{self.holding_period}_time_exit")),
+                    "target_return": self.config.get("target_return"),
+                    "stop_return": self.config.get("stop_return"),
                     "feature_set_id": self.feature_set_id,
                     "model_version": self.strategy_version,
                     "skip_reason": signal.skip_reason,
@@ -95,6 +109,8 @@ def _signal_columns() -> list[str]:
         "target_holding_max_ms",
         "entry_policy",
         "exit_policy_id",
+        "target_return",
+        "stop_return",
         "feature_set_id",
         "model_version",
         "skip_reason",

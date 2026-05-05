@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-03
+Last updated: 2026-05-05
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 0 | 0 |
-| P1 | 0 | 0 | 2 | 0 |
+| P1 | 0 | 0 | 3 | 0 |
 | P2 | 0 | 0 | 0 | 0 |
 | P3 | 0 | 0 | 0 | 0 |
 
@@ -73,6 +73,30 @@ Stage 2 should document command ownership and boundary rules. Stage 10 should en
 ### Resolution notes
 
 Stage 2 documented command ownership in `docs/contracts/boundary_contract.md`. Stage 10 added `src/tradingbotsuite/live/preflight.py`, CLI guards in `src/tradingbotsuite/main.py`, and tests in `tests/live/test_preflight.py` so live mode rejects research commands before execution. Stage 12.1 added the new `plan-feature-ablation` research command to the same live rejection set.
+
+## ISSUE-R44-001: Final crosscheck found research evidence hygiene blockers
+
+Severity: P1
+Stage discovered: Stage R44 - Final crosscheck hardening
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_cycle/benchmark.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/backtesting/splits.py`, `src/tradingbotsuite/optimization/stability.py`, `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/research/feature_ablation.py`, `.gitignore`, `data/research/fixtures/btcusdt_context_provider_latest_month_v1/**`
+
+### Problem
+
+The final crosscheck found several issues that could weaken reproducibility or evidence truthfulness before push: relative benchmark output paths could recurse under generated spec locations, provider benchmark evidence depended on an ignored fixture, non-contiguous holdout splits could include unrelated rows, stability and ablation grouping omitted exit-policy identity, fixed-interval context manifests did not detect gaps, and generic feature-ablation runs could be labeled validation-incomplete when all configured evidence was executable.
+
+### Evidence
+
+Independent agent review and full-suite validation identified the benchmark path risk, ignored provider fixture risk, split/evidence grouping issues, context gap reporting issue, and failing tests in benchmark artifact accounting, removed-source boundaries, and feature-ablation execution scope.
+
+### Required resolution
+
+Before commit/push, make provider fixture evidence durable, resolve benchmark paths to absolute directories, use short generated backtest run directory names, preserve exact holdout membership, include exit-policy identity in stability/ablation grouping, make context gap checks interval-aware, and rerun focused plus full validation.
+
+### Resolution notes
+
+Stage R44 fixes implemented all required changes and added regression coverage. The provider latest-month fixture pack is unignored for commit. Focused validation passed, WPR42 provider benchmark was rerun without filename-length warnings, and full validation is recorded in the R44 stage report.
 
 ## Issue template
 

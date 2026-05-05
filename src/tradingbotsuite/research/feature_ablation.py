@@ -279,6 +279,7 @@ def _decide_hypothesis(track: FeatureAblationTrack, evidence: Mapping[str, Any] 
 
 
 def _experiment_spec_for_row(row: Mapping[str, Any], *, dataset_manifest_hash: str) -> ExperimentSpec:
+    execution_strategy = _ablation_execution_strategy(row)
     return ExperimentSpec(
         experiment_name=str(row["hypothesis_id"]),
         dataset=DatasetSpec(dataset_manifest_hash=dataset_manifest_hash),
@@ -289,8 +290,8 @@ def _experiment_spec_for_row(row: Mapping[str, Any], *, dataset_manifest_hash: s
         strategies=(
             StrategySpec("baseline_no_trade", config={"purpose": "floor"}),
             StrategySpec(
-                "hmm_knn_diagnostic_v1",
-                strategy_type="hmm_knn_research",
+                execution_strategy,
+                strategy_type="backtest_strategy",
                 config={
                     "hypothesis_id": row["hypothesis_id"],
                     "feature_set_id": row["feature_set_id"],
@@ -299,7 +300,19 @@ def _experiment_spec_for_row(row: Mapping[str, Any], *, dataset_manifest_hash: s
             ),
         ),
         backtest=BacktestSpec(),
-        validation=ValidationSpec(trade_count_floor=50, max_single_split_pnl_share=0.50, feature_missingness_ceiling=0.05),
+        validation=ValidationSpec(
+            methods=(
+                "anchored_walk_forward",
+                "rolling_walk_forward",
+                "purged_embargoed_split",
+                "side_separated_reporting",
+                "regime_separated_reporting",
+                "cost_slippage_funding_stress",
+            ),
+            trade_count_floor=50,
+            max_single_split_pnl_share=0.50,
+            feature_missingness_ceiling=0.05,
+        ),
         search=SearchSpec(
             method="grid",
             parameter_space={
@@ -310,6 +323,20 @@ def _experiment_spec_for_row(row: Mapping[str, Any], *, dataset_manifest_hash: s
         ),
         report=ReportSpec(),
     )
+
+
+def _ablation_execution_strategy(row: Mapping[str, Any]) -> str:
+    feature_set_id = str(row["feature_set_id"])
+    if feature_set_id in {"features_perp_context_only"}:
+        return "funding_basis_v1"
+    if feature_set_id in {
+        "features_price_trend_vol",
+        "features_price_trend_vol_wt3d",
+        "features_full_context_no_wt",
+        "features_full_context_wt3d",
+    }:
+        return "lc_reference_v1"
+    return "baseline_no_trade"
 
 
 def _write_summary_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:

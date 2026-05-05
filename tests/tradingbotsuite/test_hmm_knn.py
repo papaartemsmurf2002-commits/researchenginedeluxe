@@ -44,7 +44,11 @@ from tradingbotsuite.research.deterministic_datasets import (
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
 from tradingbotsuite.strategies.hmm_knn.config import resolve_feature_columns
-from tradingbotsuite.strategies.hmm_knn.distances import resolve_distance_function
+from tradingbotsuite.strategies.hmm_knn.distances import (
+    available_distance_metrics,
+    resolve_distance_function,
+    resolve_distance_metric,
+)
 
 
 def _write_test_config(tmp_path: Path) -> Path:
@@ -464,8 +468,11 @@ def test_degenerate_regime_posterior_normalizes_to_uniform_no_trade() -> None:
 def test_knn_config_accepts_pluggable_distances_and_rejects_unknown_distance(tmp_path) -> None:
     euclidean_config = _write_modified_test_config(tmp_path, knn__distance="euclidean_robust_z")
     euclidean_plan = load_hmm_knn_plan(euclidean_config)
+    normalized_config = _write_modified_test_config(tmp_path, knn__distance=" Lorentzian ")
+    normalized_plan = load_hmm_knn_plan(normalized_config)
 
     assert euclidean_plan.knn.distance == "euclidean_robust_z"
+    assert resolve_distance_metric(normalized_plan.knn.distance).id == "lorentzian"
 
     bad_config = _write_modified_test_config(tmp_path, knn__distance="euclidean")
     with pytest.raises(ValueError, match="knn.distance must be one of"):
@@ -486,6 +493,19 @@ def test_hmm_knn_feature_packs_and_distance_functions_are_resolvable() -> None:
     assert not any(column.startswith("wt3d_") for column in without_wt3d)
     assert lorentzian.shape == euclidean.shape == cosine.shape == (1, 2)
     assert not np.allclose(lorentzian, euclidean)
+
+
+def test_distance_metric_registry_exposes_metadata_and_aliases() -> None:
+    metrics = available_distance_metrics()
+
+    assert set(metrics) == {"cosine", "euclidean_robust_z", "lorentzian"}
+    assert metrics["lorentzian"]["supports_backend"] == ["cpu", "auto", "cupy"]
+    assert metrics["lorentzian"]["feature_scale_mode"] == "robust_z_or_supplied_scale"
+    assert resolve_distance_metric("log_lorentzian").id == "lorentzian"
+    assert resolve_distance_metric("cosine").display_name == "Cosine"
+
+    with pytest.raises(ValueError, match="unsupported_hmm_knn_distance"):
+        resolve_distance_metric("euclidean")
 
 
 def test_knn_primary_output_uses_primary_k_and_weighting(tmp_path) -> None:
@@ -561,6 +581,7 @@ def test_knn_same_regime_blocks_cross_regime_neighbors_until_fallback_is_enabled
         knn__primary_weighting="inverse_distance",
         knn__min_neighbor_count=1,
         knn__allow_cross_regime_fallback=True,
+        knn__regime_match_mode=None,
     )
     train_frame = pd.DataFrame(
         {
@@ -605,6 +626,82 @@ def test_knn_same_regime_blocks_cross_regime_neighbors_until_fallback_is_enabled
     assert fallback_diagnostics["fallback_used"].tolist() == [True]
     assert fallback_diagnostics["neighbor_regime"].astype(int).tolist() == [0]
     assert fallback_diagnostics["query_regime"].astype(int).tolist() == [1]
+    assert fallback_diagnostics["regime_match_mode"].tolist() == ["same_with_all_fallback"]
+    assert fallback_diagnostics["candidate_count_before_regime_filter"].astype(int).tolist() == [1]
+    assert fallback_diagnostics["candidate_count_after_regime_filter"].astype(int).tolist() == [1]
+
+
+def test_knn_explicit_regime_modes_all_and_compatible(tmp_path) -> None:
+    all_plan = load_hmm_knn_plan(
+        _write_modified_test_config(
+            tmp_path,
+            knn__primary_k=1,
+            knn__k_values=[1],
+            knn__neighbor_weighting=["inverse_distance"],
+            knn__primary_weighting="inverse_distance",
+            knn__min_neighbor_count=1,
+            knn__regime_match_mode="all",
+        )
+    )
+    compatible_plan = load_hmm_knn_plan(
+        _write_modified_test_config(
+            tmp_path,
+            knn__primary_k=1,
+            knn__k_values=[1],
+            knn__neighbor_weighting=["inverse_distance"],
+            knn__primary_weighting="inverse_distance",
+            knn__min_neighbor_count=1,
+            knn__regime_match_mode="compatible",
+            knn__compatible_regimes={"bull_trend": ["range_chop"]},
+        )
+    )
+    train_frame = pd.DataFrame(
+        {
+            "signal_id": ["train-1", "train-2"],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "direction": ["long", "long"],
+            "signal_bar_time_ms": [1, 2],
+            "label_accept": [1, 0],
+            "label_pnl_multiple": [1.0, -1.0],
+        },
+        index=[0, 1],
+    )
+    test_frame = pd.DataFrame(
+        {
+            "signal_id": ["test-1"],
+            "symbol": ["BTCUSDT"],
+            "direction": ["long"],
+            "signal_bar_time_ms": [3],
+            "label_accept": [1],
+            "label_pnl_multiple": [1.0],
+        },
+        index=[2],
+    )
+    kwargs = {
+        "train_matrix": np.array([[0.0], [10.0]]),
+        "test_matrix": np.array([[0.1]]),
+        "train_frame": train_frame,
+        "test_frame": test_frame,
+        "train_regimes": pd.Series([0, 3], index=train_frame.index),
+        "test_regimes": pd.Series([1], index=test_frame.index),
+        "train_regime_labels": pd.Series(["range_chop", "shock_transition"], index=train_frame.index),
+        "test_regime_labels": pd.Series(["bull_trend"], index=test_frame.index),
+    }
+
+    all_prediction, all_diagnostics, _ = _knn_predict(**kwargs, plan=all_plan)
+    compatible_prediction, compatible_diagnostics, _ = _knn_predict(**kwargs, plan=compatible_plan)
+
+    assert all_prediction["knn_skip_reason"].tolist() == [None]
+    assert all_diagnostics["regime_match_mode"].tolist() == ["all"]
+    assert all_diagnostics["same_regime_only"].tolist() == [False]
+    assert all_diagnostics["configured_same_regime_only"].tolist() == [True]
+    assert all_diagnostics["candidate_count_after_regime_filter"].astype(int).tolist() == [2]
+    assert compatible_prediction["knn_skip_reason"].tolist() == [None]
+    assert compatible_diagnostics["regime_match_mode"].tolist() == ["compatible"]
+    assert compatible_diagnostics["same_regime_only"].tolist() == [False]
+    assert compatible_diagnostics["candidate_count_after_regime_filter"].astype(int).tolist() == [1]
+    assert compatible_diagnostics["neighbor_regime"].astype(int).tolist() == [0]
+    assert compatible_diagnostics["compatible_regime_labels"].tolist() == ["bull_trend,range_chop"]
 
 
 def test_regime_fit_ignores_rows_after_current_test_split(tmp_path) -> None:
@@ -660,8 +757,15 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
     assert manifest["feature_version"] == HMM_KNN_FEATURE_VERSION
     assert set(WT3D_FEATURE_COLUMNS).issubset(manifest["wt3d_feature_columns"])
     assert manifest["knn_settings"]["distance"] == "lorentzian"
+    assert manifest["knn_settings"]["distance_metric"]["id"] == "lorentzian"
+    assert manifest["knn_settings"]["available_distance_metrics"]["lorentzian"]["supports_backend"] == ["cpu", "auto", "cupy"]
+    assert manifest["knn_settings"]["regime_match_mode"] == "same"
     assert manifest["knn_settings"]["distance_backend"] == "cpu"
     assert manifest["knn_settings"]["primary_k"] == 12
+    assert manifest["feature_set_variant_id"] == "inline_feature_columns"
+    assert isinstance(manifest["feature_set_variant_sha256"], str)
+    assert manifest["feature_count"] == len(manifest["feature_columns"])
+    assert metrics["feature_set_variant"]["feature_set_variant_sha256"] == manifest["feature_set_variant_sha256"]
     assert manifest["dependencies"]["knn_distance_backend_requested"] == "cpu"
     assert manifest["dependencies"]["knn_distance_backend"] == "cpu"
     assert manifest["dependencies"]["cupy_available"] in {True, False}
@@ -703,10 +807,16 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
         "weighting",
         "is_primary",
         "same_regime_only",
+        "regime_match_mode",
+        "candidate_count_before_regime_filter",
+        "candidate_count_after_regime_filter",
+        "selected_neighbor_count",
         "fallback_used",
+        "fallback_reason",
         "knn_skip_reason",
         "source_row_index",
         "query_regime",
+        "query_regime_label",
         "neighbor_rank",
         "neighbor_source_index",
         "neighbor_distance",
@@ -721,6 +831,8 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
     assert (populated_diagnostics["neighbor_distance_quality"].astype(float).between(0.0, 1.0)).all()
     assert (populated_diagnostics["neighbor_source_index"].astype(int) <= populated_diagnostics["source_row_index"].astype(int)).all()
     assert (populated_diagnostics["neighbor_regime"].astype(int) == populated_diagnostics["query_regime"].astype(int)).all()
+    assert (populated_diagnostics["candidate_count_before_regime_filter"].astype(int) >= populated_diagnostics["candidate_count_after_regime_filter"].astype(int)).all()
+    assert (populated_diagnostics["selected_neighbor_count"].astype(int) > 0).all()
     assert set(populated_diagnostics["k"].astype(int)).issubset({8, 12})
     assert set(populated_diagnostics["weighting"].astype(str)) == {"inverse_distance", "softmax"}
     assert set(WT3D_FEATURE_COLUMNS).issubset(meta.columns)
@@ -735,6 +847,8 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
     assert metrics["comparison"]["hmm_knn_meta_model"]["pnl_source"] == "realized_label_return_after_fee_slippage_funding"
     assert "meta_validation" in metrics
     assert "research_only_not_live_promotable" in metrics["promotion_failures"]
+    assert "neighbor_pool_diagnostics_by_regime" in metrics["artifact_diagnostics"]
+    assert "feature_variant_summary" in metrics["artifact_diagnostics"]
 
 
 def test_hmm_knn_research_runs_without_wt3d_and_with_euclidean_distance(tmp_path) -> None:
@@ -757,7 +871,10 @@ def test_hmm_knn_research_runs_without_wt3d_and_with_euclidean_distance(tmp_path
 
     assert manifest["research_only"] is True
     assert manifest["feature_pack"] == "full_context_no_wt3d"
+    assert manifest["feature_set_variant_id"] == "full_context_no_wt3d"
+    assert manifest["feature_set_source"] == "registered_feature_pack"
     assert manifest["knn_settings"]["distance"] == "euclidean_robust_z"
+    assert manifest["knn_settings"]["distance_metric"]["id"] == "euclidean_robust_z"
     assert "euclidean_robust_z" in manifest["knn_settings"]["available_distances"]
     assert not any(column.startswith("wt3d_") for column in manifest["feature_columns"])
     assert manifest["dependencies"]["hmm_backend"] == ["deterministic_rule_baseline"]

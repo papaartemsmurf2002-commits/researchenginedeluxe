@@ -1,0 +1,114 @@
+{
+  "base_interval": "15m",
+  "cycle_dataset": {
+    "columns": [
+      "symbol",
+      "time_ms",
+      "bar_time_ms",
+      "signal_bar_time_ms",
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume",
+      "signal_bar_open",
+      "signal_bar_high",
+      "signal_bar_low",
+      "signal_bar_close",
+      "signal_bar_volume",
+      "entry_price",
+      "source_row_index",
+      "source_provider",
+      "source_provider_raw",
+      "source_data_family",
+      "source_interval",
+      "fixture_derivation",
+      "validation_regime",
+      "top_regime_label",
+      "regime",
+      "provider_cache_realized_volatility"
+    ],
+    "path": "cycle_dataset.parquet",
+    "row_count": 144,
+    "sha256": "sha256:a77fde5a444958f0c87dde99335e0eeb598bbc5d4b397b507276ca6e9011f151",
+    "time_field": "signal_bar_time_ms"
+  },
+  "derivation": {
+    "derivation_type": "contiguous_tail_slice",
+    "first_time_ms": 1776050100000,
+    "input_source": "binance_usdm_klines_provider_cache",
+    "last_time_ms": 1776178800000,
+    "notes": [
+      "OHLCV fields are selected from the local Binance USD-M kline provider cache manifest.",
+      "Regime labels are deterministic OHLCV-derived research annotations for split coverage only.",
+      "No TradingView export, Pine marker, or legacy parity artifact is used."
+    ],
+    "row_count": 144,
+    "source_end_row_index": 17476,
+    "source_start_row_index": 17333,
+    "synthetic_source_used": false,
+    "tradingview_source_used": false
+  },
+  "families": {
+    "bars": {
+      "columns": [
+        "event_time_ms",
+        "symbol",
+        "interval",
+        "open_price",
+        "high_price",
+        "low_price",
+        "close_price",
+        "volume",
+        "source_row_index"
+      ],
+      "data_family": "kline",
+      "event_time_field": "event_time_ms",
+      "interval": "15m",
+      "path": "bars_15m.parquet",
+      "required": true,
+      "row_count": 144,
+      "sha256": "sha256:a0f4bdba21b40511f1b0c097f4fa1d9835ea112e61229c935d0a480efc961823"
+    }
+  },
+  "fixture_id": "btcusdt-v1-checked-in-binance-usdm-klines",
+  "fixture_scope": "checked_in_small_provider_ohlcv_fixture_not_oos_acceptance_evidence",
+  "manifest_version": "historical-fixture-pack-manifest-v1",
+  "observe_only": true,
+  "omitted_optional_families": {
+    "agg_trade": "not_present_in_ohlcv_provider_cache",
+    "funding_rate": "not_present_in_ohlcv_provider_cache",
+    "lower_timeframe_bars": "not_present_in_ohlcv_provider_cache",
+    "open_interest": "not_present_in_ohlcv_provider_cache",
+    "premium_index": "not_present_in_ohlcv_provider_cache"
+  },
+  "promotion_ready": false,
+  "research_evidence_limitations": [
+    "compact_fixture_for_contract_and_full_cycle_execution_only",
+    "not_sufficient_for_oos_acceptance",
+    "not_sufficient_for_performance_claims",
+    "not_promotion_ready"
+  ],
+  "research_only": true,
+  "source": {
+    "data_family": "kline",
+    "event_time_field": "time_ms",
+    "local_source_json_path": "data/research/chart_ohlcv_cache/BTCUSDT_15m_1760450400000_1776178800000.json",
+    "local_source_manifest_path": "data/research/chart_ohlcv_cache/BTCUSDT_15m_1760450400000_1776178800000.manifest.json",
+    "non_promotable_reasons": [
+      "compact_fixture_pack_not_oos_acceptance_evidence",
+      "receive_time_unavailable",
+      "ohlcv_only_optional_context_omitted"
+    ],
+    "receive_time_unavailable_reason": "local_provider_cache_manifest_does_not_include_original_receive_time",
+    "source_first_time_ms": 1760450400000,
+    "source_last_time_ms": 1776178800000,
+    "source_manifest_sha256": "e3e331840ad1de193aeb563b78b1429eca268a925f1bd6ecef4a90c32aeb3a8d",
+    "source_name": "binance_rest",
+    "source_raw": "binance_usdm_klines",
+    "source_row_count": 17477,
+    "source_sha256": "ff86ed71921ddaead3a58a6205e4d4b04917960f1a1bd1a9d4c2ef6dbb97ec2e",
+    "source_type": "provider_cache"
+  },
+  "symbol": "BTCUSDT"
+}

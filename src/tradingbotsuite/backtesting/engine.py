@@ -17,8 +17,11 @@ from tradingbotsuite.strategies import get_strategy_plugin, validate_signal_fram
 
 BACKTEST_ENGINE_VERSION = "research-backtest-engine-v1"
 BACKTEST_MANIFEST_VERSION = "backtest-manifest-v1"
+BACKTEST_CACHE_POLICY = "identity_only_no_execution_cache"
 SUPPORTED_HOLDING_WINDOWS_MS = {
     "1h": 60 * 60 * 1000,
+    "4h": 4 * 60 * 60 * 1000,
+    "12h": 12 * 60 * 60 * 1000,
     "24h": 24 * 60 * 60 * 1000,
     "72h": 72 * 60 * 60 * 1000,
     "7d": 7 * 24 * 60 * 60 * 1000,
@@ -41,6 +44,12 @@ class BacktestSpec:
     slippage_bps: float = 5.0
     spread_bps: float = 0.0
     funding_rate: float = 0.0
+    exit_policy_id: str = "fixed_holding_window"
+    target_return: float | None = None
+    stop_return: float | None = None
+    exit_policy_params: dict[str, Any] = field(default_factory=dict)
+    exit_price_source: str = "primary_close"
+    lower_timeframe_dataset_path: Path | None = None
     feature_set_id: str | None = None
     feature_manifest_sha256: str | None = None
     dataset_sha256: str | None = None
@@ -50,6 +59,11 @@ class BacktestSpec:
         payload = asdict(self)
         payload["output_dir"] = str(self.output_dir)
         payload["dataset_path"] = str(self.dataset_path) if self.dataset_path is not None else None
+        payload["lower_timeframe_dataset_path"] = (
+            str(self.lower_timeframe_dataset_path)
+            if self.lower_timeframe_dataset_path is not None
+            else None
+        )
         payload["engine_version"] = BACKTEST_ENGINE_VERSION
         payload["research_only"] = True
         payload["observe_only"] = True
@@ -87,6 +101,7 @@ class BacktestEngine:
         output_dir = spec.output_dir / spec.run_id
         output_dir.mkdir(parents=True, exist_ok=True)
         source_frame = self._load_source_frame(spec, dataset=dataset, market_data=market_data)
+        lower_timeframe_market = _load_lower_timeframe_frame(spec)
         market = _market_frame(source_frame, symbol=spec.symbol)
         assumptions = _execution_assumptions(spec)
         signals, strategy_metadata = _signals_for_strategy(source_frame, spec)
@@ -102,6 +117,7 @@ class BacktestEngine:
             costs=cost_model,
             assumptions=assumptions,
             initial_equity=spec.initial_equity,
+            lower_timeframe_market_data=lower_timeframe_market,
         )
         trades = _enrich_trades(trades, market)
         metrics = calculate_backtest_metrics(
@@ -112,14 +128,17 @@ class BacktestEngine:
             initial_equity=spec.initial_equity,
         )
         config_resolved = spec.resolved_config()
-        cache_key = _stable_hash(
-            {
-                "dataset_sha256": _source_hash(spec, source_frame),
-                "feature_manifest_sha256": spec.feature_manifest_sha256,
-                "strategy_config_sha256": _stable_hash(spec.strategy_config),
-                "engine_version": BACKTEST_ENGINE_VERSION,
-            }
+        source_hash = _source_hash(spec, source_frame)
+        lower_timeframe_hash = _lower_timeframe_source_hash(spec, lower_timeframe_market)
+        cache_key_components = _cache_key_components(
+            dataset_sha256=source_hash,
+            lower_timeframe_dataset_sha256=lower_timeframe_hash,
+            feature_manifest_sha256=spec.feature_manifest_sha256,
+            config_resolved=config_resolved,
+            assumptions=assumptions,
+            cost_model=cost_model,
         )
+        cache_key = _stable_hash(cache_key_components)
 
         trades_path = output_dir / "trades.parquet"
         signals_path = output_dir / "signals.parquet"
@@ -160,6 +179,8 @@ class BacktestEngine:
             "strategy_metadata": strategy_metadata,
             "holding_window": spec.holding_window,
             "entry_price_source": spec.entry_price_source,
+            "exit_policy_id": spec.exit_policy_id,
+            "exit_price_source": spec.exit_price_source,
             "same_bar_entry_exit_allowed": False,
             "required_outputs": {
                 "backtest_manifest": str(manifest_path),
@@ -174,11 +195,22 @@ class BacktestEngine:
             "signal_count": int(len(signals)),
             "trade_count": int(len(trades)),
             "dataset_path": str(spec.dataset_path) if spec.dataset_path is not None else None,
-            "dataset_sha256": _source_hash(spec, source_frame),
+            "dataset_sha256": source_hash,
+            "lower_timeframe_dataset_path": (
+                str(spec.lower_timeframe_dataset_path)
+                if spec.lower_timeframe_dataset_path is not None
+                else None
+            ),
+            "lower_timeframe_dataset_sha256": lower_timeframe_hash,
             "feature_set_id": spec.feature_set_id,
             "feature_manifest_sha256": spec.feature_manifest_sha256,
             "config_sha256": spec.config_sha256(),
             "cache_key": cache_key,
+            "cache_policy": BACKTEST_CACHE_POLICY,
+            "cache_lookup_used": False,
+            "cache_hit": False,
+            "execution_cache_reuse_enabled": False,
+            "cache_key_components": cache_key_components,
             "result_sha256": result_sha256,
             "artifact_hashes": artifact_hashes,
             "execution_assumptions": assumptions.to_payload(),
@@ -235,7 +267,18 @@ def _execution_assumptions(spec: BacktestSpec) -> ExecutionAssumptions:
         max_holding_ms=SUPPORTED_HOLDING_WINDOWS_MS["7d"],
         holding_period_ms=holding_ms,
         allow_same_bar_exit=False,
+        exit_policy_id=spec.exit_policy_id,
+        target_return=spec.target_return,
+        stop_return=spec.stop_return,
+        exit_price_source=spec.exit_price_source,  # type: ignore[arg-type]
+        exit_policy_params=dict(spec.exit_policy_params),
     )
+
+
+def _load_lower_timeframe_frame(spec: BacktestSpec) -> pd.DataFrame | None:
+    if spec.lower_timeframe_dataset_path is None:
+        return None
+    return pd.read_parquet(spec.lower_timeframe_dataset_path)
 
 
 def _market_frame(source: pd.DataFrame, *, symbol: str) -> pd.DataFrame:
@@ -259,7 +302,17 @@ def _market_frame(source: pd.DataFrame, *, symbol: str) -> pd.DataFrame:
         "regime",
         "realized_volatility",
         "atr_percentile",
+        "atr",
         "directional_slope_atr",
+        "funding_rate_change",
+        "time_to_next_funding_ms",
+        "hours_to_next_funding",
+        "accept_probability",
+        "base_probability",
+        "primary_signed_imbalance_ratio",
+        "primary_sqrt_signed_imbalance_ratio",
+        "top_of_book_imbalance",
+        "queue_imbalance_l5",
     ]
     for column in optional:
         if column in source.columns:
@@ -271,14 +324,30 @@ def _market_frame(source: pd.DataFrame, *, symbol: str) -> pd.DataFrame:
 
 
 def _signals_for_strategy(source: pd.DataFrame, spec: BacktestSpec) -> tuple[pd.DataFrame, dict[str, Any]]:
+    effective_feature_set = spec.feature_set_id or spec.strategy_config.get("feature_set_id", "features_full_context_no_wt")
     plugin_config = {
         **dict(spec.strategy_config),
         "symbol": spec.symbol.upper(),
-        "feature_set_id": spec.feature_set_id or spec.strategy_config.get("feature_set_id", "features_full_context_no_wt"),
+        "feature_set_id": effective_feature_set,
         "holding_period": spec.holding_window,
         "entry_policy": spec.entry_price_source,
+        "exit_policy_id": spec.exit_policy_id,
+        "target_return": spec.target_return,
+        "stop_return": spec.stop_return,
     }
-    plugin = get_strategy_plugin(spec.strategy_id, config=plugin_config)
+    try:
+        plugin = get_strategy_plugin(spec.strategy_id, config=plugin_config)
+    except ValueError as exc:
+        message = str(exc)
+        if message.startswith("invalid_holding_period:"):
+            raise ValueError(f"strategy_holding_window_unsupported:{spec.strategy_id}:{spec.holding_window}") from exc
+        if message.startswith("invalid_feature_set:"):
+            raise ValueError(f"strategy_feature_set_unsupported:{spec.strategy_id}:{effective_feature_set}") from exc
+        raise
+    if spec.holding_window not in getattr(plugin, "allowed_holding_periods", ()):
+        raise ValueError(f"strategy_holding_window_unsupported:{spec.strategy_id}:{spec.holding_window}")
+    if effective_feature_set not in getattr(plugin, "required_feature_sets", ()):
+        raise ValueError(f"strategy_feature_set_unsupported:{spec.strategy_id}:{effective_feature_set}")
     plugin.prepare(None)
     predictions = plugin.predict(source.copy())
     validation = validate_signal_frame(predictions)
@@ -355,12 +424,42 @@ def _source_hash(spec: BacktestSpec, frame: pd.DataFrame) -> str:
     return _frame_hash(frame)
 
 
+def _lower_timeframe_source_hash(spec: BacktestSpec, frame: pd.DataFrame | None) -> str | None:
+    if spec.lower_timeframe_dataset_path is not None and spec.lower_timeframe_dataset_path.exists():
+        return _file_sha256(spec.lower_timeframe_dataset_path)
+    if frame is not None:
+        return _frame_hash(frame)
+    return None
+
+
 def _reproducible_config(config: dict[str, Any]) -> dict[str, Any]:
     payload = dict(config)
     payload.pop("run_id", None)
     payload.pop("output_dir", None)
     payload.pop("dataset_path", None)
+    payload.pop("lower_timeframe_dataset_path", None)
     return payload
+
+
+def _cache_key_components(
+    *,
+    dataset_sha256: str,
+    lower_timeframe_dataset_sha256: str | None,
+    feature_manifest_sha256: str | None,
+    config_resolved: dict[str, Any],
+    assumptions: ExecutionAssumptions,
+    cost_model: CostModel,
+) -> dict[str, Any]:
+    return {
+        "cache_policy": BACKTEST_CACHE_POLICY,
+        "dataset_sha256": dataset_sha256,
+        "lower_timeframe_dataset_sha256": lower_timeframe_dataset_sha256,
+        "feature_manifest_sha256": feature_manifest_sha256,
+        "backtest_spec_sha256": _stable_hash(_reproducible_config(config_resolved)),
+        "execution_assumptions": assumptions.to_payload(),
+        "cost_model": cost_model.to_payload(),
+        "engine_version": BACKTEST_ENGINE_VERSION,
+    }
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:

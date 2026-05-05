@@ -1,0 +1,41 @@
+{
+  "cycle_id": "btc-full-cycle-v1",
+  "symbol": "BTCUSDT",
+  "holding_windows": ["1h", "4h", "12h", "24h", "72h", "7d"],
+  "data": {
+    "dataset_manifest_paths": ["../../data/research/fixtures/btcusdt_v1/fixture_pack_manifest.json"],
+    "local_fixture_dir": null,
+    "synthetic_fixture": false
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol",
+      "features_price_trend_vol_wt3d",
+      "features_full_context_no_wt",
+      "features_full_context_wt3d",
+      "features_perp_context_only",
+      "features_microstructure_filter_only"
+    ]
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "trend_following_v1",
+    "volatility_breakout_v1",
+    "range_reversion_v1",
+    "funding_basis_v1",
+    "regime_adaptive_v1",
+    "hmm_knn_diagnostic_v1"
+  ],
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 8,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1
+  },
+  "optimizer": {
+    "method_sequence": ["coarse_lhs", "adaptive_grid", "stability_region_refine"],
+    "max_candidates_per_strategy": 16,
+    "top_regions_to_refine": 1
+  }
+}

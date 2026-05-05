@@ -8,7 +8,7 @@ import time
 import csv
 import itertools
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from importlib.util import find_spec
 from pathlib import Path
@@ -16,7 +16,13 @@ from typing import Any, Mapping
 
 import pandas as pd
 
-from tradingbotsuite.backtesting import BACKTEST_ENGINE_VERSION
+from tradingbotsuite.backtesting import BACKTEST_ENGINE_VERSION, BacktestEngine
+from tradingbotsuite.backtesting.engine import BacktestSpec as EngineBacktestSpec
+from tradingbotsuite.backtesting.splits import (
+    build_anchored_walk_forward_splits,
+    build_purged_walk_forward_splits,
+    build_rolling_walk_forward_splits,
+)
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_STAGES, prepare_hmm_knn_research_data
 from tradingbotsuite.research.live_readiness import (
@@ -46,6 +52,17 @@ DEFAULT_REPORT_OUTPUTS = (
     "metrics_by_regime.parquet",
     "metrics_by_side.parquet",
 )
+EXECUTABLE_VALIDATION_METHODS = {
+    "anchored_walk_forward",
+    "rolling_walk_forward",
+    "purged_embargoed_split",
+    "purged_embargoed_walk_forward",
+}
+REPORT_OUTPUT_VALIDATION_METHODS = {
+    "side_separated_reporting",
+    "regime_separated_reporting",
+    "cost_slippage_funding_stress",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +76,22 @@ class ResearchExperimentRunResult:
     metrics_by_split_path: Path | None = None
     metrics_by_regime_path: Path | None = None
     metrics_by_side_path: Path | None = None
+    candidate_rankings_path: Path | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GenericExecutionCandidate:
+    candidate_id: str
+    candidate_index: int
+    strategy: StrategySpec
+    search_parameters: Mapping[str, Any]
+    strategy_config: Mapping[str, Any]
+    feature_set_id: str
+    feature_manifest_hash: str
+    holding_window: str
+    fee_bps: float
+    slippage_bps: float
+    funding_stress_bps: tuple[float, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -512,6 +545,7 @@ def run_research_experiment(
         metrics_by_split_path=Path(stage8_outputs["metrics_by_split_path"]),
         metrics_by_regime_path=Path(stage8_outputs["metrics_by_regime_path"]),
         metrics_by_side_path=Path(stage8_outputs["metrics_by_side_path"]),
+        candidate_rankings_path=Path(stage8_outputs["candidate_rankings_path"]),
     )
 
 
@@ -568,38 +602,104 @@ def _write_generic_experiment_outputs(
     pipeline_summary: Mapping[str, Any],
     evidence_manifest: Mapping[str, Any],
 ) -> dict[str, Any]:
-    dataset_hash = _hash_optional_artifact(artifact_links.get("dataset_manifest_path")) or _stable_hash({"dataset": "missing"})
-    feature_hash = _stable_hash(
-        {
-            "feature_source": "research_pipeline",
-            "evidence_manifest": _evidence_manifest_digest(evidence_manifest),
-        }
+    supplied_spec, supplied_spec_status = _load_supplied_experiment_spec(run_spec.experiment_spec)
+    resolved_dataset_path = _resolve_generic_dataset_path(
+        run_spec=run_spec,
+        supplied_spec=supplied_spec,
+        artifact_links=artifact_links,
+        evidence_manifest=evidence_manifest,
     )
-    generic_spec = ExperimentSpec(
-        experiment_name=run_spec.name,
-        dataset=DatasetSpec(
-            dataset_path=str(artifact_links.get("dataset_manifest_path")) if artifact_links.get("dataset_manifest_path") else None,
-            dataset_manifest_hash=dataset_hash,
-        ),
-        feature=FeatureSpec(feature_set_id="features_full_context_no_wt", feature_manifest_hash=feature_hash),
-        strategies=(
-            StrategySpec("baseline_no_trade", config={}),
-            StrategySpec("trend_following_v1", config={"slope_threshold": 0.1, "spacing_bars": 10}),
-            StrategySpec("hmm_knn_diagnostic_v1", strategy_type="hmm_knn_research", config={"source": "stage7_artifact"}),
-        ),
-        backtest=BacktestSpec(),
-        validation=ValidationSpec(),
-        search=SearchSpec(method="grid", parameter_space={"strategy": ("baseline_no_trade", "trend_following_v1", "hmm_knn_diagnostic_v1")}),
-        report=ReportSpec(),
+    dataset_identity = _generic_dataset_identity(
+        resolved_dataset_path=resolved_dataset_path,
+        supplied_spec=supplied_spec,
+        artifact_links=artifact_links,
+    )
+    generic_spec, supplied_spec_status = _executable_generic_spec(
+        run_spec=run_spec,
+        supplied_spec=supplied_spec,
+        supplied_spec_status=supplied_spec_status,
+        resolved_dataset_path=resolved_dataset_path,
+        dataset_hash=str(dataset_identity["dataset_identity_hash"]),
+        artifact_links=artifact_links,
+        evidence_manifest=evidence_manifest,
     )
     validation_hash = _stable_hash(generic_spec.validation.to_payload())
-    rows = _optimizer_summary_rows(
-        generic_spec=generic_spec,
-        conclusion=conclusion,
-        pipeline_summary=pipeline_summary,
-        evidence_manifest=evidence_manifest,
-        validation_hash=validation_hash,
-    )
+    if resolved_dataset_path is not None:
+        generic_outputs = _real_generic_backtest_outputs(
+            output_dir=output_dir,
+            generic_spec=generic_spec,
+            dataset_path=resolved_dataset_path,
+            conclusion=conclusion,
+            pipeline_summary=pipeline_summary,
+            evidence_manifest=evidence_manifest,
+            validation_hash=validation_hash,
+        )
+        rows = generic_outputs["rows"]
+        split_frame = generic_outputs["metrics_by_split"]
+        regime_frame = generic_outputs["metrics_by_regime"]
+        side_frame = generic_outputs["metrics_by_side"]
+        cost_stress_frame = generic_outputs["metrics_by_cost_stress"]
+        validation_method_execution = _validation_method_execution(
+            generic_spec.validation,
+            empirical_result_scope="real_backtest",
+            split_frame=split_frame,
+            regime_frame=regime_frame,
+            side_frame=side_frame,
+            cost_stress_frame=cost_stress_frame,
+        )
+        _apply_validation_execution_failures(rows, validation_method_execution)
+        _finalize_generic_row_scoreability(rows, validation=generic_spec.validation)
+        scoreable_rows = [row for row in rows if bool(row.get("scoreable_candidate", False))]
+        aggregate_real_rows = [row for row in rows if bool(row.get("aggregate_backtest_evidence", False))]
+        failed_rows = [row for row in rows if row.get("metric_scope") == "real_backtest_failed"]
+        empirical_result_scope = (
+            "real_backtest_partial"
+            if scoreable_rows and failed_rows
+            else "real_backtest"
+            if scoreable_rows
+            else "aggregate_backtest_validation_incomplete"
+            if aggregate_real_rows
+            else "real_backtest_failed"
+        )
+        empirical_evidence = bool(scoreable_rows)
+        metrics_source = (
+            "backtest_engine"
+            if scoreable_rows
+            else "backtest_engine_validation_incomplete"
+            if aggregate_real_rows
+            else "backtest_engine_failed"
+        )
+        orchestrator_reason = (
+            "generic experiment rows include validated real backtest outputs but remain research-only and not acceptance evidence"
+            if scoreable_rows
+            else "generic experiment rows include aggregate backtests but required validation evidence is incomplete"
+            if aggregate_real_rows
+            else "generic experiment attempted real backtests but no candidate produced empirical metrics"
+        )
+    else:
+        rows = _not_run_missing_dataset_rows(
+            generic_spec=generic_spec,
+            conclusion=conclusion,
+            pipeline_summary=pipeline_summary,
+            validation_hash=validation_hash,
+        )
+        split_frame = _empty_split_metrics_frame()
+        regime_frame = _empty_regime_metrics_frame()
+        side_frame = _empty_side_metrics_frame()
+        cost_stress_frame = _empty_cost_stress_metrics_frame()
+        validation_method_execution = _validation_method_execution(
+            generic_spec.validation,
+            empirical_result_scope="not_run_missing_dataset",
+            split_frame=split_frame,
+            regime_frame=regime_frame,
+            side_frame=side_frame,
+            cost_stress_frame=cost_stress_frame,
+        )
+        _finalize_generic_row_scoreability(rows, validation=generic_spec.validation)
+        empirical_result_scope = "not_run_missing_dataset"
+        empirical_evidence = False
+        metrics_source = "not_run_no_dataset"
+        orchestrator_reason = "generic experiment was not run because no parquet dataset could be resolved"
     summary_path = output_dir / "experiment_summary.csv"
     _write_summary_csv(summary_path, rows)
 
@@ -607,23 +707,36 @@ def _write_generic_experiment_outputs(
     regime_path = output_dir / "metrics_by_regime.parquet"
     side_path = output_dir / "metrics_by_side.parquet"
     cost_stress_path = output_dir / "metrics_by_cost_stress.parquet"
-    _metrics_by_split(rows).to_parquet(split_path, index=False)
-    _metrics_by_regime(rows).to_parquet(regime_path, index=False)
-    _metrics_by_side(rows).to_parquet(side_path, index=False)
-    _metrics_by_cost_stress(rows, generic_spec.backtest).to_parquet(cost_stress_path, index=False)
+    ranking_path = output_dir / "candidate_rankings.parquet"
+    split_frame.to_parquet(split_path, index=False)
+    regime_frame.to_parquet(regime_path, index=False)
+    side_frame.to_parquet(side_path, index=False)
+    cost_stress_frame.to_parquet(cost_stress_path, index=False)
+    _candidate_rankings(rows).to_parquet(ranking_path, index=False)
 
     manifest = {
         "experiment_manifest_version": GENERIC_EXPERIMENT_MANIFEST_VERSION,
         "runner_version": RESEARCH_EXPERIMENT_RUNNER_VERSION,
+        "empirical_result_scope": empirical_result_scope,
+        "empirical_evidence": empirical_evidence,
+        "metrics_source": metrics_source,
+        "aggregate_backtest_evidence": any(bool(row.get("aggregate_backtest_evidence", False)) for row in rows),
+        "scoreable_candidate_count": sum(1 for row in rows if bool(row.get("scoreable_candidate", False))),
+        "non_scoreable_candidate_count": sum(1 for row in rows if not bool(row.get("scoreable_candidate", False))),
+        "candidate_acceptance_allowed": False,
         "research_only": True,
         "observe_only": True,
         "promotion_ready": False,
         **research_boundary_metadata(),
         "experiment_name": generic_spec.experiment_name,
         "spec": generic_spec.to_payload(),
+        "supplied_experiment_spec": supplied_spec_status,
         "search_methods_available": ["grid", "random", "latin_hypercube", "sobol"],
         "search_candidates": expand_search_candidates(generic_spec.search),
+        "execution_candidates": [_candidate_manifest_payload(candidate) for candidate in _generic_execution_candidates(generic_spec)],
         "validation_methods": list(generic_spec.validation.methods),
+        "validation_method_execution": validation_method_execution,
+        "dataset_identity": dataset_identity,
         "optimizer_objectives": [
             "costed_expectancy",
             "drawdown_adjusted_return",
@@ -649,30 +762,40 @@ def _write_generic_experiment_outputs(
             "threshold_tuning_allowed": _threshold_tuning_allowed(conclusion),
         },
         "cache_identity": {
-            "formula": "hash(dataset_manifest_hash, feature_manifest_hash, strategy_config_hash, backtest_engine_version, validation_spec_hash)",
+            "formula": "hash(dataset_identity_hash, feature_manifest_hash, strategy_config_hash, backtest_engine_version, validation_spec_hash)",
             "validation_spec_hash": validation_hash,
-            "candidate_cache_keys": {row["strategy_id"]: row["cache_key"] for row in rows},
+            "dataset_identity_hash": dataset_identity["dataset_identity_hash"],
+            "candidate_cache_keys": {str(row.get("candidate_id") or row["strategy_id"]): row["cache_key"] for row in rows},
+            "backtest_result_hashes": {
+                str(row.get("candidate_id") or row["strategy_id"]): row.get("result_sha256")
+                for row in rows
+                if row.get("result_sha256")
+            },
         },
         "orchestrator_decision": {
-            "status": "rejected" if any(row["failure_reasons"] for row in rows) else "supported",
+            "status": "rejected",
             "failure_reasons": sorted({reason for row in rows for reason in row["failure_reasons"]}),
+            "reason": orchestrator_reason,
         },
         "required_outputs": {
             "experiment_manifest": str(output_dir / "experiment_manifest.json"),
             "experiment_summary": str(summary_path),
             "conclusion": str(output_dir / "conclusion.md"),
+            "candidate_rankings": str(ranking_path),
             "metrics_by_split": str(split_path),
             "metrics_by_regime": str(regime_path),
             "metrics_by_side": str(side_path),
             "metrics_by_cost_stress": str(cost_stress_path),
         },
         "artifact_links": dict(artifact_links),
+        "resolved_dataset_path": str(resolved_dataset_path) if resolved_dataset_path is not None else None,
     }
     manifest_path = output_dir / "experiment_manifest.json"
     manifest_path.write_text(_canonical_json(manifest, indent=2) + "\n", encoding="utf-8")
     return {
         "experiment_manifest_path": str(manifest_path),
         "experiment_summary_path": str(summary_path),
+        "candidate_rankings_path": str(ranking_path),
         "metrics_by_split_path": str(split_path),
         "metrics_by_regime_path": str(regime_path),
         "metrics_by_side_path": str(side_path),
@@ -680,65 +803,1135 @@ def _write_generic_experiment_outputs(
     }
 
 
-def _optimizer_summary_rows(
+def _default_generic_experiment_spec(
+    *,
+    run_spec: ResearchExperimentSpec,
+    resolved_dataset_path: Path | None,
+    dataset_hash: str,
+    artifact_links: Mapping[str, Any],
+    evidence_manifest: Mapping[str, Any],
+) -> ExperimentSpec:
+    feature_hash = _stable_hash(
+        {
+            "feature_source": "research_pipeline",
+            "evidence_manifest": _evidence_manifest_digest(evidence_manifest),
+        }
+    )
+    return ExperimentSpec(
+        experiment_name=run_spec.name,
+        dataset=DatasetSpec(
+            dataset_path=str(resolved_dataset_path) if resolved_dataset_path is not None else (
+                str(artifact_links.get("dataset_manifest_path")) if artifact_links.get("dataset_manifest_path") else None
+            ),
+            dataset_manifest_hash=dataset_hash,
+        ),
+        feature=FeatureSpec(feature_set_id="features_full_context_no_wt", feature_manifest_hash=feature_hash),
+        strategies=(
+            StrategySpec("baseline_no_trade", config={}),
+            StrategySpec("trend_following_v1", config={"slope_threshold": 0.1, "spacing_bars": 10}),
+            StrategySpec("hmm_knn_diagnostic_v1", strategy_type="hmm_knn_research", config={"source": "stage7_artifact"}),
+        ),
+        backtest=BacktestSpec(),
+        validation=ValidationSpec(),
+        search=SearchSpec(method="grid", parameter_space={"strategy": ("baseline_no_trade", "trend_following_v1", "hmm_knn_diagnostic_v1")}),
+        report=ReportSpec(),
+    )
+
+
+def _executable_generic_spec(
+    *,
+    run_spec: ResearchExperimentSpec,
+    supplied_spec: ExperimentSpec | None,
+    supplied_spec_status: Mapping[str, Any],
+    resolved_dataset_path: Path | None,
+    dataset_hash: str,
+    artifact_links: Mapping[str, Any],
+    evidence_manifest: Mapping[str, Any],
+) -> tuple[ExperimentSpec, dict[str, Any]]:
+    generic_spec = supplied_spec or _default_generic_experiment_spec(
+        run_spec=run_spec,
+        resolved_dataset_path=resolved_dataset_path,
+        dataset_hash=dataset_hash,
+        artifact_links=artifact_links,
+        evidence_manifest=evidence_manifest,
+    )
+    if resolved_dataset_path is not None:
+        generic_spec = replace(
+            generic_spec,
+            dataset=DatasetSpec(
+                dataset_path=str(resolved_dataset_path),
+                dataset_manifest_hash=dataset_hash,
+            ),
+        )
+    return generic_spec, dict(supplied_spec_status)
+
+
+def _load_supplied_experiment_spec(path: Path | None) -> tuple[ExperimentSpec | None, dict[str, Any]]:
+    status: dict[str, Any] = {
+        "path": str(path) if path is not None else None,
+        "loaded": False,
+        "status": "not_supplied" if path is None else "not_loaded",
+        "reason": None,
+    }
+    if path is None:
+        return None, status
+    if not path.exists():
+        status["status"] = "missing"
+        status["reason"] = "supplied experiment spec path does not exist"
+        return None, status
+    try:
+        payload = _read_json(path)
+        spec = ExperimentSpec.from_payload(payload)
+    except Exception as exc:
+        status["status"] = "ignored_non_generic_experiment_spec"
+        status["reason"] = f"{type(exc).__name__}: {exc}"
+        return None, status
+    status["loaded"] = True
+    status["status"] = "loaded_generic_experiment_spec"
+    return spec, status
+
+
+def _generic_execution_candidates(generic_spec: ExperimentSpec) -> tuple[GenericExecutionCandidate, ...]:
+    records: list[GenericExecutionCandidate] = []
+    for search_payload in expand_search_candidates(generic_spec.search):
+        search_parameters = dict(search_payload)
+        strategy_filter = search_parameters.get("strategy_id", search_parameters.get("strategy"))
+        for strategy in generic_spec.strategies:
+            if strategy_filter is not None and str(strategy_filter) != strategy.strategy_id:
+                continue
+            candidate = _build_generic_execution_candidate(
+                generic_spec=generic_spec,
+                strategy=strategy,
+                candidate_index=len(records),
+                search_parameters=search_parameters,
+            )
+            records.append(candidate)
+    return tuple(records)
+
+
+def _build_generic_execution_candidate(
+    *,
+    generic_spec: ExperimentSpec,
+    strategy: StrategySpec,
+    candidate_index: int,
+    search_parameters: Mapping[str, Any],
+) -> GenericExecutionCandidate:
+    config = dict(strategy.config or {})
+    configurable_parameters = dict(search_parameters)
+    configurable_parameters.pop("strategy", None)
+    configurable_parameters.pop("strategy_id", None)
+
+    feature_set_id = str(configurable_parameters.pop("feature_set_id", generic_spec.feature.feature_set_id))
+    feature_manifest_hash = str(configurable_parameters.pop("feature_manifest_hash", generic_spec.feature.feature_manifest_hash))
+    holding_window = str(configurable_parameters.pop("holding_window", generic_spec.backtest.holding_window))
+    fee_bps = float(configurable_parameters.pop("fee_bps", generic_spec.backtest.fee_bps))
+    slippage_bps = float(configurable_parameters.pop("slippage_bps", generic_spec.backtest.slippage_bps))
+    funding_stress_bps = generic_spec.backtest.funding_stress_bps
+    if "funding_stress_bps" in configurable_parameters:
+        raw_stress = configurable_parameters.pop("funding_stress_bps")
+        if isinstance(raw_stress, (list, tuple)):
+            funding_stress_bps = tuple(float(value) for value in raw_stress)
+        else:
+            funding_stress_bps = (float(raw_stress),)
+
+    config.update(configurable_parameters)
+    config["feature_set_id"] = feature_set_id
+    identity_seed = {
+        "candidate_index": candidate_index,
+        "strategy": strategy.to_payload(),
+        "search_parameters": dict(search_parameters),
+        "feature_set_id": feature_set_id,
+        "feature_manifest_hash": feature_manifest_hash,
+        "holding_window": holding_window,
+        "fee_bps": fee_bps,
+        "slippage_bps": slippage_bps,
+        "funding_stress_bps": list(funding_stress_bps),
+    }
+    candidate_id = _safe_artifact_name(f"{strategy.strategy_id}-{candidate_index + 1}-{_stable_hash(identity_seed)[:12]}")
+    return GenericExecutionCandidate(
+        candidate_id=candidate_id,
+        candidate_index=candidate_index,
+        strategy=strategy,
+        search_parameters=dict(search_parameters),
+        strategy_config=config,
+        feature_set_id=feature_set_id,
+        feature_manifest_hash=feature_manifest_hash,
+        holding_window=holding_window,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+        funding_stress_bps=tuple(funding_stress_bps),
+    )
+
+
+def _candidate_identity_payload(candidate: GenericExecutionCandidate) -> dict[str, Any]:
+    return {
+        "candidate_id": candidate.candidate_id,
+        "candidate_index": candidate.candidate_index,
+        "strategy": candidate.strategy.to_payload(),
+        "search_parameters": dict(candidate.search_parameters),
+        "strategy_config": dict(candidate.strategy_config),
+        "engine_strategy_config": _engine_strategy_config(candidate),
+        "feature_set_id": candidate.feature_set_id,
+        "feature_manifest_hash": candidate.feature_manifest_hash,
+        "holding_window": candidate.holding_window,
+        "fee_bps": candidate.fee_bps,
+        "slippage_bps": candidate.slippage_bps,
+        "funding_stress_bps": list(candidate.funding_stress_bps),
+    }
+
+
+def _candidate_manifest_payload(candidate: GenericExecutionCandidate) -> dict[str, Any]:
+    return {
+        "candidate_id": candidate.candidate_id,
+        "strategy_id": candidate.strategy.strategy_id,
+        "strategy_type": candidate.strategy.strategy_type,
+        "feature_set_id": candidate.feature_set_id,
+        "feature_manifest_hash": candidate.feature_manifest_hash,
+        "holding_window": candidate.holding_window,
+        "fee_bps": candidate.fee_bps,
+        "slippage_bps": candidate.slippage_bps,
+        "funding_stress_bps": list(candidate.funding_stress_bps),
+        "search_parameters": dict(candidate.search_parameters),
+        "strategy_config": dict(candidate.strategy_config),
+        "engine_strategy_config": _engine_strategy_config(candidate),
+        "strategy_config_hash": _stable_hash(_candidate_identity_payload(candidate)),
+    }
+
+
+def _engine_strategy_config(candidate: GenericExecutionCandidate) -> dict[str, Any]:
+    strategy_config = dict(candidate.strategy_config)
+    if candidate.strategy.strategy_id == "hmm_knn_diagnostic_v1":
+        strategy_config = {
+            "probability_threshold": 0.55,
+            "expected_value_threshold": 0.0,
+            "spacing_bars": 8,
+            **strategy_config,
+        }
+    return strategy_config
+
+
+def _not_run_missing_dataset_rows(
     *,
     generic_spec: ExperimentSpec,
     conclusion: Mapping[str, Any],
     pipeline_summary: Mapping[str, Any],
-    evidence_manifest: Mapping[str, Any],
     validation_hash: str,
 ) -> list[dict[str, Any]]:
-    evidence_count = len(evidence_manifest.get("experiments") or [])
     pipeline_status = str((pipeline_summary.get("conclusion") or {}).get("status") or conclusion.get("pipeline_status") or "inconclusive")
     rows = []
-    for index, strategy in enumerate(generic_spec.strategies):
-        strategy_config_hash = _stable_hash(strategy.to_payload())
+    for candidate in _generic_execution_candidates(generic_spec):
+        strategy_config_hash = _stable_hash(_candidate_identity_payload(candidate))
         cache_key = deterministic_experiment_cache_key(
             dataset_manifest_hash=generic_spec.dataset.dataset_manifest_hash,
-            feature_manifest_hash=generic_spec.feature.feature_manifest_hash,
+            feature_manifest_hash=candidate.feature_manifest_hash,
             strategy_config_hash=strategy_config_hash,
             backtest_engine_version=generic_spec.backtest.engine_version,
             validation_spec_hash=validation_hash,
         )
-        failure_reasons = ["research_only_not_promotable"]
+        failure_reasons = [
+            "research_only_not_promotable",
+            "generic_experiment_not_run_dataset_missing",
+            "real_backtest_dataset_required",
+        ]
         if pipeline_status != "supported":
             failure_reasons.append(f"pipeline_status_{pipeline_status}")
-        if strategy.strategy_id == "hmm_knn_diagnostic_v1" and evidence_count < 1:
-            failure_reasons.append("hmm_knn_evidence_missing")
-        if index > 0 and pipeline_status != "supported":
+        if candidate.candidate_index > 0 and pipeline_status != "supported":
             failure_reasons.append("baseline_sequence_not_completed")
+        failure_reasons.extend(_unsupported_validation_failure_reasons(generic_spec.validation))
+        failure_reasons.extend(_not_executed_validation_failure_reasons(generic_spec.validation, observed_methods=set()))
         rows.append(
             {
+                "candidate_id": candidate.candidate_id,
                 "experiment_name": generic_spec.experiment_name,
-                "strategy_id": strategy.strategy_id,
-                "strategy_type": strategy.strategy_type,
-                "feature_set_id": generic_spec.feature.feature_set_id,
+                "strategy_id": candidate.strategy.strategy_id,
+                "strategy_type": candidate.strategy.strategy_type,
+                "feature_set_id": candidate.feature_set_id,
                 "search_method": generic_spec.search.method,
+                "search_parameters_json": _canonical_json(candidate.search_parameters),
                 "cache_key": cache_key,
-                "trade_count": 0 if strategy.strategy_id == "baseline_no_trade" else max(evidence_count, 1),
-                "costed_expectancy": 0.0 if strategy.strategy_id == "baseline_no_trade" else round(0.01 / (index + 1), 6),
-                "drawdown_adjusted_return": 0.0 if strategy.strategy_id == "baseline_no_trade" else round(0.02 / (index + 1), 6),
-                "max_single_split_pnl_share": 1.0 if pipeline_status != "supported" else 0.5,
-                "feature_missingness_rate": 0.0,
+                "metric_scope": "not_run_missing_dataset",
+                "metrics_source": "not_run_no_dataset",
+                "empirical_evidence": False,
+                "backtest_manifest_path": "",
+                "metrics_path": "",
+                "result_sha256": "",
+                "trade_count": None,
+                "long_count": None,
+                "short_count": None,
+                "costed_expectancy": None,
+                "net_return_after_fees_slippage_funding": None,
+                "drawdown_adjusted_return": None,
+                "max_drawdown": None,
+                "hit_rate": None,
+                "profit_factor": None,
+                "final_score": None,
+                "max_single_split_pnl_share": None,
+                "feature_missingness_rate": None,
                 "capacity_liquidity_flag": False,
-                "decision": "rejected" if failure_reasons else "supported",
+                "decision": "rejected",
                 "failure_reasons": failure_reasons,
             }
         )
     return rows
 
 
+def _real_generic_backtest_outputs(
+    *,
+    output_dir: Path,
+    generic_spec: ExperimentSpec,
+    dataset_path: Path,
+    conclusion: Mapping[str, Any],
+    pipeline_summary: Mapping[str, Any],
+    evidence_manifest: Mapping[str, Any],
+    validation_hash: str,
+) -> dict[str, Any]:
+    _ = evidence_manifest
+    pipeline_status = str((pipeline_summary.get("conclusion") or {}).get("status") or conclusion.get("pipeline_status") or "inconclusive")
+    backtest_dir = output_dir / "generic_backtests"
+    engine = BacktestEngine()
+    rows: list[dict[str, Any]] = []
+    split_records: list[dict[str, Any]] = []
+    cost_stress_records: list[dict[str, Any]] = []
+    regime_records: list[dict[str, Any]] = []
+    side_records: list[dict[str, Any]] = []
+    dataset = pd.read_parquet(dataset_path)
+    dataset_sha256 = _hash_file(dataset_path)
+
+    execution_candidates = _generic_execution_candidates(generic_spec)
+    for candidate in execution_candidates:
+        try:
+            result = engine.run(
+                EngineBacktestSpec(
+                    run_id=_safe_artifact_name(f"{candidate.candidate_index + 1}-{candidate.candidate_id}-{candidate.holding_window}"),
+                    symbol="BTCUSDT",
+                    output_dir=backtest_dir,
+                    dataset_path=dataset_path,
+                    dataset_sha256=dataset_sha256,
+                    strategy_id=candidate.strategy.strategy_id,
+                    holding_window=candidate.holding_window,
+                    fee_bps=candidate.fee_bps,
+                    slippage_bps=candidate.slippage_bps,
+                    feature_set_id=candidate.feature_set_id,
+                    feature_manifest_sha256=candidate.feature_manifest_hash,
+                    strategy_config=_engine_strategy_config(candidate),
+                )
+            )
+            metrics = _read_json(result.metrics_path)
+            manifest = _read_json(result.manifest_path)
+            row = _real_summary_row(
+                generic_spec=generic_spec,
+                candidate=candidate,
+                metrics=metrics,
+                manifest=manifest,
+                manifest_path=result.manifest_path,
+                metrics_path=result.metrics_path,
+                validation_hash=validation_hash,
+                pipeline_status=pipeline_status,
+            )
+        except Exception as exc:
+            row = _failed_real_summary_row(
+                generic_spec=generic_spec,
+                candidate=candidate,
+                validation_hash=validation_hash,
+                pipeline_status=pipeline_status,
+                error=exc,
+            )
+            rows.append(row)
+            regime_records.extend(_regime_records_from_metrics(row, {}))
+            side_records.extend(_empty_side_records(row))
+            continue
+        rows.append(row)
+        regime_records.extend(_regime_records_from_metrics(row, metrics))
+        side_records.extend(_side_records_from_trades(row, result.trades_path))
+        cost_stress_records.extend(
+            _real_cost_stress_records(
+                engine=engine,
+                generic_spec=generic_spec,
+                dataset_path=dataset_path,
+                dataset_sha256=dataset_sha256,
+                candidate=candidate,
+                backtest_dir=backtest_dir,
+            )
+        )
+
+    split_records = _real_split_records(
+        engine=engine,
+        generic_spec=generic_spec,
+        dataset=dataset,
+        dataset_path=dataset_path,
+        dataset_sha256=dataset_sha256,
+        backtest_dir=backtest_dir,
+        execution_candidates=execution_candidates,
+    )
+    _apply_validation_outcomes(
+        rows=rows,
+        split_records=split_records,
+        dataset=dataset,
+        validation=generic_spec.validation,
+    )
+    return {
+        "rows": rows,
+        "metrics_by_split": pd.DataFrame(split_records),
+        "metrics_by_regime": pd.DataFrame(regime_records),
+        "metrics_by_side": pd.DataFrame(side_records),
+        "metrics_by_cost_stress": pd.DataFrame(cost_stress_records),
+    }
+
+
+def _real_summary_row(
+    *,
+    generic_spec: ExperimentSpec,
+    candidate: GenericExecutionCandidate,
+    metrics: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    manifest_path: Path,
+    metrics_path: Path,
+    validation_hash: str,
+    pipeline_status: str,
+) -> dict[str, Any]:
+    strategy = candidate.strategy
+    strategy_config_hash = _stable_hash(_candidate_identity_payload(candidate))
+    cache_key = deterministic_experiment_cache_key(
+        dataset_manifest_hash=generic_spec.dataset.dataset_manifest_hash,
+        feature_manifest_hash=candidate.feature_manifest_hash,
+        strategy_config_hash=strategy_config_hash,
+        backtest_engine_version=generic_spec.backtest.engine_version,
+        validation_spec_hash=validation_hash,
+    )
+    net_return = float(metrics.get("net_return_after_fees_slippage_funding", 0.0))
+    expectancy = float(metrics.get("expectancy_per_trade", 0.0))
+    max_drawdown = float(metrics.get("max_drawdown", 0.0))
+    final_score = expectancy + net_return + max_drawdown
+    failure_reasons = ["research_only_not_promotable", "generic_real_backtest_not_acceptance_evidence"]
+    if pipeline_status != "supported":
+        failure_reasons.append(f"pipeline_status_{pipeline_status}")
+    if int(metrics.get("trade_count", 0)) == 0 and strategy.strategy_id != "baseline_no_trade":
+        failure_reasons.append("no_trades_generated")
+    if candidate.candidate_index > 0 and pipeline_status != "supported":
+        failure_reasons.append("baseline_sequence_not_completed")
+    failure_reasons.extend(_unsupported_validation_failure_reasons(generic_spec.validation))
+    return {
+        "candidate_id": candidate.candidate_id,
+        "experiment_name": generic_spec.experiment_name,
+        "strategy_id": strategy.strategy_id,
+        "strategy_type": strategy.strategy_type,
+        "feature_set_id": candidate.feature_set_id,
+        "search_method": generic_spec.search.method,
+        "search_parameters_json": _canonical_json(candidate.search_parameters),
+        "cache_key": cache_key,
+        "metric_scope": "real_backtest",
+        "metrics_source": "backtest_engine",
+        "empirical_evidence": True,
+        "aggregate_backtest_evidence": True,
+        "backtest_manifest_path": str(manifest_path),
+        "metrics_path": str(metrics_path),
+        "result_sha256": str(manifest.get("result_sha256") or ""),
+        "trade_count": int(metrics.get("trade_count", 0)),
+        "long_count": int(metrics.get("long_count", 0)),
+        "short_count": int(metrics.get("short_count", 0)),
+        "costed_expectancy": expectancy,
+        "net_return_after_fees_slippage_funding": net_return,
+        "drawdown_adjusted_return": net_return + max_drawdown,
+        "max_drawdown": max_drawdown,
+        "hit_rate": float(metrics.get("hit_rate", 0.0)),
+        "profit_factor": float(metrics.get("profit_factor", 0.0)),
+        "final_score": final_score,
+        "max_single_split_pnl_share": 1.0,
+        "feature_missingness_rate": 0.0,
+        "capacity_liquidity_flag": bool((metrics.get("capacity_liquidity_flags") or {}).get("wide_spread_trade_count", 0)),
+        "decision": "rejected",
+        "failure_reasons": failure_reasons,
+    }
+
+
+def _failed_real_summary_row(
+    *,
+    generic_spec: ExperimentSpec,
+    candidate: GenericExecutionCandidate,
+    validation_hash: str,
+    pipeline_status: str,
+    error: Exception,
+) -> dict[str, Any]:
+    strategy = candidate.strategy
+    strategy_config_hash = _stable_hash(_candidate_identity_payload(candidate))
+    cache_key = deterministic_experiment_cache_key(
+        dataset_manifest_hash=generic_spec.dataset.dataset_manifest_hash,
+        feature_manifest_hash=candidate.feature_manifest_hash,
+        strategy_config_hash=strategy_config_hash,
+        backtest_engine_version=generic_spec.backtest.engine_version,
+        validation_spec_hash=validation_hash,
+    )
+    failure_reasons = [
+        "research_only_not_promotable",
+        "generic_real_backtest_not_acceptance_evidence",
+        f"backtest_failed:{type(error).__name__}",
+    ]
+    if pipeline_status != "supported":
+        failure_reasons.append(f"pipeline_status_{pipeline_status}")
+    if candidate.candidate_index > 0 and pipeline_status != "supported":
+        failure_reasons.append("baseline_sequence_not_completed")
+    failure_reasons.extend(_unsupported_validation_failure_reasons(generic_spec.validation))
+    return {
+        "candidate_id": candidate.candidate_id,
+        "experiment_name": generic_spec.experiment_name,
+        "strategy_id": strategy.strategy_id,
+        "strategy_type": strategy.strategy_type,
+        "feature_set_id": candidate.feature_set_id,
+        "search_method": generic_spec.search.method,
+        "search_parameters_json": _canonical_json(candidate.search_parameters),
+        "cache_key": cache_key,
+        "metric_scope": "real_backtest_failed",
+        "metrics_source": "backtest_engine_failed",
+        "empirical_evidence": False,
+        "aggregate_backtest_evidence": False,
+        "backtest_manifest_path": "",
+        "metrics_path": "",
+        "result_sha256": "",
+        "trade_count": 0,
+        "long_count": 0,
+        "short_count": 0,
+        "costed_expectancy": 0.0,
+        "net_return_after_fees_slippage_funding": 0.0,
+        "drawdown_adjusted_return": 0.0,
+        "max_drawdown": 0.0,
+        "hit_rate": 0.0,
+        "profit_factor": 0.0,
+        "final_score": 0.0,
+        "max_single_split_pnl_share": 1.0,
+        "feature_missingness_rate": 0.0,
+        "capacity_liquidity_flag": False,
+        "decision": "rejected",
+        "failure_reasons": failure_reasons,
+    }
+
+
+def _real_split_records(
+    *,
+    engine: BacktestEngine,
+    generic_spec: ExperimentSpec,
+    dataset: pd.DataFrame,
+    dataset_path: Path,
+    dataset_sha256: str,
+    backtest_dir: Path,
+    execution_candidates: tuple[GenericExecutionCandidate, ...],
+) -> list[dict[str, Any]]:
+    if len(dataset) < 12:
+        return []
+    time_column = "bar_time_ms" if "bar_time_ms" in dataset.columns else (
+        "signal_bar_time_ms" if "signal_bar_time_ms" in dataset.columns else "time_ms"
+    )
+    records: list[dict[str, Any]] = []
+    ordered = dataset.sort_values(time_column, kind="mergesort").reset_index(drop=True)
+    for candidate in execution_candidates:
+        for split in _validation_splits(
+            ordered,
+            validation=generic_spec.validation,
+            time_column=time_column,
+        ):
+            split_frame = ordered.iloc[split.validation_start_index : split.validation_end_index + 1].copy()
+            if split_frame.empty:
+                continue
+            try:
+                result = engine.run(
+                    EngineBacktestSpec(
+                        run_id=_safe_artifact_name(f"{candidate.candidate_index + 1}-{candidate.candidate_id}-{split.split_id}"),
+                        symbol="BTCUSDT",
+                        output_dir=backtest_dir / "splits",
+                        dataset_path=dataset_path,
+                        dataset_sha256=dataset_sha256,
+                        strategy_id=candidate.strategy.strategy_id,
+                        holding_window=candidate.holding_window,
+                        fee_bps=candidate.fee_bps,
+                        slippage_bps=candidate.slippage_bps,
+                        feature_set_id=candidate.feature_set_id,
+                        feature_manifest_sha256=candidate.feature_manifest_hash,
+                        strategy_config=_engine_strategy_config(candidate),
+                    ),
+                    dataset=split_frame,
+                )
+                metrics = _read_json(result.metrics_path)
+                metric_scope = "real_backtest"
+                manifest_path = str(result.manifest_path)
+                failure_reasons = "research_only_not_promotable"
+            except Exception as exc:
+                metrics = {}
+                metric_scope = "real_backtest_failed"
+                manifest_path = ""
+                failure_reasons = f"research_only_not_promotable|split_backtest_failed:{type(exc).__name__}"
+            records.append(
+                {
+                    "strategy_id": candidate.strategy.strategy_id,
+                    "candidate_id": candidate.candidate_id,
+                    "split_index": int(split.split_id.rsplit("-", 1)[-1]),
+                    "split_id": split.split_id,
+                    "validation_method": split.validation_method,
+                    "metric_scope": metric_scope,
+                    "trade_count": int(metrics.get("trade_count", 0)),
+                    "costed_expectancy": float(metrics.get("expectancy_per_trade", 0.0)),
+                    "drawdown_adjusted_return": float(metrics.get("net_return_after_fees_slippage_funding", 0.0)) + float(metrics.get("max_drawdown", 0.0)),
+                    "backtest_manifest_path": manifest_path,
+                    "failure_reasons": failure_reasons,
+                }
+            )
+    return records
+
+
+def _validation_splits(
+    dataset: pd.DataFrame,
+    *,
+    validation: ValidationSpec,
+    time_column: str,
+) -> tuple[Any, ...]:
+    splits = []
+    for method in validation.methods:
+        if method == "anchored_walk_forward":
+            splits.extend(
+                build_anchored_walk_forward_splits(
+                    dataset,
+                    min_splits=3,
+                    purge_embargo_bars=validation.purge_embargo_bars,
+                    time_column=time_column,
+                )
+            )
+        elif method == "rolling_walk_forward":
+            splits.extend(
+                build_rolling_walk_forward_splits(
+                    dataset,
+                    min_splits=3,
+                    train_window_bars=max(6, len(dataset) // 2),
+                    purge_embargo_bars=validation.purge_embargo_bars,
+                    time_column=time_column,
+                )
+            )
+        elif method in {"purged_embargoed_split", "purged_embargoed_walk_forward"}:
+            splits.extend(
+                build_purged_walk_forward_splits(
+                    dataset,
+                    min_splits=3,
+                    purge_embargo_bars=validation.purge_embargo_bars,
+                    time_column=time_column,
+                    validation_method=method,
+                )
+            )
+    return tuple(splits)
+
+
+def _apply_validation_outcomes(
+    *,
+    rows: list[dict[str, Any]],
+    split_records: list[dict[str, Any]],
+    dataset: pd.DataFrame,
+    validation: ValidationSpec,
+) -> None:
+    missingness_rate = _feature_missingness_rate(dataset)
+    split_share_by_candidate = _max_split_share_by_candidate(split_records)
+    unsupported_reasons = _unsupported_validation_failure_reasons(validation)
+    for row in rows:
+        failure_reasons = list(row.get("failure_reasons") or [])
+        for reason in unsupported_reasons:
+            if reason not in failure_reasons:
+                failure_reasons.append(reason)
+        candidate_id = str(row.get("candidate_id") or row.get("strategy_id") or "")
+        not_executed_reasons = _not_executed_validation_failure_reasons(
+            validation,
+            observed_methods=_observed_split_validation_methods(split_records, candidate_id=candidate_id),
+        )
+        for reason in not_executed_reasons:
+            if reason not in failure_reasons:
+                failure_reasons.append(reason)
+        row["feature_missingness_rate"] = missingness_rate
+        if missingness_rate > validation.feature_missingness_ceiling:
+            _append_unique(failure_reasons, "feature_missingness_above_ceiling")
+        if int(row.get("trade_count", 0)) < validation.trade_count_floor:
+            _append_unique(failure_reasons, "trade_count_below_floor")
+        split_share = split_share_by_candidate.get(candidate_id)
+        if split_share is not None:
+            row["max_single_split_pnl_share"] = split_share
+            if split_share > validation.max_single_split_pnl_share:
+                _append_unique(failure_reasons, "single_split_pnl_dominance")
+        row["failure_reasons"] = failure_reasons
+
+
+def _feature_missingness_rate(dataset: pd.DataFrame) -> float:
+    if dataset.empty:
+        return 1.0
+    feature_columns = [
+        column
+        for column in dataset.columns
+        if column
+        not in {
+            "bar_time_ms",
+            "signal_bar_time_ms",
+            "time_ms",
+            "symbol",
+            "open",
+            "high",
+            "low",
+            "close",
+            "volume",
+        }
+    ]
+    if not feature_columns:
+        return 0.0
+    total_cells = len(dataset) * len(feature_columns)
+    if total_cells <= 0:
+        return 0.0
+    missing_cells = int(dataset[feature_columns].isna().sum().sum())
+    return round(float(missing_cells) / float(total_cells), 8)
+
+
+def _max_split_share_by_candidate(split_records: list[dict[str, Any]]) -> dict[str, float]:
+    frame = pd.DataFrame(split_records)
+    if frame.empty or "candidate_id" not in frame.columns:
+        return {}
+    if "metric_scope" in frame.columns:
+        frame = frame.loc[frame["metric_scope"].astype(str) == "real_backtest"].copy()
+    if frame.empty:
+        return {}
+    shares: dict[str, float] = {}
+    for candidate_id, group in frame.groupby("candidate_id"):
+        scores = pd.to_numeric(group.get("drawdown_adjusted_return", 0.0), errors="coerce").fillna(0.0).abs()
+        total = float(scores.sum())
+        shares[str(candidate_id)] = 0.0 if total <= 0.0 else round(float(scores.max()) / total, 8)
+    return shares
+
+
+def _validation_method_execution(
+    validation: ValidationSpec,
+    *,
+    empirical_result_scope: str,
+    split_frame: pd.DataFrame | None,
+    regime_frame: pd.DataFrame | None = None,
+    side_frame: pd.DataFrame | None = None,
+    cost_stress_frame: pd.DataFrame | None = None,
+) -> list[dict[str, Any]]:
+    observed_methods = (
+        set()
+        if split_frame is None or split_frame.empty or "validation_method" not in split_frame.columns
+        else _observed_split_validation_methods(split_frame.to_dict("records"))
+    )
+    records = []
+    for method in validation.methods:
+        if empirical_result_scope == "not_run_missing_dataset":
+            status = "not_run_missing_dataset"
+        elif method in EXECUTABLE_VALIDATION_METHODS and method in observed_methods:
+            status = "executed_by_split_backtests"
+        elif method in EXECUTABLE_VALIDATION_METHODS:
+            status = "not_executed_fail_closed"
+        elif method in REPORT_OUTPUT_VALIDATION_METHODS and _report_validation_method_executed(
+            method,
+            regime_frame=regime_frame,
+            side_frame=side_frame,
+            cost_stress_frame=cost_stress_frame,
+        ):
+            status = "executed_by_required_output"
+        elif method in REPORT_OUTPUT_VALIDATION_METHODS:
+            status = "not_executed_fail_closed"
+        else:
+            status = "unsupported_fail_closed"
+        records.append({"method": method, "status": status})
+    return records
+
+
+def _report_validation_method_executed(
+    method: str,
+    *,
+    regime_frame: pd.DataFrame | None,
+    side_frame: pd.DataFrame | None,
+    cost_stress_frame: pd.DataFrame | None,
+) -> bool:
+    if method == "side_separated_reporting":
+        return _frame_has_real_backtest_rows(side_frame)
+    if method == "regime_separated_reporting":
+        return _frame_has_real_backtest_rows(regime_frame)
+    if method == "cost_slippage_funding_stress":
+        return _frame_has_real_backtest_rows(cost_stress_frame)
+    return False
+
+
+def _frame_has_real_backtest_rows(frame: pd.DataFrame | None) -> bool:
+    if frame is None or frame.empty or "metric_scope" not in frame.columns:
+        return False
+    return bool(frame["metric_scope"].astype(str).eq("real_backtest").any())
+
+
+def _apply_validation_execution_failures(
+    rows: list[dict[str, Any]],
+    validation_method_execution: list[dict[str, Any]],
+) -> None:
+    for reason in _validation_execution_failure_reasons(validation_method_execution):
+        for row in rows:
+            failure_reasons = list(row.get("failure_reasons") or [])
+            _append_unique(failure_reasons, reason)
+            row["failure_reasons"] = failure_reasons
+
+
+def _validation_execution_failure_reasons(validation_method_execution: list[dict[str, Any]]) -> list[str]:
+    fail_closed_statuses = {"not_executed_fail_closed", "unsupported_fail_closed"}
+    return [
+        f"validation_method_not_executed:{record['method']}"
+        for record in validation_method_execution
+        if str(record.get("status") or "") in fail_closed_statuses
+        and str(record.get("method") or "")
+    ]
+
+
+def _unsupported_validation_failure_reasons(validation: ValidationSpec) -> list[str]:
+    return [
+        f"validation_method_not_executed:{method}"
+        for method in validation.methods
+        if method not in EXECUTABLE_VALIDATION_METHODS and method not in REPORT_OUTPUT_VALIDATION_METHODS
+    ]
+
+
+def _not_executed_validation_failure_reasons(
+    validation: ValidationSpec,
+    *,
+    observed_methods: set[str],
+) -> list[str]:
+    return [
+        f"validation_method_not_executed:{method}"
+        for method in validation.methods
+        if method in EXECUTABLE_VALIDATION_METHODS and method not in observed_methods
+    ]
+
+
+def _observed_split_validation_methods(
+    split_records: list[dict[str, Any]],
+    *,
+    candidate_id: str | None = None,
+) -> set[str]:
+    return {
+        str(record.get("validation_method"))
+        for record in split_records
+        if record.get("validation_method")
+        and str(record.get("metric_scope")) == "real_backtest"
+        and (candidate_id is None or str(record.get("candidate_id")) == candidate_id)
+    }
+
+
+def _append_unique(values: list[str], item: str) -> None:
+    if item not in values:
+        values.append(item)
+
+
+EMPIRICAL_METRIC_FIELDS = (
+    "trade_count",
+    "long_count",
+    "short_count",
+    "costed_expectancy",
+    "net_return_after_fees_slippage_funding",
+    "drawdown_adjusted_return",
+    "max_drawdown",
+    "hit_rate",
+    "profit_factor",
+    "final_score",
+    "max_single_split_pnl_share",
+    "feature_missingness_rate",
+)
+
+
+def _finalize_generic_row_scoreability(rows: list[dict[str, Any]], *, validation: ValidationSpec) -> None:
+    for row in rows:
+        failure_reasons = list(row.get("failure_reasons") or [])
+        aggregate_backtest_evidence = str(row.get("metric_scope") or "") == "real_backtest" and bool(row.get("backtest_manifest_path"))
+        missing_configured_validation = _missing_configured_validation_reasons(failure_reasons, validation)
+        scoreable = bool(aggregate_backtest_evidence and not missing_configured_validation)
+        row["aggregate_backtest_evidence"] = bool(aggregate_backtest_evidence)
+        row["validation_evidence_complete"] = bool(scoreable)
+        row["scoreable_candidate"] = bool(scoreable)
+        if scoreable:
+            row["scoreability_status"] = "scoreable_real_backtest_with_required_validation"
+            continue
+        if str(row.get("metric_scope") or "") == "not_run_missing_dataset":
+            row["scoreability_status"] = "not_scoreable_missing_dataset"
+        elif str(row.get("metric_scope") or "") == "real_backtest_failed":
+            row["scoreability_status"] = "not_scoreable_backtest_failed"
+        elif aggregate_backtest_evidence and missing_configured_validation:
+            row["metric_scope"] = "real_backtest_validation_incomplete"
+            row["metrics_source"] = "backtest_engine_validation_incomplete"
+            row["empirical_evidence"] = False
+            row["scoreability_status"] = "not_scoreable_validation_incomplete"
+        else:
+            row["scoreability_status"] = "not_scoreable_no_empirical_metrics"
+        _clear_empirical_metric_fields(row)
+
+
+def _missing_configured_validation_reasons(failure_reasons: list[str], validation: ValidationSpec) -> list[str]:
+    configured_methods = {str(method) for method in validation.methods}
+    return [
+        reason
+        for reason in failure_reasons
+        if reason.startswith("validation_method_not_executed:")
+        and reason.split(":", maxsplit=1)[1] in configured_methods
+    ]
+
+
+def _clear_empirical_metric_fields(row: dict[str, Any]) -> None:
+    for field in EMPIRICAL_METRIC_FIELDS:
+        row[field] = None
+
+
+def _real_cost_stress_records(
+    *,
+    engine: BacktestEngine,
+    generic_spec: ExperimentSpec,
+    dataset_path: Path,
+    dataset_sha256: str,
+    candidate: GenericExecutionCandidate,
+    backtest_dir: Path,
+) -> list[dict[str, Any]]:
+    records = []
+    for stress in candidate.funding_stress_bps:
+        try:
+            result = engine.run(
+                EngineBacktestSpec(
+                    run_id=_safe_artifact_name(f"{candidate.candidate_index + 1}-{candidate.candidate_id}-funding-{stress:g}"),
+                    symbol="BTCUSDT",
+                    output_dir=backtest_dir / "cost_stress",
+                    dataset_path=dataset_path,
+                    dataset_sha256=dataset_sha256,
+                    strategy_id=candidate.strategy.strategy_id,
+                    holding_window=candidate.holding_window,
+                    fee_bps=candidate.fee_bps,
+                    slippage_bps=candidate.slippage_bps,
+                    funding_rate=float(stress) / 10000.0,
+                    feature_set_id=candidate.feature_set_id,
+                    feature_manifest_sha256=candidate.feature_manifest_hash,
+                    strategy_config=_engine_strategy_config(candidate),
+                )
+            )
+            metrics = _read_json(result.metrics_path)
+            metric_scope = "real_backtest"
+            manifest_path = str(result.manifest_path)
+            failure_reasons = ""
+        except Exception as exc:
+            metrics = {}
+            metric_scope = "real_backtest_failed"
+            manifest_path = ""
+            failure_reasons = f"cost_stress_backtest_failed:{type(exc).__name__}"
+        records.append(
+            {
+                "strategy_id": candidate.strategy.strategy_id,
+                "candidate_id": candidate.candidate_id,
+                "funding_stress_bps": float(stress),
+                "fee_bps": candidate.fee_bps,
+                "slippage_bps": candidate.slippage_bps,
+                "metric_scope": metric_scope,
+                "trade_count": int(metrics.get("trade_count", 0)),
+                "stressed_expectancy": float(metrics.get("expectancy_per_trade", 0.0)),
+                "stressed_net_return": float(metrics.get("net_return_after_fees_slippage_funding", 0.0)),
+                "backtest_manifest_path": manifest_path,
+                "failure_reasons": failure_reasons,
+            }
+        )
+    return records
+
+
+def _regime_records_from_metrics(row: Mapping[str, Any], metrics: Mapping[str, Any]) -> list[dict[str, Any]]:
+    split_by_regime = metrics.get("split_by_regime") or {}
+    if not split_by_regime:
+        return [
+            {
+                "strategy_id": row["strategy_id"],
+                "candidate_id": row.get("candidate_id", ""),
+                "regime": "none",
+                "trade_count": int(row["trade_count"]),
+                "costed_expectancy": float(row["costed_expectancy"]),
+                "metric_scope": row["metric_scope"],
+            }
+        ]
+    return [
+        {
+            "strategy_id": row["strategy_id"],
+            "candidate_id": row.get("candidate_id", ""),
+            "regime": str(regime),
+            "trade_count": int(payload.get("trade_count", 0)),
+            "costed_expectancy": float(payload.get("expectancy", 0.0)),
+            "metric_scope": row["metric_scope"],
+        }
+        for regime, payload in split_by_regime.items()
+    ]
+
+
+def _side_records_from_trades(row: Mapping[str, Any], trades_path: Path) -> list[dict[str, Any]]:
+    if not trades_path.exists():
+        return []
+    trades = pd.read_parquet(trades_path)
+    records = []
+    for side in ("long", "short"):
+        side_trades = trades.loc[trades["side"].astype(str).str.lower() == side] if not trades.empty and "side" in trades.columns else trades.iloc[0:0]
+        returns = pd.to_numeric(side_trades["net_return"], errors="coerce").fillna(0.0) if "net_return" in side_trades.columns else pd.Series(dtype=float)
+        records.append(
+            {
+                "strategy_id": row["strategy_id"],
+                "candidate_id": row.get("candidate_id", ""),
+                "side": side,
+                "trade_count": int(len(side_trades)),
+                "costed_expectancy": float(returns.mean()) if len(returns) else 0.0,
+                "minimum_evidence_passed": int(len(side_trades)) >= 1,
+                "metric_scope": row["metric_scope"],
+            }
+        )
+    return records
+
+
+def _empty_side_records(row: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "strategy_id": row["strategy_id"],
+            "candidate_id": row.get("candidate_id", ""),
+            "side": side,
+            "trade_count": 0,
+            "costed_expectancy": 0.0,
+            "minimum_evidence_passed": False,
+            "metric_scope": row["metric_scope"],
+        }
+        for side in ("long", "short")
+    ]
+
+
+def _candidate_rankings(rows: list[dict[str, Any]]) -> pd.DataFrame:
+    frame = pd.DataFrame(rows)
+    if frame.empty:
+        return frame
+    if "final_score" not in frame.columns:
+        frame["final_score"] = None
+    if "scoreable_candidate" not in frame.columns:
+        frame["scoreable_candidate"] = False
+    scoreable = frame.loc[frame["scoreable_candidate"].astype(bool)].copy()
+    non_scoreable = frame.loc[~frame["scoreable_candidate"].astype(bool)].copy()
+    scoreable = scoreable.sort_values(["final_score", "trade_count"], ascending=[False, False], kind="mergesort")
+    non_scoreable = non_scoreable.sort_values(["candidate_id"], kind="mergesort") if "candidate_id" in non_scoreable.columns else non_scoreable
+    ranked = pd.concat([scoreable, non_scoreable], ignore_index=True)
+    ranked["rank"] = None
+    if not scoreable.empty:
+        ranked.loc[: len(scoreable) - 1, "rank"] = range(1, len(scoreable) + 1)
+    return ranked
+
+
+def _generic_dataset_identity(
+    *,
+    resolved_dataset_path: Path | None,
+    supplied_spec: ExperimentSpec | None,
+    artifact_links: Mapping[str, Any],
+) -> dict[str, Any]:
+    dataset_artifact_sha256 = _hash_file(resolved_dataset_path) if resolved_dataset_path is not None else None
+    dataset_manifest_path = str(artifact_links.get("dataset_manifest_path") or "") or None
+    dataset_manifest_sha256 = _hash_optional_artifact(dataset_manifest_path)
+    supplied_dataset_manifest_hash = None
+    if supplied_spec is not None and supplied_spec.dataset.dataset_manifest_hash != "dataset_manifest_unavailable":
+        supplied_dataset_manifest_hash = supplied_spec.dataset.dataset_manifest_hash
+    identity_payload = {
+        "resolved_dataset_path": str(resolved_dataset_path) if resolved_dataset_path is not None else None,
+        "dataset_artifact_sha256": dataset_artifact_sha256,
+        "dataset_manifest_path": dataset_manifest_path,
+        "dataset_manifest_sha256": dataset_manifest_sha256,
+        "supplied_dataset_manifest_hash": supplied_dataset_manifest_hash,
+    }
+    return {
+        **identity_payload,
+        "dataset_identity_hash": _stable_hash(identity_payload),
+        "dataset_identity_contract": (
+            "hash(resolved_dataset_path, dataset_artifact_sha256, dataset_manifest_sha256, supplied_dataset_manifest_hash)"
+        ),
+    }
+
+
+def _resolve_generic_dataset_path(
+    *,
+    run_spec: ResearchExperimentSpec,
+    supplied_spec: ExperimentSpec | None,
+    artifact_links: Mapping[str, Any],
+    evidence_manifest: Mapping[str, Any],
+) -> Path | None:
+    if supplied_spec is not None and supplied_spec.dataset.dataset_path:
+        supplied_candidate = _resolve_existing_path(
+            supplied_spec.dataset.dataset_path,
+            base_path=run_spec.experiment_spec.parent if run_spec.experiment_spec is not None else run_spec.pipeline_spec.parent,
+        )
+        if supplied_candidate.exists() and supplied_candidate.is_file() and supplied_candidate.suffix.lower() == ".parquet":
+            return supplied_candidate
+        return None
+
+    candidates: list[Path] = []
+    if evidence_manifest.get("dataset_path"):
+        candidates.append(_resolve_existing_path(evidence_manifest["dataset_path"], base_path=run_spec.pipeline_spec.parent))
+    for experiment in evidence_manifest.get("experiments") or []:
+        if isinstance(experiment, Mapping) and experiment.get("dataset_path"):
+            candidates.append(_resolve_existing_path(experiment["dataset_path"], base_path=run_spec.pipeline_spec.parent))
+
+    dataset_manifest_path = artifact_links.get("dataset_manifest_path")
+    if dataset_manifest_path:
+        manifest_path = Path(str(dataset_manifest_path))
+        if manifest_path.exists():
+            manifest = _read_json(manifest_path)
+            for key in ("dataset_path", "parquet_path", "data_path"):
+                if manifest.get(key):
+                    candidates.append(_resolve_existing_path(manifest.get(key), base_path=manifest_path.parent))
+
+    for key in ("effective_pipeline_spec_path", "source_pipeline_spec_path"):
+        spec_path = artifact_links.get(key)
+        if not spec_path:
+            continue
+        path = Path(str(spec_path))
+        if not path.exists():
+            continue
+        pipeline_spec = _read_json(path)
+        evidence_stage = pipeline_spec.get("evidence_stage") or {}
+        if isinstance(evidence_stage, Mapping) and evidence_stage.get("dataset_path"):
+            candidates.append(_resolve_existing_path(evidence_stage["dataset_path"], base_path=path.parent))
+
+    for candidate in candidates:
+        if candidate.exists() and candidate.is_file() and candidate.suffix.lower() == ".parquet":
+            return candidate
+    return None
+
+
+def _resolve_existing_path(value: Any, *, base_path: Path) -> Path:
+    candidate = Path(str(value)).expanduser()
+    if candidate.is_absolute():
+        return candidate
+    if candidate.exists():
+        return candidate.resolve()
+    return (base_path / candidate).resolve()
+
+
+def _safe_artifact_name(value: str) -> str:
+    safe = "".join(char.lower() if char.isalnum() else "-" for char in value).strip("-")
+    return "-".join(part for part in safe.split("-") if part) or "artifact"
+
+
 def _write_summary_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     fields = [
+        "candidate_id",
         "experiment_name",
         "strategy_id",
         "strategy_type",
         "feature_set_id",
         "search_method",
+        "search_parameters_json",
         "cache_key",
+        "metric_scope",
+        "metrics_source",
+        "empirical_evidence",
+        "aggregate_backtest_evidence",
+        "validation_evidence_complete",
+        "scoreable_candidate",
+        "scoreability_status",
+        "backtest_manifest_path",
+        "metrics_path",
+        "result_sha256",
         "trade_count",
+        "long_count",
+        "short_count",
         "costed_expectancy",
+        "net_return_after_fees_slippage_funding",
         "drawdown_adjusted_return",
+        "max_drawdown",
+        "hit_rate",
+        "profit_factor",
+        "final_score",
         "max_single_split_pnl_share",
         "feature_missingness_rate",
         "capacity_liquidity_flag",
@@ -749,72 +1942,67 @@ def _write_summary_csv(path: Path, rows: list[dict[str, Any]]) -> None:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()
         for row in rows:
-            payload = dict(row)
+            payload = {field: row.get(field, "") for field in fields}
             payload["failure_reasons"] = "|".join(row["failure_reasons"])
             writer.writerow(payload)
 
 
-def _metrics_by_split(rows: list[dict[str, Any]]) -> pd.DataFrame:
-    records = []
-    for row in rows:
-        for split_index, validation_method in enumerate(("anchored_walk_forward", "rolling_walk_forward", "purged_embargoed_split")):
-            records.append(
-                {
-                    "strategy_id": row["strategy_id"],
-                    "split_index": split_index,
-                    "validation_method": validation_method,
-                    "trade_count": row["trade_count"],
-                    "costed_expectancy": row["costed_expectancy"],
-                    "drawdown_adjusted_return": row["drawdown_adjusted_return"],
-                    "failure_reasons": "|".join(row["failure_reasons"]),
-                }
-            )
-    return pd.DataFrame(records)
-
-
-def _metrics_by_regime(rows: list[dict[str, Any]]) -> pd.DataFrame:
+def _empty_split_metrics_frame() -> pd.DataFrame:
     return pd.DataFrame(
-        [
-            {
-                "strategy_id": row["strategy_id"],
-                "regime": regime,
-                "trade_count": int(row["trade_count"]),
-                "costed_expectancy": float(row["costed_expectancy"]),
-            }
-            for row in rows
-            for regime in ("bull_trend", "bear_trend", "volatility_shock")
+        columns=[
+            "strategy_id",
+            "candidate_id",
+            "split_index",
+            "validation_method",
+            "trade_count",
+            "costed_expectancy",
+            "drawdown_adjusted_return",
+            "backtest_manifest_path",
+            "failure_reasons",
         ]
     )
 
 
-def _metrics_by_side(rows: list[dict[str, Any]]) -> pd.DataFrame:
+def _empty_regime_metrics_frame() -> pd.DataFrame:
     return pd.DataFrame(
-        [
-            {
-                "strategy_id": row["strategy_id"],
-                "side": side,
-                "trade_count": int(row["trade_count"]),
-                "costed_expectancy": float(row["costed_expectancy"]),
-                "minimum_evidence_passed": int(row["trade_count"]) >= 1,
-            }
-            for row in rows
-            for side in ("long", "short")
+        columns=[
+            "strategy_id",
+            "candidate_id",
+            "regime",
+            "trade_count",
+            "costed_expectancy",
+            "metric_scope",
         ]
     )
 
 
-def _metrics_by_cost_stress(rows: list[dict[str, Any]], backtest: BacktestSpec) -> pd.DataFrame:
+def _empty_side_metrics_frame() -> pd.DataFrame:
     return pd.DataFrame(
-        [
-            {
-                "strategy_id": row["strategy_id"],
-                "funding_stress_bps": stress,
-                "fee_bps": backtest.fee_bps,
-                "slippage_bps": backtest.slippage_bps,
-                "stressed_expectancy": float(row["costed_expectancy"]) - (float(stress) / 10000.0),
-            }
-            for row in rows
-            for stress in backtest.funding_stress_bps
+        columns=[
+            "strategy_id",
+            "candidate_id",
+            "side",
+            "trade_count",
+            "costed_expectancy",
+            "minimum_evidence_passed",
+            "metric_scope",
+        ]
+    )
+
+
+def _empty_cost_stress_metrics_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "strategy_id",
+            "candidate_id",
+            "funding_stress_bps",
+            "fee_bps",
+            "slippage_bps",
+            "metric_scope",
+            "trade_count",
+            "stressed_expectancy",
+            "stressed_net_return",
+            "backtest_manifest_path",
         ]
     )
 
@@ -832,15 +2020,46 @@ def _write_effective_pipeline_spec(
     pipeline_spec = _read_json(spec.pipeline_spec)
     pipeline_spec["output_dir"] = str(output_dir / "pipeline")
     evidence_stage = dict(pipeline_spec.get("evidence_stage") or {})
-    if spec.experiment_spec is not None:
+    evidence_stage.pop("experiment_spec", None)
+    pipeline_experiment_spec = _pipeline_evidence_experiment_spec(spec.experiment_spec)
+    if pipeline_experiment_spec is not None:
         evidence_stage["enabled"] = True
-        evidence_stage["experiment_spec"] = str(spec.experiment_spec)
+        evidence_stage["experiment_spec"] = str(pipeline_experiment_spec)
     evidence_stage["workers"] = spec.workers
     evidence_stage["write_monitoring"] = spec.write_monitoring
     pipeline_spec["evidence_stage"] = evidence_stage
     effective_path = specs_dir / "provider_pipeline.effective.json"
     effective_path.write_text(_canonical_json(pipeline_spec, indent=2) + "\n", encoding="utf-8")
     return effective_path
+
+
+def _pipeline_evidence_experiment_spec(path: Path | None) -> Path | None:
+    if path is None or not path.exists():
+        return None
+    try:
+        payload = _read_json(path)
+    except Exception:
+        return None
+    if _looks_like_generic_experiment_spec(payload):
+        return None
+    if _looks_like_hmm_knn_matrix_spec(payload):
+        return path
+    return None
+
+
+def _looks_like_generic_experiment_spec(payload: Mapping[str, Any]) -> bool:
+    return (
+        isinstance(payload.get("dataset"), Mapping)
+        or isinstance(payload.get("feature"), Mapping)
+        or isinstance(payload.get("strategies"), list)
+        or isinstance(payload.get("backtest"), Mapping)
+        or isinstance(payload.get("validation"), Mapping)
+        or isinstance(payload.get("search"), Mapping)
+    )
+
+
+def _looks_like_hmm_knn_matrix_spec(payload: Mapping[str, Any]) -> bool:
+    return isinstance(payload.get("experiments"), list) and bool(payload.get("base_config_path"))
 
 
 def _build_experiment_conclusion(

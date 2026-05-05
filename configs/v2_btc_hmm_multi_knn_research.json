@@ -48,6 +48,13 @@
     "primary_weighting": "inverse_distance",
     "same_regime_only": true,
     "allow_cross_regime_fallback": false,
+    "regime_match_mode": "same",
+    "compatible_regimes": {
+      "bull_trend": ["range_chop"],
+      "bear_trend": ["range_chop"],
+      "range_chop": [],
+      "shock_transition": []
+    },
     "time_decay_half_life_bars": 672,
     "min_neighbor_count": 8,
     "vote_probability_threshold": 0.55,

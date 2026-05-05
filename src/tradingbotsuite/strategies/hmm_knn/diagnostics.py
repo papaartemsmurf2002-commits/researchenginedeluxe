@@ -14,13 +14,19 @@ def build_hmm_knn_artifact_diagnostics(
     regime_posteriors: pd.DataFrame,
     neighbor_diagnostics: pd.DataFrame,
     feature_columns: list[str],
+    feature_variant: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "neighbor_pool_size_by_regime": _neighbor_pool_size_by_regime(neighbor_diagnostics),
+        "neighbor_pool_diagnostics_by_regime": _neighbor_pool_diagnostics_by_regime(neighbor_diagnostics),
+        "fallback_rate_by_regime": _fallback_rate_by_regime(neighbor_diagnostics),
+        "insufficient_pool_rate": _insufficient_pool_rate(neighbor_diagnostics),
+        "compatible_mode_usage": _compatible_mode_usage(neighbor_diagnostics),
         "neighbor_distance_quality_distribution": _quality_distribution(neighbor_diagnostics),
         "accepted_rows_by_regime": _accepted_rows_by_regime(meta_predictions),
         "no_trade_reason_breakdown": _no_trade_reason_breakdown(meta_predictions, regime_posteriors),
         "feature_missingness_by_accepted_rejected_row": _feature_missingness_by_outcome(meta_predictions, feature_columns),
+        "feature_variant_summary": dict(feature_variant or _feature_variant_summary(feature_columns)),
         "knn_only_vs_meta_filter": compare_knn_and_meta(meta_predictions),
         "wt3d_vs_no_wt_ablation": _wt3d_ablation_status(feature_columns),
     }
@@ -47,6 +53,94 @@ def _quality_distribution(neighbor_diagnostics: pd.DataFrame) -> dict[str, float
         "p50": float(np.percentile(quality, 50)),
         "p95": float(np.percentile(quality, 95)),
     }
+
+
+def _neighbor_pool_diagnostics_by_regime(neighbor_diagnostics: pd.DataFrame) -> dict[str, dict[str, float | int | str | None]]:
+    required = {"query_regime", "candidate_count_before_regime_filter", "candidate_count_after_regime_filter", "selected_neighbor_count"}
+    if neighbor_diagnostics.empty or not required.issubset(neighbor_diagnostics.columns):
+        return {}
+    result: dict[str, dict[str, float | int | str | None]] = {}
+    primary = neighbor_diagnostics
+    if "is_primary" in primary.columns:
+        primary = primary.loc[primary["is_primary"].astype(bool)]
+    primary = primary.drop_duplicates(subset=[column for column in ("source_row_index", "k", "weighting") if column in primary.columns])
+    for regime, group in primary.groupby("query_regime", dropna=False):
+        key = "missing" if pd.isna(regime) else str(int(regime))
+        before = pd.to_numeric(group["candidate_count_before_regime_filter"], errors="coerce")
+        after = pd.to_numeric(group["candidate_count_after_regime_filter"], errors="coerce")
+        selected = pd.to_numeric(group["selected_neighbor_count"], errors="coerce")
+        result[key] = {
+            "row_count": int(len(group)),
+            "candidate_count_before_mean": float(before.mean()) if len(before) else 0.0,
+            "candidate_count_after_mean": float(after.mean()) if len(after) else 0.0,
+            "selected_count_mean": float(selected.mean()) if len(selected) else 0.0,
+            "insufficient_pool_count": int((group.get("knn_skip_reason") == "insufficient_neighbors").sum()) if "knn_skip_reason" in group else 0,
+            "regime_match_mode": _first_non_null(group.get("regime_match_mode")),
+        }
+    return dict(sorted(result.items()))
+
+
+def _fallback_rate_by_regime(neighbor_diagnostics: pd.DataFrame) -> dict[str, float]:
+    if neighbor_diagnostics.empty or {"query_regime", "fallback_used"}.difference(neighbor_diagnostics.columns):
+        return {}
+    primary = neighbor_diagnostics
+    if "is_primary" in primary.columns:
+        primary = primary.loc[primary["is_primary"].astype(bool)]
+    primary = primary.drop_duplicates(subset=[column for column in ("source_row_index", "k", "weighting") if column in primary.columns])
+    return {
+        ("missing" if pd.isna(regime) else str(int(regime))): float(group["fallback_used"].astype(bool).mean())
+        for regime, group in primary.groupby("query_regime", dropna=False)
+    }
+
+
+def _insufficient_pool_rate(neighbor_diagnostics: pd.DataFrame) -> float:
+    if neighbor_diagnostics.empty or "knn_skip_reason" not in neighbor_diagnostics.columns:
+        return 0.0
+    primary = neighbor_diagnostics
+    if "is_primary" in primary.columns:
+        primary = primary.loc[primary["is_primary"].astype(bool)]
+    primary = primary.drop_duplicates(subset=[column for column in ("source_row_index", "k", "weighting") if column in primary.columns])
+    if primary.empty:
+        return 0.0
+    return float(primary["knn_skip_reason"].eq("insufficient_neighbors").mean())
+
+
+def _compatible_mode_usage(neighbor_diagnostics: pd.DataFrame) -> dict[str, Any]:
+    if neighbor_diagnostics.empty or "regime_match_mode" not in neighbor_diagnostics.columns:
+        return {"used": False, "row_count": 0}
+    primary = neighbor_diagnostics
+    if "is_primary" in primary.columns:
+        primary = primary.loc[primary["is_primary"].astype(bool)]
+    compatible = primary.loc[primary["regime_match_mode"].astype(str) == "compatible"]
+    compatible = compatible.drop_duplicates(subset=[column for column in ("source_row_index", "k", "weighting") if column in compatible.columns])
+    return {
+        "used": bool(len(compatible)),
+        "row_count": int(len(compatible)),
+        "compatible_regime_labels": sorted(
+            label
+            for label in set(",".join(compatible.get("compatible_regime_labels", pd.Series(dtype=str)).dropna().astype(str)).split(","))
+            if label
+        ),
+    }
+
+
+def _feature_variant_summary(feature_columns: list[str]) -> dict[str, Any]:
+    return {
+        "feature_set_variant_id": "inline_feature_columns",
+        "feature_set_source": "inline_config",
+        "feature_count": int(len(feature_columns)),
+        "wt3d_enabled": any(column.startswith("wt3d_") for column in feature_columns),
+        "missingness_columns_present": [column for column in feature_columns if column.startswith("missing_")],
+    }
+
+
+def _first_non_null(series: pd.Series | None) -> str | None:
+    if series is None:
+        return None
+    non_null = series.dropna()
+    if non_null.empty:
+        return None
+    return str(non_null.iloc[0])
 
 
 def _accepted_rows_by_regime(meta_predictions: pd.DataFrame) -> dict[str, dict[str, int]]:
