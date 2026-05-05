@@ -6,11 +6,14 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tradingbotsuite.data.historical_fixture_pack import assert_valid_historical_fixture_pack_manifest
+from tradingbotsuite.features.builders import materialize_fixture_family_context, materialize_registered_feature_set
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
 from tradingbotsuite.strategies.funding_crowding_fade import REQUIRED_FUNDING_CROWDING_FADE_COLUMNS
 from tradingbotsuite.strategies.funding_window_timing import REQUIRED_FUNDING_WINDOW_TIMING_COLUMNS
 from tradingbotsuite.strategies.hmm_knn_local_analog_filter import REQUIRED_HMM_KNN_LOCAL_ANALOG_COLUMNS
 from tradingbotsuite.strategies.hmm_routed_alpha_sleeves import REQUIRED_HMM_ROUTED_ALPHA_COLUMNS
+from tradingbotsuite.strategies.liquidation_absorption_classifier import REQUIRED_LIQUIDATION_ABSORPTION_COLUMNS
 from tradingbotsuite.strategies.oi_flow_breakout import REQUIRED_OI_FLOW_BREAKOUT_COLUMNS
 from tradingbotsuite.strategies.perp_basis_convergence import REQUIRED_PERP_CONTEXT_V2_COLUMNS
 from tradingbotsuite.strategies import (
@@ -35,6 +38,7 @@ REQUIRED_STAGE6_STRATEGIES = {
     "oi_flow_breakout_v2",
     "hmm_routed_alpha_sleeves_v2",
     "hmm_knn_local_analog_filter_v2",
+    "liquidation_absorption_classifier_v1",
     "regime_adaptive_v1",
     "lc_reference_v1",
     "hmm_knn_diagnostic_v1",
@@ -232,6 +236,26 @@ def test_strategy_config_loader_rejects_unknown_parameters(tmp_path: Path) -> No
             },
             "invalid_feature_set:hmm_knn_local_analog_filter_v2:features_full_context_no_wt",
         ),
+        (
+            {
+                "strategy_id": "liquidation_absorption_classifier_v1",
+                "strategy_version": "v1",
+                "feature_set_id": "features_liquidation_context_v1",
+                "holding_period": "72h",
+                "parameters": {},
+            },
+            "invalid_holding_period:liquidation_absorption_classifier_v1:72h",
+        ),
+        (
+            {
+                "strategy_id": "liquidation_absorption_classifier_v1",
+                "strategy_version": "v1",
+                "feature_set_id": "features_perp_context_v2",
+                "holding_period": "4h",
+                "parameters": {},
+            },
+            "invalid_feature_set:liquidation_absorption_classifier_v1:features_perp_context_v2",
+        ),
     ],
 )
 def test_strategy_config_loader_rejects_invalid_strategy_feature_or_window(
@@ -380,6 +404,26 @@ def test_hmm_knn_local_analog_filter_metadata_covers_required_contract() -> None
     assert "hmm_knn_future_neighbor_boundary" in metadata.failure_modes
 
 
+def test_liquidation_absorption_classifier_metadata_covers_required_contract() -> None:
+    plugin = get_strategy_plugin("liquidation_absorption_classifier_v1")
+    metadata = metadata_for_strategy("liquidation_absorption_classifier_v1")
+
+    assert plugin.allowed_holding_periods == ("1h", "4h", "12h", "24h")
+    assert plugin.required_feature_sets == ("features_liquidation_context_v1",)
+    assert set(metadata.default_parameters) == {
+        "notional_z_threshold",
+        "imbalance_abs_threshold",
+        "reclaim_bps_threshold",
+        "min_event_count",
+        "max_event_age_h",
+        "allow_latest_window_context",
+        "spacing_bars",
+    }
+    assert set(metadata.parameter_space) == set(metadata.default_parameters)
+    assert metadata.default_parameters["allow_latest_window_context"] is False
+    assert "liquidation_context_missing_or_not_provider_backed" in metadata.failure_modes
+
+
 def test_no_trade_comparator_supports_perp_context_v2_feature_set() -> None:
     plugin = get_strategy_plugin(
         "baseline_no_trade",
@@ -388,6 +432,16 @@ def test_no_trade_comparator_supports_perp_context_v2_feature_set() -> None:
 
     assert plugin.predict(_perp_context_v2_signal_frame(row_count=24)).empty
     assert "features_perp_context_v2" in plugin.required_feature_sets
+
+
+def test_no_trade_comparator_supports_liquidation_context_feature_set() -> None:
+    plugin = get_strategy_plugin(
+        "baseline_no_trade",
+        config={"feature_set_id": "features_liquidation_context_v1", "holding_period": "4h"},
+    )
+
+    assert plugin.predict(_liquidation_absorption_signal_frame(row_count=24)).empty
+    assert "features_liquidation_context_v1" in plugin.required_feature_sets
 
 
 def test_strategy_plugin_construction_merges_holding_window_defaults() -> None:
@@ -428,6 +482,16 @@ def test_strategy_plugin_construction_rejects_invalid_feature_or_window() -> Non
         get_strategy_plugin("hmm_knn_local_analog_filter_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
     with pytest.raises(ValueError, match="invalid_feature_set:hmm_knn_local_analog_filter_v2:features_full_context_no_wt"):
         get_strategy_plugin("hmm_knn_local_analog_filter_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
+    with pytest.raises(ValueError, match="invalid_holding_period:liquidation_absorption_classifier_v1:72h"):
+        get_strategy_plugin(
+            "liquidation_absorption_classifier_v1",
+            config={"feature_set_id": "features_liquidation_context_v1", "holding_period": "72h"},
+        )
+    with pytest.raises(ValueError, match="invalid_feature_set:liquidation_absorption_classifier_v1:features_perp_context_v2"):
+        get_strategy_plugin(
+            "liquidation_absorption_classifier_v1",
+            config={"feature_set_id": "features_perp_context_v2", "holding_period": "4h"},
+        )
 
 
 def test_baseline_strategy_outputs_follow_standard_signal_contract() -> None:
@@ -1185,6 +1249,133 @@ def test_hmm_knn_local_analog_filter_v2_fails_closed_on_invalid_numeric_paramete
     assert plugin.predict(frame).empty
 
 
+def test_liquidation_absorption_classifier_v1_outputs_research_only_signals() -> None:
+    frame = _liquidation_absorption_signal_frame(row_count=48)
+    plugin = get_strategy_plugin(
+        "liquidation_absorption_classifier_v1",
+        config={
+            "symbol": "BTCUSDT",
+            "holding_period": "4h",
+            "feature_set_id": "features_liquidation_context_v1",
+            "spacing_bars": 1,
+        },
+    )
+
+    signals = plugin.predict(frame)
+    validation = validate_signal_frame(signals)
+
+    assert validation.valid is True, validation.errors
+    assert len(signals) > 0
+    assert set(signals["side"]) == {"long", "short"}
+    assert signals["feature_set_id"].eq("features_liquidation_context_v1").all()
+    assert signals["strategy_id"].eq("liquidation_absorption_classifier_v1").all()
+    assert signals["skip_reason"].eq("").all()
+    assert signals["research_only"].all()
+
+
+@pytest.mark.parametrize("missing_column", REQUIRED_LIQUIDATION_ABSORPTION_COLUMNS)
+def test_liquidation_absorption_classifier_v1_fails_closed_when_required_columns_are_missing(
+    missing_column: str,
+) -> None:
+    plugin = get_strategy_plugin(
+        "liquidation_absorption_classifier_v1",
+        config={"holding_period": "4h", "feature_set_id": "features_liquidation_context_v1", "spacing_bars": 1},
+    )
+    complete = _liquidation_absorption_signal_frame(row_count=24)
+
+    assert plugin.predict(complete.drop(columns=[missing_column])).empty
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("quality_has_liquidation_gap", 1.0),
+        ("quality_has_liquidation_gap", float("nan")),
+        ("quality_liquidation_provider_backed", 0.0),
+        ("quality_liquidation_provider_backed", None),
+        ("quality_liquidation_latest_window_context_only", 1.0),
+        ("liq_event_count_1h", 0.0),
+        ("liq_total_notional_1h", 0.0),
+        ("liq_total_notional_z_7d", 0.25),
+        ("liq_imbalance_ratio_1h", 0.1),
+        ("liq_time_since_last_event_h", 2.0),
+        ("liq_absorption_reclaim_bps", 1.0),
+        ("liq_absorption_reclaim_bps", float("nan")),
+    ],
+)
+def test_liquidation_absorption_classifier_v1_fails_closed_on_unsafe_or_invalid_context(
+    column: str,
+    value: object,
+) -> None:
+    plugin = get_strategy_plugin(
+        "liquidation_absorption_classifier_v1",
+        config={"holding_period": "4h", "feature_set_id": "features_liquidation_context_v1", "spacing_bars": 1},
+    )
+    frame = _liquidation_absorption_signal_frame(row_count=24)
+    frame[column] = value
+
+    assert plugin.predict(frame).empty
+
+
+def test_liquidation_absorption_classifier_v1_can_opt_into_latest_window_context() -> None:
+    plugin = get_strategy_plugin(
+        "liquidation_absorption_classifier_v1",
+        config={
+            "holding_period": "4h",
+            "feature_set_id": "features_liquidation_context_v1",
+            "allow_latest_window_context": True,
+            "spacing_bars": 1,
+        },
+    )
+    frame = _liquidation_absorption_signal_frame(row_count=24)
+    frame["quality_liquidation_latest_window_context_only"] = 1.0
+
+    assert not plugin.predict(frame).empty
+
+
+def test_liquidation_absorption_classifier_v1_fails_closed_on_invalid_parameters() -> None:
+    plugin = get_strategy_plugin(
+        "liquidation_absorption_classifier_v1",
+        config={
+            "holding_period": "4h",
+            "feature_set_id": "features_liquidation_context_v1",
+            "imbalance_abs_threshold": 2.0,
+            "spacing_bars": 1,
+        },
+    )
+
+    assert plugin.predict(_liquidation_absorption_signal_frame(row_count=24)).empty
+
+
+def test_liquidation_absorption_classifier_v1_runs_on_checked_wpr64_fixture() -> None:
+    frame = _wpr64_liquidation_feature_frame()
+    plugin = get_strategy_plugin(
+        "liquidation_absorption_classifier_v1",
+        config={
+            "symbol": "BTCUSDT",
+            "holding_period": "1h",
+            "feature_set_id": "features_liquidation_context_v1",
+            "notional_z_threshold": 1.0,
+            "imbalance_abs_threshold": 0.5,
+            "reclaim_bps_threshold": 10.0,
+            "min_event_count": 1.0,
+            "max_event_age_h": 1.0,
+            "spacing_bars": 1,
+        },
+    )
+
+    signals = plugin.predict(frame)
+    validation = validate_signal_frame(signals)
+
+    assert validation.valid is True, validation.errors
+    assert len(signals) > 0
+    assert signals["research_only"].all()
+    assert signals["feature_set_id"].eq("features_liquidation_context_v1").all()
+    assert signals["strategy_id"].eq("liquidation_absorption_classifier_v1").all()
+    assert signals["skip_reason"].eq("").all()
+    assert set(signals["side"]).issubset({"long", "short"})
+
+
 def test_invalid_signal_frame_is_rejected() -> None:
     validation = validate_signal_frame(pd.DataFrame({"side": ["buy"], "research_only": [False]}))
 
@@ -1222,6 +1413,87 @@ def test_malformed_signal_frame_is_rejected_even_with_required_columns() -> None
     assert "confidence_outside_unit_interval" in validation.errors
     assert "signals_must_be_research_only" in validation.errors
     assert "target_holding_ms_non_finite" in validation.errors
+
+
+def _liquidation_absorption_signal_frame(*, row_count: int) -> pd.DataFrame:
+    rows = []
+    start_ms = 1_672_531_200_000
+    interval_ms = 60_000
+    price = 23_000.0
+    for index in range(row_count):
+        signal_time_ms = start_ms + index * interval_ms
+        close = price + index * 2.0
+        liquidation_payload = {
+            "liq_event_count_1h": 0.0,
+            "liq_total_notional_1h": 0.0,
+            "liq_buy_notional_1h": 0.0,
+            "liq_sell_notional_1h": 0.0,
+            "liq_net_notional_1h": 0.0,
+            "liq_total_notional_z_7d": 0.0,
+            "liq_imbalance_ratio_1h": 0.0,
+            "liq_time_since_last_event_h": 0.1,
+            "liq_absorption_reclaim_bps": 0.0,
+            "quality_has_liquidation_gap": 0.0,
+            "quality_liquidation_provider_backed": 1.0,
+            "quality_liquidation_latest_window_context_only": 0.0,
+        }
+        if index % 12 == 0:
+            liquidation_payload.update(
+                {
+                    "liq_event_count_1h": 24.0,
+                    "liq_total_notional_1h": 250_000.0,
+                    "liq_sell_notional_1h": 230_000.0,
+                    "liq_buy_notional_1h": 20_000.0,
+                    "liq_net_notional_1h": -210_000.0,
+                    "liq_total_notional_z_7d": 2.0,
+                    "liq_imbalance_ratio_1h": -0.84,
+                    "liq_absorption_reclaim_bps": 35.0,
+                }
+            )
+        elif index % 12 == 6:
+            liquidation_payload.update(
+                {
+                    "liq_event_count_1h": 18.0,
+                    "liq_total_notional_1h": 180_000.0,
+                    "liq_buy_notional_1h": 160_000.0,
+                    "liq_sell_notional_1h": 20_000.0,
+                    "liq_net_notional_1h": 140_000.0,
+                    "liq_total_notional_z_7d": 1.7,
+                    "liq_imbalance_ratio_1h": 0.78,
+                    "liq_absorption_reclaim_bps": 28.0,
+                }
+            )
+        rows.append(
+            {
+                "bar_time_ms": signal_time_ms,
+                "feature_time_ms": signal_time_ms,
+                "symbol": "BTCUSDT",
+                "open": close - 1.0,
+                "high": close + 5.0,
+                "low": close - 5.0,
+                "close": close,
+                "volume": 1_000.0 + index,
+                **liquidation_payload,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _wpr64_liquidation_feature_frame() -> pd.DataFrame:
+    manifest_path = Path("data/research/fixtures/btcusdt_liquidation_free_sample_v1/fixture_pack_manifest.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+    payload = validation.to_payload()
+    cycle = pd.read_parquet(validation.cycle_dataset_path)
+    context = materialize_fixture_family_context(
+        cycle,
+        optional_context_families=payload["optional_context_families"],
+    )
+    return materialize_registered_feature_set(
+        context.frame,
+        feature_set_id="features_liquidation_context_v1",
+        interval_ms=60_000,
+    ).frame
 
 
 def _perp_context_v2_signal_frame(*, row_count: int) -> pd.DataFrame:

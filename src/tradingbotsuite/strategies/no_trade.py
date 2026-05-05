@@ -19,6 +19,7 @@ class NoTradeStrategy(RuleBasedStrategy):
         "features_cross_asset_context",
         "features_price_perp_micro_no_wt",
         "features_perp_context_v2",
+        "features_liquidation_context_v1",
     )
 
     def _signals(self, frame: pd.DataFrame) -> list[RuleSignal]:

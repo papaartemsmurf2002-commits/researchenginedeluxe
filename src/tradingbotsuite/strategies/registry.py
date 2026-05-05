@@ -9,6 +9,7 @@ from tradingbotsuite.strategies.hmm_knn_local_analog_filter import HmmKnnLocalAn
 from tradingbotsuite.strategies.hmm_routed_alpha_sleeves import HmmRoutedAlphaSleevesStrategy
 from tradingbotsuite.strategies.hmm_knn import HmmKnnDiagnosticStrategy
 from tradingbotsuite.strategies.lc_reference import LcReferenceStrategy
+from tradingbotsuite.strategies.liquidation_absorption_classifier import LiquidationAbsorptionClassifierStrategy
 from tradingbotsuite.strategies.no_trade import NoTradeStrategy
 from tradingbotsuite.strategies.oi_flow_breakout import OiFlowBreakoutStrategy
 from tradingbotsuite.strategies.perp_basis_convergence import PerpBasisConvergenceStrategy
@@ -31,6 +32,7 @@ def strategy_registry() -> dict[str, type]:
         "perp_basis_convergence_v2": PerpBasisConvergenceStrategy,
         "hmm_routed_alpha_sleeves_v2": HmmRoutedAlphaSleevesStrategy,
         "hmm_knn_local_analog_filter_v2": HmmKnnLocalAnalogFilterStrategy,
+        "liquidation_absorption_classifier_v1": LiquidationAbsorptionClassifierStrategy,
         "regime_adaptive_v1": RegimeAdaptiveStrategy,
         "lc_reference_v1": LcReferenceStrategy,
         "hmm_knn_diagnostic_v1": HmmKnnDiagnosticStrategy,

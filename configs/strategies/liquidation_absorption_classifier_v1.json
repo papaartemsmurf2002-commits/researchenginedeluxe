@@ -1,0 +1,16 @@
+{
+  "strategy_id": "liquidation_absorption_classifier_v1",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_liquidation_context_v1",
+  "holding_period": "4h",
+  "parameters": {
+    "notional_z_threshold": 1.25,
+    "imbalance_abs_threshold": 0.65,
+    "reclaim_bps_threshold": 15.0,
+    "min_event_count": 3.0,
+    "max_event_age_h": 1.0,
+    "allow_latest_window_context": false,
+    "spacing_bars": 4
+  }
+}
