@@ -1,0 +1,20 @@
+{
+  "strategy_id": "hmm_routed_alpha_sleeves_v2",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_perp_context_v2",
+  "holding_period": "24h",
+  "parameters": {
+    "posterior_threshold": 0.6,
+    "entropy_threshold": 0.78,
+    "basis_bps_threshold": 6.0,
+    "premium_z_threshold": 1.0,
+    "funding_z_threshold": 1.0,
+    "oi_delta_z_threshold": 0.75,
+    "oi_delta_min_notional": 0.0,
+    "premium_slope_min_bps": 0.0,
+    "flow_alignment_z_min": 0.0,
+    "min_edge_bps": 1.0,
+    "spacing_bars": 12
+  }
+}

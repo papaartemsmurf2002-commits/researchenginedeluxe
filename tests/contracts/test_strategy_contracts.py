@@ -9,6 +9,7 @@ import pytest
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
 from tradingbotsuite.strategies.funding_crowding_fade import REQUIRED_FUNDING_CROWDING_FADE_COLUMNS
 from tradingbotsuite.strategies.funding_window_timing import REQUIRED_FUNDING_WINDOW_TIMING_COLUMNS
+from tradingbotsuite.strategies.hmm_routed_alpha_sleeves import REQUIRED_HMM_ROUTED_ALPHA_COLUMNS
 from tradingbotsuite.strategies.oi_flow_breakout import REQUIRED_OI_FLOW_BREAKOUT_COLUMNS
 from tradingbotsuite.strategies.perp_basis_convergence import REQUIRED_PERP_CONTEXT_V2_COLUMNS
 from tradingbotsuite.strategies import (
@@ -31,6 +32,7 @@ REQUIRED_STAGE6_STRATEGIES = {
     "funding_crowding_fade_v2",
     "funding_window_timing_v1",
     "oi_flow_breakout_v2",
+    "hmm_routed_alpha_sleeves_v2",
     "regime_adaptive_v1",
     "lc_reference_v1",
     "hmm_knn_diagnostic_v1",
@@ -188,6 +190,26 @@ def test_strategy_config_loader_rejects_unknown_parameters(tmp_path: Path) -> No
             },
             "invalid_feature_set:funding_window_timing_v1:features_full_context_no_wt",
         ),
+        (
+            {
+                "strategy_id": "hmm_routed_alpha_sleeves_v2",
+                "strategy_version": "v1",
+                "feature_set_id": "features_perp_context_v2",
+                "holding_period": "1h",
+                "parameters": {},
+            },
+            "invalid_holding_period:hmm_routed_alpha_sleeves_v2:1h",
+        ),
+        (
+            {
+                "strategy_id": "hmm_routed_alpha_sleeves_v2",
+                "strategy_version": "v1",
+                "feature_set_id": "features_full_context_no_wt",
+                "holding_period": "24h",
+                "parameters": {},
+            },
+            "invalid_feature_set:hmm_routed_alpha_sleeves_v2:features_full_context_no_wt",
+        ),
     ],
 )
 def test_strategy_config_loader_rejects_invalid_strategy_feature_or_window(
@@ -292,6 +314,29 @@ def test_funding_window_timing_metadata_covers_required_contract() -> None:
     assert metadata.default_parameters["funding_momentum_policy"] == "avoid_acceleration"
 
 
+def test_hmm_routed_alpha_sleeves_metadata_covers_required_contract() -> None:
+    plugin = get_strategy_plugin("hmm_routed_alpha_sleeves_v2")
+    metadata = metadata_for_strategy("hmm_routed_alpha_sleeves_v2")
+
+    assert plugin.allowed_holding_periods == ("4h", "12h", "24h", "72h")
+    assert plugin.required_feature_sets == ("features_perp_context_v2",)
+    assert set(metadata.default_parameters) == {
+        "posterior_threshold",
+        "entropy_threshold",
+        "basis_bps_threshold",
+        "premium_z_threshold",
+        "funding_z_threshold",
+        "oi_delta_z_threshold",
+        "oi_delta_min_notional",
+        "premium_slope_min_bps",
+        "flow_alignment_z_min",
+        "min_edge_bps",
+        "spacing_bars",
+    }
+    assert set(metadata.parameter_space) == set(metadata.default_parameters)
+    assert "hmm_router_non_prior_fit_posteriors" in metadata.failure_modes
+
+
 def test_no_trade_comparator_supports_perp_context_v2_feature_set() -> None:
     plugin = get_strategy_plugin(
         "baseline_no_trade",
@@ -332,6 +377,10 @@ def test_strategy_plugin_construction_rejects_invalid_feature_or_window() -> Non
         get_strategy_plugin("funding_window_timing_v1", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
     with pytest.raises(ValueError, match="invalid_feature_set:funding_window_timing_v1:features_full_context_no_wt"):
         get_strategy_plugin("funding_window_timing_v1", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
+    with pytest.raises(ValueError, match="invalid_holding_period:hmm_routed_alpha_sleeves_v2:1h"):
+        get_strategy_plugin("hmm_routed_alpha_sleeves_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
+    with pytest.raises(ValueError, match="invalid_feature_set:hmm_routed_alpha_sleeves_v2:features_full_context_no_wt"):
+        get_strategy_plugin("hmm_routed_alpha_sleeves_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
 
 
 def test_baseline_strategy_outputs_follow_standard_signal_contract() -> None:
@@ -827,6 +876,161 @@ def test_funding_window_timing_v1_allows_latest_window_context_provenance() -> N
     assert not plugin.predict(frame).empty
 
 
+def test_hmm_routed_alpha_sleeves_v2_outputs_research_only_signals() -> None:
+    frame = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=48)
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={
+            "symbol": "BTCUSDT",
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "spacing_bars": 1,
+        },
+    )
+
+    signals = plugin.predict(frame)
+    validation = validate_signal_frame(signals)
+
+    assert validation.valid is True, validation.errors
+    assert len(signals) > 0
+    assert set(signals["side"]) == {"long", "short"}
+    assert signals["feature_set_id"].eq("features_perp_context_v2").all()
+    assert signals["strategy_id"].eq("hmm_routed_alpha_sleeves_v2").all()
+    assert signals["research_only"].all()
+    assert set(signals["skip_reason"]) == {
+        "hmm_router_bull_trend_oi_flow",
+        "hmm_router_bear_trend_oi_flow",
+        "hmm_router_range_basis_funding_fade",
+    }
+
+
+@pytest.mark.parametrize("missing_column", REQUIRED_HMM_ROUTED_ALPHA_COLUMNS)
+def test_hmm_routed_alpha_sleeves_v2_fails_closed_when_required_columns_are_missing(missing_column: str) -> None:
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    complete = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=24)
+
+    assert plugin.predict(complete.drop(columns=[missing_column])).empty
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("quality_context_missing_count", 1.0),
+        ("quality_has_funding_gap", 1.0),
+        ("quality_has_oi_gap", 1.0),
+        ("quality_has_premium_gap", 1.0),
+        ("quality_provider_backed_all_required", 0.0),
+        ("quality_latest_window_context_only", float("nan")),
+        ("max_regime_probability", 0.40),
+        ("posterior_entropy", 0.99),
+        ("recent_regime_flip", True),
+        ("recent_regime_flip", None),
+        ("regime_no_trade", True),
+        ("regime_no_trade", None),
+        ("hmm_fit_end_row", -1),
+        ("hmm_fit_end_row", 1.5),
+        ("hmm_fit_end_row", 200),
+        ("source_row_index", 1.5),
+        ("source_row_index", -1),
+        ("top_regime_label", "shock_transition"),
+    ],
+)
+def test_hmm_routed_alpha_sleeves_v2_fails_closed_on_unsafe_or_invalid_router_context(
+    column: str,
+    value: object,
+) -> None:
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=24)
+    frame[column] = value
+
+    assert plugin.predict(frame).empty
+
+
+def test_hmm_routed_alpha_sleeves_v2_trend_sleeve_filters_invalid_oi_context() -> None:
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=24)
+    frame["top_regime_label"] = "bull_trend"
+    frame["oi_delta_z_7d"] = float("nan")
+
+    assert plugin.predict(frame).empty
+
+
+def test_hmm_routed_alpha_sleeves_v2_range_sleeve_filters_invalid_basis_context() -> None:
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=24)
+    frame["top_regime_label"] = "range_chop"
+    frame["perp_mark_index_basis"] = float("nan")
+
+    assert plugin.predict(frame).empty
+
+
+def test_hmm_routed_alpha_sleeves_v2_requires_flow_when_alignment_threshold_is_positive() -> None:
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "flow_alignment_z_min": 0.25,
+            "spacing_bars": 1,
+        },
+    )
+    frame = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=24).drop(columns=["flow_signed_taker_z_7d"])
+    frame["top_regime_label"] = "bull_trend"
+    frame["perp_premium"] = 0.0003
+    frame["perp_premium_slope_8h"] = 0.00002
+    frame["oi_delta_1h"] = 50_000_000.0
+    frame["oi_delta_z_7d"] = 1.2
+
+    assert plugin.predict(frame).empty
+
+
+def test_hmm_routed_alpha_sleeves_v2_allows_missing_flow_when_alignment_threshold_is_zero() -> None:
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "flow_alignment_z_min": 0.0,
+            "spacing_bars": 1,
+        },
+    )
+    frame = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=24).drop(columns=["flow_signed_taker_z_7d"])
+    frame["top_regime_label"] = "bull_trend"
+    frame["perp_premium"] = 0.0003
+    frame["perp_premium_slope_8h"] = 0.00002
+    frame["oi_delta_1h"] = 50_000_000.0
+    frame["oi_delta_z_7d"] = 1.2
+
+    assert not plugin.predict(frame).empty
+
+
+def test_hmm_routed_alpha_sleeves_v2_fails_closed_on_invalid_numeric_parameters() -> None:
+    plugin = get_strategy_plugin(
+        "hmm_routed_alpha_sleeves_v2",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "posterior_threshold": "bad-threshold",
+            "spacing_bars": 1,
+        },
+    )
+    frame = _hmm_routed_alpha_sleeves_v2_signal_frame(row_count=24)
+
+    assert plugin.predict(frame).empty
+
+
 def test_invalid_signal_frame_is_rejected() -> None:
     validation = validate_signal_frame(pd.DataFrame({"side": ["buy"], "research_only": [False]}))
 
@@ -1018,4 +1222,58 @@ def _funding_window_timing_v1_signal_frame(*, row_count: int) -> pd.DataFrame:
     frame.loc[short_rows, "cal_time_since_last_funding_h"] = 7.0
     frame.loc[short_rows, "cal_time_to_next_funding_h"] = 0.5
     frame.loc[short_rows, "oi_delta_z_7d"] = 0.2
+    return frame
+
+
+def _hmm_routed_alpha_sleeves_v2_signal_frame(*, row_count: int) -> pd.DataFrame:
+    frame = _perp_context_v2_signal_frame(row_count=row_count)
+    frame.loc[:, [
+        "perp_mark_index_basis",
+        "perp_premium",
+        "perp_premium_z_7d",
+        "perp_premium_slope_8h",
+        "perp_last_funding_rate",
+        "perp_funding_z_7d",
+        "oi_delta_1h",
+        "oi_delta_z_7d",
+        "flow_signed_taker_z_7d",
+    ]] = 0.0
+    frame["top_regime_label"] = "shock_transition"
+    frame["max_regime_probability"] = 0.85
+    frame["posterior_entropy"] = 0.25
+    frame["recent_regime_flip"] = False
+    frame["regime_no_trade"] = False
+    frame["source_row_index"] = [100 + index for index in range(row_count)]
+    frame["hmm_fit_end_row"] = 99
+
+    bull_rows = frame.index[frame.index % 12 == 0]
+    bear_rows = frame.index[frame.index % 12 == 4]
+    range_short_rows = frame.index[frame.index % 12 == 8]
+    range_long_rows = frame.index[frame.index % 12 == 10]
+
+    frame.loc[bull_rows, "top_regime_label"] = "bull_trend"
+    frame.loc[bull_rows, "perp_premium"] = 0.0003
+    frame.loc[bull_rows, "perp_premium_slope_8h"] = 0.00002
+    frame.loc[bull_rows, "oi_delta_1h"] = 50_000_000.0
+    frame.loc[bull_rows, "oi_delta_z_7d"] = 1.2
+    frame.loc[bull_rows, "flow_signed_taker_z_7d"] = 1.0
+
+    frame.loc[bear_rows, "top_regime_label"] = "bear_trend"
+    frame.loc[bear_rows, "perp_premium"] = -0.0003
+    frame.loc[bear_rows, "perp_premium_slope_8h"] = -0.00002
+    frame.loc[bear_rows, "oi_delta_1h"] = 50_000_000.0
+    frame.loc[bear_rows, "oi_delta_z_7d"] = 1.2
+    frame.loc[bear_rows, "flow_signed_taker_z_7d"] = -1.0
+
+    frame.loc[range_short_rows, "top_regime_label"] = "range_chop"
+    frame.loc[range_short_rows, "perp_mark_index_basis"] = 0.001
+    frame.loc[range_short_rows, "perp_premium_z_7d"] = 1.4
+    frame.loc[range_short_rows, "perp_last_funding_rate"] = 0.00008
+    frame.loc[range_short_rows, "perp_funding_z_7d"] = 1.2
+
+    frame.loc[range_long_rows, "top_regime_label"] = "range_chop"
+    frame.loc[range_long_rows, "perp_mark_index_basis"] = -0.001
+    frame.loc[range_long_rows, "perp_premium_z_7d"] = -1.4
+    frame.loc[range_long_rows, "perp_last_funding_rate"] = -0.00008
+    frame.loc[range_long_rows, "perp_funding_z_7d"] = -1.2
     return frame
