@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R45 research branch distillation
+Current stage: Stage R46 perp strategy plan alignment
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR45 research branch distillation complete
+Stage status: closed - WPR46 perp strategy plan alignment complete
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -85,6 +85,7 @@ Last updated: 2026-05-05
 | WPR43-01-provider-wt3d-full-context-ablation-cycle | Codex Research Agent | closed | `data/research/historical_cycles/btcusdt_context_provider_wt3d_ablation_cycle/**`, `docs/work_packets/WPR43-01-provider-wt3d-full-context-ablation-cycle.md`, `docs/stage_reports/STAGE_R43_PROVIDER_WT3D_FULL_CONTEXT_ABLATION_CYCLE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Ran a provider-backed historical cycle comparing no-WT and WT3D full-context feature sets on the WPR41 latest-month fixture with fail-closed candidate gates. |
 | WPR44-01-final-crosscheck-hardening | Codex Research Agent | closed | `.gitignore`, `configs/research/full_cycle_btc_v1.json`, `src/tradingbotsuite/backtesting/splits.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `src/tradingbotsuite/optimization/stability.py`, `src/tradingbotsuite/research/feature_ablation.py`, `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/research_cycle/benchmark.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_cycle/spec.py`, `tests/**`, `data/research/fixtures/btcusdt_context_provider_latest_month_v1/**`, `docs/work_packets/WPR44-01-final-crosscheck-hardening.md`, `docs/stage_reports/STAGE_R44_FINAL_CROSSCHECK_HARDENING_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Final crosscheck fixed benchmark path hygiene, durable provider fixture evidence, exact holdout membership, exit-policy-aware stability/ablation grouping, fixed-interval context gap detection, and validation regressions before commit/push. |
 | WPR45-01-research-branch-distillation | Codex Research Agent | closed | `docs/RESEARCH_BRANCH_DISTILLATION.md`, `docs/work_packets/WPR45-01-research-branch-distillation.md`, `docs/stage_reports/STAGE_R45_RESEARCH_BRANCH_DISTILLATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Added a current research-branch distillation document covering purpose, framework, stack, artifact model, validation boundaries, and safe future-agent orientation. |
+| WPR46-01-perp-strategy-plan-alignment | Codex Research Agent | closed | `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/work_packets/WPR46-01-perp-strategy-plan-alignment.md`, `docs/stage_reports/STAGE_R46_PERP_STRATEGY_PLAN_ALIGNMENT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Curated the downloaded BTC/ETH perpetual strategy plan into repo-native agent instructions aligned to current cycle specs, data families, feature IDs, strategy contracts, exit IDs, gates, and future packet sequencing. |
 
 ## Gate checklist
 
@@ -252,3 +253,8 @@ Reason: Final review blockers were fixed before branch publication: provider fix
 
 Decision: R45 research branch distillation complete; continue holding before empirical acceptance
 Reason: The branch now has a current distillation document that explains the research framework, package ownership, stack, artifact model, provider fixture evidence, candidate gates, validation baseline, and live/promotion boundaries for future agents. This wave is documentation-only and does not advance empirical acceptance, create promotion evidence, or start Stage 13 execution.
+
+## Perp strategy plan alignment wave
+
+Decision: R46 perp strategy plan alignment complete; ready to open WPR47 implementation packet
+Reason: The downloaded BTC/ETH perpetual strategy plan is now aligned with the current research branch naming contracts and staged into additive work packets. The curated plan preserves existing cycle spec shape, supported holding windows, feature-set naming, strategy signal contracts, exit-policy IDs, provider fixture boundaries, and fail-closed candidate gates. This wave is documentation-only and does not advance empirical acceptance, create promotion evidence, or start Stage 13 execution.
