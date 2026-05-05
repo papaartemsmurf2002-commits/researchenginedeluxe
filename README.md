@@ -68,6 +68,11 @@ Then open `http://127.0.0.1:8000/ui`.
 
 ## Repository Map
 
+For the current research branch architecture, package responsibilities,
+dependency map, and unsafe-to-rewrite areas, read
+`docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md` before changing shared
+infrastructure.
+
 - `src/tradingbot/features_lc.py`: Lorentzian Classification feature helpers.
 - `src/tradingbot/kernels_lc.py`: rational quadratic and Gaussian kernel helpers.
 - `src/tradingbot/lorentz_lc.py`: LC classifier.
@@ -84,3 +89,5 @@ Then open `http://127.0.0.1:8000/ui`.
 - Do not commit credentials, `.env`, SQLite databases, `data/`, or generated research artifacts.
 - Keep research outputs explicitly `research_only`, `observe_only`, and non-promotable unless a separate promotion plan changes that.
 - Keep runtime trading logic in `src/tradingbotsuite`; the operator UI must stay a thin command/visibility layer.
+- Before broad rewrites, read `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md` and
+  preserve the branch contract tests.

@@ -12,10 +12,14 @@ Use this branch for research platform work only. The live runtime branch is `liv
 
 1. `docs/ORCHESTRATOR_STAGE_LEDGER.md`
 2. `docs/KNOWN_ISSUES.md`
-3. `docs/BRANCH_PURPOSE.md`
-4. `docs/contracts/README.md`
-5. `docs/repo_cartography/REPO_INVENTORY.md`
+3. `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`
+4. `docs/BRANCH_PURPOSE.md`
+5. `docs/contracts/README.md`
+6. `docs/repo_cartography/REPO_INVENTORY.md`
 
 ## Current rule
 
-Do not start Stage 3 data architecture work until Stage 2 contracts are complete and the ledger decision says `advance`.
+Follow the active stage in `docs/ORCHESTRATOR_STAGE_LEDGER.md`. Open a work
+packet before coding, keep edits inside that packet, and do not start
+live/promotion execution work from this research branch unless a later ledger
+decision explicitly scopes it.

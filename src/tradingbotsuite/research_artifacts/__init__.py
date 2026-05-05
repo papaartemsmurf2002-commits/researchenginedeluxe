@@ -1,3 +1,5 @@
+"""Research artifact gates. Read docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md before candidate-pack edits."""
+
 from __future__ import annotations
 
 from tradingbotsuite.research_artifacts.candidate_pack import (

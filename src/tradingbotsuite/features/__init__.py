@@ -1,3 +1,5 @@
+"""Feature public API. Read docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md before registry/cache edits."""
+
 from __future__ import annotations
 
 from tradingbotsuite.features.builders import (

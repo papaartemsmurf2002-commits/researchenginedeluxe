@@ -1,3 +1,5 @@
+"""Historical research-cycle API. Read docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md before orchestration edits."""
+
 from __future__ import annotations
 
 from tradingbotsuite.research_cycle.benchmark import ResearchCycleBenchmarkResult, write_research_cycle_benchmark_report

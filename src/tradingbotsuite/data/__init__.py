@@ -1,4 +1,4 @@
-"""Research data contracts, providers, quality checks, and storage."""
+"""Research data contracts and provenance. Read docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md before changes."""
 
 from tradingbotsuite.data.contracts import (
     CANONICAL_DATA_FAMILIES,

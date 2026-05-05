@@ -9,6 +9,9 @@ This branch is controlled by the orchestrator stage ledger.
 ## Active stage rules
 
 - Check `docs/ORCHESTRATOR_STAGE_LEDGER.md` before starting work.
+- Read `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md` before broad package,
+  dependency, data, feature, backtest, research-cycle, artifact, or live-boundary
+  changes.
 - Write a work packet before coding.
 - Keep changes inside the allowed paths listed by the work packet.
 - Update `docs/KNOWN_ISSUES.md` when a blocking risk is discovered.

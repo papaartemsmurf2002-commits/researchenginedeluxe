@@ -1,3 +1,5 @@
+"""Strategy plugin public API. Read docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md before contract edits."""
+
 from __future__ import annotations
 
 from tradingbotsuite.strategies.contracts import (
