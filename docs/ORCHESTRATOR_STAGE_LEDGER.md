@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R44 final crosscheck hardening
+Current stage: Stage R45 research branch distillation
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR44 final crosscheck hardening complete
+Stage status: closed - WPR45 research branch distillation complete
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -84,6 +84,7 @@ Last updated: 2026-05-05
 | WPR42-01-provider-backed-benchmark-evidence | Codex Research Agent | closed | `src/tradingbotsuite/research_cycle/benchmark.py`, `tests/historical/test_research_cycle_benchmark.py`, `data/research/benchmarks/wpr42_latest_month_provider_benchmark/**`, `docs/work_packets/WPR42-01-provider-backed-benchmark-evidence.md`, `docs/stage_reports/STAGE_R42_PROVIDER_BACKED_BENCHMARK_EVIDENCE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added and ran a provider-fixture benchmark tier using the WPR41 latest-month BTCUSDT context fixture while preserving synthetic benchmark guardrails. |
 | WPR43-01-provider-wt3d-full-context-ablation-cycle | Codex Research Agent | closed | `data/research/historical_cycles/btcusdt_context_provider_wt3d_ablation_cycle/**`, `docs/work_packets/WPR43-01-provider-wt3d-full-context-ablation-cycle.md`, `docs/stage_reports/STAGE_R43_PROVIDER_WT3D_FULL_CONTEXT_ABLATION_CYCLE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Ran a provider-backed historical cycle comparing no-WT and WT3D full-context feature sets on the WPR41 latest-month fixture with fail-closed candidate gates. |
 | WPR44-01-final-crosscheck-hardening | Codex Research Agent | closed | `.gitignore`, `configs/research/full_cycle_btc_v1.json`, `src/tradingbotsuite/backtesting/splits.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `src/tradingbotsuite/optimization/stability.py`, `src/tradingbotsuite/research/feature_ablation.py`, `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/research_cycle/benchmark.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_cycle/spec.py`, `tests/**`, `data/research/fixtures/btcusdt_context_provider_latest_month_v1/**`, `docs/work_packets/WPR44-01-final-crosscheck-hardening.md`, `docs/stage_reports/STAGE_R44_FINAL_CROSSCHECK_HARDENING_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Final crosscheck fixed benchmark path hygiene, durable provider fixture evidence, exact holdout membership, exit-policy-aware stability/ablation grouping, fixed-interval context gap detection, and validation regressions before commit/push. |
+| WPR45-01-research-branch-distillation | Codex Research Agent | closed | `docs/RESEARCH_BRANCH_DISTILLATION.md`, `docs/work_packets/WPR45-01-research-branch-distillation.md`, `docs/stage_reports/STAGE_R45_RESEARCH_BRANCH_DISTILLATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Added a current research-branch distillation document covering purpose, framework, stack, artifact model, validation boundaries, and safe future-agent orientation. |
 
 ## Gate checklist
 
@@ -246,3 +247,8 @@ Reason: The latest-month provider fixture now has real historical-cycle ablation
 
 Decision: R44 final crosscheck hardening complete; ready for commit/push after final validation
 Reason: Final review blockers were fixed before branch publication: provider fixture evidence is durable, benchmark paths are clean on Windows, holdout and context evidence is truthful, exit-policy identity is preserved in stability/ablation grouping, and focused validations pass. This wave does not advance empirical acceptance, does not create promotion evidence, and does not start Stage 13 execution.
+
+## Research branch distillation wave
+
+Decision: R45 research branch distillation complete; continue holding before empirical acceptance
+Reason: The branch now has a current distillation document that explains the research framework, package ownership, stack, artifact model, provider fixture evidence, candidate gates, validation baseline, and live/promotion boundaries for future agents. This wave is documentation-only and does not advance empirical acceptance, create promotion evidence, or start Stage 13 execution.
