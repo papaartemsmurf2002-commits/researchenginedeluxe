@@ -39,10 +39,10 @@ RESEARCH_ARCHIVE_DATA_ROOT = Path("data/research/market_data/binance_vision")
 RESEARCH_CRYPTO_LAKE_DATA_ROOT = Path("data/research/market_data/crypto_lake")
 SUPPORTED_RESEARCH_SYMBOLS = frozenset({"BTCUSDT", "ETHUSDT"})
 SUPPORTED_BINANCE_VISION_DATA_FAMILIES = frozenset({"kline", "agg_trade", "trade"})
-SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES = frozenset({"kline", "trade", "funding_rate", "open_interest"})
+SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES = frozenset({"kline", "trade", "funding_rate", "open_interest", "liquidation"})
 SUPPORTED_BINANCE_USDM_CONTEXT_FAMILIES = frozenset({"funding_rate", "premium_index", "open_interest"})
 SUPPORTED_BINANCE_USDM_CONTEXT_PERIODS = frozenset({"5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"})
-PERP_CONTEXT_DATA_FAMILIES = frozenset({"funding_rate", "premium_index", "open_interest", "agg_trade"})
+PERP_CONTEXT_DATA_FAMILIES = frozenset({"funding_rate", "premium_index", "open_interest", "agg_trade", "liquidation"})
 
 _KLINE_HEADER = (
     "open_time_ms",
@@ -322,6 +322,8 @@ def _validate_crypto_lake_data_family(data_family: str) -> str:
         normalized = "funding_rate"
     elif normalized in {"oi", "open_interest"}:
         normalized = "open_interest"
+    elif normalized in {"liquidations", "force_order", "forceorder", "force_orders"}:
+        normalized = "liquidation"
     if normalized not in SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES:
         raise ValueError(
             f"crypto lake data_family must be one of: {', '.join(sorted(SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES))}"
@@ -792,6 +794,15 @@ def _variable_cadence_gap_metadata() -> dict[str, Any]:
     }
 
 
+def _no_duplicate_check_metadata() -> dict[str, Any]:
+    return {
+        "duplicate_count": 0,
+        "duplicates": [],
+        "duplicate_check_applicable": False,
+        "duplicate_event_id_field": None,
+    }
+
+
 def _fixed_interval_gap_metadata(
     rows: list[dict[str, Any]],
     *,
@@ -847,6 +858,10 @@ def _archive_quality_report(
             report.update(_fixed_interval_gap_metadata(rows, interval=interval))
         else:
             report.update(_variable_cadence_gap_metadata())
+        return report
+    if data_family == "liquidation":
+        report = _no_duplicate_check_metadata()
+        report.update(_variable_cadence_gap_metadata())
         return report
     report = _event_id_duplicate_report(rows, id_field="trade_id")
     report.update(_variable_cadence_gap_metadata())
@@ -1241,6 +1256,28 @@ def _normalize_crypto_lake_row(
                 "index_price": _string_or_none(_first_present(row, ("index_price",))),
             }
         )
+    elif data_family == "liquidation":
+        normalized.update(
+            {
+                "side": _normalize_liquidation_side(
+                    _required_present(row, ("side", "order_side", "liquidation_side", "S"))
+                ),
+                "price": str(_required_present(row, ("price", "p", "execution_price"))),
+                "quantity": str(_required_present(row, ("quantity", "qty", "q", "amount", "size"))),
+                "order_type": _string_or_none(_first_present(row, ("order_type", "type", "o"))),
+                "time_in_force": _string_or_none(_first_present(row, ("time_in_force", "tif", "f"))),
+                "average_price": _string_or_none(_first_present(row, ("average_price", "avg_price", "ap"))),
+                "order_status": _string_or_none(_first_present(row, ("order_status", "status", "X"))),
+                "last_filled_quantity": _string_or_none(
+                    _first_present(row, ("last_filled_quantity", "last_filled_qty", "l"))
+                ),
+                "trade_time_ms": (
+                    _timestamp_to_ms(_first_present(row, ("trade_time_ms", "trade_time", "T")))
+                    if _first_present(row, ("trade_time_ms", "trade_time", "T")) is not None
+                    else None
+                ),
+            }
+        )
     else:
         normalized.update(
             {
@@ -1251,6 +1288,19 @@ def _normalize_crypto_lake_row(
             }
         )
     return {key: value for key, value in normalized.items() if value is not None}
+
+
+def _normalize_liquidation_side(value: Any) -> str:
+    text = str(value).strip().upper()
+    aliases = {
+        "B": "BUY",
+        "BUYER": "BUY",
+        "TAKER_BUY": "BUY",
+        "S": "SELL",
+        "SELLER": "SELL",
+        "TAKER_SELL": "SELL",
+    }
+    return aliases.get(text, text)
 
 
 def _json_scalar(value: Any) -> Any:
@@ -1534,7 +1584,9 @@ def _crypto_lake_default_table(data_family: str) -> str:
         return "trades"
     if data_family == "funding_rate":
         return "funding"
-    return "open_interest"
+    if data_family == "open_interest":
+        return "open_interest"
+    return "liquidations"
 
 
 class MarketJournalWriter:

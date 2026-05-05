@@ -462,7 +462,7 @@ Add only after WPR49-WPR52 are stable:
 6. Trial-budget and overfit-adjustment reports - complete in WPR59 as diagnostic-only required research-cycle outputs without changing candidate-pack metric gates
 7. Split-safe HMM router - complete in WPR60 as `hmm_routed_alpha_sleeves_v2`, a research-only strategy that consumes split-safe posterior columns and is not wired into checked provider cycles until posterior materialization exists
 8. Split-safe KNN local analog filter - complete in WPR61 as `hmm_knn_local_analog_filter_v2`, a research-only strategy that consumes split-safe KNN/HMM artifact columns and is not wired into checked provider cycles until KNN prediction materialization exists
-9. Liquidation classifier after durable liquidation fixtures
+9. Liquidation fixture intake foundation - complete in WPR62 for Crypto Lake/local archive normalization and optional fixture-pack materialization; `liquidation_absorption_classifier_v1` remains gated on liquidation features or checked fixture evidence
 10. L2 liquidity filter after durable order-book fixtures
 11. Cross-exchange/cross-sectional context after BTC/ETH cycles are stable
 

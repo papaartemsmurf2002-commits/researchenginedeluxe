@@ -637,11 +637,9 @@ def test_fetch_market_data_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tm
             "--symbol",
             "BTCUSDT",
             "--data-family",
-            "kline",
+            "liquidation",
             "--path",
             str(tmp_path / "crypto.csv"),
-            "--interval",
-            "1m",
             "--provider-symbol",
             "BTC-USDT-PERP",
             "--output-dir",
@@ -654,8 +652,8 @@ def test_fetch_market_data_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tm
 
     assert captured["path"] == tmp_path / "crypto.csv"
     assert captured["symbol"] == "BTCUSDT"
-    assert captured["data_family"] == "kline"
-    assert captured["interval"] == "1m"
+    assert captured["data_family"] == "liquidation"
+    assert captured["interval"] is None
     assert captured["provider_symbol"] == "BTC-USDT-PERP"
     assert payload["manifest_path"] == str(tmp_path / "out" / "manifest.json")
 
@@ -894,6 +892,46 @@ def test_ingest_crypto_lake_context_reports_symbol_time_duplicates_and_gaps(tmp_
     assert manifest["duplicates"] == [{"event_time_ms": 1704069000000, "symbol": "BTCUSDT"}]
 
 
+def test_ingest_crypto_lake_liquidation_csv_writes_context_manifest(tmp_path: Path) -> None:
+    source_path = tmp_path / "crypto_lake_liquidations.csv"
+    source_path.write_text(
+        "\n".join(
+            [
+                "origin_time,received_time,exchange,symbol,side,price,quantity,average_price,order_status",
+                "2024-01-01T00:00:00+00:00,2024-01-01T00:00:01+00:00,BINANCE,BTC-USDT-PERP,SELL,100.0,2.5,99.5,FILLED",
+                "2024-01-01T00:00:00+00:00,2024-01-01T00:00:02+00:00,BINANCE,BTC-USDT-PERP,BUY,101.0,1.0,101.0,FILLED",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = ingest_crypto_lake_archive(
+        source_path,
+        symbol="BTCUSDT",
+        provider_symbol="BTC-USDT-PERP",
+        data_family="liquidation",
+        output_dir=tmp_path / "out",
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    validation = assert_valid_archive_source_manifest(manifest)
+    rows = [json.loads(line) for line in result.data_path.read_text(encoding="utf-8").splitlines()]
+
+    assert result.row_count == 2
+    assert result.duplicate_count == 0
+    assert manifest["data_family"] == "liquidation"
+    assert manifest["context_family_role"] == "perp_context"
+    assert manifest["coverage_scope"] == "local_vendor_export"
+    assert manifest["duplicate_check_applicable"] is False
+    assert manifest["gap_check_status"] == "not_applicable_variable_cadence"
+    assert validation.valid is True
+    assert "perp_context_family" in manifest["quality_flags"]
+    assert [row["side"] for row in rows] == ["SELL", "BUY"]
+    assert rows[0]["price"] == "100.0"
+    assert rows[0]["quantity"] == "2.5"
+    assert rows[0]["receive_time_ms"] == 1704067201000
+
+
 def test_fetch_crypto_lake_archive_uses_optional_lakeapi_module(tmp_path: Path) -> None:
     class FakeLakeApi:
         sample_data_enabled = False
@@ -952,6 +990,52 @@ def test_fetch_crypto_lake_archive_uses_optional_lakeapi_module(tmp_path: Path) 
     assert manifest["diagnostic_only"] is True
     assert "crypto_lake_free_sample_data" in manifest["quality_flags"]
     assert "free_sample_diagnostic_only" in manifest["quality_flags"]
+
+
+def test_fetch_crypto_lake_archive_supports_liquidation_free_sample(tmp_path: Path) -> None:
+    class FakeLakeApi:
+        sample_data_enabled = False
+
+        @classmethod
+        def use_sample_data(cls, *, anonymous_access):
+            assert anonymous_access is True
+            cls.sample_data_enabled = True
+
+        @staticmethod
+        def load_data(**kwargs):
+            assert kwargs["table"] == "liquidations"
+            assert kwargs["symbols"] == ["BTC-USDT-PERP"]
+            return pd.DataFrame(
+                [
+                    {
+                        "origin_time": "2024-01-01T00:00:00+00:00",
+                        "received_time": "2024-01-01T00:00:01+00:00",
+                        "exchange": "BINANCE",
+                        "symbol": "BTC-USDT-PERP",
+                        "side": "SELL",
+                        "price": "100.0",
+                        "quantity": "2.5",
+                    }
+                ]
+            )
+
+    result = fetch_crypto_lake_archive(
+        symbol="BTCUSDT",
+        provider_symbol="BTC-USDT-PERP",
+        data_family="liquidation",
+        start_time="2024-01-01",
+        end_time="2024-01-02",
+        output_dir=tmp_path / "out",
+        lakeapi_module=FakeLakeApi(),
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    rows = [json.loads(line) for line in result.data_path.read_text(encoding="utf-8").splitlines()]
+    assert FakeLakeApi.sample_data_enabled is True
+    assert manifest["data_family"] == "liquidation"
+    assert manifest["source_access_mode"] == "free_sample"
+    assert manifest["coverage_scope"] == "free_sample_diagnostic"
+    assert rows[0]["side"] == "SELL"
 
 
 def test_fetch_crypto_lake_archive_missing_lakeapi_has_setup_guidance(

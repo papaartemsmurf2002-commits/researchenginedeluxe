@@ -454,11 +454,17 @@ def test_provider_kline_fixture_pack_builder_includes_provider_context_manifests
     validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=result.manifest_path)
     context_families = validation.to_payload()["optional_context_families"]
 
-    assert set(context_families) == {"funding_rate", "premium_index", "open_interest", "agg_trade"}
+    assert set(context_families) == {"funding_rate", "premium_index", "open_interest", "agg_trade", "liquidation"}
     assert set(result.to_payload()["context_family_paths"]) == set(context_families)
     assert {record["data_family"] for record in manifest["source"]["context_sources"]} == set(context_families)
     assert set(manifest["omitted_optional_families"]) == {"lower_timeframe_bars"}
-    assert manifest["derivation"]["context_families"] == ["agg_trade", "funding_rate", "open_interest", "premium_index"]
+    assert manifest["derivation"]["context_families"] == [
+        "agg_trade",
+        "funding_rate",
+        "liquidation",
+        "open_interest",
+        "premium_index",
+    ]
     for family, payload in context_families.items():
         family_path = Path(payload["path"])
         assert family_path.exists()
@@ -480,6 +486,14 @@ def test_provider_kline_fixture_pack_builder_includes_provider_context_manifests
     assert funding["funding_rate"].max() < 0.5
     agg_trade = pd.read_parquet(context_families["agg_trade"]["path"])
     assert {"quote_volume", "taker_buy_quote_volume", "primary_signed_imbalance_ratio"} <= set(agg_trade.columns)
+    liquidation = pd.read_parquet(context_families["liquidation"]["path"])
+    assert {
+        "liquidation_event_count",
+        "liquidation_quote_notional",
+        "liquidation_sell_notional",
+        "liquidation_side_imbalance",
+    } <= set(liquidation.columns)
+    assert int(liquidation["liquidation_event_count"].max()) == 2
 
 
 def test_build_historical_fixture_pack_cli_accepts_context_manifests(tmp_path: Path) -> None:
@@ -517,7 +531,12 @@ def test_build_historical_fixture_pack_cli_accepts_context_manifests(tmp_path: P
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
     assert set(validation.to_payload()["optional_context_families"]) == {"funding_rate", "open_interest"}
-    assert set(manifest["omitted_optional_families"]) == {"lower_timeframe_bars", "premium_index", "agg_trade"}
+    assert set(manifest["omitted_optional_families"]) == {
+        "lower_timeframe_bars",
+        "premium_index",
+        "agg_trade",
+        "liquidation",
+    }
 
 
 def test_provider_kline_fixture_pack_builder_accepts_binance_usdm_rest_context_manifest(tmp_path: Path) -> None:
@@ -757,6 +776,79 @@ def test_provider_kline_fixture_pack_builder_rejects_unsupported_context_family(
         )
 
 
+def test_provider_kline_fixture_pack_builder_requires_in_window_liquidation_events(tmp_path: Path) -> None:
+    rows = _provider_kline_rows(row_count=8)
+    source_manifest_path = _write_provider_kline_manifest(tmp_path, rows)
+    context_manifest_path = _write_provider_context_manifest(
+        tmp_path,
+        "liquidation",
+        [
+            {
+                "event_time_ms": int(rows[0]["time_ms"]),
+                "symbol": "BTCUSDT",
+                "side": "SELL",
+                "price": float(rows[0]["close"]),
+                "quantity": 1.0,
+            }
+        ],
+        source_name="crypto_lake",
+    )
+
+    with pytest.raises(ValueError, match="provider_context_has_no_rows_in_fixture_window:liquidation"):
+        build_provider_kline_fixture_pack(
+            source_manifest_path=source_manifest_path,
+            output_dir=tmp_path / "fixture_pack",
+            row_limit=3,
+            context_manifest_paths=[context_manifest_path],
+        )
+
+
+def test_provider_kline_fixture_pack_builder_preserves_force_order_aliases(tmp_path: Path) -> None:
+    rows = _provider_kline_rows(row_count=8)
+    source_manifest_path = _write_provider_kline_manifest(tmp_path, rows)
+    event_time_ms = int(rows[-2]["time_ms"])
+    context_manifest_path = _write_provider_context_manifest(
+        tmp_path,
+        "force_order",
+        [
+            {
+                "event_time_ms": event_time_ms,
+                "symbol": "BTCUSDT",
+                "S": "SELL",
+                "p": 100.0,
+                "q": 2.0,
+            },
+            {
+                "event_time_ms": event_time_ms,
+                "symbol": "BTCUSDT",
+                "S": "BUY",
+                "p": 101.0,
+                "q": 1.0,
+            },
+        ],
+        source_name="crypto_lake",
+    )
+
+    result = build_provider_kline_fixture_pack(
+        source_manifest_path=source_manifest_path,
+        output_dir=tmp_path / "fixture_pack",
+        row_limit=3,
+        context_manifest_paths=[context_manifest_path],
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=result.manifest_path)
+    liquidation_path = Path(validation.to_payload()["optional_context_families"]["liquidation"]["path"])
+    liquidation = pd.read_parquet(liquidation_path)
+
+    assert manifest["families"]["liquidation"]["data_family"] == "liquidation"
+    assert int(liquidation["liquidation_event_count"].iloc[0]) == 2
+    assert float(liquidation["liquidation_quote_notional"].iloc[0]) == pytest.approx(301.0)
+    assert float(liquidation["liquidation_buy_notional"].iloc[0]) == pytest.approx(101.0)
+    assert float(liquidation["liquidation_sell_notional"].iloc[0]) == pytest.approx(200.0)
+    assert float(liquidation["liquidation_side_imbalance"].iloc[0]) == pytest.approx((101.0 - 200.0) / 301.0)
+
+
 def test_historical_fixture_pack_rejects_missing_path_hash_mismatch_and_unsafe_flags(tmp_path: Path) -> None:
     missing_path = _write_fixture_pack(
         tmp_path / "missing",
@@ -833,6 +925,15 @@ def test_historical_fixture_pack_validates_optional_family_entries(tmp_path: Pat
                 "quote_volume": [100.0, 120.0],
             }
         ),
+        "liquidation": pd.DataFrame(
+            {
+                "event_time_ms": [1, 2],
+                "symbol": ["BTCUSDT", "BTCUSDT"],
+                "liquidation_event_count": [1, 2],
+                "liquidation_quote_notional": [10_000.0, 12_000.0],
+                "liquidation_side_imbalance": [-1.0, 0.25],
+            }
+        ),
     }
     for family, optional in optional_frames.items():
         path = manifest_path.parent / f"{family}.parquet"
@@ -874,7 +975,7 @@ def test_historical_fixture_pack_validates_optional_family_entries(tmp_path: Pat
     assert validation.lower_timeframe_row_count == len(lower)
     assert validation.to_payload()["lower_timeframe_family"]["sha256"] == _file_sha256(lower_path)
     context_families = validation.to_payload()["optional_context_families"]
-    assert set(context_families) == {"funding_rate", "premium_index", "open_interest", "agg_trade"}
+    assert set(context_families) == {"funding_rate", "premium_index", "open_interest", "agg_trade", "liquidation"}
     assert context_families["funding_rate"]["path"] == str(manifest_path.parent / "funding_rate.parquet")
     assert context_families["funding_rate"]["event_time_field"] == "event_time_ms"
     assert context_families["funding_rate"]["sha256"] == _file_sha256(manifest_path.parent / "funding_rate.parquet")
@@ -1048,6 +1149,7 @@ def _write_provider_context_manifests(tmp_path: Path, rows: list[dict[str, objec
         _write_provider_context_manifest(tmp_path, "premium_index", _provider_premium_context_rows(rows), source_name="binance_vision"),
         _write_provider_context_manifest(tmp_path, "open_interest", _provider_open_interest_context_rows(rows), source_name="crypto_lake"),
         _write_provider_context_manifest(tmp_path, "agg_trade", _provider_agg_trade_context_rows(rows), source_name="binance_vision"),
+        _write_provider_context_manifest(tmp_path, "liquidation", _provider_liquidation_context_rows(rows), source_name="crypto_lake"),
     ]
 
 
@@ -1156,6 +1258,34 @@ def _provider_agg_trade_context_rows(rows: list[dict[str, object]]) -> list[dict
             ]
         )
     return agg_rows
+
+
+def _provider_liquidation_context_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    liquidation_rows: list[dict[str, object]] = []
+    for index, row in enumerate(rows):
+        event_time_ms = int(row["time_ms"]) - 60_000
+        price = float(row["close"])
+        liquidation_rows.extend(
+            [
+                {
+                    "event_time_ms": event_time_ms,
+                    "symbol": "BTCUSDT",
+                    "side": "SELL",
+                    "price": price,
+                    "quantity": 0.4 + (index * 0.01),
+                    "order_status": "FILLED",
+                },
+                {
+                    "event_time_ms": event_time_ms,
+                    "symbol": "BTCUSDT",
+                    "side": "BUY",
+                    "price": price * 1.001,
+                    "quantity": 0.1,
+                    "order_status": "FILLED",
+                },
+            ]
+        )
+    return liquidation_rows
 
 
 def _file_sha256(path: Path) -> str:

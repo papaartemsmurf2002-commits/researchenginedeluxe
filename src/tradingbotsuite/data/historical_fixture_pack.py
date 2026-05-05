@@ -21,8 +21,8 @@ PRICE_COLUMN_ALIASES = {
     "volume": ("volume", "signal_bar_volume"),
 }
 REQUIRED_FAMILIES = {"bars"}
-OPTIONAL_FAMILIES = {"funding_rate", "premium_index", "open_interest", "agg_trade", "lower_timeframe_bars"}
-CONTEXT_FAMILIES = ("funding_rate", "premium_index", "open_interest", "agg_trade")
+OPTIONAL_FAMILIES = {"funding_rate", "premium_index", "open_interest", "agg_trade", "liquidation", "lower_timeframe_bars"}
+CONTEXT_FAMILIES = ("funding_rate", "premium_index", "open_interest", "agg_trade", "liquidation")
 CONTEXT_MANIFEST_METADATA_FIELDS = (
     "retention_policy",
     "coverage_scope",
@@ -39,12 +39,14 @@ PROVIDER_CONTEXT_FAMILY_SOURCES = {
     "premium_index": {"binance_vision", "binance_usdm_rest"},
     "open_interest": {"binance_vision", "crypto_lake", "binance_usdm_rest"},
     "agg_trade": {"binance_vision", "crypto_lake"},
+    "liquidation": {"binance_vision", "crypto_lake"},
 }
 CONTEXT_EVENT_TIME_ALIASES = {
     "funding_rate": ("event_time_ms", "funding_time_ms", "time_ms", "timestamp_ms"),
     "premium_index": ("event_time_ms", "time_ms", "timestamp_ms"),
     "open_interest": ("event_time_ms", "time_ms", "timestamp_ms"),
     "agg_trade": ("event_time_ms", "transact_time_ms", "trade_time_ms", "time_ms", "timestamp_ms"),
+    "liquidation": ("event_time_ms", "trade_time_ms", "time_ms", "timestamp_ms"),
 }
 _REMOVED_CHART_SOURCE = "trading" + "view"
 _REMOVED_CHART_SOURCE_FLAG = _REMOVED_CHART_SOURCE + "_source_used"
@@ -760,6 +762,19 @@ def _context_family_has_supported_columns(path: Path, *, family: str) -> bool:
         total = {"quote_volume", "volume", "quantity"}
         sell = {"sell_quote_volume", "sell_quantity"}
         return bool(direct & columns) or bool((buy & columns) and ((total & columns) or (sell & columns)))
+    if family == "liquidation":
+        return bool(
+            {
+                "liquidation_event_count",
+                "liquidation_quote_notional",
+                "liquidation_buy_notional",
+                "liquidation_sell_notional",
+                "liquidation_side_imbalance",
+                "price",
+                "quantity",
+            }
+            & columns
+        )
     return True
 
 
@@ -923,12 +938,13 @@ def _build_provider_context_family_entries(
             source_frame,
             fixture_first_time_ms=fixture_first_time_ms,
             fixture_last_time_ms=fixture_last_time_ms,
+            include_previous=family != "liquidation",
         )
         if fixture_frame.empty:
             raise ValueError(f"provider_context_has_no_rows_in_fixture_window:{family}")
         if not _provider_context_has_supported_columns(fixture_frame, family=family):
             raise ValueError(f"provider_context_no_supported_columns:{family}")
-        if family != "agg_trade":
+        if family not in {"agg_trade", "liquidation"}:
             duplicate_mask = fixture_frame.duplicated(["symbol", "event_time_ms"], keep=False)
             if duplicate_mask.any():
                 raise ValueError(f"provider_context_duplicate_events:{family}")
@@ -1039,6 +1055,8 @@ def _read_provider_context_frame(
     frame["event_time_ms"] = pd.to_numeric(frame["event_time_ms"], errors="raise").astype("int64")
     if family == "agg_trade":
         result = _normalize_provider_agg_trade_context_frame(frame)
+    elif family == "liquidation":
+        result = _normalize_provider_liquidation_context_frame(frame)
     else:
         result = _normalize_provider_scalar_context_frame(frame, family=family)
     result.attrs["source_input_row_count"] = len(payload_rows)
@@ -1163,16 +1181,130 @@ def _normalize_provider_agg_trade_context_frame(frame: pd.DataFrame) -> pd.DataF
     return grouped
 
 
+def _normalize_provider_liquidation_context_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    result["symbol"] = result["symbol"].astype(str)
+    price = _first_numeric_context_series(result, ("price", "execution_price", "p", "P"))
+    quantity = _first_numeric_context_series(result, ("quantity", "qty", "amount", "size", "q", "Q"))
+    quote_notional = _first_numeric_context_series(result, ("quote_notional", "notional", "liquidation_notional"))
+    if quote_notional is None and price is not None and quantity is not None:
+        quote_notional = price * quantity
+    if quantity is not None:
+        result["liquidation_quantity"] = quantity
+    if quote_notional is not None:
+        result["liquidation_quote_notional"] = quote_notional
+    last_filled_quantity = _first_numeric_context_series(result, ("last_filled_quantity", "last_filled_qty", "l", "L"))
+    if last_filled_quantity is not None:
+        result["last_filled_quantity"] = last_filled_quantity
+
+    side = _first_string_context_series(result, ("side", "order_side", "liquidation_side", "S", "s"))
+    if side is not None:
+        normalized_side = side.map(_normalize_provider_liquidation_side)
+        result["side"] = normalized_side
+        if quote_notional is not None:
+            result["liquidation_buy_notional"] = quote_notional.where(normalized_side == "BUY", 0.0)
+            result["liquidation_sell_notional"] = quote_notional.where(normalized_side == "SELL", 0.0)
+    result["liquidation_event_count"] = 1
+
+    aggregation: dict[str, str] = {
+        "source_row_index": "min",
+        "source_provider": "first",
+        "source_provider_raw": "first",
+        "source_data_family": "first",
+        "source_manifest_path": "first",
+        "source_data_sha256": "first",
+        "liquidation_event_count": "sum",
+    }
+    for column in (
+        "liquidation_quantity",
+        "liquidation_quote_notional",
+        "liquidation_buy_notional",
+        "liquidation_sell_notional",
+        "last_filled_quantity",
+    ):
+        if column in result.columns:
+            aggregation[column] = "sum"
+    for column in (
+        "side",
+        "price",
+        "p",
+        "P",
+        "average_price",
+        "avg_price",
+        "ap",
+        "order_status",
+        "status",
+        "X",
+        "order_type",
+        "type",
+        "o",
+        "time_in_force",
+        "tif",
+        "f",
+        "trade_time_ms",
+        "trade_time",
+        "T",
+    ):
+        if column in result.columns:
+            aggregation[column] = "last"
+
+    grouped = (
+        result.groupby(["symbol", "event_time_ms"], as_index=False, sort=False)
+        .agg(aggregation)
+        .sort_values(["symbol", "event_time_ms"], kind="mergesort")
+        .reset_index(drop=True)
+    )
+    if {"liquidation_buy_notional", "liquidation_sell_notional"} <= set(grouped.columns):
+        buy_notional = pd.to_numeric(grouped["liquidation_buy_notional"], errors="coerce").fillna(0.0)
+        sell_notional = pd.to_numeric(grouped["liquidation_sell_notional"], errors="coerce").fillna(0.0)
+        denominator = (
+            buy_notional
+            + sell_notional
+        ).replace(0.0, pd.NA)
+        grouped["liquidation_side_imbalance"] = (
+            buy_notional
+            - sell_notional
+        ) / denominator
+        grouped["dominant_liquidation_side"] = [
+            "BUY" if buy > sell else "SELL" if sell > buy else "MIXED"
+            for buy, sell in zip(buy_notional, sell_notional)
+        ]
+    if {"liquidation_quote_notional", "liquidation_quantity"} <= set(grouped.columns):
+        quantity = pd.to_numeric(grouped["liquidation_quantity"], errors="coerce").replace(0.0, pd.NA)
+        grouped["liquidation_vwap_price"] = pd.to_numeric(grouped["liquidation_quote_notional"], errors="coerce") / quantity
+    return grouped
+
+
+def _normalize_provider_liquidation_side(value: object) -> str:
+    text = str(value).strip().upper()
+    aliases = {
+        "B": "BUY",
+        "BUYER": "BUY",
+        "TAKER_BUY": "BUY",
+        "S": "SELL",
+        "SELLER": "SELL",
+        "TAKER_SELL": "SELL",
+    }
+    return aliases.get(text, text)
+
+
 def _slice_provider_context_frame(
     frame: pd.DataFrame,
     *,
     fixture_first_time_ms: int,
     fixture_last_time_ms: int,
+    include_previous: bool = True,
 ) -> pd.DataFrame:
     eligible = frame.loc[pd.to_numeric(frame["event_time_ms"], errors="coerce") <= fixture_last_time_ms].copy()
     if eligible.empty:
         return eligible
     within = eligible.loc[pd.to_numeric(eligible["event_time_ms"], errors="coerce") >= fixture_first_time_ms]
+    if not include_previous:
+        return (
+            within.drop_duplicates(["symbol", "event_time_ms"], keep="last")
+            .sort_values(["symbol", "event_time_ms"], kind="mergesort")
+            .reset_index(drop=True)
+        )
     previous = (
         eligible.loc[pd.to_numeric(eligible["event_time_ms"], errors="coerce") < fixture_first_time_ms]
         .sort_values(["symbol", "event_time_ms"], kind="mergesort")
@@ -1202,6 +1334,17 @@ def _provider_context_has_supported_columns(frame: pd.DataFrame, *, family: str)
             or {"taker_buy_quote_volume", "sell_quote_volume"} <= columns
             or bool({"top_of_book_imbalance", "spread_bps"} & columns)
         )
+    if family == "liquidation":
+        return bool(
+            {
+                "liquidation_event_count",
+                "liquidation_quote_notional",
+                "liquidation_buy_notional",
+                "liquidation_sell_notional",
+                "liquidation_side_imbalance",
+            }
+            & columns
+        )
     return False
 
 
@@ -1218,6 +1361,10 @@ def _provider_context_data_family(manifest: Mapping[str, Any]) -> str:
         "aggtrade": "agg_trade",
         "aggtrades": "agg_trade",
         "agg_trades": "agg_trade",
+        "liquidations": "liquidation",
+        "force_order": "liquidation",
+        "forceorder": "liquidation",
+        "force_orders": "liquidation",
     }
     return aliases.get(raw, raw)
 

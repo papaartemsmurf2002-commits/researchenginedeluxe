@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R61 split-safe KNN local analog filter
+Current stage: Stage R62 liquidation fixture intake foundation
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR61 complete; WPR62 requires liquidation fixture planning before classifier work
+Stage status: closed - WPR62 complete; liquidation classifier remains gated on features or checked fixture evidence
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -101,6 +101,7 @@ Last updated: 2026-05-05
 | WPR59-01-trial-budget-overfit-diagnostic-reports | Codex Research Agent | closed | `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_artifacts/candidate_pack.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/historical/test_full_cycle_synthetic.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `tests/research_artifacts/test_candidate_pack.py`, `configs/research/full_cycle_btcusdt_perp_context_v2.json`, `configs/research/full_cycle_ethusdt_perp_context_v2.json`, `data/research/historical_cycles/btcusdt_perp_context_v2_foundation/**`, `data/research/historical_cycles/ethusdt_perp_context_v2_foundation/**`, `docs/work_packets/WPR59-01-trial-budget-overfit-diagnostic-reports.md`, `docs/stage_reports/STAGE_R59_TRIAL_BUDGET_OVERFIT_DIAGNOSTICS_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added trial-budget and overfit-adjustment research diagnostics without changing candidate-pack metric gates, with validation recorded in Stage R59 report. |
 | WPR60-01-split-safe-hmm-router | Codex Research Agent | closed | `src/tradingbotsuite/strategies/hmm_routed_alpha_sleeves.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/strategies/__init__.py`, `configs/strategies/hmm_routed_alpha_sleeves_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `docs/work_packets/WPR60-01-split-safe-hmm-router.md`, `docs/stage_reports/STAGE_R60_SPLIT_SAFE_HMM_ROUTER_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `hmm_routed_alpha_sleeves_v2` as a research-only split-safe posterior router strategy without fitting HMMs inside the strategy or changing checked provider-cycle wiring. |
 | WPR61-01-split-safe-knn-local-analog-filter | Codex Research Agent | closed | `src/tradingbotsuite/strategies/hmm_knn_local_analog_filter.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `configs/strategies/hmm_knn_local_analog_filter_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `docs/work_packets/WPR61-01-split-safe-knn-local-analog-filter.md`, `docs/stage_reports/STAGE_R61_SPLIT_SAFE_KNN_LOCAL_ANALOG_FILTER_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `hmm_knn_local_analog_filter_v2` as a research-only split-safe KNN local analog strategy without recomputing neighbors or changing checked provider-cycle wiring. |
+| WPR62-01-liquidation-fixture-intake-foundation | Codex Research Agent | closed | `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `src/tradingbotsuite/main.py`, `tests/tradingbotsuite/test_market_data_collection.py`, `tests/contracts/test_historical_fixture_pack_contract.py`, `docs/work_packets/WPR62-01-liquidation-fixture-intake-foundation.md`, `docs/stage_reports/STAGE_R62_LIQUIDATION_FIXTURE_INTAKE_FOUNDATION_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added research-only liquidation archive intake and optional fixture-pack context materialization without implementing the classifier or changing checked provider-cycle wiring. |
 
 ## Gate checklist
 
@@ -348,3 +349,8 @@ Reason: The branch now has a registered `hmm_routed_alpha_sleeves_v2` research s
 
 Decision: R61 split-safe KNN local analog filter complete; WPR62 requires liquidation fixture planning before classifier work
 Reason: The branch now has a registered `hmm_knn_local_analog_filter_v2` research strategy that consumes existing KNN/HMM artifact columns and requires `neighbor_min_source_index <= neighbor_max_source_index <= hmm_fit_end_row < source_row_index` before emitting standard research-only signals. It is a normal research candidate, not a comparator baseline. Checked provider-cycle configs remain unchanged until KNN prediction materialization is explicitly added.
+
+## Liquidation fixture intake foundation wave
+
+Decision: R62 liquidation fixture intake foundation complete; classifier remains gated on liquidation features or checked fixture evidence
+Reason: The branch now accepts research-only Crypto Lake `liquidation` archive rows, preserves diagnostic-only provider metadata, and can materialize `liquidation` as an optional historical fixture-pack context family with deterministic same-timestamp aggregation. No classifier, liquidation feature set, checked provider-cycle wiring, live behavior, or promotion evidence was added.
