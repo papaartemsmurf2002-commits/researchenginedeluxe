@@ -466,9 +466,10 @@ Add only after WPR49-WPR52 are stable:
 10. Liquidation context feature pack - complete in WPR63 as `features_liquidation_context_v1` with event-window materialization
 11. Checked liquidation fixture evidence - complete in WPR64 as `btcusdt_liquidation_free_sample_v1`, a diagnostic-only Crypto Lake free-sample fixture with 1,440 primary bars and 1,162 liquidation context rows
 12. `liquidation_absorption_classifier_v1` - complete in WPR65 as a research-only transparent strategy using `features_liquidation_context_v1`, with WPR64 checked-fixture validation and no checked BTCUSDT/ETHUSDT provider-cycle wiring
-13. Local liquidation fixture cycle evidence after WPR65, only after interval-aware research-cycle feature building supports the 1m WPR64 fixture or after a separate 15m liquidation fixture is built
-14. L2 liquidity filter after durable order-book fixtures
-15. Cross-exchange/cross-sectional context after BTC/ETH cycles are stable
+13. Interval-aware research-cycle feature building - complete in WPR66; feature cache identity and materialization now use fixture/source intervals, and WPR64 1m liquidation fixture regression runs through tmp-output local cycle validation
+14. Checked liquidation fixture cycle artifacts/configs after WPR66, if durable local evidence is desired; keep WPR64 free-sample evidence diagnostic-only and separate from BTCUSDT/ETHUSDT provider-cycle promotion gates
+15. L2 liquidity filter after durable order-book fixtures
+16. Cross-exchange/cross-sectional context after BTC/ETH cycles are stable
 
 ## Future Data Guardrails
 

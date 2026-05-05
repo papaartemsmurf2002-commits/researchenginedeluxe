@@ -427,6 +427,44 @@ def test_perp_context_v2_candidate_space_includes_transparent_perp_strategies_wi
     assert all(candidate["strategy_metadata_sha256"] for candidate in candidates)
 
 
+def test_liquidation_context_candidate_space_includes_classifier_with_baseline_coverage(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "liquidation-context-strategy-family-cycle",
+            "data": {"synthetic_fixture": True},
+            "features": {"feature_sets": ["features_liquidation_context_v1"]},
+            "holding_windows": ["1h"],
+            "strategies": [
+                "baseline_no_trade",
+                "liquidation_absorption_classifier_v1",
+            ],
+            "optimizer": {
+                "max_candidates_per_strategy": 1,
+                "top_regions_to_refine": 1,
+            },
+        },
+    )
+
+    candidates = _candidate_space(HistoricalResearchCycleSpec.from_path(spec_path))
+    coverage = _baseline_comparator_coverage(candidates)
+    strategy_ids = {candidate["strategy_id"] for candidate in candidates}
+
+    assert {"baseline_no_trade", "liquidation_absorption_classifier_v1"} <= strategy_ids
+    assert {record["coverage_status"] for record in coverage} == {"complete"}
+    assert any(candidate["comparator_role"] == "no_trade_baseline" for candidate in candidates)
+    classifier_candidates = [
+        candidate
+        for candidate in candidates
+        if candidate["strategy_id"] == "liquidation_absorption_classifier_v1"
+    ]
+    assert classifier_candidates
+    assert all(candidate["feature_set_id"] == "features_liquidation_context_v1" for candidate in classifier_candidates)
+    assert all(candidate["holding_window"] == "1h" for candidate in classifier_candidates)
+    assert all(candidate["resolved_parameters"] == candidate["parameters"] for candidate in candidates)
+    assert all(candidate["strategy_metadata_sha256"] for candidate in candidates)
+
+
 def test_advanced_only_explicit_search_space_receives_transparent_comparator(tmp_path: Path) -> None:
     spec_path = _write_json(
         tmp_path / "cycle.json",

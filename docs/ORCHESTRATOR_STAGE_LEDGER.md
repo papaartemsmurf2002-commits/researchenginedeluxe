@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R65 liquidation absorption classifier
+Current stage: Stage R66 interval-aware feature building
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR65 complete; stop before cycle wiring because 1m fixture cycle support needs a separate interval-aware packet
+Stage status: closed - WPR66 complete; interval-aware feature building unblocks 1m local liquidation cycle validation
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -105,6 +105,7 @@ Last updated: 2026-05-05
 | WPR63-01-liquidation-context-feature-pack | Codex Research Agent | closed | `src/tradingbotsuite/features/registry.py`, `src/tradingbotsuite/features/packs.py`, `src/tradingbotsuite/features/builders.py`, `configs/features/features_liquidation_context_v1.json`, `tests/features/test_feature_builders.py`, `tests/contracts/test_feature_contracts.py`, `docs/work_packets/WPR63-01-liquidation-context-feature-pack.md`, `docs/stage_reports/STAGE_R63_LIQUIDATION_CONTEXT_FEATURE_PACK_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added registered `features_liquidation_context_v1` with windowed liquidation materialization, explicit missingness, and no classifier or checked cycle wiring. |
 | WPR64-01-checked-liquidation-fixture-evidence | Codex Research Agent | closed | `.gitignore`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `data/research/fixtures/btcusdt_liquidation_free_sample_v1/**`, `docs/runbooks/crypto_lake_free_data_runbook.md`, `tests/contracts/test_historical_fixture_pack_contract.py`, `docs/work_packets/WPR64-01-checked-liquidation-fixture-evidence.md`, `docs/stage_reports/STAGE_R64_CHECKED_LIQUIDATION_FIXTURE_EVIDENCE_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added checked BTCUSDT Crypto Lake free-sample liquidation fixture evidence with 1,440 primary bars, 1,162 liquidation context rows, diagnostic-only provenance, and validation recorded in Stage R64 report. |
 | WPR65-01-liquidation-absorption-classifier | Codex Research Agent | closed | `src/tradingbotsuite/strategies/liquidation_absorption_classifier.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/strategies/no_trade.py`, `configs/strategies/liquidation_absorption_classifier_v1.json`, `tests/contracts/test_strategy_contracts.py`, `docs/work_packets/WPR65-01-liquidation-absorption-classifier.md`, `docs/stage_reports/STAGE_R65_LIQUIDATION_ABSORPTION_CLASSIFIER_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added research-only `liquidation_absorption_classifier_v1`, bounded metadata/config, no-trade comparator support for liquidation features, WPR64 fixture classifier validation, no checked provider-cycle wiring, and validation recorded in Stage R65 report. |
+| WPR66-01-interval-aware-feature-building | Codex Research Agent | closed | `src/tradingbotsuite/research_cycle/runner.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `docs/work_packets/WPR66-01-interval-aware-feature-building.md`, `docs/stage_reports/STAGE_R66_INTERVAL_AWARE_FEATURE_BUILDING_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added interval-aware historical-cycle feature building, feature/cache interval evidence, WPR64 1m liquidation tmp-cycle regression, 15m preservation checks, and validation recorded in Stage R66 report. |
 
 ## Gate checklist
 
@@ -372,3 +373,8 @@ Reason: The branch now has a checked BTCUSDT Crypto Lake free-sample liquidation
 
 Decision: R65 liquidation absorption classifier complete; stop before cycle wiring
 Reason: The branch now has a registered research-only `liquidation_absorption_classifier_v1` strategy consuming `features_liquidation_context_v1`, with bounded metadata, checked config, fail-closed quality/context gates, empty accepted-signal skip reasons, and WPR64 checked-fixture validation. Checked BTCUSDT/ETHUSDT provider-cycle configs, candidate-pack eligibility, promotion evidence, live behavior, and performance claims remain unchanged. Local liquidation cycle evidence should first resolve interval-aware cycle feature building for the 1m WPR64 fixture or use a separately built 15m liquidation fixture.
+
+## Interval-aware feature building wave
+
+Decision: R66 interval-aware feature building complete; ready for optional checked liquidation cycle planning
+Reason: Historical research-cycle feature building now resolves primary bar interval from fixture/source evidence before feature-cache identity and registered feature materialization. The WPR64 BTCUSDT 1m Crypto Lake free-sample liquidation fixture now has tmp-output cycle regression coverage with 1m feature times and cache identity, while 15m fixture behavior remains covered. No checked BTCUSDT/ETHUSDT provider-cycle wiring, candidate-pack eligibility, promotion evidence, live behavior, or performance claim was added.

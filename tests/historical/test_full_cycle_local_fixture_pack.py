@@ -25,6 +25,9 @@ CHECKED_IN_PERP_CONTEXT_FIXTURE_MANIFEST = (
 CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST = (
     REPO_ROOT / "data" / "research" / "fixtures" / "ethusdt_context_provider_latest_month_v1" / "fixture_pack_manifest.json"
 )
+CHECKED_IN_LIQUIDATION_FIXTURE_MANIFEST = (
+    REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_liquidation_free_sample_v1" / "fixture_pack_manifest.json"
+)
 REMOVED_CHART_SOURCE_FLAG = "trading" + "view" + "_source_used"
 
 
@@ -101,9 +104,12 @@ def test_full_cycle_uses_validated_local_fixture_pack_without_synthetic_fallback
     assert {"metadata_default_seed", "metadata_default_search"} <= set(rankings["candidate_source"])
     assert "synthetic_fixture_not_real_oos_evidence" not in "|".join(rankings["failure_reasons"].astype(str))
     assert feature_build_manifest["feature_computation_scope"] == "materialized_registered_feature_sets"
+    assert feature_build_manifest["primary_interval_ms"] == 900_000
+    assert feature_build_manifest["primary_interval_source"] == "data_source.base_interval"
     assert feature_build_manifest["feature_sets"][0]["feature_cache_key"]
     assert feature_build_manifest["feature_sets"][0]["feature_frame_sha256"]
     assert feature_build_manifest["feature_sets"][0]["feature_artifact_sha256"]
+    assert feature_build_manifest["feature_sets"][0]["interval_ms"] == 900_000
     assert Path(feature_build_manifest["feature_sets"][0]["feature_path"]).exists()
     assert Path(feature_build_manifest["feature_sets"][0]["cache_manifest_path"]).exists()
     for output_path in manifest["required_outputs"].values():
@@ -150,8 +156,119 @@ def test_checked_in_full_cycle_config_consumes_btcusdt_fixture_pack(tmp_path: Pa
     assert manifest["candidate_count"] > 0
     assert not rankings.empty
     assert "synthetic_fixture_not_real_oos_evidence" not in "|".join(rankings["failure_reasons"].astype(str))
+    assert feature_build_manifest["primary_interval_ms"] == 900_000
+    assert feature_build_manifest["primary_interval_source"] == "data_source.base_interval"
+    assert feature_build_manifest["feature_sets"][0]["interval_ms"] == 900_000
     assert feature_build_manifest["fixture_family_context"]["joined_families"] == []
     assert feature_build_manifest["fixture_family_context"]["family_count"] == 0
+
+
+def test_liquidation_fixture_cycle_builds_features_with_declared_1m_interval(tmp_path: Path) -> None:
+    fixture_manifest = json.loads(CHECKED_IN_LIQUIDATION_FIXTURE_MANIFEST.read_text(encoding="utf-8"))
+    assert fixture_manifest["base_interval"] == "1m"
+
+    spec_path = tmp_path / "specs" / "wpr66-liquidation-interval-aware-cycle.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "cycle_id": "wpr66-liquidation-interval-aware-cycle",
+                "symbol": "BTCUSDT",
+                "output_dir": str(
+                    tmp_path / "research" / "historical_cycles" / "wpr66-liquidation-interval-aware-cycle"
+                ),
+                "backtest_backend": "auto",
+                "holding_windows": ["1h"],
+                "data": {
+                    "dataset_manifest_paths": [str(CHECKED_IN_LIQUIDATION_FIXTURE_MANIFEST)],
+                },
+                "features": {
+                    "feature_sets": ["features_liquidation_context_v1"],
+                },
+                "strategies": [
+                    "baseline_no_trade",
+                    "liquidation_absorption_classifier_v1",
+                ],
+                "validation": {
+                    "walk_forward": "rolling_and_anchored",
+                    "purge_embargo_bars": 2,
+                    "stress_periods_required": True,
+                    "min_splits": 2,
+                    "trade_count_floor": 1,
+                },
+                "optimizer": {
+                    "max_candidates_per_strategy": 1,
+                    "top_regions_to_refine": 1,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_historical_research_cycle(
+        spec_path=spec_path,
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    feature_build_manifest = json.loads(
+        Path(manifest["required_outputs"]["feature_build_manifest"]).read_text(encoding="utf-8")
+    )
+    candidate_space_manifest = json.loads(
+        Path(manifest["required_outputs"]["candidate_space_manifest"]).read_text(encoding="utf-8")
+    )
+    candidate_gate_report = pd.read_parquet(manifest["required_outputs"]["candidate_gate_report"])
+    feature_record = feature_build_manifest["feature_sets"][0]
+    cache_manifest = json.loads(Path(feature_record["cache_manifest_path"]).read_text(encoding="utf-8"))
+    feature_frame = pd.read_parquet(feature_record["feature_path"])
+
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["data_source"]["source_type"] == "historical_fixture_pack"
+    assert manifest["data_source"]["synthetic"] is False
+    assert manifest["data_source"]["fixture_id"] == "btcusdt-liquidation-free-sample-v1"
+    assert manifest["data_source"]["base_interval"] == "1m"
+    assert manifest["data_source"]["fixture_source"]["source_name"] == "crypto_lake"
+    assert manifest["data_source"]["fixture_source"]["source_access_mode"] == "free_sample"
+    assert manifest["data_source"]["fixture_source"]["diagnostic_only"] is True
+    assert manifest["data_source"]["fixture_source"]["free_sample_data"] is True
+    assert manifest["data_source"]["fixture_family_context"]["joined_families"] == ["liquidation"]
+    assert (
+        manifest["data_source"]["fixture_family_context"]["family_records"][0]["coverage_scope"]
+        == "free_sample_diagnostic"
+    )
+    assert manifest["candidate_pack_written"] is False
+    assert manifest["candidate_pack_paths"] == []
+    assert not candidate_gate_report["pack_eligible"].any()
+
+    assert feature_build_manifest["feature_computation_scope"] == "materialized_registered_feature_sets"
+    assert feature_build_manifest["primary_interval_ms"] == 60_000
+    assert feature_build_manifest["primary_interval_source"] == "data_source.base_interval"
+    assert feature_build_manifest["declared_base_interval"] == "1m"
+    assert feature_record["feature_set_id"] == "features_liquidation_context_v1"
+    assert feature_record["interval_ms"] == 60_000
+    assert cache_manifest["interval_ms"] == 60_000
+    assert cache_manifest["feature_cache_key"] == feature_record["feature_cache_key"]
+    assert feature_record["fixture_family_joined_families"] == ["liquidation"]
+    assert feature_frame["feature_time_ms"].sub(feature_frame["bar_time_ms"]).eq(60_000).all()
+    assert {
+        "liq_total_notional_1h",
+        "liq_total_notional_z_7d",
+        "liq_absorption_reclaim_bps",
+        "quality_liquidation_provider_backed",
+    } <= set(feature_frame.columns)
+    assert feature_frame["liq_total_notional_1h"].notna().any()
+    assert feature_frame["liq_total_notional_z_7d"].notna().any()
+    assert feature_frame["quality_liquidation_provider_backed"].eq(1.0).any()
+
+    assert candidate_space_manifest["feature_sets"] == ["features_liquidation_context_v1"]
+    assert {record["coverage_status"] for record in candidate_space_manifest["baseline_comparator_coverage"]} == {"complete"}
+    assert {"baseline_no_trade", "liquidation_absorption_classifier_v1"} <= set(
+        candidate_space_manifest["generated_strategy_ids"]
+    )
 
 
 def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_path: Path) -> None:
@@ -685,7 +802,7 @@ def test_full_cycle_consumes_provider_builder_context_fixture_pack(tmp_path: Pat
 
     fixture_manifest = json.loads(fixture_result.manifest_path.read_text(encoding="utf-8"))
     assert set(fixture_manifest["families"]) == {"bars", "funding_rate", "premium_index", "open_interest", "agg_trade"}
-    assert set(fixture_manifest["omitted_optional_families"]) == {"lower_timeframe_bars"}
+    assert set(fixture_manifest["omitted_optional_families"]) == {"lower_timeframe_bars", "liquidation"}
     assert fixture_manifest["derivation"][REMOVED_CHART_SOURCE_FLAG] is False
     assert fixture_manifest["derivation"]["synthetic_source_used"] is False
 

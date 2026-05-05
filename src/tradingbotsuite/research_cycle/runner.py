@@ -1064,6 +1064,8 @@ def _feature_build_manifest(
     started = time.perf_counter()
     cache_root = (feature_cache_dir or (output_dir / "feature_cache" if output_dir is not None else None))
     _, source_mapping = canonicalize_bar_frame(dataset)
+    interval_evidence = _cycle_feature_interval_evidence(dataset, data_source=data_source)
+    primary_interval_ms = int(interval_evidence["primary_interval_ms"])
     fixture_family_context = dict((data_source or {}).get("fixture_family_context") or {})
     fixture_family_context_sha256 = (data_source or {}).get("fixture_family_context_sha256")
     records: list[dict[str, Any]] = []
@@ -1077,7 +1079,7 @@ def _feature_build_manifest(
             feature_set_id=feature_set,
             feature_manifest_sha256=preset_manifest.manifest_sha256,
             builder_version=FEATURE_BUILDER_VERSION,
-            interval_ms=DEFAULT_INTERVAL_MS,
+            interval_ms=primary_interval_ms,
             source_column_mapping=source_mapping,
             require_continuous=True,
             fixture_family_context_sha256=(
@@ -1092,7 +1094,11 @@ def _feature_build_manifest(
             frame, cache_manifest = cached
             cache_status = "hit"
         else:
-            materialized = materialize_registered_feature_set(dataset, feature_set_id=feature_set)
+            materialized = materialize_registered_feature_set(
+                dataset,
+                feature_set_id=feature_set,
+                interval_ms=primary_interval_ms,
+            )
             frame = materialized.frame
             if cache_root is not None:
                 cache_manifest = write_feature_cache_artifact(
@@ -1137,6 +1143,7 @@ def _feature_build_manifest(
                 "feature_cache_key": record["feature_cache_key"],
                 "feature_manifest_sha256": record["feature_manifest_sha256"],
                 "feature_frame_sha256": record["feature_frame_sha256"],
+                "interval_ms": record["interval_ms"],
                 "row_count": record["row_count"],
             }
         )
@@ -1151,6 +1158,7 @@ def _feature_build_manifest(
         "promotion_ready": False,
         "feature_computation_scope": "materialized_registered_feature_sets",
         "dataset_sha256": dataset_hash,
+        **interval_evidence,
         "fixture_family_context_sha256": fixture_family_context_sha256,
         "fixture_family_context": fixture_family_context,
         "row_count": int(len(dataset)),
@@ -1164,11 +1172,168 @@ def _feature_build_manifest(
             "feature_build_manifest_version": payload["feature_build_manifest_version"],
             "feature_computation_scope": payload["feature_computation_scope"],
             "dataset_sha256": dataset_hash,
+            "primary_interval_ms": payload["primary_interval_ms"],
             "fixture_family_context_sha256": fixture_family_context_sha256,
             "feature_sets": identity_records,
         }
     )
     return FeatureBuildResult(manifest=payload, frames_by_feature_set=frames_by_feature_set)
+
+
+def _cycle_feature_interval_evidence(
+    dataset: pd.DataFrame,
+    *,
+    data_source: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    source = dict(data_source or {})
+    declared_raw = _optional_text(source.get("base_interval"))
+    declared_ms = (
+        _parse_interval_ms(declared_raw, context="data_source.base_interval")
+        if declared_raw is not None
+        else None
+    )
+    source_interval_raw = _constant_dataset_interval(dataset)
+    source_interval_ms = (
+        _parse_interval_ms(source_interval_raw, context="dataset.source_interval")
+        if source_interval_raw is not None
+        else None
+    )
+    inferred_interval_ms = _infer_uniform_bar_interval_ms(dataset)
+
+    if declared_ms is not None:
+        if source_interval_ms is not None and source_interval_ms != declared_ms:
+            raise ValueError(
+                f"cycle_feature_interval_mismatch:base_interval:{declared_ms}:source_interval:{source_interval_ms}"
+            )
+        if inferred_interval_ms is not None and inferred_interval_ms != declared_ms:
+            raise ValueError(
+                f"cycle_feature_interval_mismatch:base_interval:{declared_ms}:bar_time_diff:{inferred_interval_ms}"
+            )
+        interval_ms = declared_ms
+        interval_source = "data_source.base_interval"
+    elif source_interval_ms is not None:
+        if inferred_interval_ms is not None and inferred_interval_ms != source_interval_ms:
+            raise ValueError(
+                f"cycle_feature_interval_mismatch:source_interval:{source_interval_ms}:bar_time_diff:{inferred_interval_ms}"
+            )
+        interval_ms = source_interval_ms
+        interval_source = "dataset.source_interval"
+    elif inferred_interval_ms is not None:
+        interval_ms = inferred_interval_ms
+        interval_source = "dataset.bar_time_diff"
+    else:
+        interval_ms = DEFAULT_INTERVAL_MS
+        interval_source = "default"
+
+    return {
+        "primary_interval_ms": int(interval_ms),
+        "primary_interval_source": interval_source,
+        "declared_base_interval": declared_raw,
+        "dataset_source_interval": source_interval_raw,
+        "inferred_bar_interval_ms": inferred_interval_ms,
+        "default_interval_ms": int(DEFAULT_INTERVAL_MS),
+    }
+
+
+def _constant_dataset_interval(dataset: pd.DataFrame) -> str | None:
+    if "source_interval" not in dataset.columns:
+        return None
+    values = sorted(
+        {
+            str(value).strip()
+            for value in dataset["source_interval"].dropna().tolist()
+            if str(value).strip()
+        }
+    )
+    if not values:
+        return None
+    if len(values) > 1:
+        raise ValueError(f"cycle_feature_interval_mixed_source_intervals:{','.join(values)}")
+    return values[0]
+
+
+def _infer_uniform_bar_interval_ms(dataset: pd.DataFrame) -> int | None:
+    time_column = next(
+        (column for column in ("bar_time_ms", "signal_bar_time_ms", "time_ms") if column in dataset.columns),
+        None,
+    )
+    if time_column is None:
+        return None
+    times = pd.to_numeric(dataset[time_column], errors="coerce").dropna()
+    if len(times) < 2:
+        return None
+    ordered = times.astype("int64").drop_duplicates().sort_values(kind="mergesort").reset_index(drop=True)
+    diffs = ordered.diff().iloc[1:]
+    positive_diffs = sorted(
+        {
+            int(value)
+            for value in diffs.tolist()
+            if pd.notna(value) and math.isfinite(float(value)) and int(value) > 0
+        }
+    )
+    if len(positive_diffs) == 1:
+        return positive_diffs[0]
+    return None
+
+
+def _parse_interval_ms(value: object, *, context: str) -> int:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        numeric = float(value)
+        if not math.isfinite(numeric) or numeric % 1:
+            raise ValueError(f"unsupported_cycle_feature_interval:{context}:{value}")
+        interval_ms = int(numeric)
+        if interval_ms <= 0:
+            raise ValueError(f"unsupported_cycle_feature_interval:{context}:{value}")
+        return interval_ms
+    text = str(value).strip().lower()
+    if not text:
+        raise ValueError(f"unsupported_cycle_feature_interval:{context}:empty")
+    if text.isdigit():
+        interval_ms = int(text)
+        if interval_ms <= 0:
+            raise ValueError(f"unsupported_cycle_feature_interval:{context}:{text}")
+        return interval_ms
+    prefix_length = 0
+    while prefix_length < len(text) and text[prefix_length].isdigit():
+        prefix_length += 1
+    digits = text[:prefix_length]
+    unit = text[prefix_length:].strip()
+    if not digits or not unit:
+        raise ValueError(f"unsupported_cycle_feature_interval:{context}:{text}")
+    multiplier = {
+        "ms": 1,
+        "s": 1_000,
+        "sec": 1_000,
+        "secs": 1_000,
+        "second": 1_000,
+        "seconds": 1_000,
+        "m": 60_000,
+        "min": 60_000,
+        "mins": 60_000,
+        "minute": 60_000,
+        "minutes": 60_000,
+        "h": 3_600_000,
+        "hr": 3_600_000,
+        "hrs": 3_600_000,
+        "hour": 3_600_000,
+        "hours": 3_600_000,
+        "d": 86_400_000,
+        "day": 86_400_000,
+        "days": 86_400_000,
+    }.get(unit)
+    if multiplier is None:
+        raise ValueError(f"unsupported_cycle_feature_interval:{context}:{text}")
+    interval_ms = int(digits) * int(multiplier)
+    if interval_ms <= 0:
+        raise ValueError(f"unsupported_cycle_feature_interval:{context}:{text}")
+    return interval_ms
+
+
+def _optional_text(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _feature_build_record(
@@ -1194,6 +1359,7 @@ def _feature_build_record(
         "feature_artifact_sha256": cache_manifest.get("feature_artifact_sha256"),
         "feature_manifest_sha256": feature_manifest.get("manifest_sha256") or cache_manifest.get("feature_manifest_sha256"),
         "builder_version": cache_manifest.get("builder_version"),
+        "interval_ms": int(cache_manifest.get("interval_ms") or DEFAULT_INTERVAL_MS),
         "row_count": int(len(frame)),
         "column_count": int(len(frame.columns)),
         "feature_columns": list(cache_manifest.get("feature_columns") or feature_manifest.get("feature_columns") or ()),
