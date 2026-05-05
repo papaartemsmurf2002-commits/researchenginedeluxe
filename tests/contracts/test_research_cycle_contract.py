@@ -381,6 +381,7 @@ def test_perp_context_v2_candidate_space_includes_transparent_perp_strategies_wi
                 "oi_flow_breakout_v2",
                 "funding_window_timing_v1",
                 "hmm_routed_alpha_sleeves_v2",
+                "hmm_knn_local_analog_filter_v2",
             ],
             "optimizer": {
                 "max_candidates_per_strategy": 1,
@@ -400,6 +401,7 @@ def test_perp_context_v2_candidate_space_includes_transparent_perp_strategies_wi
         "oi_flow_breakout_v2",
         "funding_window_timing_v1",
         "hmm_routed_alpha_sleeves_v2",
+        "hmm_knn_local_analog_filter_v2",
     } <= strategy_ids
     assert {record["coverage_status"] for record in coverage} == {"complete"}
     assert any(candidate["comparator_role"] == "no_trade_baseline" for candidate in candidates)
@@ -416,6 +418,11 @@ def test_perp_context_v2_candidate_space_includes_transparent_perp_strategies_wi
     assert all(candidate["feature_set_id"] == "features_perp_context_v2" for candidate in hmm_router_candidates)
     assert all(candidate["holding_window"] == "4h" for candidate in hmm_router_candidates)
     assert {candidate["comparator_role"] for candidate in hmm_router_candidates} == {"research_candidate"}
+    knn_filter_candidates = [candidate for candidate in candidates if candidate["strategy_id"] == "hmm_knn_local_analog_filter_v2"]
+    assert knn_filter_candidates
+    assert all(candidate["feature_set_id"] == "features_perp_context_v2" for candidate in knn_filter_candidates)
+    assert all(candidate["holding_window"] == "4h" for candidate in knn_filter_candidates)
+    assert {candidate["comparator_role"] for candidate in knn_filter_candidates} == {"research_candidate"}
     assert all(candidate["resolved_parameters"] == candidate["parameters"] for candidate in candidates)
     assert all(candidate["strategy_metadata_sha256"] for candidate in candidates)
 

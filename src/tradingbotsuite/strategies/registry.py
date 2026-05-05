@@ -5,6 +5,7 @@ from typing import Any
 from tradingbotsuite.strategies.funding_crowding_fade import FundingCrowdingFadeStrategy
 from tradingbotsuite.strategies.funding_window_timing import FundingWindowTimingStrategy
 from tradingbotsuite.strategies.funding_basis import FundingBasisStrategy
+from tradingbotsuite.strategies.hmm_knn_local_analog_filter import HmmKnnLocalAnalogFilterStrategy
 from tradingbotsuite.strategies.hmm_routed_alpha_sleeves import HmmRoutedAlphaSleevesStrategy
 from tradingbotsuite.strategies.hmm_knn import HmmKnnDiagnosticStrategy
 from tradingbotsuite.strategies.lc_reference import LcReferenceStrategy
@@ -29,6 +30,7 @@ def strategy_registry() -> dict[str, type]:
         "oi_flow_breakout_v2": OiFlowBreakoutStrategy,
         "perp_basis_convergence_v2": PerpBasisConvergenceStrategy,
         "hmm_routed_alpha_sleeves_v2": HmmRoutedAlphaSleevesStrategy,
+        "hmm_knn_local_analog_filter_v2": HmmKnnLocalAnalogFilterStrategy,
         "regime_adaptive_v1": RegimeAdaptiveStrategy,
         "lc_reference_v1": LcReferenceStrategy,
         "hmm_knn_diagnostic_v1": HmmKnnDiagnosticStrategy,

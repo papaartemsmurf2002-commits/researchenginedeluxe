@@ -9,6 +9,7 @@ import pytest
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
 from tradingbotsuite.strategies.funding_crowding_fade import REQUIRED_FUNDING_CROWDING_FADE_COLUMNS
 from tradingbotsuite.strategies.funding_window_timing import REQUIRED_FUNDING_WINDOW_TIMING_COLUMNS
+from tradingbotsuite.strategies.hmm_knn_local_analog_filter import REQUIRED_HMM_KNN_LOCAL_ANALOG_COLUMNS
 from tradingbotsuite.strategies.hmm_routed_alpha_sleeves import REQUIRED_HMM_ROUTED_ALPHA_COLUMNS
 from tradingbotsuite.strategies.oi_flow_breakout import REQUIRED_OI_FLOW_BREAKOUT_COLUMNS
 from tradingbotsuite.strategies.perp_basis_convergence import REQUIRED_PERP_CONTEXT_V2_COLUMNS
@@ -33,6 +34,7 @@ REQUIRED_STAGE6_STRATEGIES = {
     "funding_window_timing_v1",
     "oi_flow_breakout_v2",
     "hmm_routed_alpha_sleeves_v2",
+    "hmm_knn_local_analog_filter_v2",
     "regime_adaptive_v1",
     "lc_reference_v1",
     "hmm_knn_diagnostic_v1",
@@ -210,6 +212,26 @@ def test_strategy_config_loader_rejects_unknown_parameters(tmp_path: Path) -> No
             },
             "invalid_feature_set:hmm_routed_alpha_sleeves_v2:features_full_context_no_wt",
         ),
+        (
+            {
+                "strategy_id": "hmm_knn_local_analog_filter_v2",
+                "strategy_version": "v1",
+                "feature_set_id": "features_perp_context_v2",
+                "holding_period": "1h",
+                "parameters": {},
+            },
+            "invalid_holding_period:hmm_knn_local_analog_filter_v2:1h",
+        ),
+        (
+            {
+                "strategy_id": "hmm_knn_local_analog_filter_v2",
+                "strategy_version": "v1",
+                "feature_set_id": "features_full_context_no_wt",
+                "holding_period": "24h",
+                "parameters": {},
+            },
+            "invalid_feature_set:hmm_knn_local_analog_filter_v2:features_full_context_no_wt",
+        ),
     ],
 )
 def test_strategy_config_loader_rejects_invalid_strategy_feature_or_window(
@@ -337,6 +359,27 @@ def test_hmm_routed_alpha_sleeves_metadata_covers_required_contract() -> None:
     assert "hmm_router_non_prior_fit_posteriors" in metadata.failure_modes
 
 
+def test_hmm_knn_local_analog_filter_metadata_covers_required_contract() -> None:
+    plugin = get_strategy_plugin("hmm_knn_local_analog_filter_v2")
+    metadata = metadata_for_strategy("hmm_knn_local_analog_filter_v2")
+
+    assert plugin.allowed_holding_periods == ("4h", "12h", "24h", "72h")
+    assert plugin.required_feature_sets == ("features_perp_context_v2",)
+    assert set(metadata.default_parameters) == {
+        "probability_threshold",
+        "expected_value_threshold",
+        "min_neighbor_count",
+        "min_neighbor_agreement",
+        "min_neighbor_distance_quality",
+        "min_vote_margin",
+        "posterior_threshold",
+        "entropy_threshold",
+        "spacing_bars",
+    }
+    assert set(metadata.parameter_space) == set(metadata.default_parameters)
+    assert "hmm_knn_future_neighbor_boundary" in metadata.failure_modes
+
+
 def test_no_trade_comparator_supports_perp_context_v2_feature_set() -> None:
     plugin = get_strategy_plugin(
         "baseline_no_trade",
@@ -381,6 +424,10 @@ def test_strategy_plugin_construction_rejects_invalid_feature_or_window() -> Non
         get_strategy_plugin("hmm_routed_alpha_sleeves_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
     with pytest.raises(ValueError, match="invalid_feature_set:hmm_routed_alpha_sleeves_v2:features_full_context_no_wt"):
         get_strategy_plugin("hmm_routed_alpha_sleeves_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
+    with pytest.raises(ValueError, match="invalid_holding_period:hmm_knn_local_analog_filter_v2:1h"):
+        get_strategy_plugin("hmm_knn_local_analog_filter_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
+    with pytest.raises(ValueError, match="invalid_feature_set:hmm_knn_local_analog_filter_v2:features_full_context_no_wt"):
+        get_strategy_plugin("hmm_knn_local_analog_filter_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
 
 
 def test_baseline_strategy_outputs_follow_standard_signal_contract() -> None:
@@ -1031,6 +1078,113 @@ def test_hmm_routed_alpha_sleeves_v2_fails_closed_on_invalid_numeric_parameters(
     assert plugin.predict(frame).empty
 
 
+def test_hmm_knn_local_analog_filter_v2_outputs_research_only_signals() -> None:
+    frame = _hmm_knn_local_analog_filter_v2_signal_frame(row_count=48)
+    plugin = get_strategy_plugin(
+        "hmm_knn_local_analog_filter_v2",
+        config={
+            "symbol": "BTCUSDT",
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "spacing_bars": 1,
+        },
+    )
+
+    signals = plugin.predict(frame)
+    validation = validate_signal_frame(signals)
+
+    assert validation.valid is True, validation.errors
+    assert len(signals) > 0
+    assert set(signals["side"]) == {"long", "short"}
+    assert signals["feature_set_id"].eq("features_perp_context_v2").all()
+    assert signals["strategy_id"].eq("hmm_knn_local_analog_filter_v2").all()
+    assert signals["skip_reason"].eq("hmm_knn_local_analog_filter").all()
+    assert signals["research_only"].all()
+
+
+@pytest.mark.parametrize("missing_column", REQUIRED_HMM_KNN_LOCAL_ANALOG_COLUMNS)
+def test_hmm_knn_local_analog_filter_v2_fails_closed_when_required_columns_are_missing(missing_column: str) -> None:
+    plugin = get_strategy_plugin(
+        "hmm_knn_local_analog_filter_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    complete = _hmm_knn_local_analog_filter_v2_signal_frame(row_count=24)
+
+    assert plugin.predict(complete.drop(columns=[missing_column])).empty
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("accepted_by_knn", False),
+        ("accepted_by_knn", None),
+        ("knn_skip_reason", "insufficient_neighbors"),
+        ("regime_no_trade", True),
+        ("regime_no_trade", None),
+        ("recent_regime_flip", True),
+        ("recent_regime_flip", None),
+        ("hmm_fit_end_row", 200),
+        ("hmm_fit_end_row", -1),
+        ("hmm_fit_end_row", 99.5),
+        ("source_row_index", -1),
+        ("source_row_index", 99.5),
+        ("neighbor_min_source_index", None),
+        ("neighbor_min_source_index", -1),
+        ("neighbor_max_source_index", 250),
+        ("neighbor_max_source_index", 99.5),
+        ("max_regime_probability", 0.40),
+        ("posterior_entropy", 0.99),
+        ("p_up_barrier", float("nan")),
+        ("p_down_barrier", "bad-probability"),
+        ("neighbor_count", 2),
+        ("neighbor_distance_quality", 0.0),
+        ("neighbor_agreement", 0.40),
+        ("knn_vote_margin", 0.0),
+        ("expected_net_return_after_costs", -1.0),
+    ],
+)
+def test_hmm_knn_local_analog_filter_v2_fails_closed_on_unsafe_or_invalid_context(
+    column: str,
+    value: object,
+) -> None:
+    plugin = get_strategy_plugin(
+        "hmm_knn_local_analog_filter_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _hmm_knn_local_analog_filter_v2_signal_frame(row_count=24)
+    frame[column] = value
+
+    assert plugin.predict(frame).empty
+
+
+def test_hmm_knn_local_analog_filter_v2_rejects_neighbors_after_hmm_fit_boundary() -> None:
+    plugin = get_strategy_plugin(
+        "hmm_knn_local_analog_filter_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _hmm_knn_local_analog_filter_v2_signal_frame(row_count=24)
+    frame["hmm_fit_end_row"] = 120
+    frame["neighbor_max_source_index"] = 121
+    frame["source_row_index"] = 150
+
+    assert plugin.predict(frame).empty
+
+
+def test_hmm_knn_local_analog_filter_v2_fails_closed_on_invalid_numeric_parameters() -> None:
+    plugin = get_strategy_plugin(
+        "hmm_knn_local_analog_filter_v2",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "min_neighbor_count": "bad-count",
+            "spacing_bars": 1,
+        },
+    )
+    frame = _hmm_knn_local_analog_filter_v2_signal_frame(row_count=24)
+
+    assert plugin.predict(frame).empty
+
+
 def test_invalid_signal_frame_is_rejected() -> None:
     validation = validate_signal_frame(pd.DataFrame({"side": ["buy"], "research_only": [False]}))
 
@@ -1276,4 +1430,32 @@ def _hmm_routed_alpha_sleeves_v2_signal_frame(*, row_count: int) -> pd.DataFrame
     frame.loc[range_long_rows, "perp_premium_z_7d"] = -1.4
     frame.loc[range_long_rows, "perp_last_funding_rate"] = -0.00008
     frame.loc[range_long_rows, "perp_funding_z_7d"] = -1.2
+    return frame
+
+
+def _hmm_knn_local_analog_filter_v2_signal_frame(*, row_count: int) -> pd.DataFrame:
+    frame = _perp_context_v2_signal_frame(row_count=row_count)
+    frame["top_regime_label"] = "bull_trend"
+    frame["max_regime_probability"] = 0.85
+    frame["posterior_entropy"] = 0.25
+    frame["recent_regime_flip"] = False
+    frame["regime_no_trade"] = False
+    frame["source_row_index"] = [150 + index for index in range(row_count)]
+    frame["hmm_fit_end_row"] = 120
+    frame["p_up_barrier"] = 0.64
+    frame["p_down_barrier"] = 0.36
+    frame["expected_net_return_after_costs"] = 0.001
+    frame["neighbor_agreement"] = 0.64
+    frame["neighbor_distance_quality"] = 0.35
+    frame["neighbor_count"] = 12
+    frame["neighbor_min_source_index"] = 80
+    frame["neighbor_max_source_index"] = 119
+    frame["knn_vote_margin"] = 0.28
+    frame["accepted_by_knn"] = True
+    frame["knn_skip_reason"] = None
+
+    short_rows = frame.index[frame.index % 2 == 1]
+    frame.loc[short_rows, "top_regime_label"] = "bear_trend"
+    frame.loc[short_rows, "p_up_barrier"] = 0.34
+    frame.loc[short_rows, "p_down_barrier"] = 0.66
     return frame

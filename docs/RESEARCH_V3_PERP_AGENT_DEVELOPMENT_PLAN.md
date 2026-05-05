@@ -461,7 +461,7 @@ Add only after WPR49-WPR52 are stable:
 5. `oi_contraction_exit_v1` - complete in WPR58 with `oi_contraction_exit_v1` checked in BTCUSDT and ETHUSDT cycles
 6. Trial-budget and overfit-adjustment reports - complete in WPR59 as diagnostic-only required research-cycle outputs without changing candidate-pack metric gates
 7. Split-safe HMM router - complete in WPR60 as `hmm_routed_alpha_sleeves_v2`, a research-only strategy that consumes split-safe posterior columns and is not wired into checked provider cycles until posterior materialization exists
-8. Split-safe KNN local analog filter
+8. Split-safe KNN local analog filter - complete in WPR61 as `hmm_knn_local_analog_filter_v2`, a research-only strategy that consumes split-safe KNN/HMM artifact columns and is not wired into checked provider cycles until KNN prediction materialization exists
 9. Liquidation classifier after durable liquidation fixtures
 10. L2 liquidity filter after durable order-book fixtures
 11. Cross-exchange/cross-sectional context after BTC/ETH cycles are stable

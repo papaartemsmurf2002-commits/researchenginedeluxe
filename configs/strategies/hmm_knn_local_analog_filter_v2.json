@@ -1,0 +1,18 @@
+{
+  "strategy_id": "hmm_knn_local_analog_filter_v2",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_perp_context_v2",
+  "holding_period": "24h",
+  "parameters": {
+    "probability_threshold": 0.55,
+    "expected_value_threshold": 0.0,
+    "min_neighbor_count": 8,
+    "min_neighbor_agreement": 0.55,
+    "min_neighbor_distance_quality": 0.05,
+    "min_vote_margin": 0.05,
+    "posterior_threshold": 0.6,
+    "entropy_threshold": 0.78,
+    "spacing_bars": 12
+  }
+}

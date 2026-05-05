@@ -49,6 +49,7 @@ from tradingbotsuite.strategies.hmm_knn.distances import (
     resolve_distance_function,
     resolve_distance_metric,
 )
+from tradingbotsuite.strategies import get_strategy_plugin, validate_signal_frame
 
 
 def _write_test_config(tmp_path: Path) -> Path:
@@ -849,6 +850,25 @@ def test_hmm_knn_research_writes_expected_research_only_artifacts(tmp_path) -> N
     assert "research_only_not_live_promotable" in metrics["promotion_failures"]
     assert "neighbor_pool_diagnostics_by_regime" in metrics["artifact_diagnostics"]
     assert "feature_variant_summary" in metrics["artifact_diagnostics"]
+    local_analog_plugin = get_strategy_plugin(
+        "hmm_knn_local_analog_filter_v2",
+        config={
+            "feature_set_id": "features_perp_context_v2",
+            "holding_period": "24h",
+            "probability_threshold": 0.50,
+            "expected_value_threshold": -1.0,
+            "min_neighbor_count": 1,
+            "min_neighbor_agreement": 0.01,
+            "min_neighbor_distance_quality": 0.0,
+            "min_vote_margin": 0.0,
+            "posterior_threshold": 0.01,
+            "entropy_threshold": 1.0,
+            "spacing_bars": 1,
+        },
+    )
+    local_analog_signals = local_analog_plugin.predict(meta)
+    assert validate_signal_frame(local_analog_signals).valid is True
+    assert local_analog_signals.empty
 
 
 def test_hmm_knn_research_runs_without_wt3d_and_with_euclidean_distance(tmp_path) -> None:
