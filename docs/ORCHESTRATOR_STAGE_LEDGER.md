@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R52 provider perp context cycle evidence
+Current stage: Stage R53 funding crowding fade strategy
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR52 complete; ready for WPR53 planning
+Stage status: closed - WPR53 complete; ready for WPR54 planning
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -92,6 +92,7 @@ Last updated: 2026-05-05
 | WPR50-01-perp-context-v2-feature-pack | Codex Research Agent | closed | `src/tradingbotsuite/features/registry.py`, `src/tradingbotsuite/features/packs.py`, `src/tradingbotsuite/features/builders.py`, `src/tradingbotsuite/features/cache.py`, `configs/features/features_perp_context_v2.json`, `tests/features/**`, `tests/contracts/test_feature_contracts.py`, `docs/work_packets/WPR50-01-perp-context-v2-feature-pack.md`, `docs/stage_reports/STAGE_R50_PERP_CONTEXT_V2_FEATURE_PACK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added registered `features_perp_context_v2`, interval-aware perp context features, agg-trade flow passthroughs, explicit missingness/quality tests, cache context identity coverage, and validation recorded in Stage R50 report. |
 | WPR51-01-perp-basis-convergence-strategy | Codex Research Agent | closed | `src/tradingbotsuite/strategies/perp_basis_convergence.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/strategies/__init__.py`, `configs/strategies/perp_basis_convergence_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/integration/test_backtest_engine_fixture.py`, `tests/historical/**`, `docs/work_packets/WPR51-01-perp-basis-convergence-strategy.md`, `docs/stage_reports/STAGE_R51_PERP_BASIS_CONVERGENCE_STRATEGY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `perp_basis_convergence_v2`, conservative strategy metadata/config, fail-closed v2 quality gates, focused contract and engine tests, and validation recorded in Stage R51 report. |
 | WPR52-01-provider-perp-context-cycle-evidence | Codex Research Agent | closed | `configs/research/full_cycle_btcusdt_perp_context_v2.json`, `data/research/historical_cycles/btcusdt_perp_context_v2_foundation/**`, `src/tradingbotsuite/strategies/no_trade.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/contracts/test_strategy_contracts.py`, `tests/historical/**`, `docs/work_packets/WPR52-01-provider-perp-context-cycle-evidence.md`, `docs/stage_reports/STAGE_R52_PROVIDER_PERP_CONTEXT_CYCLE_EVIDENCE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added checked provider-backed perp context v2 cycle spec, completed no-trade comparator coverage for v2 features, ran local cycle evidence, recorded fail-closed gate outcome, and validation recorded in Stage R52 report. |
+| WPR53-01-funding-crowding-fade-strategy | Codex Research Agent | closed | `src/tradingbotsuite/strategies/funding_crowding_fade.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `configs/strategies/funding_crowding_fade_v2.json`, `configs/research/full_cycle_btcusdt_perp_context_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/integration/test_backtest_engine_fixture.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `docs/work_packets/WPR53-01-funding-crowding-fade-strategy.md`, `docs/stage_reports/STAGE_R53_FUNDING_CROWDING_FADE_STRATEGY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `funding_crowding_fade_v2`, bounded strategy metadata/config, fail-closed funding/premium/OI quality gates, checked-cycle inclusion, local cycle evidence, and validation recorded in Stage R53 report. |
 
 ## Gate checklist
 
@@ -294,3 +295,8 @@ Reason: The branch now has a registered `perp_basis_convergence_v2` strategy and
 
 Decision: R52 provider perp context cycle evidence complete; ready for WPR53 planning
 Reason: The branch now has a checked BTCUSDT provider-backed perp-context-v2 cycle spec, `baseline_no_trade` comparator support for `features_perp_context_v2`, local cycle artifacts under `data/research/historical_cycles/btcusdt_perp_context_v2_foundation`, complete no-trade comparator coverage, and a truthful fail-closed gate result with no candidate pack written. Validation passed compile, focused WPR52 tests, research-cycle contracts, full historical tests, strategy contracts, and diff check.
+
+## Funding crowding fade strategy wave
+
+Decision: R53 funding crowding fade strategy complete; ready for WPR54 planning
+Reason: The branch now has a registered `funding_crowding_fade_v2` strategy and checked config, bounded metadata, fail-closed funding/premium/OI/quality context requirements, checked-cycle inclusion, complete no-trade comparator coverage, local provider-cycle evidence with 37 aggregate funding-crowding trades across candidates, and a truthful fail-closed gate result with no candidate pack written. Validation passed compile, focused strategy/integration tests, checked historical test, WPR53 validation suite, and diff check.

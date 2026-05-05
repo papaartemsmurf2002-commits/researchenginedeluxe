@@ -1,0 +1,16 @@
+{
+  "strategy_id": "funding_crowding_fade_v2",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_perp_context_v2",
+  "holding_period": "24h",
+  "parameters": {
+    "funding_z_threshold": 1.25,
+    "funding_rate_abs_bps_threshold": 0.4,
+    "premium_confirmation_bps": 2.5,
+    "min_edge_bps": 1.0,
+    "oi_confirmation_z_min": 0.25,
+    "funding_momentum_policy": "against_fade_filter",
+    "spacing_bars": 12
+  }
+}

@@ -158,7 +158,8 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     assert spec.data.local_fixture_dir is None
     assert spec.data.dataset_manifest_paths == (CHECKED_IN_PERP_CONTEXT_FIXTURE_MANIFEST,)
     assert spec.features.feature_sets == ("features_perp_context_v2",)
-    assert set(spec.strategies) == {"baseline_no_trade", "perp_basis_convergence_v2"}
+    expected_strategies = {"baseline_no_trade", "perp_basis_convergence_v2", "funding_crowding_fade_v2"}
+    assert set(spec.strategies) == expected_strategies
     assert spec.output_dir == REPO_ROOT / "data" / "research" / "historical_cycles" / "btcusdt_perp_context_v2_foundation"
 
     payload = json.loads(CHECKED_IN_PERP_CONTEXT_V2_CYCLE_SPEC.read_text(encoding="utf-8"))
@@ -201,10 +202,14 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     assert {"perp_mark_index_basis", "perp_premium_z_7d", "quality_provider_backed_all_required"} <= set(feature_frame.columns)
     assert feature_frame["quality_provider_backed_all_required"].eq(1.0).any()
     assert candidate_space_manifest["feature_sets"] == ["features_perp_context_v2"]
-    assert {"baseline_no_trade", "perp_basis_convergence_v2"} <= set(candidate_space_manifest["generated_strategy_ids"])
+    assert expected_strategies <= set(candidate_space_manifest["generated_strategy_ids"])
     assert {record["coverage_status"] for record in candidate_space_manifest["baseline_comparator_coverage"]} == {"complete"}
-    assert {"baseline_no_trade", "perp_basis_convergence_v2"} <= set(rankings["strategy_id"])
-    assert {"baseline_no_trade", "perp_basis_convergence_v2"} <= set(backtest_index["strategy_id"])
+    assert expected_strategies <= set(rankings["strategy_id"])
+    assert expected_strategies <= set(backtest_index["strategy_id"])
+    funding_rows = rankings.loc[rankings["strategy_id"].astype(str) == "funding_crowding_fade_v2"]
+    assert not funding_rows.empty
+    if int(funding_rows["trade_count"].sum()) == 0:
+        assert funding_rows["failure_reasons"].astype(str).str.contains("low_signal_density|trade_count").any()
     assert "synthetic_fixture_not_real_oos_evidence" not in "|".join(rankings["failure_reasons"].astype(str))
     if manifest["candidate_pack_written"]:
         for pack_path in manifest["candidate_pack_paths"]:

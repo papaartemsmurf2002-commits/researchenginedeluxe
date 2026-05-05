@@ -150,6 +150,65 @@ def test_perp_basis_convergence_backtest_rejects_invalid_feature_or_window(tmp_p
         )
 
 
+def test_funding_crowding_fade_v2_runs_through_backtest_engine(tmp_path: Path) -> None:
+    frame = _funding_crowding_v2_signal_frame(row_count=96)
+    engine = BacktestEngine()
+
+    result = engine.run(
+        BacktestSpec(
+            run_id="funding-crowding-fade-v2",
+            symbol="BTCUSDT",
+            output_dir=tmp_path / "backtests",
+            strategy_id="funding_crowding_fade_v2",
+            holding_window="24h",
+            feature_set_id="features_perp_context_v2",
+            strategy_config={"spacing_bars": 1},
+        ),
+        dataset=frame,
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    metrics = json.loads(result.metrics_path.read_text(encoding="utf-8"))
+    signals = pd.read_parquet(result.signals_path)
+
+    assert manifest["strategy_metadata"]["signal_contract_valid"] is True
+    assert manifest["strategy_metadata"]["strategy_id"] == "funding_crowding_fade_v2"
+    assert manifest["feature_set_id"] == "features_perp_context_v2"
+    assert metrics["trade_count"] > 0
+    assert set(required_signal_columns()) <= set(signals.columns)
+    assert signals["feature_set_id"].eq("features_perp_context_v2").all()
+    assert set(signals["side"]) == {"long", "short"}
+
+
+def test_funding_crowding_fade_backtest_rejects_invalid_feature_or_window(tmp_path: Path) -> None:
+    frame = _funding_crowding_v2_signal_frame(row_count=96)
+    engine = BacktestEngine()
+    with pytest.raises(ValueError, match="strategy_feature_set_unsupported:funding_crowding_fade_v2:features_full_context_no_wt"):
+        engine.run(
+            BacktestSpec(
+                run_id="bad-funding-feature",
+                symbol="BTCUSDT",
+                output_dir=tmp_path / "backtests",
+                strategy_id="funding_crowding_fade_v2",
+                holding_window="24h",
+                feature_set_id="features_full_context_no_wt",
+            ),
+            dataset=frame,
+        )
+    with pytest.raises(ValueError, match="strategy_holding_window_unsupported:funding_crowding_fade_v2:1h"):
+        engine.run(
+            BacktestSpec(
+                run_id="bad-funding-window",
+                symbol="BTCUSDT",
+                output_dir=tmp_path / "backtests",
+                strategy_id="funding_crowding_fade_v2",
+                holding_window="1h",
+                feature_set_id="features_perp_context_v2",
+            ),
+            dataset=frame,
+        )
+
+
 def test_backtest_spec_exit_metadata_is_propagated_to_signal_artifact(tmp_path: Path) -> None:
     dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
     result = BacktestEngine().run(
@@ -284,3 +343,36 @@ def _perp_context_v2_signal_frame(*, row_count: int) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def _funding_crowding_v2_signal_frame(*, row_count: int) -> pd.DataFrame:
+    frame = _perp_context_v2_signal_frame(row_count=row_count)
+    frame.loc[:, [
+        "perp_mark_index_basis",
+        "perp_premium",
+        "perp_premium_z_7d",
+        "perp_last_funding_rate",
+        "perp_funding_z_7d",
+        "perp_funding_momentum",
+        "oi_delta_z_7d",
+        "flow_signed_taker_z_7d",
+    ]] = 0.0
+    short_rows = frame.index[frame.index % 12 == 6]
+    long_rows = frame.index[frame.index % 12 == 0]
+    frame.loc[short_rows, "perp_mark_index_basis"] = 0.00035
+    frame.loc[short_rows, "perp_premium"] = 0.00035
+    frame.loc[short_rows, "perp_premium_z_7d"] = 1.5
+    frame.loc[short_rows, "perp_last_funding_rate"] = 0.00008
+    frame.loc[short_rows, "perp_funding_z_7d"] = 1.8
+    frame.loc[short_rows, "perp_funding_momentum"] = -0.00001
+    frame.loc[short_rows, "oi_delta_z_7d"] = 0.8
+    frame.loc[short_rows, "flow_signed_taker_z_7d"] = 0.8
+    frame.loc[long_rows, "perp_mark_index_basis"] = -0.00035
+    frame.loc[long_rows, "perp_premium"] = -0.00035
+    frame.loc[long_rows, "perp_premium_z_7d"] = -1.5
+    frame.loc[long_rows, "perp_last_funding_rate"] = -0.00008
+    frame.loc[long_rows, "perp_funding_z_7d"] = -1.8
+    frame.loc[long_rows, "perp_funding_momentum"] = 0.00001
+    frame.loc[long_rows, "oi_delta_z_7d"] = 0.8
+    frame.loc[long_rows, "flow_signed_taker_z_7d"] = -0.8
+    return frame
