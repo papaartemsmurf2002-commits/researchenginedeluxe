@@ -1,0 +1,16 @@
+{
+  "strategy_id": "oi_flow_breakout_v2",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_perp_context_v2",
+  "holding_period": "24h",
+  "parameters": {
+    "oi_delta_z_threshold": 1.0,
+    "oi_delta_min_notional": 0.0,
+    "premium_confirmation_bps": 5.0,
+    "premium_slope_min_bps": 0.0,
+    "flow_z_threshold": 0.75,
+    "flow_confirmation_policy": "optional_when_missing",
+    "spacing_bars": 12
+  }
+}

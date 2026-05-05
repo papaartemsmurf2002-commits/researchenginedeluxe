@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from tradingbotsuite.research.command_registry import RESEARCH_COMMANDS
-from tradingbotsuite.research_cycle.runner import _candidate_space
+from tradingbotsuite.research_cycle.runner import _baseline_comparator_coverage, _candidate_space
 from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec
 
 
@@ -338,6 +338,42 @@ def test_explicit_search_space_candidates_receive_baseline_comparators(tmp_path:
     assert {candidate["comparator_role"] for candidate in candidates} >= {"no_trade_baseline", "transparent_baseline"}
     assert any(candidate["candidate_source"] == "no_trade_comparator_injected" for candidate in candidates)
     assert any(candidate["candidate_source"] == "transparent_default_comparator_injected" for candidate in candidates)
+    assert all(candidate["resolved_parameters"] == candidate["parameters"] for candidate in candidates)
+    assert all(candidate["strategy_metadata_sha256"] for candidate in candidates)
+
+
+def test_perp_context_v2_candidate_space_includes_oi_flow_breakout_with_baseline_coverage(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "perp-context-v2-strategy-family-cycle",
+            "data": {"synthetic_fixture": True},
+            "features": {"feature_sets": ["features_perp_context_v2"]},
+            "holding_windows": ["4h"],
+            "strategies": [
+                "baseline_no_trade",
+                "perp_basis_convergence_v2",
+                "funding_crowding_fade_v2",
+                "oi_flow_breakout_v2",
+            ],
+            "optimizer": {
+                "max_candidates_per_strategy": 1,
+                "top_regions_to_refine": 1,
+            },
+        },
+    )
+
+    candidates = _candidate_space(HistoricalResearchCycleSpec.from_path(spec_path))
+    coverage = _baseline_comparator_coverage(candidates)
+    strategy_ids = {candidate["strategy_id"] for candidate in candidates}
+
+    assert {"baseline_no_trade", "perp_basis_convergence_v2", "funding_crowding_fade_v2", "oi_flow_breakout_v2"} <= strategy_ids
+    assert {record["coverage_status"] for record in coverage} == {"complete"}
+    assert any(candidate["comparator_role"] == "no_trade_baseline" for candidate in candidates)
+    oi_flow_candidates = [candidate for candidate in candidates if candidate["strategy_id"] == "oi_flow_breakout_v2"]
+    assert oi_flow_candidates
+    assert all(candidate["feature_set_id"] == "features_perp_context_v2" for candidate in oi_flow_candidates)
+    assert all(candidate["holding_window"] == "4h" for candidate in oi_flow_candidates)
     assert all(candidate["resolved_parameters"] == candidate["parameters"] for candidate in candidates)
     assert all(candidate["strategy_metadata_sha256"] for candidate in candidates)
 

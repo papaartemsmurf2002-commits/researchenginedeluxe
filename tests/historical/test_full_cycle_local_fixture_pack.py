@@ -158,7 +158,12 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     assert spec.data.local_fixture_dir is None
     assert spec.data.dataset_manifest_paths == (CHECKED_IN_PERP_CONTEXT_FIXTURE_MANIFEST,)
     assert spec.features.feature_sets == ("features_perp_context_v2",)
-    expected_strategies = {"baseline_no_trade", "perp_basis_convergence_v2", "funding_crowding_fade_v2"}
+    expected_strategies = {
+        "baseline_no_trade",
+        "perp_basis_convergence_v2",
+        "funding_crowding_fade_v2",
+        "oi_flow_breakout_v2",
+    }
     assert set(spec.strategies) == expected_strategies
     assert spec.output_dir == REPO_ROOT / "data" / "research" / "historical_cycles" / "btcusdt_perp_context_v2_foundation"
 
@@ -210,15 +215,16 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     assert not funding_rows.empty
     if int(funding_rows["trade_count"].sum()) == 0:
         assert funding_rows["failure_reasons"].astype(str).str.contains("low_signal_density|trade_count").any()
+    oi_flow_rows = rankings.loc[rankings["strategy_id"].astype(str) == "oi_flow_breakout_v2"]
+    assert not oi_flow_rows.empty
+    if int(oi_flow_rows["trade_count"].sum()) == 0:
+        assert oi_flow_rows["failure_reasons"].astype(str).str.contains(
+            "low_signal_density|trade_count|flow_confirmation",
+        ).any()
     assert "synthetic_fixture_not_real_oos_evidence" not in "|".join(rankings["failure_reasons"].astype(str))
-    if manifest["candidate_pack_written"]:
-        for pack_path in manifest["candidate_pack_paths"]:
-            pack_manifest = json.loads(Path(pack_path).read_text(encoding="utf-8"))
-            assert pack_manifest["research_only"] is True
-            assert pack_manifest["observe_only"] is True
-            assert pack_manifest["promotion_ready"] is False
-    else:
-        assert not candidate_gate_report["pack_eligible"].any()
+    assert manifest["candidate_pack_written"] is False
+    assert manifest["candidate_pack_paths"] == []
+    assert not candidate_gate_report["pack_eligible"].any()
 
 
 def test_checked_in_full_cycle_config_does_not_synthesize_when_manifest_missing(tmp_path: Path) -> None:

@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R53 funding crowding fade strategy
+Current stage: Stage R54 OI flow breakout strategy
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR53 complete; ready for WPR54 planning
+Stage status: closed - WPR54 complete; ready for WPR55 planning
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -93,6 +93,7 @@ Last updated: 2026-05-05
 | WPR51-01-perp-basis-convergence-strategy | Codex Research Agent | closed | `src/tradingbotsuite/strategies/perp_basis_convergence.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/strategies/__init__.py`, `configs/strategies/perp_basis_convergence_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/integration/test_backtest_engine_fixture.py`, `tests/historical/**`, `docs/work_packets/WPR51-01-perp-basis-convergence-strategy.md`, `docs/stage_reports/STAGE_R51_PERP_BASIS_CONVERGENCE_STRATEGY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `perp_basis_convergence_v2`, conservative strategy metadata/config, fail-closed v2 quality gates, focused contract and engine tests, and validation recorded in Stage R51 report. |
 | WPR52-01-provider-perp-context-cycle-evidence | Codex Research Agent | closed | `configs/research/full_cycle_btcusdt_perp_context_v2.json`, `data/research/historical_cycles/btcusdt_perp_context_v2_foundation/**`, `src/tradingbotsuite/strategies/no_trade.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/contracts/test_strategy_contracts.py`, `tests/historical/**`, `docs/work_packets/WPR52-01-provider-perp-context-cycle-evidence.md`, `docs/stage_reports/STAGE_R52_PROVIDER_PERP_CONTEXT_CYCLE_EVIDENCE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added checked provider-backed perp context v2 cycle spec, completed no-trade comparator coverage for v2 features, ran local cycle evidence, recorded fail-closed gate outcome, and validation recorded in Stage R52 report. |
 | WPR53-01-funding-crowding-fade-strategy | Codex Research Agent | closed | `src/tradingbotsuite/strategies/funding_crowding_fade.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `configs/strategies/funding_crowding_fade_v2.json`, `configs/research/full_cycle_btcusdt_perp_context_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/integration/test_backtest_engine_fixture.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `docs/work_packets/WPR53-01-funding-crowding-fade-strategy.md`, `docs/stage_reports/STAGE_R53_FUNDING_CROWDING_FADE_STRATEGY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `funding_crowding_fade_v2`, bounded strategy metadata/config, fail-closed funding/premium/OI quality gates, checked-cycle inclusion, local cycle evidence, and validation recorded in Stage R53 report. |
+| WPR54-01-oi-flow-breakout-strategy | Codex Research Agent | closed | `src/tradingbotsuite/strategies/oi_flow_breakout.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `configs/strategies/oi_flow_breakout_v2.json`, `configs/research/full_cycle_btcusdt_perp_context_v2.json`, `data/research/historical_cycles/btcusdt_perp_context_v2_foundation/**`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/integration/test_backtest_engine_fixture.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `docs/work_packets/WPR54-01-oi-flow-breakout-strategy.md`, `docs/stage_reports/STAGE_R54_OI_FLOW_BREAKOUT_STRATEGY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `oi_flow_breakout_v2`, bounded strategy metadata/config, fail-closed OI/premium/quality gates, optional flow confirmation, checked-cycle inclusion, local cycle evidence, and validation recorded in Stage R54 report. |
 
 ## Gate checklist
 
@@ -300,3 +301,8 @@ Reason: The branch now has a checked BTCUSDT provider-backed perp-context-v2 cyc
 
 Decision: R53 funding crowding fade strategy complete; ready for WPR54 planning
 Reason: The branch now has a registered `funding_crowding_fade_v2` strategy and checked config, bounded metadata, fail-closed funding/premium/OI/quality context requirements, checked-cycle inclusion, complete no-trade comparator coverage, local provider-cycle evidence with 37 aggregate funding-crowding trades across candidates, and a truthful fail-closed gate result with no candidate pack written. Validation passed compile, focused strategy/integration tests, checked historical test, WPR53 validation suite, and diff check.
+
+## OI flow breakout strategy wave
+
+Decision: R54 OI flow breakout strategy complete; ready for WPR55 planning
+Reason: The branch now has a registered `oi_flow_breakout_v2` strategy and checked config, bounded metadata, fail-closed OI/premium/quality context requirements, optional flow confirmation for fixtures without durable `agg_trade`, checked-cycle inclusion, complete no-trade comparator coverage, local provider-cycle evidence with 197 aggregate OI-flow trades across candidates, and a truthful fail-closed gate result with no candidate pack written. Validation passed compile, focused strategy/integration tests, checked historical test, WPR54 validation suite, and full contracts.

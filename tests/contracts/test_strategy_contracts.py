@@ -8,6 +8,7 @@ import pytest
 
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
 from tradingbotsuite.strategies.funding_crowding_fade import REQUIRED_FUNDING_CROWDING_FADE_COLUMNS
+from tradingbotsuite.strategies.oi_flow_breakout import REQUIRED_OI_FLOW_BREAKOUT_COLUMNS
 from tradingbotsuite.strategies.perp_basis_convergence import REQUIRED_PERP_CONTEXT_V2_COLUMNS
 from tradingbotsuite.strategies import (
     defaults_for_holding_window,
@@ -27,6 +28,7 @@ REQUIRED_STAGE6_STRATEGIES = {
     "funding_basis_v1",
     "perp_basis_convergence_v2",
     "funding_crowding_fade_v2",
+    "oi_flow_breakout_v2",
     "regime_adaptive_v1",
     "lc_reference_v1",
     "hmm_knn_diagnostic_v1",
@@ -144,6 +146,26 @@ def test_strategy_config_loader_rejects_unknown_parameters(tmp_path: Path) -> No
             },
             "invalid_feature_set:funding_crowding_fade_v2:features_full_context_no_wt",
         ),
+        (
+            {
+                "strategy_id": "oi_flow_breakout_v2",
+                "strategy_version": "v1",
+                "feature_set_id": "features_perp_context_v2",
+                "holding_period": "1h",
+                "parameters": {},
+            },
+            "invalid_holding_period:oi_flow_breakout_v2:1h",
+        ),
+        (
+            {
+                "strategy_id": "oi_flow_breakout_v2",
+                "strategy_version": "v1",
+                "feature_set_id": "features_full_context_no_wt",
+                "holding_period": "24h",
+                "parameters": {},
+            },
+            "invalid_feature_set:oi_flow_breakout_v2:features_full_context_no_wt",
+        ),
     ],
 )
 def test_strategy_config_loader_rejects_invalid_strategy_feature_or_window(
@@ -208,6 +230,25 @@ def test_funding_crowding_fade_metadata_covers_required_contract() -> None:
     assert metadata.default_parameters["funding_momentum_policy"] == "against_fade_filter"
 
 
+def test_oi_flow_breakout_metadata_covers_required_contract() -> None:
+    plugin = get_strategy_plugin("oi_flow_breakout_v2")
+    metadata = metadata_for_strategy("oi_flow_breakout_v2")
+
+    assert plugin.allowed_holding_periods == ("4h", "12h", "24h", "72h")
+    assert plugin.required_feature_sets == ("features_perp_context_v2",)
+    assert set(metadata.default_parameters) == {
+        "oi_delta_z_threshold",
+        "oi_delta_min_notional",
+        "premium_confirmation_bps",
+        "premium_slope_min_bps",
+        "flow_z_threshold",
+        "flow_confirmation_policy",
+        "spacing_bars",
+    }
+    assert set(metadata.parameter_space) == set(metadata.default_parameters)
+    assert metadata.default_parameters["flow_confirmation_policy"] == "optional_when_missing"
+
+
 def test_no_trade_comparator_supports_perp_context_v2_feature_set() -> None:
     plugin = get_strategy_plugin(
         "baseline_no_trade",
@@ -240,6 +281,10 @@ def test_strategy_plugin_construction_rejects_invalid_feature_or_window() -> Non
         get_strategy_plugin("funding_crowding_fade_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
     with pytest.raises(ValueError, match="invalid_feature_set:funding_crowding_fade_v2:features_full_context_no_wt"):
         get_strategy_plugin("funding_crowding_fade_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
+    with pytest.raises(ValueError, match="invalid_holding_period:oi_flow_breakout_v2:1h"):
+        get_strategy_plugin("oi_flow_breakout_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
+    with pytest.raises(ValueError, match="invalid_feature_set:oi_flow_breakout_v2:features_full_context_no_wt"):
+        get_strategy_plugin("oi_flow_breakout_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
 
 
 def test_baseline_strategy_outputs_follow_standard_signal_contract() -> None:
@@ -446,6 +491,148 @@ def test_funding_crowding_fade_v2_allows_latest_window_context_provenance() -> N
     assert not plugin.predict(frame).empty
 
 
+def test_oi_flow_breakout_v2_outputs_research_only_signals() -> None:
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=48)
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={
+            "symbol": "BTCUSDT",
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "spacing_bars": 1,
+        },
+    )
+
+    signals = plugin.predict(frame)
+    validation = validate_signal_frame(signals)
+
+    assert validation.valid is True, validation.errors
+    assert len(signals) > 0
+    assert set(signals["side"]) == {"long", "short"}
+    assert signals["feature_set_id"].eq("features_perp_context_v2").all()
+    assert signals["strategy_id"].eq("oi_flow_breakout_v2").all()
+    assert signals["research_only"].all()
+
+
+@pytest.mark.parametrize("missing_column", REQUIRED_OI_FLOW_BREAKOUT_COLUMNS)
+def test_oi_flow_breakout_v2_fails_closed_when_required_columns_are_missing(missing_column: str) -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    complete = _oi_flow_breakout_v2_signal_frame(row_count=24)
+
+    assert plugin.predict(complete.drop(columns=[missing_column])).empty
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("quality_context_missing_count", 1.0),
+        ("quality_has_funding_gap", 1.0),
+        ("quality_has_oi_gap", 1.0),
+        ("quality_has_premium_gap", 1.0),
+        ("quality_provider_backed_all_required", 0.0),
+        ("quality_provider_backed_all_required", float("nan")),
+        ("perp_mark_index_basis", float("nan")),
+        ("perp_premium", "bad-premium"),
+        ("perp_premium_slope_8h", None),
+        ("oi_notional", "bad-notional"),
+        ("oi_delta_1h", float("inf")),
+        ("oi_delta_z_7d", float("-inf")),
+    ],
+)
+def test_oi_flow_breakout_v2_fails_closed_on_invalid_context_values(column: str, value: object) -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=24)
+    frame[column] = value
+
+    assert plugin.predict(frame).empty
+
+
+def test_oi_flow_breakout_v2_requires_positive_oi_expansion() -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=24)
+    frame["oi_delta_1h"] = -1_000_000.0
+
+    assert plugin.predict(frame).empty
+
+
+def test_oi_flow_breakout_v2_allows_missing_flow_when_optional() -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=24).drop(
+        columns=["flow_buy_sell_ratio", "flow_signed_taker_notional", "flow_signed_taker_z_7d"],
+    )
+
+    assert not plugin.predict(frame).empty
+
+
+def test_oi_flow_breakout_v2_requires_flow_when_policy_is_required() -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "flow_confirmation_policy": "required",
+            "spacing_bars": 1,
+        },
+    )
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=24)
+    frame["flow_signed_taker_z_7d"] = float("nan")
+
+    assert plugin.predict(frame).empty
+
+
+def test_oi_flow_breakout_v2_filters_misaligned_flow_when_present() -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "flow_confirmation_policy": "require_when_present",
+            "spacing_bars": 1,
+        },
+    )
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=24)
+    frame["flow_signed_taker_z_7d"] = frame["flow_signed_taker_z_7d"] * -1.0
+
+    assert plugin.predict(frame).empty
+
+
+def test_oi_flow_breakout_v2_fails_closed_on_invalid_spacing_bars() -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_perp_context_v2",
+            "spacing_bars": "not-an-integer",
+        },
+    )
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=24)
+
+    assert plugin.predict(frame).empty
+
+
+def test_oi_flow_breakout_v2_allows_latest_window_context_provenance() -> None:
+    plugin = get_strategy_plugin(
+        "oi_flow_breakout_v2",
+        config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
+    )
+    frame = _oi_flow_breakout_v2_signal_frame(row_count=24)
+    frame["quality_latest_window_context_only"] = 1.0
+
+    assert not plugin.predict(frame).empty
+
+
 def test_invalid_signal_frame_is_rejected() -> None:
     validation = validate_signal_frame(pd.DataFrame({"side": ["buy"], "research_only": [False]}))
 
@@ -571,4 +758,34 @@ def _funding_crowding_v2_signal_frame(*, row_count: int) -> pd.DataFrame:
     frame.loc[long_rows, "perp_funding_momentum"] = 0.00001
     frame.loc[long_rows, "oi_delta_z_7d"] = 0.8
     frame.loc[long_rows, "flow_signed_taker_z_7d"] = -0.8
+    return frame
+
+
+def _oi_flow_breakout_v2_signal_frame(*, row_count: int) -> pd.DataFrame:
+    frame = _perp_context_v2_signal_frame(row_count=row_count)
+    frame.loc[:, [
+        "perp_mark_index_basis",
+        "perp_premium",
+        "perp_premium_z_7d",
+        "perp_premium_slope_8h",
+        "oi_delta_1h",
+        "oi_delta_z_7d",
+        "flow_signed_taker_z_7d",
+    ]] = 0.0
+    long_rows = frame.index[frame.index % 12 == 0]
+    short_rows = frame.index[frame.index % 12 == 6]
+    frame.loc[long_rows, "perp_mark_index_basis"] = 0.0006
+    frame.loc[long_rows, "perp_premium"] = 0.0006
+    frame.loc[long_rows, "perp_premium_z_7d"] = 1.5
+    frame.loc[long_rows, "perp_premium_slope_8h"] = 0.00001
+    frame.loc[long_rows, "oi_delta_1h"] = 50_000_000.0
+    frame.loc[long_rows, "oi_delta_z_7d"] = 1.4
+    frame.loc[long_rows, "flow_signed_taker_z_7d"] = 1.0
+    frame.loc[short_rows, "perp_mark_index_basis"] = -0.0006
+    frame.loc[short_rows, "perp_premium"] = -0.0006
+    frame.loc[short_rows, "perp_premium_z_7d"] = -1.5
+    frame.loc[short_rows, "perp_premium_slope_8h"] = -0.00001
+    frame.loc[short_rows, "oi_delta_1h"] = 50_000_000.0
+    frame.loc[short_rows, "oi_delta_z_7d"] = 1.4
+    frame.loc[short_rows, "flow_signed_taker_z_7d"] = -1.0
     return frame
