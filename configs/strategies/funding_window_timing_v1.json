@@ -1,0 +1,17 @@
+{
+  "strategy_id": "funding_window_timing_v1",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_perp_context_v2",
+  "holding_period": "24h",
+  "parameters": {
+    "funding_z_threshold": 1.0,
+    "funding_rate_abs_bps_threshold": 0.4,
+    "premium_confirmation_bps": 2.5,
+    "entry_window_h": 1.0,
+    "window_mode": "pre_funding",
+    "funding_momentum_policy": "avoid_acceleration",
+    "oi_confirmation_z_min": 0.0,
+    "spacing_bars": 4
+  }
+}

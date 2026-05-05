@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from tradingbotsuite.strategies.funding_crowding_fade import FundingCrowdingFadeStrategy
+from tradingbotsuite.strategies.funding_window_timing import FundingWindowTimingStrategy
 from tradingbotsuite.strategies.funding_basis import FundingBasisStrategy
 from tradingbotsuite.strategies.hmm_knn import HmmKnnDiagnosticStrategy
 from tradingbotsuite.strategies.lc_reference import LcReferenceStrategy
@@ -23,6 +24,7 @@ def strategy_registry() -> dict[str, type]:
         "range_reversion_v1": RangeReversionStrategy,
         "funding_basis_v1": FundingBasisStrategy,
         "funding_crowding_fade_v2": FundingCrowdingFadeStrategy,
+        "funding_window_timing_v1": FundingWindowTimingStrategy,
         "oi_flow_breakout_v2": OiFlowBreakoutStrategy,
         "perp_basis_convergence_v2": PerpBasisConvergenceStrategy,
         "regime_adaptive_v1": RegimeAdaptiveStrategy,

@@ -163,6 +163,7 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
         "perp_basis_convergence_v2",
         "funding_crowding_fade_v2",
         "oi_flow_breakout_v2",
+        "funding_window_timing_v1",
     }
     assert set(spec.strategies) == expected_strategies
     assert spec.output_dir == REPO_ROOT / "data" / "research" / "historical_cycles" / "btcusdt_perp_context_v2_foundation"
@@ -204,7 +205,15 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     ]
     assert feature_record["feature_set_id"] == "features_perp_context_v2"
     assert feature_record["fixture_family_joined_families"] == ["funding_rate", "premium_index", "open_interest"]
-    assert {"perp_mark_index_basis", "perp_premium_z_7d", "quality_provider_backed_all_required"} <= set(feature_frame.columns)
+    assert {
+        "perp_mark_index_basis",
+        "perp_premium_z_7d",
+        "perp_last_funding_rate",
+        "perp_funding_z_7d",
+        "cal_time_since_last_funding_h",
+        "cal_time_to_next_funding_h",
+        "quality_provider_backed_all_required",
+    } <= set(feature_frame.columns)
     assert feature_frame["quality_provider_backed_all_required"].eq(1.0).any()
     assert candidate_space_manifest["feature_sets"] == ["features_perp_context_v2"]
     assert expected_strategies <= set(candidate_space_manifest["generated_strategy_ids"])
@@ -220,6 +229,12 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     if int(oi_flow_rows["trade_count"].sum()) == 0:
         assert oi_flow_rows["failure_reasons"].astype(str).str.contains(
             "low_signal_density|trade_count|flow_confirmation",
+        ).any()
+    funding_window_rows = rankings.loc[rankings["strategy_id"].astype(str) == "funding_window_timing_v1"]
+    assert not funding_window_rows.empty
+    if int(funding_window_rows["trade_count"].sum()) == 0:
+        assert funding_window_rows["failure_reasons"].astype(str).str.contains(
+            "low_signal_density|trade_count|funding_window|timing",
         ).any()
     assert "synthetic_fixture_not_real_oos_evidence" not in "|".join(rankings["failure_reasons"].astype(str))
     assert manifest["candidate_pack_written"] is False

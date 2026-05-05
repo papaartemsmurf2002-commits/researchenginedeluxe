@@ -19,7 +19,8 @@
     "baseline_no_trade",
     "perp_basis_convergence_v2",
     "funding_crowding_fade_v2",
-    "oi_flow_breakout_v2"
+    "oi_flow_breakout_v2",
+    "funding_window_timing_v1"
   ],
   "validation": {
     "walk_forward": "rolling_and_anchored",
