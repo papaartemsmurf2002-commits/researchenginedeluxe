@@ -100,6 +100,9 @@ FIXTURE_CONTEXT_COLUMN_ALIASES = {
         "open_interest_value": ("open_interest_value", "open_interest_value_usd", "notional"),
     },
     "agg_trade": {
+        "quote_volume": ("quote_volume", "notional", "quote_quantity"),
+        "taker_buy_quote_volume": ("taker_buy_quote_volume", "buy_quote_volume"),
+        "sell_quote_volume": ("sell_quote_volume", "sell_quantity"),
         "primary_signed_imbalance_ratio": (
             "primary_signed_imbalance_ratio",
             "signed_imbalance_ratio",
@@ -267,9 +270,14 @@ def canonicalize_bar_frame(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict[str,
     )
     if "volume" not in bars.columns:
         bars["volume"] = 0.0
-    for column in frame.columns:
-        if column not in bars.columns and column not in mapping.values():
-            bars[column] = frame[column].to_numpy()
+    mapped_columns = set(mapping.values())
+    passthrough_columns = [
+        column
+        for column in frame.columns
+        if column not in bars.columns and column not in mapped_columns
+    ]
+    if passthrough_columns:
+        bars = pd.concat([bars, frame.loc[:, passthrough_columns].copy()], axis=1)
     return bars.sort_values("bar_time_ms", kind="mergesort").reset_index(drop=True), {
         key: str(value)
         for key, value in mapping.items()

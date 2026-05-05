@@ -3,7 +3,7 @@
 Date: 2026-05-05
 Branch: `research/v3-experimental-engine`
 Source input: `C:/Users/papaa/Downloads/TBS_RESEARCH_V3_PERP_STRATEGY_IMPLEMENTATION_PLAN.md`
-Status: curated implementation instructions
+Status: curated implementation instructions, refreshed after WPR47 Crypto Lake free-sample fallback
 
 ## Purpose
 
@@ -46,6 +46,7 @@ Use the current branch as the source of truth:
 - Strategy contract/registry/metadata: `src/tradingbotsuite/strategies/`
 - Backtest engines and exits: `src/tradingbotsuite/backtesting/`
 - Candidate pack gates: `src/tradingbotsuite/research_artifacts/candidate_pack.py`
+- Crypto Lake free-sample fallback runbook: `docs/runbooks/crypto_lake_free_data_runbook.md`
 
 The primary active package is `src/tradingbotsuite/`. The older `src/tradingbot/` package remains legacy/reference material unless a later work packet explicitly scopes it.
 
@@ -53,14 +54,28 @@ The primary active package is `src/tradingbotsuite/`. The older `src/tradingbot/
 
 | Downloaded plan item | Current branch conflict | Curated resolution |
 | --- | --- | --- |
-| First implementation stage named `R45` | R45 is already closed for branch distillation. | This alignment document is WPR46. Perp implementation starts at WPR47. |
+| First implementation stage named `R45` | R45 is already closed for branch distillation. WPR47 is closed for Crypto Lake free-data fallback and WPR48 is this plan refresh. | Perp implementation starts at WPR49. |
 | Multi-symbol top-level config with `symbols` | `HistoricalResearchCycleSpec` is single-symbol. | Run BTCUSDT and ETHUSDT as separate cycle specs first. Multi-symbol/cross-asset cycle support is a later dedicated packet. |
 | Holding window `8h` | Current supported windows are `1h`, `4h`, `12h`, `24h`, `72h`, `7d`. | Remove `8h` until `REQUIRED_HOLDING_WINDOWS`, strategy helper, tests, and artifacts explicitly support it. |
 | Config keys `name`, `feature_sets`, `validation_modes`, `candidate_gates` | Current spec uses `cycle_id`, `features.feature_sets`, `validation.split_modes`, and candidate gates derived from runner/pack contracts. | Use current spec shape. New gate concepts become reports or validation fields in later packets. |
 | Exit IDs `fixed_holding`, `volatility_triple_barrier`, `funding_aware_exit_v1`, `knn_remaining_edge_exit_v1`, `hmm_transition_exit_v1`, `oi_contraction_exit_v1`, `liquidity_adverse_selection_exit_v1` | Current cycle supports `fixed_holding_window`, `triple_barrier`, `triple_barrier_atr`, `volatility_scaled_barrier`, `regime_flip_exit`, `funding_adverse_exit`, `alpha_decay_exit`, `adverse_selection_exit`, `trailing_atr_after_profit`, `max_mae_stop`. | Map to existing exits first. Add new exit IDs only in a dedicated exit-policy packet. |
 | Strategy skeleton returns `timestamp`, `signal_side`, `signal_reason` | Current strategy contract requires `signal_time_ms`, `side`, `strength`, `confidence`, holding bounds, entry/exit policy, feature set, model version, `research_only`, etc. | Implement strategies by extending existing `RuleBasedStrategy` patterns and emitting `RuleSignal` rows. |
 | Required liquidation/L2/cross-exchange data | Current durable provider fixture supports bars plus funding, premium, open interest; `agg_trade` is supported through archive ingestion. | Treat liquidation, L2 order book, and cross-exchange context as optional future packets gated by durable fixture availability. |
+| Crypto Lake as a provider dependency | WPR47 established anonymous free-sample access only. Paid access, provider accounts, AWS profiles, and secret setup are intentionally out of scope. | Use Crypto Lake free sample only as an optional diagnostic fallback when Binance Vision/public Binance data is insufficient. Label outputs with `source_access_mode: free_sample`; do not use free samples as broad OOS/stress evidence by themselves. |
 | External source-backed claims | Some API and literature claims may change or need verification. | Treat them as research context only. Empirical acceptance must come from repo artifacts and gates. |
+
+## Provider Source Priority
+
+Use this priority before adding new provider assumptions:
+
+1. Existing durable fixture packs and checked manifests already in the repo.
+2. Binance Vision public archives for broad historical bars, trades, and aggregate trades.
+3. Binance USD-M public REST collectors for latest-window funding, premium, and open-interest context.
+4. Crypto Lake anonymous free sample only as a diagnostic fallback when Binance Vision/public Binance sources are not enough for a specific local check.
+
+Crypto Lake direct fetches must remain optional and credential-free. WPR47 verified local free-sample access for `BINANCE_FUTURES` `BTC-USDT-PERP` candles from 2025-04-06 to 2025-04-07: 1,440 rows, no gaps, no duplicates, and manifests labelled `source_access_mode: free_sample`.
+
+Free-sample output is useful for collector compatibility, schema checks, and local fallback experiments. It cannot by itself satisfy broad provider coverage, multi-year OOS/stress validation, candidate-pack acceptance, or promotion gates.
 
 ## Data Family Alignment
 
@@ -76,7 +91,7 @@ Prefer existing family names unless there is a hard reason to add a new one.
 | `funding_info` | Future addition. | Add only after manifest and collector semantics are clear. Missing rows must not silently imply default cap/floor/interval values. |
 | `long_short_ratios` | Future addition. | Useful for crowding, but retention-limited direct endpoints must be flagged. |
 | `spot_context` | Future addition. | Needed for true spot/perp basis work and ETH/BTC residuals. Keep single-leg perp strategies named directional convergence proxies. |
-| `liquidations` | Future addition. | Requires stream/vendor archive and stream-health evidence. Unknown windows are missing, not zero. |
+| `liquidations` | Future addition. | Requires stream/vendor archive and stream-health evidence. Crypto Lake free sample may help diagnose schema support, but unknown windows are missing, not zero. |
 | `l2_orderbook_optional` | Future addition. | Requires durable snapshots/events, depth aggregation, and stream-health evidence. |
 | `cross_exchange_perp_context_optional` | Future addition. | Later cross-exchange context only; not part of the first BTC/ETH provider-backed pass. |
 
@@ -242,7 +257,7 @@ For normal tests, keep `min_splits` and `trade_count_floor` small enough to run 
 
 ## Curated Implementation Roadmap
 
-### WPR47-01 Perp Context Manifest Foundation
+### WPR49-01 Perp Context Manifest Foundation
 
 Goal: extend current context-family validation without altering historical-cycle behavior.
 
@@ -264,6 +279,7 @@ docs/KNOWN_ISSUES.md
 Required behavior:
 
 - Preserve existing families: `funding_rate`, `premium_index`, `open_interest`, `agg_trade`.
+- Preserve WPR47 Crypto Lake free-sample fallback semantics: no provider credentials, no AWS profile setup, and no paid-access assumptions.
 - Add manifest metadata fields for retention and quality where non-breaking:
   - `retention_policy`
   - `coverage_scope`
@@ -271,6 +287,7 @@ Required behavior:
   - `context_family_role`
   - `stream_health` for future stream families
 - Ensure direct latest-window context cannot support multi-year claims.
+- Ensure `source_access_mode: free_sample` evidence remains diagnostic fallback evidence, not broad OOS/stress or promotion evidence.
 - Keep synthetic context disallowed for provider-backed candidate evidence.
 - Do not require liquidation/L2/cross-exchange context yet.
 
@@ -281,7 +298,7 @@ python -m compileall -q src\tradingbotsuite
 $env:PYTHONPATH='src'; python -m pytest tests\contracts\test_historical_fixture_pack_contract.py tests\contracts\test_data_contracts.py tests\tradingbotsuite\test_market_data_collection.py -q
 ```
 
-### WPR48-01 Perp Context V2 Feature Pack
+### WPR50-01 Perp Context V2 Feature Pack
 
 Goal: add `features_perp_context_v2` as a registered feature set built from current durable context families.
 
@@ -341,7 +358,7 @@ python -m compileall -q src\tradingbotsuite
 $env:PYTHONPATH='src'; python -m pytest tests\contracts\test_feature_contracts.py tests\features -q
 ```
 
-### WPR49-01 Perp Basis Convergence Strategy
+### WPR51-01 Perp Basis Convergence Strategy
 
 Goal: add the first transparent perp strategy, `perp_basis_convergence_v2`.
 
@@ -400,7 +417,7 @@ python -m compileall -q src\tradingbotsuite
 $env:PYTHONPATH='src'; python -m pytest tests\contracts\test_strategy_contracts.py tests\integration\test_backtest_engine_fixture.py -q
 ```
 
-### WPR50-01 Provider Perp Context Cycle Evidence
+### WPR52-01 Provider Perp Context Cycle Evidence
 
 Goal: run BTCUSDT provider-backed historical cycles with `features_perp_context_v2` and `perp_basis_convergence_v2`.
 
@@ -420,6 +437,7 @@ docs/KNOWN_ISSUES.md
 Rules:
 
 - Use non-synthetic provider fixture evidence.
+- Prefer durable repo fixtures and Binance public sources. Use Crypto Lake free sample only for fallback diagnostics unless a later packet explicitly turns expanded free-sample coverage into durable fixture evidence.
 - Candidate gates remain fail-closed.
 - No candidate pack is expected unless all existing gates pass.
 - Record if candidates are blocked; blocked is acceptable and truthful.
@@ -432,9 +450,9 @@ python -m compileall -q src\tradingbotsuite
 $env:PYTHONPATH='src'; python -m pytest tests\contracts\test_research_cycle_contract.py tests\historical -q
 ```
 
-### WPR51 And Later
+### WPR53 And Later
 
-Add only after WPR47-WPR50 are stable:
+Add only after WPR49-WPR52 are stable:
 
 1. `funding_crowding_fade_v2`
 2. `oi_flow_breakout_v2`
@@ -457,6 +475,7 @@ These guardrails apply before any future family can support empirical claims:
 - Unknown stream windows are missing, not zero.
 - Lower-timeframe data can support context or exit sequencing but does not relax the 1h minimum hold.
 - External/vended data must still write normalized manifests, hashes, row counts, coverage, and research-only flags.
+- Crypto Lake free-sample evidence must be labelled with `source_access_mode: free_sample` and treated as diagnostic fallback unless a later packet proves durable coverage.
 - A source paper or API page is not branch evidence; only generated provider-backed artifacts and gates are evidence.
 
 ## Future Validation And Gate Enhancements
@@ -470,7 +489,7 @@ The downloaded plan's trial-budget and overfit-control ideas are useful, but the
 
 ## First Agent Prompt
 
-Use this prompt after opening WPR47:
+Use this prompt after opening WPR49:
 
 ```text
 You are implementing research-only extensions for TradingBotSuite branch research/v3-experimental-engine.
@@ -480,19 +499,22 @@ Read first:
 - docs/ORCHESTRATOR_STAGE_LEDGER.md
 - docs/RESEARCH_BRANCH_DISTILLATION.md
 - docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md
+- docs/runbooks/crypto_lake_free_data_runbook.md
 
 Task:
-Implement WPR47-01 Perp Context Manifest Foundation.
+Implement WPR49-01 Perp Context Manifest Foundation.
 
 Constraints:
 - Preserve research_only=true, observe_only=true, promotion_ready=false.
 - Do not touch live execution or promotion paths except to preserve rejection boundaries.
 - Do not introduce a new cycle spec shape.
 - Do not add liquidation, L2, cross-exchange, or multi-symbol cycle behavior in this packet.
+- Do not add Crypto Lake paid access, provider-account setup, AWS profile setup, or secret material.
 - Keep changes inside the work packet allowed paths.
 
 Required behavior:
 - Preserve existing context families: funding_rate, premium_index, open_interest, agg_trade.
+- Preserve WPR47 Crypto Lake free-sample fallback semantics and `source_access_mode: free_sample` labelling.
 - Add non-breaking manifest metadata for retention/coverage/quality where appropriate.
 - Ensure latest-window context cannot masquerade as multi-year provider-backed evidence.
 - Ensure synthetic context cannot support provider-backed empirical claims.
@@ -513,6 +535,7 @@ These are intentionally not part of the first stages:
 - Making new overfit reports mandatory candidate-pack gates.
 - Treating liquidation, L2, or cross-exchange data as required context.
 - Adding production speed or profitability claims.
+- Adding provider-account, AWS-profile, or secret-backed Crypto Lake collection.
 - Any promotion, paper, shadow, testnet, canary, live, or order-placement workflow.
 
 ## Minimum Close Evidence Per Packet

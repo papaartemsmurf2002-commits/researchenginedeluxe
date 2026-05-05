@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 import zipfile
 from decimal import Decimal
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from tradingbotsuite.core.models import Bar
@@ -15,12 +17,14 @@ from tradingbotsuite.research.market_data import (
     MARKET_JOURNAL_WRITER_VERSION,
     MarketDataCollectionResult,
     MarketDataArchiveIngestionResult,
+    CryptoLakeAccessError,
     MarketJournalValidationError,
     MarketJournalWriter,
     MarketDataGapError,
     binance_vision_archive_url,
     download_and_ingest_binance_vision_archive,
     download_binance_vision_archive,
+    fetch_crypto_lake_archive,
     ingest_crypto_lake_archive,
     ingest_binance_vision_archive,
     read_market_journal,
@@ -249,6 +253,12 @@ async def test_collect_binance_usdm_context_writes_sorted_funding_manifest(tmp_p
     assert manifest["last_event_time_ms"] == start + 120_000
     assert manifest["content_hash"] == first.content_hash
     assert manifest["collector_version"] == "binance-usdm-context-rest-v1"
+    assert manifest["context_family_role"] == "perp_context"
+    assert manifest["coverage_scope"] == "latest_window_backfill"
+    assert manifest["latest_window_only"] is True
+    assert manifest["retention_policy"]["claim"] == "not_multi_year_coverage"
+    assert manifest["stream_health"]["status"] == "not_applicable_batch_backfill"
+    assert "latest_window_only_context" in manifest["quality_flags"]
     assert "receive_time_unavailable_non_promotable" in manifest["quality_flags"]
     assert not any(REMOVED_CHART_SOURCE in str(note).lower() for note in manifest["non_promotable_notes"])
     assert any("No legacy chart export" in note for note in manifest["non_promotable_notes"])
@@ -344,6 +354,9 @@ async def test_collect_binance_usdm_context_detects_fixed_interval_gaps(tmp_path
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
 
     assert result.gap_count == 1
+    assert manifest["context_family_role"] == "perp_context"
+    assert manifest["coverage_scope"] == "latest_window_backfill"
+    assert manifest["latest_window_only"] is True
     assert manifest["gap_check_applicable"] is True
     assert manifest["gap_check_status"] == "checked_fixed_interval"
     assert manifest["expected_interval_ms"] == 15 * 60_000
@@ -356,14 +369,15 @@ async def test_collect_binance_usdm_context_detects_fixed_interval_gaps(tmp_path
         }
     ]
 
-    with pytest.raises(MarketDataGapError, match="gaps"):
+    strict_output_dir = tmp_path / "oi-gap"
+    with pytest.raises(MarketDataGapError, match="manifest_path"):
         await collect_binance_usdm_context(
             symbol="BTCUSDT",
             data_family="open_interest",
             interval="15m",
             start_time_ms=start,
             end_time_ms=start + 30 * 60_000,
-            output_dir=tmp_path / "oi-gap",
+            output_dir=strict_output_dir,
             strict=True,
             fetcher=FakeBinanceContextFetcher(
                 [
@@ -372,6 +386,16 @@ async def test_collect_binance_usdm_context_detects_fixed_interval_gaps(tmp_path
                 ]
             ),
         )
+    strict_manifest_path = (
+        strict_output_dir
+        / "BTCUSDT"
+        / "open_interest"
+        / "15m"
+        / f"BTCUSDT_open_interest_15m_{start}_{start + 30 * 60_000}.manifest.json"
+    )
+    strict_manifest = json.loads(strict_manifest_path.read_text(encoding="utf-8"))
+    assert strict_manifest["gap_count"] == 1
+    assert strict_manifest["coverage_scope"] == "latest_window_backfill"
 
 
 def test_binance_usdm_open_interest_fetcher_pages_backward_from_endpoint_limit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -730,6 +754,9 @@ def test_ingest_binance_vision_agg_trade_zip_reports_duplicate_ids(tmp_path: Pat
     assert manifest["data_family"] == "agg_trade"
     assert manifest["event_time_field"] == "transact_time_ms"
     assert manifest["gap_count"] == 0
+    assert manifest["gap_check_applicable"] is False
+    assert manifest["gap_check_status"] == "not_applicable_variable_cadence"
+    assert manifest["expected_interval_ms"] is None
     assert manifest["duplicate_count"] == 1
     assert manifest["duplicate_event_id_field"] == "aggregate_trade_id"
     assert manifest["duplicates"] == [7]
@@ -827,6 +854,124 @@ def test_ingest_crypto_lake_kline_csv_writes_archive_manifest(tmp_path: Path) ->
     assert "provider_symbol_differs_from_symbol" in validation.quality_flags
     assert [row["event_time_ms"] for row in rows] == [1704067200000, 1704067260000]
     assert rows[0]["receive_time_ms"] == 1704067201000
+
+
+def test_ingest_crypto_lake_context_reports_symbol_time_duplicates_and_gaps(tmp_path: Path) -> None:
+    source_path = tmp_path / "crypto_lake_open_interest.csv"
+    source_path.write_text(
+        "\n".join(
+            [
+                "origin_time,exchange,symbol,open_interest",
+                "2024-01-01T00:00:00+00:00,BINANCE,BTC-USDT-PERP,100",
+                "2024-01-01T00:30:00+00:00,BINANCE,BTC-USDT-PERP,110",
+                "2024-01-01T00:30:00+00:00,BINANCE,BTC-USDT-PERP,111",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    result = ingest_crypto_lake_archive(
+        source_path,
+        symbol="BTCUSDT",
+        provider_symbol="BTC-USDT-PERP",
+        data_family="open_interest",
+        interval="15m",
+        output_dir=tmp_path / "out",
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert manifest["context_family_role"] == "perp_context"
+    assert manifest["coverage_scope"] == "local_vendor_export"
+    assert manifest["latest_window_only"] is False
+    assert manifest["gap_check_applicable"] is True
+    assert manifest["gap_count"] == 1
+    assert manifest["duplicate_check_applicable"] is True
+    assert manifest["duplicate_event_id_field"] == "symbol_event_time_ms"
+    assert manifest["duplicate_count"] == 1
+    assert manifest["duplicates"] == [{"event_time_ms": 1704069000000, "symbol": "BTCUSDT"}]
+
+
+def test_fetch_crypto_lake_archive_uses_optional_lakeapi_module(tmp_path: Path) -> None:
+    class FakeLakeApi:
+        sample_data_enabled = False
+
+        @classmethod
+        def use_sample_data(cls, *, anonymous_access):
+            assert anonymous_access is True
+            cls.sample_data_enabled = True
+
+        @staticmethod
+        def load_data(**kwargs):
+            assert kwargs["table"] == "candles"
+            assert kwargs["start"].date().isoformat() == "2024-01-01"
+            assert kwargs["end"].date().isoformat() == "2024-01-02"
+            assert kwargs["symbols"] == ["BTC-USDT-PERP"]
+            assert kwargs["exchanges"] == ["BINANCE"]
+            return pd.DataFrame(
+                [
+                    {
+                        "origin_time": "2024-01-01T00:00:00+00:00",
+                        "received_time": "2024-01-01T00:00:01+00:00",
+                        "exchange": "BINANCE",
+                        "symbol": "BTC-USDT-PERP",
+                        "open": "100",
+                        "high": "101",
+                        "low": "99",
+                        "close": "100.5",
+                        "volume": "10",
+                    }
+                ]
+            )
+
+    result = fetch_crypto_lake_archive(
+        symbol="BTCUSDT",
+        provider_symbol="BTC-USDT-PERP",
+        data_family="kline",
+        start_time="2024-01-01",
+        end_time="2024-01-02",
+        exchange="BINANCE",
+        table="candles",
+        interval="1m",
+        output_dir=tmp_path / "out",
+        lakeapi_module=FakeLakeApi(),
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert FakeLakeApi.sample_data_enabled is True
+    assert result.row_count == 1
+    assert manifest["source_name"] == "crypto_lake"
+    assert manifest["provider_symbol"] == "BTC-USDT-PERP"
+    assert manifest["source_access_mode"] == "free_sample"
+    assert manifest["free_sample_data"] is True
+    assert manifest["coverage_scope"] == "free_sample_diagnostic"
+    assert manifest["latest_window_only"] is False
+    assert manifest["retention_policy"]["claim"] == "sample_coverage_only"
+    assert manifest["diagnostic_only"] is True
+    assert "crypto_lake_free_sample_data" in manifest["quality_flags"]
+    assert "free_sample_diagnostic_only" in manifest["quality_flags"]
+
+
+def test_fetch_crypto_lake_archive_missing_lakeapi_has_setup_guidance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    real_import = builtins.__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "lakeapi":
+            raise ModuleNotFoundError("No module named 'lakeapi'")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(CryptoLakeAccessError, match="Crypto Lake free-data fallback fetch requires the optional lakeapi package"):
+        fetch_crypto_lake_archive(
+            symbol="BTCUSDT",
+            data_family="trade",
+            start_time="2024-01-01",
+            end_time="2024-01-02",
+            output_dir=tmp_path / "out",
+        )
 
 
 def test_market_journal_replay_is_deterministic_and_validates_manifest_hash(tmp_path: Path) -> None:

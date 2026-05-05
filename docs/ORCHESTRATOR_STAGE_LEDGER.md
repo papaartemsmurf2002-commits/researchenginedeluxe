@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R46 perp strategy plan alignment
+Current stage: Stage R52 provider perp context cycle evidence
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR46 perp strategy plan alignment complete
+Stage status: closed - WPR52 complete; ready for WPR53 planning
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -86,6 +86,12 @@ Last updated: 2026-05-05
 | WPR44-01-final-crosscheck-hardening | Codex Research Agent | closed | `.gitignore`, `configs/research/full_cycle_btc_v1.json`, `src/tradingbotsuite/backtesting/splits.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `src/tradingbotsuite/optimization/stability.py`, `src/tradingbotsuite/research/feature_ablation.py`, `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/research_cycle/benchmark.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_cycle/spec.py`, `tests/**`, `data/research/fixtures/btcusdt_context_provider_latest_month_v1/**`, `docs/work_packets/WPR44-01-final-crosscheck-hardening.md`, `docs/stage_reports/STAGE_R44_FINAL_CROSSCHECK_HARDENING_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Final crosscheck fixed benchmark path hygiene, durable provider fixture evidence, exact holdout membership, exit-policy-aware stability/ablation grouping, fixed-interval context gap detection, and validation regressions before commit/push. |
 | WPR45-01-research-branch-distillation | Codex Research Agent | closed | `docs/RESEARCH_BRANCH_DISTILLATION.md`, `docs/work_packets/WPR45-01-research-branch-distillation.md`, `docs/stage_reports/STAGE_R45_RESEARCH_BRANCH_DISTILLATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Added a current research-branch distillation document covering purpose, framework, stack, artifact model, validation boundaries, and safe future-agent orientation. |
 | WPR46-01-perp-strategy-plan-alignment | Codex Research Agent | closed | `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/work_packets/WPR46-01-perp-strategy-plan-alignment.md`, `docs/stage_reports/STAGE_R46_PERP_STRATEGY_PLAN_ALIGNMENT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Curated the downloaded BTC/ETH perpetual strategy plan into repo-native agent instructions aligned to current cycle specs, data families, feature IDs, strategy contracts, exit IDs, gates, and future packet sequencing. |
+| WPR47-01-crypto-lake-access-setup | Codex Research Agent | closed | `.gitignore`, `README.md`, `pyproject.toml`, `configs/data/v2_btc_hmm_knn_provider_pipeline.json`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/data_pipeline.py`, `src/tradingbotsuite/research/market_data.py`, `tests/tradingbotsuite/test_market_data_collection.py`, `docs/runbooks/crypto_lake_free_data_runbook.md`, `docs/work_packets/WPR47-01-crypto-lake-access-setup.md`, `docs/stage_reports/STAGE_R47_CRYPTO_LAKE_FREE_DATA_FALLBACK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Added optional Crypto Lake free-sample fallback guidance, ignored lakeapi cache, direct free sample-data fetch mode, clearer missing-dependency errors, and a real BTCUSDT free-sample smoke test with 1,440 rows and no gaps/duplicates. |
+| WPR48-01-perp-plan-free-data-refresh | Codex Research Agent | closed | `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/work_packets/WPR48-01-perp-plan-free-data-refresh.md`, `docs/stage_reports/STAGE_R48_PERP_PLAN_FREE_DATA_REFRESH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Curated perpetual plan refreshed after WPR47; future implementation now starts at WPR49, Crypto Lake is documented as credential-free free-sample fallback only, and provider source priority is aligned with current branch structure. |
+| WPR49-01-perp-context-manifest-foundation | Codex Research Agent | closed | `src/tradingbotsuite/data/contracts.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `src/tradingbotsuite/research/market_data.py`, `tests/contracts/**`, `tests/tradingbotsuite/test_market_data_collection.py`, `docs/work_packets/WPR49-01-perp-context-manifest-foundation.md`, `docs/stage_reports/STAGE_R49_PERP_CONTEXT_MANIFEST_FOUNDATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added non-breaking perp context metadata, latest-window/free-sample coverage truthfulness checks, context gap/duplicate evidence, fixture-pack metadata propagation, and data manifest boundary hardening; validation recorded in Stage R49 report. |
+| WPR50-01-perp-context-v2-feature-pack | Codex Research Agent | closed | `src/tradingbotsuite/features/registry.py`, `src/tradingbotsuite/features/packs.py`, `src/tradingbotsuite/features/builders.py`, `src/tradingbotsuite/features/cache.py`, `configs/features/features_perp_context_v2.json`, `tests/features/**`, `tests/contracts/test_feature_contracts.py`, `docs/work_packets/WPR50-01-perp-context-v2-feature-pack.md`, `docs/stage_reports/STAGE_R50_PERP_CONTEXT_V2_FEATURE_PACK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added registered `features_perp_context_v2`, interval-aware perp context features, agg-trade flow passthroughs, explicit missingness/quality tests, cache context identity coverage, and validation recorded in Stage R50 report. |
+| WPR51-01-perp-basis-convergence-strategy | Codex Research Agent | closed | `src/tradingbotsuite/strategies/perp_basis_convergence.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/strategies/__init__.py`, `configs/strategies/perp_basis_convergence_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/integration/test_backtest_engine_fixture.py`, `tests/historical/**`, `docs/work_packets/WPR51-01-perp-basis-convergence-strategy.md`, `docs/stage_reports/STAGE_R51_PERP_BASIS_CONVERGENCE_STRATEGY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `perp_basis_convergence_v2`, conservative strategy metadata/config, fail-closed v2 quality gates, focused contract and engine tests, and validation recorded in Stage R51 report. |
+| WPR52-01-provider-perp-context-cycle-evidence | Codex Research Agent | closed | `configs/research/full_cycle_btcusdt_perp_context_v2.json`, `data/research/historical_cycles/btcusdt_perp_context_v2_foundation/**`, `src/tradingbotsuite/strategies/no_trade.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/contracts/test_strategy_contracts.py`, `tests/historical/**`, `docs/work_packets/WPR52-01-provider-perp-context-cycle-evidence.md`, `docs/stage_reports/STAGE_R52_PROVIDER_PERP_CONTEXT_CYCLE_EVIDENCE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added checked provider-backed perp context v2 cycle spec, completed no-trade comparator coverage for v2 features, ran local cycle evidence, recorded fail-closed gate outcome, and validation recorded in Stage R52 report. |
 
 ## Gate checklist
 
@@ -258,3 +264,33 @@ Reason: The branch now has a current distillation document that explains the res
 
 Decision: R46 perp strategy plan alignment complete; ready to open WPR47 implementation packet
 Reason: The downloaded BTC/ETH perpetual strategy plan is now aligned with the current research branch naming contracts and staged into additive work packets. The curated plan preserves existing cycle spec shape, supported holding windows, feature-set naming, strategy signal contracts, exit-policy IDs, provider fixture boundaries, and fail-closed candidate gates. This wave is documentation-only and does not advance empirical acceptance, create promotion evidence, or start Stage 13 execution.
+
+## Crypto Lake free data fallback wave
+
+Decision: R47 Crypto Lake free data fallback complete; ready for optional local free-sample smoke tests
+Reason: The branch now documents optional Crypto Lake free sample installation, anonymous sample-data mode, smoke tests, local-export ingestion, fallback pipeline inputs, and agent rules. The optional `lakeapi` dependency is isolated behind a `crypto-lake` extra, direct fetches enable `lakeapi.use_sample_data(anonymous_access=True)`, lakeapi cache output is ignored, and missing dependency failures are actionable. Local access was verified with BTCUSDT/BTC-USDT-PERP Binance Futures candles for 2025-04-06 to 2025-04-07, producing 1,440 rows with no gaps or duplicates. No provider credentials, large provider data, promotion evidence, or Stage 13 execution were added.
+
+## Perp plan free-data refresh wave
+
+Decision: R48 perp plan free-data refresh complete; ready to open WPR49 implementation packet
+Reason: The curated perpetual agent-development plan now reflects closed WPR47 Crypto Lake free-sample fallback work, removes future paid/provider-account assumptions, defines provider source priority, and renumbers upcoming implementation packets so the next code stage starts cleanly at WPR49.
+
+## Perp context manifest foundation wave
+
+Decision: R49 perp context manifest foundation complete; ready to open WPR50 feature-pack implementation packet
+Reason: Provider/archive context manifests now carry non-breaking retention, coverage, latest-window, role, and stream-health metadata; Binance USD-M REST latest-window context and Crypto Lake free-sample context remain explicitly diagnostic; fixed-interval gap evidence and variable-cadence non-applicability are recorded; fixture-pack context metadata propagates into family entries and source records; validation passed with focused WPR49 tests, full contract tests, provider intake smoke, import-boundary smoke, compile, and diff check.
+
+## Perp context v2 feature pack wave
+
+Decision: R50 perp context v2 feature pack complete; ready to open WPR51 transparent strategy implementation packet
+Reason: The branch now has a registered `features_perp_context_v2` preset and config, interval-aware premium/funding/OI/flow/quality features, backward-as-of context materialization tests across current context families, cache context-identity coverage, and clean focused, contract, and selected historical validation. Missing optional context remains explicit and non-zero-filled.
+
+## Perp basis convergence strategy wave
+
+Decision: R51 perp basis convergence strategy complete; ready to open WPR52 provider-backed cycle evidence packet
+Reason: The branch now has a registered `perp_basis_convergence_v2` strategy and checked config, bounded metadata, conservative carry-adjusted basis/premium rules, fail-closed v2 quality requirements, latest-window provenance handling, and focused contract, integration, contract-suite, and historical-smoke validation. The strategy remains a research-only single-leg directional convergence proxy and does not add live execution or promotion behavior.
+
+## Provider perp context cycle evidence wave
+
+Decision: R52 provider perp context cycle evidence complete; ready for WPR53 planning
+Reason: The branch now has a checked BTCUSDT provider-backed perp-context-v2 cycle spec, `baseline_no_trade` comparator support for `features_perp_context_v2`, local cycle artifacts under `data/research/historical_cycles/btcusdt_perp_context_v2_foundation`, complete no-trade comparator coverage, and a truthful fail-closed gate result with no candidate pack written. Validation passed compile, focused WPR52 tests, research-cycle contracts, full historical tests, strategy contracts, and diff check.

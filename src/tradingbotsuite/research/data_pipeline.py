@@ -665,7 +665,7 @@ def _ingest_provider_input(
             end_time=str(fetch_payload["end_time"]),
             output_dir=output_dir,
             interval=interval,
-            exchange=str(fetch_payload.get("exchange") or "BINANCE"),
+            exchange=str(fetch_payload["exchange"]) if fetch_payload.get("exchange") is not None else None,
             table=str(fetch_payload.get("table")) if fetch_payload.get("table") is not None else None,
             provider_symbol=(
                 str(fetch_payload.get("provider_symbol") or input_payload.get("provider_symbol"))

@@ -18,6 +18,7 @@ tradingbotsuite_v1_legacy/hyperliquidtestnet.txt
 hyperliquidtestnet.txt
 .env
 .env.*
+.lake_cache/
 
 # Generated Python/package metadata
 build/

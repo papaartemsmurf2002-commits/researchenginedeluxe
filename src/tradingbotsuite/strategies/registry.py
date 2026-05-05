@@ -6,6 +6,7 @@ from tradingbotsuite.strategies.funding_basis import FundingBasisStrategy
 from tradingbotsuite.strategies.hmm_knn import HmmKnnDiagnosticStrategy
 from tradingbotsuite.strategies.lc_reference import LcReferenceStrategy
 from tradingbotsuite.strategies.no_trade import NoTradeStrategy
+from tradingbotsuite.strategies.perp_basis_convergence import PerpBasisConvergenceStrategy
 from tradingbotsuite.strategies.range_reversion import RangeReversionStrategy
 from tradingbotsuite.strategies.regime_adaptive import RegimeAdaptiveStrategy
 from tradingbotsuite.strategies.trend import TrendFollowingStrategy
@@ -19,6 +20,7 @@ def strategy_registry() -> dict[str, type]:
         "volatility_breakout_v1": VolatilityBreakoutStrategy,
         "range_reversion_v1": RangeReversionStrategy,
         "funding_basis_v1": FundingBasisStrategy,
+        "perp_basis_convergence_v2": PerpBasisConvergenceStrategy,
         "regime_adaptive_v1": RegimeAdaptiveStrategy,
         "lc_reference_v1": LcReferenceStrategy,
         "hmm_knn_diagnostic_v1": HmmKnnDiagnosticStrategy,

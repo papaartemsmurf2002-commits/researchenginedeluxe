@@ -150,6 +150,36 @@ STRATEGY_PARAMETER_METADATA: dict[str, StrategyParameterMetadata] = {
         signal_density=SignalDensityControls(min_signal_rate=0.002, max_signal_rate=0.25, max_turnover=0.25),
         failure_modes=("funding_basis_below_threshold", "funding_basis_momentum_conflict"),
     ),
+    "perp_basis_convergence_v2": StrategyParameterMetadata(
+        strategy_id="perp_basis_convergence_v2",
+        default_parameters={
+            "basis_vol_threshold": 10.0,
+            "premium_z_threshold": 1.25,
+            "min_edge_bps": 5.0,
+            "funding_policy": "require_aligned_or_neutral",
+            "spacing_bars": 12,
+        },
+        parameter_space={
+            "basis_vol_threshold": (8.0, 10.0, 12.0),
+            "premium_z_threshold": (1.0, 1.25, 1.5),
+            "min_edge_bps": (2.5, 5.0, 7.5),
+            "funding_policy": ("require_aligned_or_neutral", "carry_adjusted"),
+            "spacing_bars": (8, 12, 16),
+        },
+        holding_window_overrides={
+            "4h": {"spacing_bars": 8, "min_edge_bps": 2.5},
+            "12h": {"spacing_bars": 10},
+            "72h": {"spacing_bars": 18, "basis_vol_threshold": 12.0},
+        },
+        signal_density=SignalDensityControls(min_signal_rate=0.001, max_signal_rate=0.20, max_turnover=0.20),
+        failure_modes=(
+            "perp_context_quality_invalid",
+            "perp_basis_below_threshold",
+            "perp_premium_z_below_threshold",
+            "perp_edge_below_cost_floor",
+            "perp_funding_policy_filter",
+        ),
+    ),
     "regime_adaptive_v1": StrategyParameterMetadata(
         strategy_id="regime_adaptive_v1",
         default_parameters={"spacing_bars": 12},

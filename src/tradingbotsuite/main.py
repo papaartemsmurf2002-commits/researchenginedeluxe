@@ -135,13 +135,16 @@ def parse_args() -> argparse.Namespace:
     binance_vision.add_argument("--download-only", action="store_true")
     binance_vision.add_argument("--strict", action="store_true")
 
-    crypto_lake = subparsers.add_parser("fetch-crypto-lake", help="Fetch or ingest Crypto Lake research archive data")
+    crypto_lake = subparsers.add_parser(
+        "fetch-crypto-lake",
+        help="Fetch Crypto Lake free sample fallback data or ingest a local Crypto Lake export",
+    )
     crypto_lake.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
     crypto_lake.add_argument("--data-family", required=True, choices=["kline", "trade", "funding_rate", "open_interest"])
     crypto_lake.add_argument("--path", default=None, help="Local Crypto Lake export path: csv/json/jsonl/parquet")
     crypto_lake.add_argument("--start-time", default=None)
     crypto_lake.add_argument("--end-time", default=None)
-    crypto_lake.add_argument("--exchange", default="BINANCE")
+    crypto_lake.add_argument("--exchange", default=None)
     crypto_lake.add_argument("--table", default=None)
     crypto_lake.add_argument("--provider-symbol", default=None)
     crypto_lake.add_argument("--interval", default=None)

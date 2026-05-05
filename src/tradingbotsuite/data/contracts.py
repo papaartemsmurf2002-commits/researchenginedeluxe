@@ -49,6 +49,14 @@ REQUIRED_DATA_MANIFEST_FIELDS = (
     "quality_flags",
     "non_promotable_reasons",
 )
+RESERVED_DATA_MANIFEST_FIELDS = frozenset(
+    {
+        *REQUIRED_DATA_MANIFEST_FIELDS,
+        "observe_only",
+        "promotion_ready",
+    }
+)
+BROAD_CONTEXT_COVERAGE_SCOPES = frozenset({"multi_year", "full_history", "broad_historical", "oos_stress_coverage"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +159,8 @@ def build_data_manifest(
     manifest: dict[str, Any] = {
         "manifest_version": DATA_MANIFEST_VERSION,
         "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
         "source_name": source_name,
         "source_type": source_type,
         "symbol": symbol.strip().upper(),
@@ -171,7 +181,11 @@ def build_data_manifest(
     if data_path is not None:
         manifest["data_path"] = data_path
     if extra:
-        manifest.update(dict(extra))
+        extra_payload = dict(extra)
+        reserved = sorted(set(extra_payload) & RESERVED_DATA_MANIFEST_FIELDS)
+        if reserved:
+            raise ValueError(f"extra_must_not_override_reserved_manifest_fields:{','.join(reserved)}")
+        manifest.update(extra_payload)
     return manifest
 
 
@@ -223,6 +237,10 @@ def validate_data_manifest(manifest: Mapping[str, Any]) -> DataManifestValidatio
         errors.append(f"manifest_version_must_be:{DATA_MANIFEST_VERSION}")
     if manifest.get("research_only") is not True:
         errors.append("research_only_must_be_true")
+    if "observe_only" in manifest and manifest.get("observe_only") is not True:
+        errors.append("observe_only_must_be_true")
+    if "promotion_ready" in manifest and manifest.get("promotion_ready") is not False:
+        errors.append("promotion_ready_must_be_false")
 
     source_name = _optional_str(manifest.get("source_name"))
     source_type = _optional_str(manifest.get("source_type"))
@@ -282,9 +300,11 @@ def validate_data_manifest(manifest: Mapping[str, Any]) -> DataManifestValidatio
     if missing_fields & ACCOUNT_EXECUTION_FIELD_NAMES:
         quality_flags.add("account_execution_missingness_preserved")
 
+    _validate_context_metadata(manifest, errors, quality_flags)
+
     point_in_time_compatible = bool(event_time_field and receive_time_field)
     diagnostic_only = bool(descriptor and descriptor.diagnostic_only_by_default) or not point_in_time_compatible
-    promotable = False if diagnostic_only or errors else bool(manifest.get("promotion_ready", False))
+    promotable = False
 
     return DataManifestValidation(
         valid=not errors,
@@ -305,6 +325,36 @@ def assert_valid_data_manifest(manifest: Mapping[str, Any]) -> DataManifestValid
     if not result.valid:
         raise ValueError("; ".join(result.errors))
     return result
+
+
+def _validate_context_metadata(
+    manifest: Mapping[str, Any],
+    errors: list[str],
+    quality_flags: set[str],
+) -> None:
+    role = _optional_str(manifest.get("context_family_role"))
+    if role is not None:
+        if role != "perp_context":
+            errors.append(f"context_family_role_must_be:perp_context:{role}")
+        else:
+            quality_flags.add("perp_context_family")
+
+    latest_window_raw = manifest.get("latest_window_only")
+    if latest_window_raw is not None and not isinstance(latest_window_raw, bool):
+        errors.append("latest_window_only_must_be_bool")
+    coverage_scope = _optional_str(manifest.get("coverage_scope"))
+    if latest_window_raw is True:
+        quality_flags.add("latest_window_only_context")
+        if coverage_scope in BROAD_CONTEXT_COVERAGE_SCOPES:
+            errors.append(f"latest_window_context_cannot_claim_broad_coverage:{coverage_scope}")
+
+    source_access_mode = _optional_str(manifest.get("source_access_mode"))
+    if source_access_mode == "free_sample":
+        quality_flags.add("free_sample_diagnostic_only")
+        if manifest.get("diagnostic_only") is not True:
+            errors.append("free_sample_manifest_must_be_diagnostic_only")
+        if coverage_scope not in {None, "free_sample_diagnostic"}:
+            errors.append(f"free_sample_manifest_cannot_claim_coverage_scope:{coverage_scope}")
 
 
 def registered_only_manifest(*, source_name: str, symbol: str, data_family: str) -> dict[str, Any]:

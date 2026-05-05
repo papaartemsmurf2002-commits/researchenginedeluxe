@@ -1,0 +1,39 @@
+{
+  "cycle_id": "btcusdt-perp-context-v2-foundation",
+  "symbol": "BTCUSDT",
+  "output_dir": "../../data/research/historical_cycles/btcusdt_perp_context_v2_foundation",
+  "holding_windows": ["4h", "12h", "24h", "72h"],
+  "data": {
+    "dataset_manifest_paths": [
+      "../../data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+    ],
+    "local_fixture_dir": null,
+    "synthetic_fixture": false
+  },
+  "features": {
+    "feature_sets": [
+      "features_perp_context_v2"
+    ]
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "perp_basis_convergence_v2"
+  ],
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 8,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1,
+    "max_single_split_pnl_share": 0.5,
+    "min_cost_stress_survival_rate": 1.0,
+    "split_modes": [
+      "purged_embargoed_walk_forward"
+    ]
+  },
+  "optimizer": {
+    "method_sequence": ["coarse_lhs", "adaptive_grid", "stability_region_refine"],
+    "max_candidates_per_strategy": 2,
+    "top_regions_to_refine": 2
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "strategy_id": "perp_basis_convergence_v2",
+  "strategy_version": "v1",
+  "enabled": true,
+  "feature_set_id": "features_perp_context_v2",
+  "holding_period": "24h",
+  "parameters": {
+    "basis_vol_threshold": 10.0,
+    "premium_z_threshold": 1.25,
+    "min_edge_bps": 5.0,
+    "funding_policy": "require_aligned_or_neutral",
+    "spacing_bars": 12
+  }
+}

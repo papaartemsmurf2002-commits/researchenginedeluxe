@@ -408,11 +408,19 @@ def test_provider_kline_fixture_pack_builder_includes_provider_context_manifests
         family_path = Path(payload["path"])
         assert family_path.exists()
         assert payload["sha256"] == _file_sha256(family_path)
+        assert payload["context_family_role"] == "perp_context"
+        assert payload["stream_health"]["status"] == "not_applicable_batch_backfill"
+        assert payload["promotion_ready"] is False
         family_frame = pd.read_parquet(family_path)
         assert {"event_time_ms", "symbol", "source_provider", "source_data_family"} <= set(family_frame.columns)
         assert set(family_frame["symbol"]) == {"BTCUSDT"}
         assert set(family_frame["source_data_family"]) == {family}
         assert int(family_frame["event_time_ms"].max()) <= rows[-1]["time_ms"]
+    assert context_families["funding_rate"]["coverage_scope"] == "local_vendor_export"
+    assert context_families["funding_rate"]["latest_window_only"] is False
+    assert context_families["premium_index"]["coverage_scope"] == "public_archive_partition"
+    assert context_families["premium_index"]["latest_window_only"] is False
+    assert all(record["context_family_role"] == "perp_context" for record in manifest["source"]["context_sources"])
     funding = pd.read_parquet(context_families["funding_rate"]["path"])
     assert funding["funding_rate"].max() < 0.5
     agg_trade = pd.read_parquet(context_families["agg_trade"]["path"])
@@ -480,7 +488,11 @@ def test_provider_kline_fixture_pack_builder_accepts_binance_usdm_rest_context_m
 
     assert set(context_families) == {"funding_rate"}
     assert manifest["families"]["funding_rate"]["source_name"] == "binance_usdm_rest"
+    assert manifest["families"]["funding_rate"]["coverage_scope"] == "latest_window_backfill"
+    assert manifest["families"]["funding_rate"]["latest_window_only"] is True
+    assert manifest["families"]["funding_rate"]["retention_policy"]["claim"] == "not_multi_year_coverage"
     assert manifest["source"]["context_sources"][0]["source_name"] == "binance_usdm_rest"
+    assert manifest["source"]["context_sources"][0]["coverage_scope"] == "latest_window_backfill"
 
 
 @pytest.mark.asyncio
@@ -518,6 +530,63 @@ async def test_provider_kline_fixture_pack_builder_accepts_collected_binance_con
 
     assert set(validation.to_payload()["optional_context_families"]) == {"funding_rate"}
     assert manifest["families"]["funding_rate"]["source_name"] == "binance_usdm_rest"
+
+
+def test_provider_kline_fixture_pack_builder_rejects_latest_window_multi_year_context_claim(tmp_path: Path) -> None:
+    rows = _provider_kline_rows(row_count=6)
+    source_manifest_path = _write_provider_kline_manifest(tmp_path, rows)
+    context_manifest_path = _write_provider_context_manifest(
+        tmp_path,
+        "funding_rate",
+        _provider_funding_context_rows(rows),
+        source_name="binance_usdm_rest",
+        manifest_update={
+            "latest_window_only": True,
+            "coverage_scope": "multi_year",
+            "context_family_role": "perp_context",
+        },
+    )
+
+    with pytest.raises(ValueError, match="latest_window_context_cannot_claim_broad_coverage"):
+        build_provider_kline_fixture_pack(
+            source_manifest_path=source_manifest_path,
+            output_dir=tmp_path / "fixture_pack",
+            row_limit=4,
+            context_manifest_paths=[context_manifest_path],
+        )
+
+
+def test_provider_kline_fixture_pack_builder_preserves_free_sample_context_metadata(tmp_path: Path) -> None:
+    rows = _provider_kline_rows(row_count=6)
+    source_manifest_path = _write_provider_kline_manifest(tmp_path, rows)
+    context_manifest_path = _write_provider_context_manifest(
+        tmp_path,
+        "open_interest",
+        _provider_open_interest_context_rows(rows),
+        source_name="crypto_lake",
+        manifest_update={
+            "source_access_mode": "free_sample",
+            "free_sample_data": True,
+            "diagnostic_only": True,
+        },
+    )
+
+    result = build_provider_kline_fixture_pack(
+        source_manifest_path=source_manifest_path,
+        output_dir=tmp_path / "fixture_pack",
+        row_limit=4,
+        context_manifest_paths=[context_manifest_path],
+    )
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    context_entry = manifest["families"]["open_interest"]
+    source_entry = manifest["source"]["context_sources"][0]
+
+    assert context_entry["source_access_mode"] == "free_sample"
+    assert context_entry["free_sample_data"] is True
+    assert context_entry["diagnostic_only"] is True
+    assert context_entry["coverage_scope"] == "free_sample_diagnostic"
+    assert context_entry["retention_policy"]["claim"] == "sample_coverage_only"
+    assert source_entry["coverage_scope"] == "free_sample_diagnostic"
 
 
 @pytest.mark.parametrize(
@@ -716,6 +785,13 @@ def test_historical_fixture_pack_validates_optional_family_entries(tmp_path: Pat
         manifest["families"][family] = {
             "path": path.name,
             "data_family": family,
+            "context_family_role": "perp_context",
+            "coverage_scope": "public_archive_partition",
+            "latest_window_only": False,
+            "retention_policy": {
+                "scope": "public_archive_partition",
+                "claim": "coverage_limited_to_downloaded_archive_partition",
+            },
             "required": False,
             "sha256": f"sha256:{_file_sha256(path)}",
             "row_count": len(optional),
@@ -747,6 +823,7 @@ def test_historical_fixture_pack_validates_optional_family_entries(tmp_path: Pat
     assert context_families["funding_rate"]["path"] == str(manifest_path.parent / "funding_rate.parquet")
     assert context_families["funding_rate"]["event_time_field"] == "event_time_ms"
     assert context_families["funding_rate"]["sha256"] == _file_sha256(manifest_path.parent / "funding_rate.parquet")
+    assert context_families["funding_rate"]["context_family_role"] == "perp_context"
 
 
 def test_historical_fixture_pack_rejects_context_family_without_symbol_time_hash_or_row_count(tmp_path: Path) -> None:

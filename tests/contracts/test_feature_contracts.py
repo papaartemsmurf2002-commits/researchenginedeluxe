@@ -17,6 +17,31 @@ from tradingbotsuite.features import (
 from tradingbotsuite.features.registry import WT3D_COLUMNS, manifest_from_preset
 from tradingbotsuite.research.hmm_knn import WT3D_FEATURE_COLUMNS
 
+PERP_CONTEXT_V2_COLUMNS = (
+    "perp_mark_index_basis",
+    "perp_premium",
+    "perp_premium_z_7d",
+    "perp_premium_slope_8h",
+    "perp_last_funding_rate",
+    "perp_funding_z_7d",
+    "perp_funding_momentum",
+    "cal_time_since_last_funding_h",
+    "cal_time_to_next_funding_h",
+    "oi_notional",
+    "oi_delta_1h",
+    "oi_delta_z_7d",
+    "oi_volume_ratio",
+    "flow_buy_sell_ratio",
+    "flow_signed_taker_notional",
+    "flow_signed_taker_z_7d",
+    "quality_context_missing_count",
+    "quality_has_funding_gap",
+    "quality_has_oi_gap",
+    "quality_has_premium_gap",
+    "quality_provider_backed_all_required",
+    "quality_latest_window_context_only",
+)
+
 
 def _bars(row_count: int = 96) -> pd.DataFrame:
     rows = []
@@ -51,6 +76,7 @@ def test_feature_registry_contains_stage_four_packs_and_presets() -> None:
         "trend_chop_v1",
         "volatility_v1",
         "perp_context_v1",
+        "perp_context_v2",
         "microstructure_context_v1",
         "wt3d_v1",
         "cross_asset_v1",
@@ -59,6 +85,10 @@ def test_feature_registry_contains_stage_four_packs_and_presets() -> None:
     assert tuple(WT3D_FEATURE_COLUMNS) == WT3D_COLUMNS
     assert "wt3d_v1" not in feature_set_presets()["features_full_context_no_wt"]
     assert "wt3d_v1" in feature_set_presets()["features_full_context_wt3d"]
+    assert feature_set_presets()["features_perp_context_v2"] == ("perp_context_v2",)
+    assert registry["perp_context_v2"].input_families == ("funding_rate", "premium_index", "open_interest", "agg_trade")
+    assert registry["perp_context_v2"].point_in_time_safe is True
+    assert registry["perp_context_v2"].optional is True
     assert feature_set_presets()["features_microstructure_filter_only"] == ("microstructure_context_v1",)
     assert feature_set_presets()["features_cross_asset_context"] == ("cross_asset_v1",)
 
@@ -92,6 +122,18 @@ def test_preset_json_files_match_registered_manifests() -> None:
 
         assert payload == manifest.to_payload()
         assert validate_feature_manifest(payload).valid is True
+
+
+def test_perp_context_v2_manifest_contract_contains_required_columns_and_families() -> None:
+    manifest = manifest_from_preset("features_perp_context_v2")
+
+    assert manifest.feature_packs == ("perp_context_v2",)
+    assert manifest.feature_columns == PERP_CONTEXT_V2_COLUMNS
+    assert manifest.input_families == ("funding_rate", "premium_index", "open_interest", "agg_trade")
+    assert not {"liquidation", "depth_snapshot", "book_ticker", "cross_exchange", "cross_asset", "eth"} & set(
+        manifest.input_families
+    )
+    assert validate_feature_manifest(manifest).valid is True
 
 
 def test_feature_frame_is_backward_only_when_future_price_changes() -> None:
@@ -131,6 +173,29 @@ def test_missing_context_is_explicit_and_not_zero_filled() -> None:
     assert result.frame["missing_funding_rate"].eq(1).all()
     assert "funding_rate" in result.availability_report.missing_context_columns
     assert result.availability_report.missing_rates["funding_rate"] == 1.0
+
+
+def test_perp_context_v2_missing_optional_context_is_nan_with_quality_flags() -> None:
+    result = build_feature_frame(
+        _bars().loc[:, ["bar_time_ms", "open", "high", "low", "close"]],
+        feature_set_id="features_perp_context_v2",
+        feature_packs=feature_set_presets()["features_perp_context_v2"],
+        interval_ms=900_000,
+    )
+
+    assert result.frame["perp_last_funding_rate"].isna().all()
+    assert result.frame["missing_perp_last_funding_rate"].eq(1).all()
+    assert result.frame["perp_premium"].isna().all()
+    assert result.frame["missing_perp_premium"].eq(1).all()
+    assert result.frame["oi_notional"].isna().all()
+    assert result.frame["missing_oi_notional"].eq(1).all()
+    assert result.frame["quality_has_funding_gap"].eq(1.0).all()
+    assert result.frame["quality_has_oi_gap"].eq(1.0).all()
+    assert result.frame["quality_has_premium_gap"].eq(1.0).all()
+    assert result.frame["quality_provider_backed_all_required"].eq(0.0).all()
+    assert result.frame["quality_context_missing_count"].ge(3.0).all()
+    assert result.frame["missing_quality_context_missing_count"].eq(0).all()
+    assert "perp_last_funding_rate" in result.availability_report.missing_context_columns
 
 
 def test_no_wt_feature_set_runs_without_wt_columns() -> None:

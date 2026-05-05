@@ -16,6 +16,7 @@ from tradingbotsuite.features.registry import (
     CROSS_ASSET_COLUMNS,
     MICROSTRUCTURE_COLUMNS,
     PERP_CONTEXT_COLUMNS,
+    PERP_CONTEXT_V2_COLUMNS,
     PRICE_PATH_COLUMNS,
     TREND_CHOP_COLUMNS,
     VOLATILITY_COLUMNS,
@@ -64,7 +65,7 @@ def build_feature_frame(
     )
     features = prepared.loc[:, [bar_time_column, "feature_time_ms"]].copy()
     for pack_id in feature_packs:
-        pack_frame = _build_pack(prepared, pack_id=pack_id, price_column=price_column)
+        pack_frame = _build_pack(prepared, pack_id=pack_id, price_column=price_column, interval_ms=interval_ms)
         for column in pack_frame.columns:
             features[column] = pack_frame[column]
 
@@ -82,7 +83,7 @@ def build_feature_frame(
     )
 
 
-def _build_pack(frame: pd.DataFrame, *, pack_id: str, price_column: str | None) -> pd.DataFrame:
+def _build_pack(frame: pd.DataFrame, *, pack_id: str, price_column: str | None, interval_ms: int) -> pd.DataFrame:
     if pack_id == "price_path_v1":
         return _price_path_features(frame, price_column=price_column)
     if pack_id == "trend_chop_v1":
@@ -91,6 +92,8 @@ def _build_pack(frame: pd.DataFrame, *, pack_id: str, price_column: str | None) 
         return _volatility_features(frame, price_column=price_column)
     if pack_id == "perp_context_v1":
         return _context_features(frame, PERP_CONTEXT_COLUMNS)
+    if pack_id == "perp_context_v2":
+        return _perp_context_v2_features(frame, interval_ms=interval_ms)
     if pack_id == "microstructure_context_v1":
         return _context_features(frame, MICROSTRUCTURE_COLUMNS)
     if pack_id == "wt3d_v1":
@@ -173,6 +176,81 @@ def _context_features(frame: pd.DataFrame, columns: Sequence[str]) -> pd.DataFra
     return result
 
 
+def _perp_context_v2_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.DataFrame:
+    result = pd.DataFrame(index=frame.index)
+    row_count = len(frame)
+    bars_1h = _bars_for_duration(interval_ms=interval_ms, duration_ms=3_600_000)
+    bars_8h = _bars_for_duration(interval_ms=interval_ms, duration_ms=8 * 3_600_000)
+    bars_7d = _bars_for_duration(interval_ms=interval_ms, duration_ms=7 * 24 * 3_600_000)
+
+    mark_price = _optional_numeric(frame, "mark_price")
+    index_price = _optional_numeric(frame, "index_price")
+    basis_bps = _optional_numeric(frame, "basis_bps")
+    premium_basis_rate = _first_available_numeric(frame, ("premium_basis_rate", "premium_close", "premium_index"))
+    funding_rate = _optional_numeric(frame, "funding_rate")
+    open_interest = _optional_numeric(frame, "open_interest")
+    oi_notional = _first_available_numeric(frame, ("open_interest_value", "open_interest_value_usd", "oi_notional"))
+    signed_ratio = _first_available_numeric(frame, ("primary_signed_imbalance_ratio", "signed_imbalance_ratio"))
+    quote_volume = _optional_numeric(frame, "quote_volume")
+    taker_buy_quote = _optional_numeric(frame, "taker_buy_quote_volume")
+    sell_quote = _optional_numeric(frame, "sell_quote_volume")
+
+    if premium_basis_rate is None and mark_price is not None and index_price is not None:
+        premium_basis_rate = (mark_price - index_price) / index_price.replace(0.0, np.nan)
+    if premium_basis_rate is None and basis_bps is not None:
+        premium_basis_rate = basis_bps / 10_000.0
+    if oi_notional is None and open_interest is not None:
+        close = _optional_numeric(frame, "close")
+        oi_notional = open_interest * close if close is not None else open_interest
+
+    result["perp_mark_index_basis"] = premium_basis_rate if premium_basis_rate is not None else _nan_series(frame)
+    result["perp_premium"] = premium_basis_rate if premium_basis_rate is not None else _nan_series(frame)
+    result["perp_premium_z_7d"] = _rolling_zscore(result["perp_premium"], bars_7d)
+    result["perp_premium_slope_8h"] = _rolling_slope(result["perp_premium"], bars_8h)
+    result["perp_last_funding_rate"] = funding_rate if funding_rate is not None else _nan_series(frame)
+    result["perp_funding_z_7d"] = _rolling_zscore(result["perp_last_funding_rate"], bars_7d)
+    funding_change = _optional_numeric(frame, "funding_rate_change")
+    result["perp_funding_momentum"] = funding_change if funding_change is not None else result["perp_last_funding_rate"].diff(bars_8h)
+    result["cal_time_since_last_funding_h"] = _hours_since_last_funding(frame, funding_rate is not None)
+    result["cal_time_to_next_funding_h"] = _hours_to_next_funding(frame)
+    result["oi_notional"] = oi_notional if oi_notional is not None else _nan_series(frame)
+    result["oi_delta_1h"] = result["oi_notional"].diff(bars_1h)
+    result["oi_delta_z_7d"] = _rolling_zscore(result["oi_delta_1h"], bars_7d)
+    result["oi_volume_ratio"] = _oi_volume_ratio(result["oi_notional"], frame)
+
+    result["flow_buy_sell_ratio"] = _flow_buy_sell_ratio(frame, taker_buy_quote, sell_quote, quote_volume)
+    result["flow_signed_taker_notional"] = _flow_signed_notional(frame, signed_ratio, quote_volume, taker_buy_quote, sell_quote)
+    result["flow_signed_taker_z_7d"] = _rolling_zscore(result["flow_signed_taker_notional"], bars_7d)
+
+    funding_present = _source_present(frame, ("funding_rate", "last_funding_rate"))
+    premium_present = _source_present(frame, ("premium_basis_rate", "premium_index", "premium_close", "mark_price", "index_price"))
+    oi_present = _source_present(frame, ("open_interest", "open_interest_value", "open_interest_value_usd"))
+    latest_window_only = _optional_numeric(frame, "quality_latest_window_context_only_source")
+    if latest_window_only is None:
+        latest_window_only = _optional_numeric(frame, "latest_window_only")
+
+    missing_required = pd.concat(
+        [
+            (~funding_present).astype(int),
+            (~premium_present).astype(int),
+            (~oi_present).astype(int),
+        ],
+        axis=1,
+    )
+    result["quality_context_missing_count"] = missing_required.sum(axis=1).astype(float)
+    result["quality_has_funding_gap"] = (~funding_present).astype(float)
+    result["quality_has_oi_gap"] = (~oi_present).astype(float)
+    result["quality_has_premium_gap"] = (~premium_present).astype(float)
+    result["quality_provider_backed_all_required"] = (result["quality_context_missing_count"] == 0).astype(float)
+    result["quality_latest_window_context_only"] = (
+        pd.to_numeric(latest_window_only, errors="coerce").fillna(0.0).clip(lower=0.0, upper=1.0)
+        if latest_window_only is not None
+        else pd.Series(np.zeros(row_count, dtype=float), index=frame.index)
+    )
+
+    return result.loc[:, PERP_CONTEXT_V2_COLUMNS]
+
+
 def _wt3d_features(frame: pd.DataFrame, *, price_column: str | None) -> pd.DataFrame:
     price = _price_series(frame, price_column=price_column).ffill().fillna(0.0)
 
@@ -238,7 +316,7 @@ def _availability_report(frame: pd.DataFrame, manifest: FeatureManifest) -> Feat
     missing_context_columns = tuple(
         column
         for column, rate in missing_rates.items()
-        if rate > 0.0 and column in set(PERP_CONTEXT_COLUMNS + MICROSTRUCTURE_COLUMNS + CROSS_ASSET_COLUMNS)
+        if rate > 0.0 and column in set(PERP_CONTEXT_COLUMNS + PERP_CONTEXT_V2_COLUMNS + MICROSTRUCTURE_COLUMNS + CROSS_ASSET_COLUMNS)
     )
     return FeatureAvailabilityReport(
         row_count=int(len(frame)),
@@ -289,6 +367,106 @@ def _rolling_slope(series: pd.Series, window: int) -> pd.Series:
         return float(np.sum(x * y) / denominator)
 
     return series.rolling(window, min_periods=window).apply(slope, raw=True)
+
+
+def _bars_for_duration(*, interval_ms: int, duration_ms: int) -> int:
+    if interval_ms <= 0:
+        return 1
+    return max(1, int(round(duration_ms / interval_ms)))
+
+
+def _rolling_zscore(series: pd.Series, window: int) -> pd.Series:
+    mean = series.rolling(window, min_periods=min(20, window)).mean()
+    std = series.rolling(window, min_periods=min(20, window)).std(ddof=0)
+    return (series - mean) / std.replace(0.0, np.nan)
+
+
+def _nan_series(frame: pd.DataFrame) -> pd.Series:
+    return pd.Series(np.nan, index=frame.index, dtype="float64")
+
+
+def _optional_numeric(frame: pd.DataFrame, column: str) -> pd.Series | None:
+    if column not in frame.columns:
+        return None
+    return pd.to_numeric(frame[column], errors="coerce").replace([np.inf, -np.inf], np.nan)
+
+
+def _first_available_numeric(frame: pd.DataFrame, columns: Sequence[str]) -> pd.Series | None:
+    for column in columns:
+        series = _optional_numeric(frame, column)
+        if series is not None:
+            return series
+    return None
+
+
+def _source_present(frame: pd.DataFrame, columns: Sequence[str]) -> pd.Series:
+    present = pd.Series(False, index=frame.index)
+    for column in columns:
+        series = _optional_numeric(frame, column)
+        if series is not None:
+            present = present | series.notna()
+    return present
+
+
+def _hours_since_last_funding(frame: pd.DataFrame, funding_context_available: bool) -> pd.Series:
+    if not funding_context_available:
+        return _nan_series(frame)
+    time_ms = _optional_numeric(frame, "bar_time_ms")
+    if time_ms is None:
+        time_ms = _optional_numeric(frame, "feature_time_ms")
+    if time_ms is None:
+        return _nan_series(frame)
+    timestamp = pd.to_datetime(time_ms, unit="ms", utc=True)
+    hour = timestamp.dt.hour + (timestamp.dt.minute / 60.0) + (timestamp.dt.second / 3600.0)
+    return (hour % 8.0).astype(float)
+
+
+def _hours_to_next_funding(frame: pd.DataFrame) -> pd.Series:
+    time_ms = _optional_numeric(frame, "bar_time_ms")
+    if time_ms is None:
+        time_ms = _optional_numeric(frame, "feature_time_ms")
+    if time_ms is None:
+        return _nan_series(frame)
+    timestamp = pd.to_datetime(time_ms, unit="ms", utc=True)
+    hour = timestamp.dt.hour + (timestamp.dt.minute / 60.0) + (timestamp.dt.second / 3600.0)
+    return ((8.0 - (hour % 8.0)) % 8.0).astype(float)
+
+
+def _oi_volume_ratio(oi_notional: pd.Series, frame: pd.DataFrame) -> pd.Series:
+    volume = _first_available_numeric(frame, ("quote_volume", "volume"))
+    if volume is None:
+        return _nan_series(frame)
+    return oi_notional / volume.replace(0.0, np.nan)
+
+
+def _flow_buy_sell_ratio(
+    frame: pd.DataFrame,
+    taker_buy_quote: pd.Series | None,
+    sell_quote: pd.Series | None,
+    quote_volume: pd.Series | None,
+) -> pd.Series:
+    if taker_buy_quote is not None and sell_quote is not None:
+        return taker_buy_quote / sell_quote.replace(0.0, np.nan)
+    if taker_buy_quote is not None and quote_volume is not None:
+        sell = quote_volume - taker_buy_quote
+        return taker_buy_quote / sell.replace(0.0, np.nan)
+    return _nan_series(frame)
+
+
+def _flow_signed_notional(
+    frame: pd.DataFrame,
+    signed_ratio: pd.Series | None,
+    quote_volume: pd.Series | None,
+    taker_buy_quote: pd.Series | None,
+    sell_quote: pd.Series | None,
+) -> pd.Series:
+    if signed_ratio is not None and quote_volume is not None:
+        return signed_ratio * quote_volume
+    if taker_buy_quote is not None and sell_quote is not None:
+        return taker_buy_quote - sell_quote
+    if taker_buy_quote is not None and quote_volume is not None:
+        return (2.0 * taker_buy_quote) - quote_volume
+    return _nan_series(frame)
 
 
 def _hurst_proxy(values: np.ndarray) -> float:

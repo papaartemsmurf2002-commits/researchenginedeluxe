@@ -23,6 +23,17 @@ PRICE_COLUMN_ALIASES = {
 REQUIRED_FAMILIES = {"bars"}
 OPTIONAL_FAMILIES = {"funding_rate", "premium_index", "open_interest", "agg_trade", "lower_timeframe_bars"}
 CONTEXT_FAMILIES = ("funding_rate", "premium_index", "open_interest", "agg_trade")
+CONTEXT_MANIFEST_METADATA_FIELDS = (
+    "retention_policy",
+    "coverage_scope",
+    "latest_window_only",
+    "context_family_role",
+    "stream_health",
+    "source_access_mode",
+    "diagnostic_only",
+    "free_sample_data",
+)
+BROAD_CONTEXT_COVERAGE_SCOPES = {"multi_year", "full_history", "broad_historical", "oos_stress_coverage"}
 PROVIDER_CONTEXT_FAMILY_SOURCES = {
     "funding_rate": {"binance_vision", "crypto_lake", "binance_usdm_rest"},
     "premium_index": {"binance_vision", "binance_usdm_rest"},
@@ -452,6 +463,8 @@ def validate_historical_fixture_pack_manifest(
                         entry_errors.append(f"data_family_mismatch:{declared_data_family}:{family_key}")
             if family_key in CONTEXT_FAMILIES and not _context_family_has_supported_columns(entry_path, family=family_key):
                 entry_errors.append("unsupported_context_columns")
+            if family_key in CONTEXT_FAMILIES:
+                _validate_context_family_metadata(entry, family=family_key, errors=entry_errors)
             errors.extend(f"family_{family_name}_{error}" for error in entry_errors)
             warnings.extend(f"family_{family_name}_{warning}" for warning in entry_warnings)
             if family_key in CONTEXT_FAMILIES and not entry_errors:
@@ -539,7 +552,7 @@ def _family_payload(
     row_count: int | None,
     default_event_time_field: str,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "family": family_key,
         "path": str(entry_path),
         "sha256": _file_sha256(entry_path),
@@ -553,6 +566,121 @@ def _family_payload(
         "observe_only": True,
         "promotion_ready": False,
     }
+    payload.update(_selected_context_metadata(entry))
+    return payload
+
+
+def _selected_context_metadata(entry: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        field: entry[field]
+        for field in CONTEXT_MANIFEST_METADATA_FIELDS
+        if field in entry
+    }
+
+
+def _provider_context_metadata(
+    manifest: Mapping[str, Any],
+    *,
+    source_name: str,
+    family: str,
+) -> dict[str, Any]:
+    metadata = _selected_context_metadata(manifest)
+    metadata.setdefault("context_family_role", "perp_context")
+    metadata.setdefault(
+        "stream_health",
+        {
+            "status": "not_applicable_batch_backfill",
+            "reason": "fixture context is derived from local archive/backfill data",
+        },
+    )
+    if source_name == "binance_usdm_rest":
+        metadata.setdefault("coverage_scope", "latest_window_backfill")
+        metadata.setdefault("latest_window_only", True)
+        metadata.setdefault(
+            "retention_policy",
+            {
+                "scope": "direct_endpoint_latest_window",
+                "claim": "not_multi_year_coverage",
+            },
+        )
+    elif source_name == "binance_vision":
+        metadata.setdefault("coverage_scope", "public_archive_partition")
+        metadata.setdefault("latest_window_only", False)
+        metadata.setdefault(
+            "retention_policy",
+            {
+                "scope": "public_archive_partition",
+                "claim": "coverage_limited_to_downloaded_archive_partition",
+            },
+        )
+    elif source_name == "crypto_lake":
+        free_sample = metadata.get("source_access_mode") == "free_sample" or manifest.get("free_sample_data") is True
+        if free_sample:
+            metadata["source_access_mode"] = "free_sample"
+            metadata["free_sample_data"] = True
+            metadata.setdefault("diagnostic_only", True)
+            metadata.setdefault("coverage_scope", "free_sample_diagnostic")
+            metadata.setdefault(
+                "retention_policy",
+                {
+                    "scope": "anonymous_free_sample",
+                    "claim": "sample_coverage_only",
+                },
+            )
+        else:
+            metadata.setdefault("coverage_scope", "local_vendor_export")
+            metadata.setdefault(
+                "retention_policy",
+                {
+                    "scope": "local_export_file",
+                    "claim": "coverage_limited_to_local_export",
+                },
+            )
+        metadata.setdefault("latest_window_only", False)
+    if family not in CONTEXT_FAMILIES:
+        metadata.pop("context_family_role", None)
+    return metadata
+
+
+def _optional_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _validate_context_family_metadata(
+    entry: Mapping[str, Any],
+    *,
+    family: str,
+    errors: list[str],
+) -> None:
+    role = _optional_text(entry.get("context_family_role"))
+    if role is not None and role != "perp_context":
+        errors.append(f"context_family_role_mismatch:{role}:perp_context")
+
+    latest_window_raw = entry.get("latest_window_only")
+    if latest_window_raw is not None and not isinstance(latest_window_raw, bool):
+        errors.append("latest_window_only_must_be_bool")
+    latest_window_only = latest_window_raw is True
+
+    coverage_scope = _optional_text(entry.get("coverage_scope"))
+    if latest_window_only and coverage_scope in BROAD_CONTEXT_COVERAGE_SCOPES:
+        errors.append(f"latest_window_context_cannot_claim_broad_coverage:{coverage_scope}")
+
+    source_name = _optional_text(entry.get("source_name"))
+    if source_name == "binance_usdm_rest" and (latest_window_raw is not None or coverage_scope is not None):
+        if latest_window_raw is not True:
+            errors.append("latest_window_only_required_for_binance_usdm_rest_context")
+        if coverage_scope != "latest_window_backfill":
+            errors.append(f"coverage_scope_required_for_binance_usdm_rest_context:{coverage_scope}")
+
+    source_access_mode = _optional_text(entry.get("source_access_mode"))
+    if source_name == "crypto_lake" and source_access_mode == "free_sample":
+        if coverage_scope != "free_sample_diagnostic":
+            errors.append(f"coverage_scope_required_for_crypto_lake_free_sample_context:{coverage_scope}")
+        if entry.get("diagnostic_only") is not True:
+            errors.append("diagnostic_only_required_for_crypto_lake_free_sample_context")
 
 
 def _validate_parquet_entry(
@@ -800,11 +928,12 @@ def _build_provider_context_family_entries(
             if duplicate_mask.any():
                 raise ValueError(f"provider_context_duplicate_events:{family}")
 
+        context_metadata = _provider_context_metadata(manifest, source_name=source_name, family=family)
         fixture_frame = fixture_frame.sort_values(["symbol", "event_time_ms"], kind="mergesort").reset_index(drop=True)
         family_path = output_dir / f"{family}.parquet"
         fixture_frame.to_parquet(family_path, index=False)
         family_sha = _file_sha256(family_path)
-        family_entries[family] = {
+        family_entry = {
             "path": family_path.name,
             "data_family": family,
             "source_name": source_name,
@@ -829,7 +958,13 @@ def _build_provider_context_family_entries(
             "fixture_last_time_ms": int(fixture_frame["event_time_ms"].max()),
             "derivation_type": "fixture_context_event_time_slice",
             "lookahead_policy": "context_event_time_ms_lte_fixture_last_bar_time_ms",
+            **context_metadata,
         }
+        entry_errors: list[str] = []
+        _validate_context_family_metadata(family_entry, family=family, errors=entry_errors)
+        if entry_errors:
+            raise ValueError(f"provider_context_metadata_invalid:{family}:{','.join(entry_errors)}")
+        family_entries[family] = family_entry
         source_records.append(
             {
                 "data_family": family,
@@ -847,6 +982,7 @@ def _build_provider_context_family_entries(
                 "research_only": True,
                 "observe_only": True,
                 "promotion_ready": False,
+                **context_metadata,
             }
         )
     return family_entries, source_records

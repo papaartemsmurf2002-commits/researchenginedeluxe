@@ -42,6 +42,7 @@ SUPPORTED_BINANCE_VISION_DATA_FAMILIES = frozenset({"kline", "agg_trade", "trade
 SUPPORTED_CRYPTO_LAKE_DATA_FAMILIES = frozenset({"kline", "trade", "funding_rate", "open_interest"})
 SUPPORTED_BINANCE_USDM_CONTEXT_FAMILIES = frozenset({"funding_rate", "premium_index", "open_interest"})
 SUPPORTED_BINANCE_USDM_CONTEXT_PERIODS = frozenset({"5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"})
+PERP_CONTEXT_DATA_FAMILIES = frozenset({"funding_rate", "premium_index", "open_interest", "agg_trade"})
 
 _KLINE_HEADER = (
     "open_time_ms",
@@ -159,6 +160,18 @@ class MarketDataValidationError(ValueError):
 
 class MarketDataGapError(MarketDataValidationError):
     pass
+
+
+class CryptoLakeAccessError(MarketDataValidationError):
+    pass
+
+
+CRYPTO_LAKE_FREE_DATA_SETUP_MESSAGE = (
+    "Crypto Lake free-data fallback fetch requires the optional lakeapi package. "
+    'Install with `pip install -e ".[crypto-lake]"` or `pip install lakeapi`, then retry. '
+    "The supported path uses anonymous free sample data and does not need provider credentials. "
+    "See docs/runbooks/crypto_lake_free_data_runbook.md for the supported setup."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -753,6 +766,62 @@ def _event_id_duplicate_report(rows: list[dict[str, Any]], *, id_field: str) -> 
     }
 
 
+def _symbol_event_time_duplicate_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    seen: set[tuple[str, int]] = set()
+    duplicates: list[dict[str, Any]] = []
+    for row in rows:
+        key = (str(row.get("symbol") or ""), int(row["event_time_ms"]))
+        if key in seen:
+            duplicates.append({"symbol": key[0], "event_time_ms": key[1]})
+        seen.add(key)
+    return {
+        "duplicate_count": len(duplicates),
+        "duplicates": duplicates,
+        "duplicate_check_applicable": True,
+        "duplicate_event_id_field": "symbol_event_time_ms",
+    }
+
+
+def _variable_cadence_gap_metadata() -> dict[str, Any]:
+    return {
+        "gap_count": 0,
+        "gaps": [],
+        "gap_check_applicable": False,
+        "gap_check_status": "not_applicable_variable_cadence",
+        "expected_interval_ms": None,
+    }
+
+
+def _fixed_interval_gap_metadata(
+    rows: list[dict[str, Any]],
+    *,
+    interval: str | None,
+) -> dict[str, Any]:
+    if interval is None:
+        return _variable_cadence_gap_metadata()
+    expected_interval_ms = INTERVAL_TO_MS[interval]
+    unique_times = sorted({int(row["event_time_ms"]) for row in rows})
+    gaps: list[dict[str, int]] = []
+    for previous_time_ms, next_time_ms in zip(unique_times, unique_times[1:]):
+        delta_ms = int(next_time_ms - previous_time_ms)
+        if delta_ms != expected_interval_ms:
+            gaps.append(
+                {
+                    "previous_event_time_ms": int(previous_time_ms),
+                    "next_event_time_ms": int(next_time_ms),
+                    "delta_ms": delta_ms,
+                    "missing_event_count": max(0, int(delta_ms // expected_interval_ms) - 1),
+                }
+            )
+    return {
+        "gap_count": len(gaps),
+        "gaps": gaps,
+        "gap_check_applicable": True,
+        "gap_check_status": "checked_fixed_interval",
+        "expected_interval_ms": expected_interval_ms,
+    }
+
+
 def _archive_quality_report(
     rows: list[dict[str, Any]],
     *,
@@ -764,16 +833,99 @@ def _archive_quality_report(
         report = _kline_spacing_report(rows, interval_ms=interval_ms)
         report["duplicate_check_applicable"] = True
         report["duplicate_event_id_field"] = "open_time_ms"
+        report["gap_check_applicable"] = interval_ms is not None
+        report["gap_check_status"] = "checked_fixed_interval" if interval_ms is not None else "not_applicable_missing_interval"
+        report["expected_interval_ms"] = interval_ms
         return report
     if data_family == "agg_trade":
         report = _event_id_duplicate_report(rows, id_field="aggregate_trade_id")
-        report["gap_count"] = 0
-        report["gaps"] = []
+        report.update(_variable_cadence_gap_metadata())
+        return report
+    if data_family in {"funding_rate", "premium_index", "open_interest"}:
+        report = _symbol_event_time_duplicate_report(rows)
+        if data_family in {"premium_index", "open_interest"}:
+            report.update(_fixed_interval_gap_metadata(rows, interval=interval))
+        else:
+            report.update(_variable_cadence_gap_metadata())
         return report
     report = _event_id_duplicate_report(rows, id_field="trade_id")
-    report["gap_count"] = 0
-    report["gaps"] = []
+    report.update(_variable_cadence_gap_metadata())
     return report
+
+
+def _provider_coverage_metadata(
+    *,
+    source_name: str,
+    data_family: str,
+    source_access_mode: str | None = None,
+) -> dict[str, Any]:
+    context_metadata = (
+        {"context_family_role": "perp_context"}
+        if data_family in PERP_CONTEXT_DATA_FAMILIES
+        else {}
+    )
+    stream_health = {
+        "status": "not_applicable_batch_backfill",
+        "reason": "rows are archive/backfill research data; no live stream continuity is claimed",
+    }
+    if source_name == "binance_usdm_rest":
+        return {
+            **context_metadata,
+            "coverage_scope": "latest_window_backfill",
+            "latest_window_only": True,
+            "retention_policy": {
+                "scope": "direct_endpoint_latest_window",
+                "claim": "not_multi_year_coverage",
+            },
+            "stream_health": stream_health,
+        }
+    if source_name == "binance_vision":
+        return {
+            **context_metadata,
+            "coverage_scope": "public_archive_partition",
+            "latest_window_only": False,
+            "retention_policy": {
+                "scope": "public_archive_partition",
+                "claim": "coverage_limited_to_downloaded_archive_partition",
+            },
+            "stream_health": stream_health,
+        }
+    if source_name == "crypto_lake" and source_access_mode == "free_sample":
+        return {
+            **context_metadata,
+            "coverage_scope": "free_sample_diagnostic",
+            "latest_window_only": False,
+            "retention_policy": {
+                "scope": "anonymous_free_sample",
+                "claim": "sample_coverage_only",
+            },
+            "stream_health": stream_health,
+        }
+    if source_name == "crypto_lake":
+        return {
+            **context_metadata,
+            "coverage_scope": "local_vendor_export",
+            "latest_window_only": False,
+            "retention_policy": {
+                "scope": "local_export_file",
+                "claim": "coverage_limited_to_local_export",
+            },
+            "stream_health": stream_health,
+        }
+    return {}
+
+
+def _provider_coverage_quality_flags(metadata: Mapping[str, Any]) -> list[str]:
+    if not metadata:
+        return []
+    flags: list[str] = []
+    if metadata.get("context_family_role") == "perp_context":
+        flags.append("perp_context_family")
+    if metadata.get("latest_window_only") is True:
+        flags.extend(["latest_window_only_context", "direct_endpoint_retention_limited"])
+    if metadata.get("coverage_scope") == "free_sample_diagnostic":
+        flags.append("free_sample_diagnostic_only")
+    return flags
 
 
 def ingest_binance_vision_archive(
@@ -830,6 +982,10 @@ def ingest_binance_vision_archive(
     event_time_field = _archive_event_time_field(normalized_family)
     normalized_fields = sorted({key for row in rows for key in row if key != "raw_payload"})
     missing_fields = ["interval"] if normalized_family == "kline" and normalized_interval is None else []
+    coverage_metadata = _provider_coverage_metadata(
+        source_name="binance_vision",
+        data_family=normalized_family,
+    )
     manifest = {
         "research_only": True,
         "observe_only": True,
@@ -851,6 +1007,9 @@ def ingest_binance_vision_archive(
         "duplicate_count": int(report["duplicate_count"]),
         "gaps": report["gaps"],
         "duplicates": report["duplicates"],
+        "gap_check_applicable": bool(report["gap_check_applicable"]),
+        "gap_check_status": report["gap_check_status"],
+        "expected_interval_ms": report["expected_interval_ms"],
         "duplicate_check_applicable": bool(report["duplicate_check_applicable"]),
         "duplicate_event_id_field": report["duplicate_event_id_field"],
         "event_time_field": event_time_field,
@@ -868,13 +1027,17 @@ def ingest_binance_vision_archive(
         "normalized_fields": normalized_fields,
         "missing_fields": missing_fields,
         "zero_filled_fields": [],
-        "quality_flags": ["receive_time_unavailable_non_promotable"],
+        "quality_flags": [
+            "receive_time_unavailable_non_promotable",
+            *_provider_coverage_quality_flags(coverage_metadata),
+        ],
         "non_promotable_notes": [
             "Research-only local Binance Vision archive ingestion.",
             "No network calls or live runtime state are used by this ingestor.",
             "Receive timestamps are unavailable, so rows are diagnostic and not live-promotable.",
             "Binance-derived archive rows are not Hyperliquid executable prices or fillability evidence.",
         ],
+        **coverage_metadata,
     }
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
 
@@ -1140,11 +1303,13 @@ def ingest_crypto_lake_archive(
     output_dir: Path | None = None,
     interval: str | None = None,
     provider_symbol: str | None = None,
+    source_access_mode: str = "local_export",
     strict: bool = False,
 ) -> MarketDataArchiveIngestionResult:
     normalized_symbol = _normalize_symbol(symbol)
     normalized_family = _validate_crypto_lake_data_family(data_family)
     normalized_interval = _validate_interval(interval) if interval is not None else None
+    normalized_access_mode = _validate_crypto_lake_access_mode(source_access_mode)
     source_path = Path(source_path)
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
@@ -1178,6 +1343,11 @@ def ingest_crypto_lake_archive(
     content_hash = _write_jsonl(data_path, rows)
     normalized_fields = sorted({key for row in rows for key in row if key != "raw_payload"})
     has_receive_time = any("receive_time_ms" in row for row in rows)
+    coverage_metadata = _provider_coverage_metadata(
+        source_name="crypto_lake",
+        data_family=normalized_family,
+        source_access_mode=normalized_access_mode,
+    )
     manifest = {
         "research_only": True,
         "observe_only": True,
@@ -1185,6 +1355,8 @@ def ingest_crypto_lake_archive(
         **research_boundary_metadata(),
         "source_name": "crypto_lake",
         "source_type": "commercial_archive",
+        "source_access_mode": normalized_access_mode,
+        "free_sample_data": normalized_access_mode == "free_sample",
         "symbol": normalized_symbol,
         "provider_symbol": provider_symbol,
         "data_family": normalized_family,
@@ -1200,6 +1372,9 @@ def ingest_crypto_lake_archive(
         "duplicate_count": int(report["duplicate_count"]),
         "gaps": report["gaps"],
         "duplicates": report["duplicates"],
+        "gap_check_applicable": bool(report["gap_check_applicable"]),
+        "gap_check_status": report["gap_check_status"],
+        "expected_interval_ms": report["expected_interval_ms"],
         "duplicate_check_applicable": bool(report["duplicate_check_applicable"]),
         "duplicate_event_id_field": report["duplicate_event_id_field"],
         "event_time_field": "event_time_ms",
@@ -1214,13 +1389,30 @@ def ingest_crypto_lake_archive(
         "normalized_fields": normalized_fields,
         "missing_fields": [] if has_receive_time else ["receive_time_ms"],
         "zero_filled_fields": [],
-        "quality_flags": ["crypto_lake_vendor_normalization", *([] if has_receive_time else ["receive_time_unavailable_non_promotable"])],
+        "quality_flags": [
+            "crypto_lake_vendor_normalization",
+            *_provider_coverage_quality_flags(coverage_metadata),
+            *(
+                ["crypto_lake_free_sample_data"]
+                if normalized_access_mode == "free_sample"
+                else []
+            ),
+            *([] if has_receive_time else ["receive_time_unavailable_non_promotable"]),
+        ],
         "diagnostic_only": True,
         "non_promotable_notes": [
             "Research-only Crypto Lake archive ingestion.",
+            *(
+                [
+                    "Crypto Lake free sample data is a diagnostic fallback only and is not full provider coverage.",
+                ]
+                if normalized_access_mode == "free_sample"
+                else []
+            ),
             "Vendor-normalized rows are diagnostic until checked against local point-in-time journals.",
             "Rows are not Hyperliquid executable prices or fillability evidence.",
         ],
+        **coverage_metadata,
     }
     manifest = {key: value for key, value in manifest.items() if value is not None}
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
@@ -1251,37 +1443,42 @@ def fetch_crypto_lake_archive(
     end_time: str,
     output_dir: Path | None = None,
     interval: str | None = None,
-    exchange: str = "BINANCE",
+    exchange: str | None = None,
     table: str | None = None,
     provider_symbol: str | None = None,
     lakeapi_module: Any | None = None,
 ) -> MarketDataArchiveIngestionResult:
-    """Fetch Crypto Lake data via optional ``lakeapi`` and normalize it.
+    """Fetch Crypto Lake free sample data via optional ``lakeapi`` and normalize it.
 
-    The dependency is intentionally optional so offline tests and local exports
-    can use ``ingest_crypto_lake_archive`` without network credentials.
+    The supported direct fetch mode is Crypto Lake's anonymous free sample
+    dataset. Provider credentials are intentionally not required by this
+    research fallback path. Local exports can still use
+    ``ingest_crypto_lake_archive`` without network access.
     """
 
     normalized_symbol = _normalize_symbol(symbol)
     normalized_family = _validate_crypto_lake_data_family(data_family)
     normalized_provider_symbol = provider_symbol or normalized_symbol
-    if lakeapi_module is None:
-        import lakeapi as lakeapi_module  # type: ignore[import-not-found]
+    lakeapi_module = _resolve_lakeapi_module(lakeapi_module)
+    _enable_crypto_lake_free_sample_data(lakeapi_module)
 
     table_name = table or _crypto_lake_default_table(normalized_family)
+    load_start = _crypto_lake_load_datetime(start_time)
+    load_end = _crypto_lake_load_datetime(end_time)
     frame = lakeapi_module.load_data(
         table=table_name,
-        start=start_time,
-        end=end_time,
+        start=load_start,
+        end=load_end,
         symbols=[normalized_provider_symbol],
-        exchanges=[exchange],
+        exchanges=[exchange] if exchange else None,
     )
     output_root = output_dir if output_dir is not None else RESEARCH_CRYPTO_LAKE_DATA_ROOT / "downloads"
     raw_dir = output_root / "raw" / normalized_symbol / normalized_family
     raw_dir.mkdir(parents=True, exist_ok=True)
     safe_start = start_time.replace(":", "").replace("-", "").replace(" ", "T")
     safe_end = end_time.replace(":", "").replace("-", "").replace(" ", "T")
-    raw_path = raw_dir / f"{exchange}_{normalized_provider_symbol}_{table_name}_{safe_start}_{safe_end}.csv"
+    exchange_part = exchange or "all_exchanges"
+    raw_path = raw_dir / f"{exchange_part}_{normalized_provider_symbol}_{table_name}_{safe_start}_{safe_end}_free_sample.csv"
     frame.to_csv(raw_path, index=False, lineterminator="\n")
     return ingest_crypto_lake_archive(
         raw_path,
@@ -1290,7 +1487,44 @@ def fetch_crypto_lake_archive(
         output_dir=output_dir,
         interval=interval,
         provider_symbol=normalized_provider_symbol,
+        source_access_mode="free_sample",
     )
+
+
+def _validate_crypto_lake_access_mode(value: str) -> str:
+    normalized = str(value).strip().lower().replace("-", "_")
+    if normalized not in {"local_export", "free_sample"}:
+        raise ValueError("source_access_mode must be local_export or free_sample")
+    return normalized
+
+
+def _crypto_lake_load_datetime(value: str) -> datetime:
+    text = str(value).strip()
+    if not text:
+        raise ValueError("Crypto Lake start_time/end_time must be non-empty")
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"Crypto Lake time must be ISO-8601 compatible: {value}") from exc
+
+
+def _resolve_lakeapi_module(lakeapi_module: Any | None) -> Any:
+    if lakeapi_module is not None:
+        return lakeapi_module
+    try:
+        import lakeapi as resolved_lakeapi_module  # type: ignore[import-not-found]
+    except ModuleNotFoundError as exc:
+        raise CryptoLakeAccessError(CRYPTO_LAKE_FREE_DATA_SETUP_MESSAGE) from exc
+    return resolved_lakeapi_module
+
+
+def _enable_crypto_lake_free_sample_data(lakeapi_module: Any) -> None:
+    use_sample_data = getattr(lakeapi_module, "use_sample_data", None)
+    if not callable(use_sample_data):
+        raise CryptoLakeAccessError(
+            "lakeapi module does not expose use_sample_data; cannot enable Crypto Lake free sample data"
+        )
+    use_sample_data(anonymous_access=True)
 
 
 def _crypto_lake_default_table(data_family: str) -> str:
@@ -1538,12 +1772,6 @@ async def collect_binance_usdm_context(
         data_family=normalized_family,
         interval=normalized_interval,
     )
-    if strict and (report["duplicate_count"] or report["gap_count"]):
-        raise MarketDataGapError(
-            f"Binance USD-M context duplicate events or gaps for {normalized_symbol} {normalized_family}: "
-            f"gaps={report['gaps']} duplicates={report['duplicates']}"
-        )
-
     output_root = output_dir if output_dir is not None else RESEARCH_MARKET_DATA_ROOT
     interval_part = "" if normalized_family == "funding_rate" else f"_{normalized_interval}"
     data_dir = output_root / normalized_symbol / normalized_family
@@ -1557,6 +1785,10 @@ async def collect_binance_usdm_context(
     normalized_fields = sorted({key for row in normalized_rows for key in row if key != "raw_payload"})
     first_event_time_ms = int(normalized_rows[0]["event_time_ms"]) if normalized_rows else None
     last_event_time_ms = int(normalized_rows[-1]["event_time_ms"]) if normalized_rows else None
+    coverage_metadata = _provider_coverage_metadata(
+        source_name="binance_usdm_rest",
+        data_family=normalized_family,
+    )
 
     manifest = {
         "research_only": True,
@@ -1598,16 +1830,26 @@ async def collect_binance_usdm_context(
         "normalized_fields": normalized_fields,
         "missing_fields": ["receive_time_ms"],
         "zero_filled_fields": [],
-        "quality_flags": ["receive_time_unavailable_non_promotable"],
+        "quality_flags": [
+            "receive_time_unavailable_non_promotable",
+            *_provider_coverage_quality_flags(coverage_metadata),
+        ],
         "non_promotable_notes": [
             "Research-only Binance USD-M REST context backfill.",
             "No legacy chart export, Pine marker, or parity artifact is used.",
             "No live runtime state, execution state, model pointer, or trading behavior is updated.",
             "Receive timestamps are unavailable, so rows are diagnostic and not live-promotable.",
         ],
+        **coverage_metadata,
     }
     manifest = {key: value for key, value in manifest.items() if value is not None}
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    if strict and (report["duplicate_count"] or report["gap_count"]):
+        raise MarketDataGapError(
+            f"Binance USD-M context duplicate events or gaps for {normalized_symbol} {normalized_family}: "
+            f"gaps={report['gaps']} duplicates={report['duplicates']} manifest_path={manifest_path}"
+        )
 
     return MarketDataArchiveIngestionResult(
         output_dir=data_dir,
@@ -1727,7 +1969,7 @@ def _context_quality_report(
         unique_times = sorted({int(row["event_time_ms"]) for row in rows})
         for previous_time_ms, next_time_ms in zip(unique_times, unique_times[1:]):
             delta_ms = int(next_time_ms - previous_time_ms)
-            if delta_ms > expected_interval_ms:
+            if delta_ms != expected_interval_ms:
                 gaps.append(
                     {
                         "previous_event_time_ms": int(previous_time_ms),

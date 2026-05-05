@@ -51,6 +51,11 @@ python -m tradingbotsuite.main fetch-crypto-lake --help
 python -m tradingbotsuite.main prepare-hmm-knn-research-data --help
 ```
 
+Crypto Lake is optional local fallback data. Install it with
+`python -m pip install -e ".[crypto-lake]"`; direct fetches use Crypto Lake free
+sample data without paid credentials. Free sample access has been smoke-tested
+locally; follow `docs/runbooks/crypto_lake_free_data_runbook.md`.
+
 Runtime operator console:
 
 ```powershell

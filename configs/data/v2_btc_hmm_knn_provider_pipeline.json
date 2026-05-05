@@ -45,6 +45,7 @@
       "symbol": "BTCUSDT",
       "data_family": "trade",
       "inputs": [],
+      "fallback_role": "free_sample_data_when_binance_vision_is_insufficient",
       "local_export_input_examples": [
         {
           "path": "C:/path/to/crypto_lake_btcusdt_1m.csv",
@@ -54,17 +55,19 @@
           "interval": "1m"
         }
       ],
-      "fetch_input_examples": [
+      "free_sample_fetch_input_examples": [
         {
           "symbol": "BTCUSDT",
           "provider_symbol": "BTC-USDT-PERP",
-          "data_family": "trade",
+          "data_family": "kline",
+          "interval": "1m",
           "fetch": {
-            "start_time": "2024-01-01",
-            "end_time": "2024-01-02",
-            "exchange": "BINANCE",
-            "table": "trades"
-          }
+            "start_time": "2025-04-06",
+            "end_time": "2025-04-07",
+            "exchange": "BINANCE_FUTURES",
+            "table": "candles"
+          },
+          "strict": true
         }
       ]
     },
