@@ -1700,8 +1700,12 @@ class BinanceUsdMRestContextFetcher:
         cursor_end = end_time_ms
         max_pages = 1000
         for _ in range(max_pages):
+            limit = int(params.get("limit", 0) or 0)
+            page_start_time_ms = start_time_ms
+            if limit > 1:
+                page_start_time_ms = max(start_time_ms, cursor_end - ((limit - 1) * previous_end_delta_ms))
             query = dict(params)
-            query["startTime"] = start_time_ms
+            query["startTime"] = page_start_time_ms
             query["endTime"] = cursor_end
             url = f"{self.base_url}{path}?{urllib.parse.urlencode(query)}"
             payload = _fetch_json(url, timeout_seconds=self.timeout_seconds)
@@ -1716,7 +1720,7 @@ class BinanceUsdMRestContextFetcher:
             if first_event_time_ms <= start_time_ms or next_cursor_end < start_time_ms or next_cursor_end >= cursor_end:
                 break
             cursor_end = next_cursor_end
-            if len(payload) < int(params.get("limit", len(payload))):
+            if len(payload) < int(params.get("limit", len(payload))) and page_start_time_ms <= start_time_ms:
                 break
         else:
             raise MarketDataValidationError(f"binance context pagination exceeded page limit:{path}")

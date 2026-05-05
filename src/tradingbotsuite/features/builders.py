@@ -150,6 +150,18 @@ def materialize_fixture_family_context(
             for column in record["output_columns"]:
                 if column not in joined_columns:
                     joined_columns.append(column)
+            if record.get("latest_window_only") is True:
+                existing_latest_window = pd.to_numeric(
+                    result.get(
+                        "quality_latest_window_context_only_source",
+                        pd.Series(np.zeros(len(result), dtype=float), index=result.index),
+                    ),
+                    errors="coerce",
+                ).fillna(0.0)
+                result["quality_latest_window_context_only_source"] = np.maximum(
+                    existing_latest_window.clip(lower=0.0),
+                    1.0,
+                )
 
     hash_payload = {
         "materialization_version": FIXTURE_FAMILY_CONTEXT_MATERIALIZATION_VERSION,
@@ -483,6 +495,9 @@ def _family_materialization_record(
         "event_time_field": event_time_field,
         "data_family": family_payload.get("data_family", family),
         "required": bool(family_payload.get("required", False)),
+        "latest_window_only": bool(family_payload.get("latest_window_only", False)),
+        "coverage_scope": family_payload.get("coverage_scope"),
+        "retention_policy": dict(family_payload.get("retention_policy") or {}),
         "joined": bool(joined),
         "skipped_reason": skipped_reason,
         "join_keys": ["symbol", event_time_field],

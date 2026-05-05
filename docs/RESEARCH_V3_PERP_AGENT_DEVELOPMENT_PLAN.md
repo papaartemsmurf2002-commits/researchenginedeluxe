@@ -456,7 +456,7 @@ Add only after WPR49-WPR52 are stable:
 
 1. `funding_crowding_fade_v2`
 2. `oi_flow_breakout_v2`
-3. ETHUSDT fixture and mirror cycle
+3. ETHUSDT fixture and mirror cycle - complete in WPR56 with a 2,810-row latest-window ETHUSDT provider fixture and checked mirror cycle
 4. `funding_adverse_exit` improvements or new `funding_aware_exit_v1`
 5. `oi_contraction_exit_v1`
 6. Trial-budget and overfit-adjustment reports

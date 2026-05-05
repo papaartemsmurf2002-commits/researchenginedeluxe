@@ -260,6 +260,60 @@ def test_perp_context_v2_uses_materialized_backward_asof_without_lookahead(tmp_p
     assert built.result.frame["quality_has_premium_gap"].tolist() == [1.0, 1.0, 0.0]
 
 
+def test_perp_context_v2_preserves_latest_window_fixture_family_provenance(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1000, 2000, 3000],
+            "symbol": ["BTCUSDT", "BTCUSDT", "BTCUSDT"],
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [10.0, 11.0, 12.0],
+        }
+    )
+    premium = pd.DataFrame(
+        {
+            "event_time_ms": [1000],
+            "symbol": ["BTCUSDT"],
+            "premium_basis_rate": [0.002],
+        }
+    )
+    premium_path = tmp_path / "premium_index.parquet"
+    premium.to_parquet(premium_path, index=False)
+
+    materialized = materialize_fixture_family_context(
+        cycle,
+        optional_context_families={
+            "premium_index": {
+                "path": str(premium_path),
+                "sha256": "premium-hash",
+                "row_count": len(premium),
+                "columns": list(premium.columns),
+                "event_time_field": "event_time_ms",
+                "latest_window_only": True,
+                "coverage_scope": "latest_window_backfill",
+                "retention_policy": {
+                    "claim": "not_multi_year_coverage",
+                    "scope": "direct_endpoint_latest_window",
+                },
+            }
+        },
+    )
+    built = build_registered_feature_set(
+        materialized.frame,
+        feature_set_id="features_perp_context_v2",
+        interval_ms=1000,
+    )
+
+    record = materialized.evidence["family_records"][0]
+    assert record["latest_window_only"] is True
+    assert record["coverage_scope"] == "latest_window_backfill"
+    assert record["retention_policy"]["claim"] == "not_multi_year_coverage"
+    assert materialized.frame["quality_latest_window_context_only_source"].eq(1.0).all()
+    assert built.result.frame["quality_latest_window_context_only"].eq(1.0).all()
+
+
 def test_perp_context_v2_uses_backward_asof_context_for_all_current_families(tmp_path) -> None:
     cycle = pd.DataFrame(
         {

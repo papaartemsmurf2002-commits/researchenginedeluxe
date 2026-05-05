@@ -561,12 +561,17 @@ def _family_payload(
         "interval": entry.get("interval"),
         "event_time_field": entry.get("event_time_field") or entry.get("time_field") or default_event_time_field,
         "data_family": entry.get("data_family", family_key),
+        "source_name": entry.get("source_name"),
         "required": bool(entry.get("required", False)),
         "research_only": True,
         "observe_only": True,
         "promotion_ready": False,
     }
-    payload.update(_selected_context_metadata(entry))
+    source_name = _optional_text(entry.get("source_name"))
+    if source_name is not None:
+        payload.update(_provider_context_metadata(entry, source_name=source_name, family=family_key))
+    else:
+        payload.update(_selected_context_metadata(entry))
     return payload
 
 

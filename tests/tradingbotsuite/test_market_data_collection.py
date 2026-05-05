@@ -398,7 +398,9 @@ async def test_collect_binance_usdm_context_detects_fixed_interval_gaps(tmp_path
     assert strict_manifest["coverage_scope"] == "latest_window_backfill"
 
 
-def test_binance_usdm_open_interest_fetcher_pages_backward_from_endpoint_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_binance_usdm_open_interest_fetcher_pages_backward_with_bounded_endpoint_windows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     interval_ms = 15 * 60 * 1000
     start = 1_775_574_000_000
     row_count = 672
@@ -441,8 +443,9 @@ def test_binance_usdm_open_interest_fetcher_pages_backward_from_endpoint_limit(m
 
     assert len(rows) == row_count
     assert len(calls) == 2
-    assert calls[0] == {"startTime": start, "endTime": event_times[-1], "limit": 500}
+    assert calls[0] == {"startTime": event_times[172], "endTime": event_times[-1], "limit": 500}
     assert calls[1] == {"startTime": start, "endTime": event_times[171], "limit": 500}
+    assert all(call["endTime"] - call["startTime"] <= 499 * interval_ms for call in calls)
     assert {int(row["timestamp"]) for row in rows} == set(event_times)
 
 

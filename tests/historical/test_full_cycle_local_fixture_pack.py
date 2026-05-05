@@ -17,9 +17,13 @@ from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECKED_IN_FULL_CYCLE_SPEC = REPO_ROOT / "configs" / "research" / "full_cycle_btc_v1.json"
 CHECKED_IN_PERP_CONTEXT_V2_CYCLE_SPEC = REPO_ROOT / "configs" / "research" / "full_cycle_btcusdt_perp_context_v2.json"
+CHECKED_IN_ETH_PERP_CONTEXT_V2_CYCLE_SPEC = REPO_ROOT / "configs" / "research" / "full_cycle_ethusdt_perp_context_v2.json"
 CHECKED_IN_FIXTURE_MANIFEST = REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_v1" / "fixture_pack_manifest.json"
 CHECKED_IN_PERP_CONTEXT_FIXTURE_MANIFEST = (
     REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_context_provider_latest_month_v1" / "fixture_pack_manifest.json"
+)
+CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST = (
+    REPO_ROOT / "data" / "research" / "fixtures" / "ethusdt_context_provider_latest_month_v1" / "fixture_pack_manifest.json"
 )
 REMOVED_CHART_SOURCE_FLAG = "trading" + "view" + "_source_used"
 
@@ -215,6 +219,7 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
         "quality_provider_backed_all_required",
     } <= set(feature_frame.columns)
     assert feature_frame["quality_provider_backed_all_required"].eq(1.0).any()
+    assert feature_frame["quality_latest_window_context_only"].eq(1.0).all()
     assert candidate_space_manifest["feature_sets"] == ["features_perp_context_v2"]
     assert expected_strategies <= set(candidate_space_manifest["generated_strategy_ids"])
     assert {record["coverage_status"] for record in candidate_space_manifest["baseline_comparator_coverage"]} == {"complete"}
@@ -236,6 +241,95 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
         assert funding_window_rows["failure_reasons"].astype(str).str.contains(
             "low_signal_density|trade_count|funding_window|timing",
         ).any()
+    assert "synthetic_fixture_not_real_oos_evidence" not in "|".join(rankings["failure_reasons"].astype(str))
+    assert manifest["candidate_pack_written"] is False
+    assert manifest["candidate_pack_paths"] == []
+    assert not candidate_gate_report["pack_eligible"].any()
+
+
+def test_checked_in_eth_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_path: Path) -> None:
+    spec = HistoricalResearchCycleSpec.from_path(CHECKED_IN_ETH_PERP_CONTEXT_V2_CYCLE_SPEC)
+    fixture_manifest = json.loads(CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST.read_text(encoding="utf-8"))
+
+    assert spec.symbol == "ETHUSDT"
+    assert spec.data.synthetic_fixture is False
+    assert spec.data.local_fixture_dir is None
+    assert spec.data.dataset_manifest_paths == (CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST,)
+    assert spec.features.feature_sets == ("features_perp_context_v2",)
+    expected_strategies = {
+        "baseline_no_trade",
+        "perp_basis_convergence_v2",
+        "funding_crowding_fade_v2",
+        "oi_flow_breakout_v2",
+        "funding_window_timing_v1",
+    }
+    assert set(spec.strategies) == expected_strategies
+    assert spec.output_dir == REPO_ROOT / "data" / "research" / "historical_cycles" / "ethusdt_perp_context_v2_foundation"
+
+    payload = json.loads(CHECKED_IN_ETH_PERP_CONTEXT_V2_CYCLE_SPEC.read_text(encoding="utf-8"))
+    payload["output_dir"] = str(tmp_path / "research" / "historical_cycles" / "ethusdt_perp_context_v2_foundation")
+    payload["data"]["dataset_manifest_paths"] = [str(CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST)]
+    spec_path = tmp_path / "specs" / "full_cycle_ethusdt_perp_context_v2.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = run_historical_research_cycle(
+        spec_path=spec_path,
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    candidate_space_manifest = json.loads(Path(manifest["required_outputs"]["candidate_space_manifest"]).read_text(encoding="utf-8"))
+    feature_build_manifest = json.loads(Path(manifest["required_outputs"]["feature_build_manifest"]).read_text(encoding="utf-8"))
+    rankings = pd.read_parquet(result.candidate_rankings_path)
+    backtest_index = pd.read_parquet(result.backtest_index_path)
+    candidate_gate_report = pd.read_parquet(manifest["required_outputs"]["candidate_gate_report"])
+    feature_record = feature_build_manifest["feature_sets"][0]
+    feature_frame = pd.read_parquet(feature_record["feature_path"])
+
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["data_source"]["source_type"] == "historical_fixture_pack"
+    assert manifest["data_source"]["synthetic"] is False
+    assert manifest["data_source"]["fixture_id"] == fixture_manifest["fixture_id"]
+    assert manifest["data_source"]["fixture_derivation"][REMOVED_CHART_SOURCE_FLAG] is False
+    assert manifest["data_source"]["fixture_derivation"]["synthetic_source_used"] is False
+    assert manifest["data_source"]["validation"]["valid"] is True
+    assert manifest["data_source"]["validation"]["row_count"] == fixture_manifest["cycle_dataset"]["row_count"]
+    assert manifest["data_source"]["fixture_family_context"]["joined_families"] == [
+        "funding_rate",
+        "premium_index",
+        "open_interest",
+    ]
+    assert feature_record["feature_set_id"] == "features_perp_context_v2"
+    assert feature_record["fixture_family_joined_families"] == ["funding_rate", "premium_index", "open_interest"]
+    assert {
+        "perp_mark_index_basis",
+        "perp_premium_z_7d",
+        "perp_last_funding_rate",
+        "perp_funding_z_7d",
+        "cal_time_since_last_funding_h",
+        "cal_time_to_next_funding_h",
+        "quality_provider_backed_all_required",
+    } <= set(feature_frame.columns)
+    assert feature_frame["quality_provider_backed_all_required"].eq(1.0).any()
+    assert feature_frame["quality_latest_window_context_only"].eq(1.0).all()
+    assert candidate_space_manifest["feature_sets"] == ["features_perp_context_v2"]
+    assert expected_strategies <= set(candidate_space_manifest["generated_strategy_ids"])
+    assert {record["coverage_status"] for record in candidate_space_manifest["baseline_comparator_coverage"]} == {"complete"}
+    assert expected_strategies <= set(rankings["strategy_id"])
+    assert expected_strategies <= set(backtest_index["strategy_id"])
+    zero_trade_patterns = {
+        "funding_crowding_fade_v2": "low_signal_density|trade_count",
+        "oi_flow_breakout_v2": "low_signal_density|trade_count|flow_confirmation",
+        "funding_window_timing_v1": "low_signal_density|trade_count|funding_window|timing",
+    }
+    for strategy_id, failure_pattern in zero_trade_patterns.items():
+        strategy_rows = rankings.loc[rankings["strategy_id"].astype(str) == strategy_id]
+        assert not strategy_rows.empty
+        if int(strategy_rows["trade_count"].sum()) == 0:
+            assert strategy_rows["failure_reasons"].astype(str).str.contains(failure_pattern).any()
     assert "synthetic_fixture_not_real_oos_evidence" not in "|".join(rankings["failure_reasons"].astype(str))
     assert manifest["candidate_pack_written"] is False
     assert manifest["candidate_pack_paths"] == []

@@ -21,6 +21,9 @@ from tradingbotsuite.research.market_data import collect_binance_usdm_context
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CHECKED_IN_FIXTURE_MANIFEST = REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_v1" / "fixture_pack_manifest.json"
+CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST = (
+    REPO_ROOT / "data" / "research" / "fixtures" / "ethusdt_context_provider_latest_month_v1" / "fixture_pack_manifest.json"
+)
 REMOVED_CHART_SOURCE = "trading" + "view"
 REMOVED_CHART_SOURCE_FLAG = REMOVED_CHART_SOURCE + "_source_used"
 REMOVED_CHART_EXPORT_SOURCE = REMOVED_CHART_SOURCE + "_" + "chart" + "_export"
@@ -137,6 +140,58 @@ def test_checked_in_btcusdt_fixture_pack_manifest_validates() -> None:
     assert manifest["research_only"] is True
     assert manifest["observe_only"] is True
     assert manifest["promotion_ready"] is False
+
+
+def test_checked_in_ethusdt_context_provider_fixture_pack_manifest_validates() -> None:
+    manifest = json.loads(CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST.read_text(encoding="utf-8"))
+
+    validation = assert_valid_historical_fixture_pack_manifest(
+        manifest,
+        manifest_path=CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST,
+    )
+    payload = validation.to_payload()
+
+    assert validation.valid is True
+    assert validation.fixture_id == "ethusdt-context-provider-latest-month-v1"
+    assert validation.row_count == manifest["cycle_dataset"]["row_count"]
+    assert 2_800 <= int(validation.row_count or 0) <= 2_873
+    assert validation.cycle_dataset_path == CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST.parent / "cycle_dataset.parquet"
+    assert validation.lower_timeframe_dataset_path is None
+    assert validation.lower_timeframe_row_count is None
+    assert payload["lower_timeframe_family"] == {}
+    assert set(payload["optional_context_families"]) == {"funding_rate", "premium_index", "open_interest"}
+    assert manifest["fixture_id"] == "ethusdt-context-provider-latest-month-v1"
+    assert manifest["symbol"] == "ETHUSDT"
+    assert manifest["source"]["source_name"] == "binance_rest"
+    assert manifest["source"]["source_raw"] == "binance_usdm_klines"
+    assert manifest["source"]["data_family"] == "kline"
+    assert manifest["derivation"][REMOVED_CHART_SOURCE_FLAG] is False
+    assert manifest["derivation"]["synthetic_source_used"] is False
+    assert manifest["derivation"]["first_time_ms"] == 1775403900000
+    assert manifest["derivation"]["last_time_ms"] == 1777932000000
+    assert set(manifest["omitted_optional_families"]) == {"lower_timeframe_bars", "agg_trade"}
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    for family in ("funding_rate", "premium_index", "open_interest"):
+        family_payload = payload["optional_context_families"][family]
+        family_manifest = manifest["families"][family]
+        assert family_payload["research_only"] is True
+        assert family_payload["observe_only"] is True
+        assert family_payload["promotion_ready"] is False
+        assert family_payload["coverage_scope"] == "latest_window_backfill"
+        assert family_payload["latest_window_only"] is True
+        assert family_payload["retention_policy"]["claim"] == "not_multi_year_coverage"
+        assert family_manifest["source_name"] == "binance_usdm_rest"
+    cycle = pd.read_parquet(validation.cycle_dataset_path)
+    assert set(cycle["symbol"]) == {"ETHUSDT"}
+    assert set(cycle["source_provider"]) == {"binance_rest"}
+    assert set(cycle["source_provider_raw"]) == {"binance_usdm_klines"}
+    assert set(cycle["source_data_family"]) == {"kline"}
+    assert cycle["source_row_index"].is_monotonic_increasing
+    assert pd.to_numeric(cycle["source_row_index"]).diff().dropna().eq(1).all()
+    assert int(cycle["time_ms"].min()) == manifest["derivation"]["first_time_ms"]
+    assert int(cycle["time_ms"].max()) == manifest["derivation"]["last_time_ms"]
 
 
 def test_provider_kline_fixture_pack_builder_accepts_binance_usdm_cache_manifest(tmp_path: Path) -> None:
