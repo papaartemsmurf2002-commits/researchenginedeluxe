@@ -370,12 +370,28 @@ def test_cache_key_changes_for_exit_policy_and_policy_parameters(tmp_path: Path)
             **common,
         )
     )
+    funding_aware = BacktestEngine().run(
+        BacktestSpec(
+            run_id="funding-aware",
+            exit_policy_id="funding_aware_exit_v1",
+            exit_policy_params={
+                "funding_threshold": 0.00005,
+                "pre_funding_window_h": 1.0,
+                "min_expected_cost_bps": 0.5,
+                "edge_buffer_bps": 2.0,
+            },
+            **common,
+        )
+    )
     fixed_manifest = json.loads(fixed.manifest_path.read_text(encoding="utf-8"))
     first_manifest = json.loads(first.manifest_path.read_text(encoding="utf-8"))
     second_manifest = json.loads(second.manifest_path.read_text(encoding="utf-8"))
+    funding_aware_manifest = json.loads(funding_aware.manifest_path.read_text(encoding="utf-8"))
 
     assert fixed_manifest["cache_key"] != first_manifest["cache_key"]
     assert first_manifest["cache_key"] != second_manifest["cache_key"]
+    assert first_manifest["cache_key"] != funding_aware_manifest["cache_key"]
+    assert funding_aware_manifest["execution_assumptions"]["exit_policy_id"] == "funding_aware_exit_v1"
 
 
 def _stable_test_hash(payload: object) -> str:

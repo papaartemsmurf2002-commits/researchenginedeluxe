@@ -208,6 +208,15 @@ def test_historical_research_cycle_spec_accepts_exit_policy_candidates(tmp_path:
                     "stop_return": 0.01,
                     "exit_policy_params": {"stop_return": 0.01},
                 },
+                {
+                    "exit_policy_id": "funding_aware_exit_v1",
+                    "exit_policy_params": {
+                        "funding_threshold": 0.00005,
+                        "pre_funding_window_h": 1.0,
+                        "min_expected_cost_bps": 0.5,
+                        "edge_buffer_bps": 2.0,
+                    },
+                },
             ],
         },
     )
@@ -215,8 +224,13 @@ def test_historical_research_cycle_spec_accepts_exit_policy_candidates(tmp_path:
     spec = HistoricalResearchCycleSpec.from_path(spec_path)
     payload = spec.to_payload()
 
-    assert [policy["exit_policy_id"] for policy in spec.exits.exit_policies] == ["fixed_holding_window", "max_mae_stop"]
+    assert [policy["exit_policy_id"] for policy in spec.exits.exit_policies] == [
+        "fixed_holding_window",
+        "max_mae_stop",
+        "funding_aware_exit_v1",
+    ]
     assert payload["exits"]["exit_policies"][1]["exit_policy_params"] == {"stop_return": 0.01}
+    assert payload["exits"]["exit_policies"][2]["exit_policy_params"]["pre_funding_window_h"] == 1.0
 
 
 def test_historical_research_cycle_spec_accepts_lower_timeframe_triple_barrier_exit(tmp_path: Path) -> None:

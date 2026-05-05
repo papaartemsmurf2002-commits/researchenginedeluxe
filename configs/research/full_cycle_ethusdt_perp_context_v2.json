@@ -38,5 +38,24 @@
     "method_sequence": ["coarse_lhs", "adaptive_grid", "stability_region_refine"],
     "max_candidates_per_strategy": 2,
     "top_regions_to_refine": 2
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "default_fixed_holding"
+      },
+      {
+        "exit_policy_id": "funding_aware_exit_v1",
+        "exit_policy_params": {
+          "funding_threshold": 0.00005,
+          "pre_funding_window_h": 1.0,
+          "min_expected_cost_bps": 0.5,
+          "edge_buffer_bps": 2.0
+        },
+        "exit_policy_source": "configured_research_exit"
+      }
+    ]
   }
 }

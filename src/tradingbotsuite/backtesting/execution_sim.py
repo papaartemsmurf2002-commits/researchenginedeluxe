@@ -457,6 +457,7 @@ def _is_primary_bar_research_exit_policy(exit_policy_id: str) -> bool:
         "volatility_scaled_barrier",
         "regime_flip_exit",
         "funding_adverse_exit",
+        "funding_aware_exit_v1",
         "alpha_decay_exit",
         "adverse_selection_exit",
         "trailing_atr_after_profit",

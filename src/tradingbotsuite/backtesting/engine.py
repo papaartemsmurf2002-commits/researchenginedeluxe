@@ -297,6 +297,7 @@ def _market_frame(source: pd.DataFrame, *, symbol: str) -> pd.DataFrame:
         frame["volume"] = 0.0
     optional = [
         "funding_rate",
+        "perp_last_funding_rate",
         "spread_bps",
         "top_regime_label",
         "regime",
@@ -307,6 +308,9 @@ def _market_frame(source: pd.DataFrame, *, symbol: str) -> pd.DataFrame:
         "funding_rate_change",
         "time_to_next_funding_ms",
         "hours_to_next_funding",
+        "cal_time_since_last_funding_h",
+        "cal_time_to_next_funding_h",
+        "quality_latest_window_context_only",
         "accept_probability",
         "base_probability",
         "primary_signed_imbalance_ratio",

@@ -252,6 +252,36 @@ def primary_bar_research_exit(
             exit_policy_id=policy,
             exit_reason=exit_reason,
         )
+    if policy == "funding_aware_exit_v1":
+        return _funding_aware_exit_v1(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            funding_threshold=_optional_positive_return(
+                _param_float(params, "funding_threshold", None),
+                default=0.00005,
+            ),
+            pre_funding_window_h=_optional_positive_return(
+                _param_float(params, "pre_funding_window_h", None),
+                default=1.0,
+            ),
+            min_expected_cost_bps=_optional_non_negative_float(
+                _param_float(params, "min_expected_cost_bps", None),
+                default=0.5,
+                policy=policy,
+                field="min_expected_cost_bps",
+            ),
+            edge_buffer_bps=_optional_non_negative_float(
+                _param_float(params, "edge_buffer_bps", None),
+                default=2.0,
+                policy=policy,
+                field="edge_buffer_bps",
+            ),
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
     if policy == "alpha_decay_exit":
         return _alpha_decay_exit(
             entry_time_ms=entry_time_ms,
@@ -390,10 +420,10 @@ def _funding_adverse_exit(
     exit_policy_id: str,
     exit_reason: str,
 ) -> ExitPolicyResult:
-    _require_columns(path, ("funding_rate",), exit_policy_id)
+    funding_rates = _funding_rate_series(path, exit_policy_id=exit_policy_id)
     side_value = side.lower()
-    for _, row in path.iloc[1:].iterrows():
-        funding = float(row["funding_rate"])
+    for index, row in path.iloc[1:].iterrows():
+        funding = float(funding_rates.loc[index])
         adverse = funding >= threshold if side_value == "long" else funding <= -threshold
         if adverse:
             return _result_from_row(
@@ -404,6 +434,55 @@ def _funding_adverse_exit(
                 path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
                 exit_reason="funding_adverse_exit",
                 barrier_hit_type="funding_adverse",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=False,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
+def _funding_aware_exit_v1(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    funding_threshold: float,
+    pre_funding_window_h: float,
+    min_expected_cost_bps: float,
+    edge_buffer_bps: float,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    funding_rates = _funding_rate_series(path, exit_policy_id=exit_policy_id)
+    time_to_next_h = _funding_time_to_next_hours(path, exit_policy_id=exit_policy_id)
+    side_multiplier = _side_multiplier(side)
+    side_value = side.lower()
+    for index, row in path.iloc[1:].iterrows():
+        funding = _optional_numeric(funding_rates.loc[index])
+        hours_to_next = _optional_numeric(time_to_next_h.loc[index])
+        close = _optional_numeric(row.get("close"))
+        if funding is None or hours_to_next is None or close is None:
+            continue
+        if hours_to_next < 0.0 or hours_to_next > pre_funding_window_h:
+            continue
+        adverse = funding >= funding_threshold if side_value == "long" else funding <= -funding_threshold
+        if not adverse:
+            continue
+        expected_cost_bps = abs(funding) * 10_000.0
+        if expected_cost_bps < min_expected_cost_bps:
+            continue
+        unrealized_edge_bps = ((close / float(entry_price)) - 1.0) * side_multiplier * 10_000.0
+        if unrealized_edge_bps <= expected_cost_bps + edge_buffer_bps:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="funding_aware_exit_v1",
+                barrier_hit_type="funding_aware",
                 costs_applied=costs_applied,
                 exit_policy_id=exit_policy_id,
                 approximate=False,
@@ -639,6 +718,14 @@ def _optional_positive_return(value: float | None, *, default: float) -> float:
     return float(value)
 
 
+def _optional_non_negative_float(value: float | None, *, default: float, policy: str, field: str) -> float:
+    if value is None:
+        return float(default)
+    if value < 0.0:
+        raise ValueError(f"{policy} requires non-negative {field}")
+    return float(value)
+
+
 def _trail_return(path: pd.DataFrame, value: float | None) -> float:
     if value is not None:
         return _optional_positive_return(value, default=0.005)
@@ -662,6 +749,37 @@ def _first_present_column(frame: pd.DataFrame, columns: tuple[str, ...]) -> str 
         if column in frame.columns:
             return column
     return None
+
+
+def _funding_time_to_next_hours(path: pd.DataFrame, *, exit_policy_id: str) -> pd.Series:
+    hours_column = _first_present_column(
+        path,
+        ("cal_time_to_next_funding_h", "hours_to_next_funding"),
+    )
+    if hours_column is not None:
+        return pd.to_numeric(path[hours_column], errors="coerce")
+    ms_column = _first_present_column(path, ("time_to_next_funding_ms",))
+    if ms_column is not None:
+        return pd.to_numeric(path[ms_column], errors="coerce") / 3_600_000.0
+    raise ValueError(
+        f"{exit_policy_id} requires cal_time_to_next_funding_h, hours_to_next_funding, or time_to_next_funding_ms"
+    )
+
+
+def _funding_rate_series(path: pd.DataFrame, *, exit_policy_id: str) -> pd.Series:
+    funding_column = _first_present_column(
+        path,
+        ("funding_rate", "perp_last_funding_rate", "last_funding_rate"),
+    )
+    if funding_column is None:
+        raise ValueError(f"{exit_policy_id} requires columns: funding_rate")
+    return pd.to_numeric(path[funding_column], errors="coerce")
+
+
+def _optional_numeric(value: object) -> float | None:
+    if value is None or pd.isna(value):
+        return None
+    return float(value)
 
 
 def _require_columns(frame: pd.DataFrame, columns: tuple[str, ...], policy: str) -> None:
