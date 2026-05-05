@@ -27,6 +27,11 @@ def _path() -> pd.DataFrame:
             "top_of_book_imbalance": [0.1, 0.05, -0.15, -0.2, -0.2, -0.2],
             "realized_volatility": [0.01] * 6,
             "cal_time_to_next_funding_h": [4.0, 0.75, 0.5, 0.25, 4.0, 3.75],
+            "oi_notional": [1_000_000.0, 1_010_000.0, 985_000.0, 970_000.0, 960_000.0, 955_000.0],
+            "oi_delta_1h": [0.0, 10_000.0, -25_000.0, -15_000.0, -10_000.0, -5_000.0],
+            "oi_delta_z_7d": [0.0, 0.5, -1.25, -1.1, -0.8, -0.4],
+            "quality_has_oi_gap": [0.0] * 6,
+            "quality_provider_backed_all_required": [1.0] * 6,
         }
     )
 
@@ -88,6 +93,13 @@ def test_volatility_scaled_barrier_short_uses_inverse_thresholds() -> None:
             "funding_aware",
             False,
         ),
+        (
+            "oi_contraction_exit_v1",
+            {"policy_params": {"max_unrealized_edge_bps": 500.0}},
+            "oi_contraction_exit_v1",
+            "oi_contraction",
+            False,
+        ),
         ("alpha_decay_exit", {"target_return": 0.1}, "alpha_decay_exit", "alpha_decay", False),
         ("adverse_selection_exit", {"target_return": 20.0, "stop_return": 0.1}, "adverse_selection_exit", "adverse_selection", False),
         ("trailing_atr_after_profit", {"target_return": 0.02, "stop_return": 0.015}, "trailing_atr_after_profit", "trailing_stop", True),
@@ -120,6 +132,8 @@ def test_primary_bar_research_exit_policies_are_deterministic(
         ("funding_adverse_exit", ["funding_rate"], {"target_return": 0.00005}, "funding_adverse_exit requires columns"),
         ("funding_aware_exit_v1", ["funding_rate"], {"target_return": 0.00005}, "funding_aware_exit_v1 requires columns"),
         ("funding_aware_exit_v1", ["cal_time_to_next_funding_h"], {"target_return": 0.00005}, "funding_aware_exit_v1 requires"),
+        ("oi_contraction_exit_v1", ["oi_delta_1h"], {}, "oi_contraction_exit_v1 requires columns"),
+        ("oi_contraction_exit_v1", ["quality_has_oi_gap"], {}, "oi_contraction_exit_v1 requires columns"),
         ("alpha_decay_exit", ["directional_slope_atr"], {"target_return": 0.1}, "alpha_decay_exit requires columns"),
         ("adverse_selection_exit", ["primary_signed_imbalance_ratio", "top_of_book_imbalance"], {"target_return": 20.0, "stop_return": 0.1}, "adverse_selection_exit requires"),
         ("trailing_atr_after_profit", ["realized_volatility"], {"target_return": 0.02}, "trailing_atr_after_profit requires"),
@@ -188,6 +202,49 @@ def test_funding_aware_exit_accepts_registered_perp_funding_column() -> None:
 
     assert result.exit_reason == "funding_aware_exit_v1"
     assert result.barrier_hit_type == "funding_aware"
+
+
+def test_oi_contraction_exit_waits_when_unrealized_edge_is_large() -> None:
+    frame = _path().copy()
+    frame["close"] = [100.0, 101.0, 104.0, 105.0, 106.0, 107.0]
+
+    result = _run("oi_contraction_exit_v1", path=frame)
+
+    assert result.barrier_hit_type == "time"
+    assert result.exit_reason == "holding_window"
+
+
+def test_oi_contraction_exit_skips_rows_with_oi_quality_gap() -> None:
+    frame = _path().copy()
+    frame["quality_has_oi_gap"] = [0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+
+    result = _run("oi_contraction_exit_v1", path=frame)
+
+    assert result.barrier_hit_type == "time"
+    assert result.exit_reason == "holding_window"
+
+
+def test_oi_contraction_exit_skips_non_finite_oi_context() -> None:
+    frame = _path().copy()
+    frame["oi_notional"] = [1_000_000.0, 1_010_000.0, float("inf"), float("inf"), float("inf"), float("inf")]
+    frame["oi_delta_1h"] = [0.0, 10_000.0, float("-inf"), float("-inf"), float("-inf"), float("-inf")]
+    frame["oi_delta_z_7d"] = [0.0, 0.5, float("-inf"), float("-inf"), float("-inf"), float("-inf")]
+
+    result = _run("oi_contraction_exit_v1", path=frame)
+
+    assert result.barrier_hit_type == "time"
+    assert result.exit_reason == "holding_window"
+
+
+def test_oi_contraction_exit_supports_short_side_momentum_decay() -> None:
+    frame = _path().copy()
+    frame["close"] = [100.0, 100.0, 99.98, 99.96, 99.94, 99.92]
+
+    result = _run("oi_contraction_exit_v1", side="short", path=frame)
+
+    assert result.exit_reason == "oi_contraction_exit_v1"
+    assert result.barrier_hit_type == "oi_contraction"
+    assert result.exit_time_ms == int(frame.iloc[2]["bar_time_ms"])
 
 
 def test_fixed_holding_and_lower_timeframe_triple_barrier_outputs_are_preserved() -> None:

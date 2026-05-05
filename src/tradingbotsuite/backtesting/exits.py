@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import math
 from typing import Any
 
 import pandas as pd
@@ -282,6 +283,32 @@ def primary_bar_research_exit(
             exit_policy_id=policy,
             exit_reason=exit_reason,
         )
+    if policy == "oi_contraction_exit_v1":
+        return _oi_contraction_exit_v1(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            oi_delta_z_threshold=_optional_positive_return(
+                _param_float(params, "oi_delta_z_threshold", None),
+                default=1.0,
+            ),
+            min_oi_delta_abs=_optional_non_negative_float(
+                _param_float(params, "min_oi_delta_abs", None),
+                default=0.0,
+                policy=policy,
+                field="min_oi_delta_abs",
+            ),
+            max_unrealized_edge_bps=_optional_non_negative_float(
+                _param_float(params, "max_unrealized_edge_bps", None),
+                default=5.0,
+                policy=policy,
+                field="max_unrealized_edge_bps",
+            ),
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
     if policy == "alpha_decay_exit":
         return _alpha_decay_exit(
             entry_time_ms=entry_time_ms,
@@ -483,6 +510,68 @@ def _funding_aware_exit_v1(
                 path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
                 exit_reason="funding_aware_exit_v1",
                 barrier_hit_type="funding_aware",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=False,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
+def _oi_contraction_exit_v1(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    oi_delta_z_threshold: float,
+    min_oi_delta_abs: float,
+    max_unrealized_edge_bps: float,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    _require_columns(
+        path,
+        ("oi_notional", "oi_delta_1h", "oi_delta_z_7d", "quality_has_oi_gap"),
+        exit_policy_id,
+    )
+    side_multiplier = _side_multiplier(side)
+    for _, row in path.iloc[1:].iterrows():
+        oi_notional = _optional_numeric(row.get("oi_notional"))
+        oi_delta = _optional_numeric(row.get("oi_delta_1h"))
+        oi_delta_z = _optional_numeric(row.get("oi_delta_z_7d"))
+        oi_gap = _optional_numeric(row.get("quality_has_oi_gap"))
+        close = _optional_numeric(row.get("close"))
+        provider_backed = _optional_numeric(row.get("quality_provider_backed_all_required"))
+        missing_context = (
+            oi_notional is None
+            or oi_delta is None
+            or oi_delta_z is None
+            or oi_gap is None
+            or close is None
+        )
+        if missing_context:
+            continue
+        if oi_gap > 0.0:
+            continue
+        if "quality_provider_backed_all_required" in path.columns and (
+            provider_backed is None or provider_backed <= 0.0
+        ):
+            continue
+        if oi_delta > -min_oi_delta_abs:
+            continue
+        if oi_delta_z > -oi_delta_z_threshold:
+            continue
+        unrealized_edge_bps = ((close / float(entry_price)) - 1.0) * side_multiplier * 10_000.0
+        if unrealized_edge_bps <= max_unrealized_edge_bps:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="oi_contraction_exit_v1",
+                barrier_hit_type="oi_contraction",
                 costs_applied=costs_applied,
                 exit_policy_id=exit_policy_id,
                 approximate=False,
@@ -779,7 +868,10 @@ def _funding_rate_series(path: pd.DataFrame, *, exit_policy_id: str) -> pd.Serie
 def _optional_numeric(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None
-    return float(value)
+    numeric = float(value)
+    if not math.isfinite(numeric):
+        return None
+    return numeric
 
 
 def _require_columns(frame: pd.DataFrame, columns: tuple[str, ...], policy: str) -> None:

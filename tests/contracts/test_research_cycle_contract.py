@@ -217,6 +217,14 @@ def test_historical_research_cycle_spec_accepts_exit_policy_candidates(tmp_path:
                         "edge_buffer_bps": 2.0,
                     },
                 },
+                {
+                    "exit_policy_id": "oi_contraction_exit_v1",
+                    "exit_policy_params": {
+                        "oi_delta_z_threshold": 1.0,
+                        "min_oi_delta_abs": 0.0,
+                        "max_unrealized_edge_bps": 5.0,
+                    },
+                },
             ],
         },
     )
@@ -228,9 +236,11 @@ def test_historical_research_cycle_spec_accepts_exit_policy_candidates(tmp_path:
         "fixed_holding_window",
         "max_mae_stop",
         "funding_aware_exit_v1",
+        "oi_contraction_exit_v1",
     ]
     assert payload["exits"]["exit_policies"][1]["exit_policy_params"] == {"stop_return": 0.01}
     assert payload["exits"]["exit_policies"][2]["exit_policy_params"]["pre_funding_window_h"] == 1.0
+    assert payload["exits"]["exit_policies"][3]["exit_policy_params"]["max_unrealized_edge_bps"] == 5.0
 
 
 def test_historical_research_cycle_spec_accepts_lower_timeframe_triple_barrier_exit(tmp_path: Path) -> None:

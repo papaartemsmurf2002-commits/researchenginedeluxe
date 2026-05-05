@@ -173,6 +173,7 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     assert [policy["exit_policy_id"] for policy in spec.exits.exit_policies] == [
         "fixed_holding_window",
         "funding_aware_exit_v1",
+        "oi_contraction_exit_v1",
     ]
     assert spec.output_dir == REPO_ROOT / "data" / "research" / "historical_cycles" / "btcusdt_perp_context_v2_foundation"
 
@@ -220,6 +221,10 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
         "perp_funding_z_7d",
         "cal_time_since_last_funding_h",
         "cal_time_to_next_funding_h",
+        "oi_notional",
+        "oi_delta_1h",
+        "oi_delta_z_7d",
+        "quality_has_oi_gap",
         "quality_provider_backed_all_required",
     } <= set(feature_frame.columns)
     assert feature_frame["quality_provider_backed_all_required"].eq(1.0).any()
@@ -228,13 +233,14 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     assert [policy["exit_policy_id"] for policy in candidate_space_manifest["exit_policies"]] == [
         "fixed_holding_window",
         "funding_aware_exit_v1",
+        "oi_contraction_exit_v1",
     ]
     assert expected_strategies <= set(candidate_space_manifest["generated_strategy_ids"])
     assert {record["coverage_status"] for record in candidate_space_manifest["baseline_comparator_coverage"]} == {"complete"}
     assert expected_strategies <= set(rankings["strategy_id"])
     assert expected_strategies <= set(backtest_index["strategy_id"])
-    assert {"fixed_holding_window", "funding_aware_exit_v1"} <= set(rankings["exit_policy_id"])
-    assert {"fixed_holding_window", "funding_aware_exit_v1"} <= set(backtest_index["exit_policy_id"])
+    assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(rankings["exit_policy_id"])
+    assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(backtest_index["exit_policy_id"])
     funding_rows = rankings.loc[rankings["strategy_id"].astype(str) == "funding_crowding_fade_v2"]
     assert not funding_rows.empty
     if int(funding_rows["trade_count"].sum()) == 0:
@@ -277,6 +283,7 @@ def test_checked_in_eth_perp_context_v2_cycle_consumes_provider_context_fixture(
     assert [policy["exit_policy_id"] for policy in spec.exits.exit_policies] == [
         "fixed_holding_window",
         "funding_aware_exit_v1",
+        "oi_contraction_exit_v1",
     ]
     assert spec.output_dir == REPO_ROOT / "data" / "research" / "historical_cycles" / "ethusdt_perp_context_v2_foundation"
 
@@ -325,6 +332,10 @@ def test_checked_in_eth_perp_context_v2_cycle_consumes_provider_context_fixture(
         "perp_funding_z_7d",
         "cal_time_since_last_funding_h",
         "cal_time_to_next_funding_h",
+        "oi_notional",
+        "oi_delta_1h",
+        "oi_delta_z_7d",
+        "quality_has_oi_gap",
         "quality_provider_backed_all_required",
     } <= set(feature_frame.columns)
     assert feature_frame["quality_provider_backed_all_required"].eq(1.0).any()
@@ -333,13 +344,14 @@ def test_checked_in_eth_perp_context_v2_cycle_consumes_provider_context_fixture(
     assert [policy["exit_policy_id"] for policy in candidate_space_manifest["exit_policies"]] == [
         "fixed_holding_window",
         "funding_aware_exit_v1",
+        "oi_contraction_exit_v1",
     ]
     assert expected_strategies <= set(candidate_space_manifest["generated_strategy_ids"])
     assert {record["coverage_status"] for record in candidate_space_manifest["baseline_comparator_coverage"]} == {"complete"}
     assert expected_strategies <= set(rankings["strategy_id"])
     assert expected_strategies <= set(backtest_index["strategy_id"])
-    assert {"fixed_holding_window", "funding_aware_exit_v1"} <= set(rankings["exit_policy_id"])
-    assert {"fixed_holding_window", "funding_aware_exit_v1"} <= set(backtest_index["exit_policy_id"])
+    assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(rankings["exit_policy_id"])
+    assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(backtest_index["exit_policy_id"])
     zero_trade_patterns = {
         "funding_crowding_fade_v2": "low_signal_density|trade_count",
         "oi_flow_breakout_v2": "low_signal_density|trade_count|flow_confirmation",

@@ -164,7 +164,7 @@ Use existing exit IDs first:
 | Volatility/triple barrier | `triple_barrier_atr` or `volatility_scaled_barrier` | Only add if current policies cannot express the behavior. |
 | Avoid adverse funding | `funding_adverse_exit` | `funding_aware_exit_v1` can be added later if it needs expected-alpha/funding tradeoff logic. |
 | Regime transition exit | `regime_flip_exit` | `hmm_transition_exit_v1` later, after filtered HMM posterior is split-safe. |
-| Momentum decay exit | `alpha_decay_exit` | `oi_contraction_exit_v1` later if OI-specific evidence is required. |
+| Momentum decay exit | `alpha_decay_exit` | `oi_contraction_exit_v1` complete in WPR58 for OI-specific contraction evidence. |
 | Liquidity/adverse selection | `adverse_selection_exit` | `liquidity_adverse_selection_exit_v1` later, after L2 fixtures exist. |
 | Trailing after profit | `trailing_atr_after_profit` | None initially. |
 | MAE stop | `max_mae_stop` | Dynamic KNN barrier only after KNN evidence exists. |
@@ -458,7 +458,7 @@ Add only after WPR49-WPR52 are stable:
 2. `oi_flow_breakout_v2`
 3. ETHUSDT fixture and mirror cycle - complete in WPR56 with a 2,810-row latest-window ETHUSDT provider fixture and checked mirror cycle
 4. `funding_adverse_exit` improvements or new `funding_aware_exit_v1` - complete in WPR57 with `funding_aware_exit_v1` checked in BTCUSDT and ETHUSDT cycles
-5. `oi_contraction_exit_v1`
+5. `oi_contraction_exit_v1` - complete in WPR58 with `oi_contraction_exit_v1` checked in BTCUSDT and ETHUSDT cycles
 6. Trial-budget and overfit-adjustment reports
 7. Split-safe HMM router
 8. Split-safe KNN local analog filter

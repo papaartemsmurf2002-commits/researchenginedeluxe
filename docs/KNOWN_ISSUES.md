@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 0 | 0 |
-| P1 | 0 | 0 | 3 | 0 |
+| P1 | 0 | 0 | 4 | 0 |
 | P2 | 0 | 0 | 0 | 0 |
 | P3 | 0 | 0 | 0 | 0 |
 
@@ -97,6 +97,30 @@ Before commit/push, make provider fixture evidence durable, resolve benchmark pa
 ### Resolution notes
 
 Stage R44 fixes implemented all required changes and added regression coverage. The provider latest-month fixture pack is unignored for commit. Focused validation passed, WPR42 provider benchmark was rerun without filename-length warnings, and full validation is recorded in the R44 stage report.
+
+## ISSUE-R58-001: OI contraction exit accepted non-finite context
+
+Severity: P1
+Stage discovered: Stage R58 - OI contraction exit policy
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/backtesting/exits.py`, `tests/backtesting/test_exit_policy_expansion.py`
+
+### Problem
+
+The new `oi_contraction_exit_v1` policy initially treated infinite OI values as valid row-level context. A row with infinite OI notional and negative-infinite OI delta/z-score could trigger an exit instead of failing closed to the normal time exit.
+
+### Evidence
+
+Final review of the WPR58 diff reproduced an `oi_contraction_exit_v1` trigger on non-finite OI context, contradicting the stage report's row-level missing or non-finite context behavior.
+
+### Required resolution
+
+Reject non-finite values in optional numeric context conversion and add regression coverage for `inf` and `-inf` OI rows.
+
+### Resolution notes
+
+Stage R58 updated `_optional_numeric` to return no context for non-finite numbers and added `test_oi_contraction_exit_skips_non_finite_oi_context`. Focused validation passed after the fix.
 
 ## Issue template
 

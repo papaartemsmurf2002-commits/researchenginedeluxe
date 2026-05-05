@@ -55,6 +55,15 @@
           "edge_buffer_bps": 2.0
         },
         "exit_policy_source": "configured_research_exit"
+      },
+      {
+        "exit_policy_id": "oi_contraction_exit_v1",
+        "exit_policy_params": {
+          "oi_delta_z_threshold": 1.0,
+          "min_oi_delta_abs": 0.0,
+          "max_unrealized_edge_bps": 5.0
+        },
+        "exit_policy_source": "configured_research_exit"
       }
     ]
   }

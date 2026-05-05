@@ -185,6 +185,7 @@ def test_vector_end_of_data_fallback_matches_reference_engine(tmp_path: Path) ->
         "regime_flip_exit",
         "funding_adverse_exit",
         "funding_aware_exit_v1",
+        "oi_contraction_exit_v1",
         "alpha_decay_exit",
         "adverse_selection_exit",
         "trailing_atr_after_profit",
