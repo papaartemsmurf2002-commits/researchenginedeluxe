@@ -132,6 +132,7 @@ def feature_set_presets() -> dict[str, tuple[str, ...]]:
         ),
         "features_perp_context_only": ("perp_context_v1",),
         "features_perp_context_v2": ("perp_context_v2",),
+        "features_liquidation_context_v1": ("liquidation_context_v1",),
         "features_microstructure_filter_only": ("microstructure_context_v1",),
         "features_cross_asset_context": ("cross_asset_v1",),
         "features_price_perp_micro_no_wt": (
@@ -361,6 +362,20 @@ PERP_CONTEXT_V2_COLUMNS = (
     "quality_provider_backed_all_required",
     "quality_latest_window_context_only",
 )
+LIQUIDATION_CONTEXT_COLUMNS = (
+    "liq_event_count_1h",
+    "liq_total_notional_1h",
+    "liq_buy_notional_1h",
+    "liq_sell_notional_1h",
+    "liq_net_notional_1h",
+    "liq_imbalance_ratio_1h",
+    "liq_total_notional_z_7d",
+    "liq_time_since_last_event_h",
+    "liq_absorption_reclaim_bps",
+    "quality_has_liquidation_gap",
+    "quality_liquidation_provider_backed",
+    "quality_liquidation_latest_window_context_only",
+)
 MICROSTRUCTURE_COLUMNS = (
     "primary_signed_imbalance_ratio",
     "primary_sqrt_signed_imbalance_ratio",
@@ -435,6 +450,16 @@ _FEATURE_PACKS = (
         version="v1",
         input_families=("funding_rate", "premium_index", "open_interest", "agg_trade"),
         feature_specs=_specs(PERP_CONTEXT_V2_COLUMNS, "As-of perpetual context v2"),
+        point_in_time_safe=True,
+        fit_scope="stateless",
+        imputation_policy="explicit_missingness",
+        optional=True,
+    ),
+    FeaturePack(
+        pack_id="liquidation_context_v1",
+        version="v1",
+        input_families=("liquidation",),
+        feature_specs=_specs(LIQUIDATION_CONTEXT_COLUMNS, "Windowed liquidation context"),
         point_in_time_safe=True,
         fit_scope="stateless",
         imputation_policy="explicit_missingness",

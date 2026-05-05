@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R62 liquidation fixture intake foundation
+Current stage: Stage R63 liquidation context feature pack
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR62 complete; liquidation classifier remains gated on features or checked fixture evidence
+Stage status: closed - WPR63 complete; checked liquidation fixture evidence required before classifier or cycle wiring
 Last updated: 2026-05-05
 
 ## Stage entry decision
@@ -102,6 +102,7 @@ Last updated: 2026-05-05
 | WPR60-01-split-safe-hmm-router | Codex Research Agent | closed | `src/tradingbotsuite/strategies/hmm_routed_alpha_sleeves.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/strategies/__init__.py`, `configs/strategies/hmm_routed_alpha_sleeves_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `docs/work_packets/WPR60-01-split-safe-hmm-router.md`, `docs/stage_reports/STAGE_R60_SPLIT_SAFE_HMM_ROUTER_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `hmm_routed_alpha_sleeves_v2` as a research-only split-safe posterior router strategy without fitting HMMs inside the strategy or changing checked provider-cycle wiring. |
 | WPR61-01-split-safe-knn-local-analog-filter | Codex Research Agent | closed | `src/tradingbotsuite/strategies/hmm_knn_local_analog_filter.py`, `src/tradingbotsuite/strategies/registry.py`, `src/tradingbotsuite/strategies/parameters.py`, `configs/strategies/hmm_knn_local_analog_filter_v2.json`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `docs/work_packets/WPR61-01-split-safe-knn-local-analog-filter.md`, `docs/stage_reports/STAGE_R61_SPLIT_SAFE_KNN_LOCAL_ANALOG_FILTER_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added `hmm_knn_local_analog_filter_v2` as a research-only split-safe KNN local analog strategy without recomputing neighbors or changing checked provider-cycle wiring. |
 | WPR62-01-liquidation-fixture-intake-foundation | Codex Research Agent | closed | `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `src/tradingbotsuite/main.py`, `tests/tradingbotsuite/test_market_data_collection.py`, `tests/contracts/test_historical_fixture_pack_contract.py`, `docs/work_packets/WPR62-01-liquidation-fixture-intake-foundation.md`, `docs/stage_reports/STAGE_R62_LIQUIDATION_FIXTURE_INTAKE_FOUNDATION_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added research-only liquidation archive intake and optional fixture-pack context materialization without implementing the classifier or changing checked provider-cycle wiring. |
+| WPR63-01-liquidation-context-feature-pack | Codex Research Agent | closed | `src/tradingbotsuite/features/registry.py`, `src/tradingbotsuite/features/packs.py`, `src/tradingbotsuite/features/builders.py`, `configs/features/features_liquidation_context_v1.json`, `tests/features/test_feature_builders.py`, `tests/contracts/test_feature_contracts.py`, `docs/work_packets/WPR63-01-liquidation-context-feature-pack.md`, `docs/stage_reports/STAGE_R63_LIQUIDATION_CONTEXT_FEATURE_PACK_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added registered `features_liquidation_context_v1` with windowed liquidation materialization, explicit missingness, and no classifier or checked cycle wiring. |
 
 ## Gate checklist
 
@@ -354,3 +355,8 @@ Reason: The branch now has a registered `hmm_knn_local_analog_filter_v2` researc
 
 Decision: R62 liquidation fixture intake foundation complete; classifier remains gated on liquidation features or checked fixture evidence
 Reason: The branch now accepts research-only Crypto Lake `liquidation` archive rows, preserves diagnostic-only provider metadata, and can materialize `liquidation` as an optional historical fixture-pack context family with deterministic same-timestamp aggregation. No classifier, liquidation feature set, checked provider-cycle wiring, live behavior, or promotion evidence was added.
+
+## Liquidation context feature pack wave
+
+Decision: R63 liquidation context feature pack complete; checked liquidation fixture evidence required before classifier or cycle wiring
+Reason: The branch now has a registered `features_liquidation_context_v1` feature set backed by `liquidation_context_v1`, with event-window materialization for optional liquidation context and explicit missingness for unknown windows. Checked BTCUSDT/ETHUSDT cycles, classifier work, live behavior, and promotion evidence remain unchanged.

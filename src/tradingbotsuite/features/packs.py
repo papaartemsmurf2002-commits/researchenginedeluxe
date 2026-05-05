@@ -14,6 +14,7 @@ from tradingbotsuite.features.alignment import (
 from tradingbotsuite.features.registry import (
     CALENDAR_COLUMNS,
     CROSS_ASSET_COLUMNS,
+    LIQUIDATION_CONTEXT_COLUMNS,
     MICROSTRUCTURE_COLUMNS,
     PERP_CONTEXT_COLUMNS,
     PERP_CONTEXT_V2_COLUMNS,
@@ -94,6 +95,8 @@ def _build_pack(frame: pd.DataFrame, *, pack_id: str, price_column: str | None, 
         return _context_features(frame, PERP_CONTEXT_COLUMNS)
     if pack_id == "perp_context_v2":
         return _perp_context_v2_features(frame, interval_ms=interval_ms)
+    if pack_id == "liquidation_context_v1":
+        return _liquidation_context_features(frame, interval_ms=interval_ms)
     if pack_id == "microstructure_context_v1":
         return _context_features(frame, MICROSTRUCTURE_COLUMNS)
     if pack_id == "wt3d_v1":
@@ -251,6 +254,76 @@ def _perp_context_v2_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.Da
     return result.loc[:, PERP_CONTEXT_V2_COLUMNS]
 
 
+def _liquidation_context_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.DataFrame:
+    result = pd.DataFrame(index=frame.index)
+    row_count = len(frame)
+    bars_7d = _bars_for_duration(interval_ms=interval_ms, duration_ms=7 * 24 * 3_600_000)
+
+    event_count = _first_available_numeric(frame, ("liquidation_event_count_1h", "liquidation_event_count"))
+    total_notional = _first_available_numeric(
+        frame,
+        ("liquidation_quote_notional_1h", "liquidation_quote_notional", "quote_notional", "notional"),
+    )
+    buy_notional = _first_available_numeric(frame, ("liquidation_buy_notional_1h", "liquidation_buy_notional"))
+    sell_notional = _first_available_numeric(frame, ("liquidation_sell_notional_1h", "liquidation_sell_notional"))
+    imbalance = _first_available_numeric(
+        frame,
+        ("liquidation_side_imbalance_1h", "liquidation_side_imbalance"),
+    )
+    last_event_age_ms = _optional_numeric(frame, "liquidation_last_event_age_ms")
+    vwap_price = _first_available_numeric(
+        frame,
+        ("liquidation_vwap_price_1h", "liquidation_vwap_price", "average_price", "price"),
+    )
+    close = _optional_numeric(frame, "close")
+
+    result["liq_event_count_1h"] = event_count if event_count is not None else _nan_series(frame)
+    result["liq_total_notional_1h"] = total_notional if total_notional is not None else _nan_series(frame)
+    result["liq_buy_notional_1h"] = buy_notional if buy_notional is not None else _nan_series(frame)
+    result["liq_sell_notional_1h"] = sell_notional if sell_notional is not None else _nan_series(frame)
+    buy_sell_available = (
+        buy_notional is not None
+        and sell_notional is not None
+        and (buy_notional.notna() & sell_notional.notna()).any()
+    )
+    if buy_sell_available:
+        result["liq_net_notional_1h"] = buy_notional - sell_notional
+    elif imbalance is not None and total_notional is not None:
+        result["liq_net_notional_1h"] = imbalance * total_notional
+    else:
+        result["liq_net_notional_1h"] = _nan_series(frame)
+    if imbalance is not None:
+        result["liq_imbalance_ratio_1h"] = imbalance
+    elif total_notional is not None:
+        result["liq_imbalance_ratio_1h"] = result["liq_net_notional_1h"] / total_notional.replace(0.0, np.nan)
+    else:
+        result["liq_imbalance_ratio_1h"] = _nan_series(frame)
+    result["liq_total_notional_z_7d"] = _rolling_zscore(result["liq_total_notional_1h"], bars_7d)
+    result["liq_time_since_last_event_h"] = (
+        last_event_age_ms / 3_600_000.0
+        if last_event_age_ms is not None
+        else _nan_series(frame)
+    )
+    if vwap_price is not None and close is not None:
+        signed_reclaim = -np.sign(result["liq_imbalance_ratio_1h"]) * ((close - vwap_price) / vwap_price.replace(0.0, np.nan))
+        result["liq_absorption_reclaim_bps"] = signed_reclaim * 10_000.0
+    else:
+        result["liq_absorption_reclaim_bps"] = _nan_series(frame)
+
+    latest_window_only = _optional_numeric(frame, "quality_latest_window_context_only_source")
+    if latest_window_only is None:
+        latest_window_only = _optional_numeric(frame, "latest_window_only")
+    has_event_context = result["liq_event_count_1h"].notna()
+    result["quality_has_liquidation_gap"] = (~has_event_context).astype(float)
+    result["quality_liquidation_provider_backed"] = has_event_context.astype(float)
+    result["quality_liquidation_latest_window_context_only"] = (
+        pd.to_numeric(latest_window_only, errors="coerce").fillna(0.0).clip(lower=0.0, upper=1.0)
+        if latest_window_only is not None
+        else pd.Series(np.zeros(row_count, dtype=float), index=frame.index)
+    )
+    return result.loc[:, LIQUIDATION_CONTEXT_COLUMNS]
+
+
 def _wt3d_features(frame: pd.DataFrame, *, price_column: str | None) -> pd.DataFrame:
     price = _price_series(frame, price_column=price_column).ffill().fillna(0.0)
 
@@ -316,7 +389,15 @@ def _availability_report(frame: pd.DataFrame, manifest: FeatureManifest) -> Feat
     missing_context_columns = tuple(
         column
         for column, rate in missing_rates.items()
-        if rate > 0.0 and column in set(PERP_CONTEXT_COLUMNS + PERP_CONTEXT_V2_COLUMNS + MICROSTRUCTURE_COLUMNS + CROSS_ASSET_COLUMNS)
+        if rate > 0.0
+        and column
+        in set(
+            PERP_CONTEXT_COLUMNS
+            + PERP_CONTEXT_V2_COLUMNS
+            + LIQUIDATION_CONTEXT_COLUMNS
+            + MICROSTRUCTURE_COLUMNS
+            + CROSS_ASSET_COLUMNS
+        )
     )
     return FeatureAvailabilityReport(
         row_count=int(len(frame)),

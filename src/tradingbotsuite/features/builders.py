@@ -79,7 +79,7 @@ class FixtureFamilyMaterializationResult:
 
 
 FIXTURE_FAMILY_CONTEXT_MATERIALIZATION_VERSION = "fixture-family-context-materialization-v1"
-FIXTURE_CONTEXT_FAMILY_ORDER = ("funding_rate", "premium_index", "open_interest", "agg_trade")
+FIXTURE_CONTEXT_FAMILY_ORDER = ("funding_rate", "premium_index", "open_interest", "agg_trade", "liquidation")
 FIXTURE_CONTEXT_COLUMN_ALIASES = {
     "funding_rate": {
         "funding_rate": ("funding_rate", "last_funding_rate", "rate", "value"),
@@ -111,6 +111,14 @@ FIXTURE_CONTEXT_COLUMN_ALIASES = {
         "primary_sqrt_signed_imbalance_ratio": ("primary_sqrt_signed_imbalance_ratio",),
         "top_of_book_imbalance": ("top_of_book_imbalance",),
         "spread_bps": ("spread_bps",),
+    },
+    "liquidation": {
+        "liquidation_event_count": ("liquidation_event_count",),
+        "liquidation_quote_notional": ("liquidation_quote_notional",),
+        "liquidation_buy_notional": ("liquidation_buy_notional",),
+        "liquidation_sell_notional": ("liquidation_sell_notional",),
+        "liquidation_quantity": ("liquidation_quantity",),
+        "liquidation_vwap_price": ("liquidation_vwap_price",),
     },
 }
 
@@ -331,6 +339,30 @@ def _materialize_one_fixture_family(
         ["__fixture_family_symbol", "__fixture_family_event_time_ms"],
         kind="mergesort",
     ).reset_index(drop=True)
+    if family == "liquidation":
+        if not _liquidation_has_supported_measure(family_frame):
+            if bool(family_payload.get("required", False)):
+                raise ValueError("fixture_context_family_no_supported_columns:liquidation")
+            return frame, _family_materialization_record(
+                family="liquidation",
+                family_payload=family_payload,
+                event_time_field=event_time_field,
+                input_columns=list(family_frame.columns),
+                output_columns=[],
+                joined=False,
+                skipped_reason="no_supported_context_columns",
+                source_row_count=len(family_frame),
+                matched_row_count=0,
+                unmatched_row_count=len(frame),
+                null_rates={},
+            )
+        return _materialize_liquidation_fixture_family(
+            frame,
+            family_payload=family_payload,
+            family_frame=family_frame,
+            cycle_time_column=cycle_time_column,
+            event_time_field=event_time_field,
+        )
     context_columns = _derive_family_context_columns(family, family_frame)
     output_columns = [column for column in FIXTURE_CONTEXT_COLUMN_ALIASES.get(family, {}) if column in context_columns]
     if not output_columns:
@@ -449,6 +481,213 @@ def _derive_family_context_columns(family: str, frame: pd.DataFrame) -> dict[str
         if signed is not None and "primary_sqrt_signed_imbalance_ratio" not in columns:
             columns["primary_sqrt_signed_imbalance_ratio"] = np.sign(signed) * np.sqrt(signed.abs())
     return {column: series.replace([np.inf, -np.inf], np.nan) for column, series in columns.items()}
+
+
+def _materialize_liquidation_fixture_family(
+    frame: pd.DataFrame,
+    *,
+    family_payload: Mapping[str, Any],
+    family_frame: pd.DataFrame,
+    cycle_time_column: str,
+    event_time_field: str,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    output_columns = [
+        "liquidation_event_count_1h",
+        "liquidation_quote_notional_1h",
+        "liquidation_buy_notional_1h",
+        "liquidation_sell_notional_1h",
+        "liquidation_quantity_1h",
+        "liquidation_vwap_price_1h",
+        "liquidation_side_imbalance_1h",
+        "liquidation_last_event_age_ms",
+    ]
+    left = pd.DataFrame(
+        {
+            "__fixture_original_index": frame.index,
+            "__fixture_cycle_symbol": frame["symbol"].astype(str),
+            "__fixture_cycle_time_ms": pd.to_numeric(frame[cycle_time_column], errors="coerce"),
+        }
+    )
+    if left["__fixture_cycle_time_ms"].isna().any():
+        raise ValueError("fixture_context_cycle_time_invalid")
+
+    joined_values = pd.DataFrame(index=frame.index)
+    for column in output_columns:
+        joined_values[column] = np.nan
+    window_ms = 3_600_000
+    for symbol, left_group in left.groupby("__fixture_cycle_symbol", sort=False):
+        right_group = family_frame.loc[family_frame["__fixture_family_symbol"] == symbol].copy()
+        if right_group.empty:
+            continue
+        event_times = pd.to_numeric(right_group["__fixture_family_event_time_ms"], errors="coerce").to_numpy(dtype="float64")
+        order = np.argsort(event_times, kind="mergesort")
+        event_times = event_times[order]
+        right_group = right_group.iloc[order].reset_index(drop=True)
+        cycle_times = pd.to_numeric(left_group["__fixture_cycle_time_ms"], errors="coerce").to_numpy(dtype="float64")
+        right_idx = np.searchsorted(event_times, cycle_times, side="right")
+        left_idx = np.searchsorted(event_times, cycle_times - window_ms, side="right")
+        matched = right_idx > left_idx
+        target_index = left_group["__fixture_original_index"].to_numpy()
+
+        event_count = _liquidation_window_sum(
+            right_group,
+            ("liquidation_event_count",),
+            left_idx=left_idx,
+            right_idx=right_idx,
+            require_observed=False,
+        )
+        total_notional = _liquidation_window_sum(
+            right_group,
+            ("liquidation_quote_notional",),
+            left_idx=left_idx,
+            right_idx=right_idx,
+        )
+        buy_notional = _liquidation_window_sum(
+            right_group,
+            ("liquidation_buy_notional",),
+            left_idx=left_idx,
+            right_idx=right_idx,
+        )
+        sell_notional = _liquidation_window_sum(
+            right_group,
+            ("liquidation_sell_notional",),
+            left_idx=left_idx,
+            right_idx=right_idx,
+        )
+        quantity = _liquidation_window_sum(
+            right_group,
+            ("liquidation_quantity",),
+            left_idx=left_idx,
+            right_idx=right_idx,
+        )
+        weighted_imbalance_notional = _liquidation_window_product_sum(
+            right_group,
+            ("liquidation_quote_notional",),
+            ("liquidation_side_imbalance",),
+            left_idx=left_idx,
+            right_idx=right_idx,
+        )
+        last_event_time = np.full(len(cycle_times), np.nan, dtype="float64")
+        last_event_position = right_idx - 1
+        valid_last = matched & (last_event_position >= 0)
+        last_event_time[valid_last] = event_times[last_event_position[valid_last]]
+
+        joined_values.loc[target_index[matched], "liquidation_event_count_1h"] = event_count[matched]
+        joined_values.loc[target_index[matched], "liquidation_quote_notional_1h"] = total_notional[matched]
+        joined_values.loc[target_index[matched], "liquidation_buy_notional_1h"] = buy_notional[matched]
+        joined_values.loc[target_index[matched], "liquidation_sell_notional_1h"] = sell_notional[matched]
+        joined_values.loc[target_index[matched], "liquidation_quantity_1h"] = quantity[matched]
+        denominator = (buy_notional + sell_notional)
+        buy_sell_imbalance = np.divide(
+            buy_notional - sell_notional,
+            denominator,
+            out=np.full(len(denominator), np.nan, dtype="float64"),
+            where=np.isfinite(denominator) & (denominator != 0.0),
+        )
+        weighted_imbalance = np.divide(
+            weighted_imbalance_notional,
+            total_notional,
+            out=np.full(len(total_notional), np.nan, dtype="float64"),
+            where=np.isfinite(total_notional) & (total_notional != 0.0),
+        )
+        imbalance = np.where(np.isfinite(buy_sell_imbalance), buy_sell_imbalance, weighted_imbalance)
+        vwap = np.divide(
+            total_notional,
+            quantity,
+            out=np.full(len(total_notional), np.nan, dtype="float64"),
+            where=np.isfinite(quantity) & (quantity != 0.0),
+        )
+        joined_values.loc[target_index[matched], "liquidation_side_imbalance_1h"] = imbalance[matched]
+        joined_values.loc[target_index[matched], "liquidation_vwap_price_1h"] = vwap[matched]
+        joined_values.loc[target_index[matched], "liquidation_last_event_age_ms"] = (
+            cycle_times[matched] - last_event_time[matched]
+        )
+
+    result = frame.copy()
+    for column in output_columns:
+        result[column] = pd.to_numeric(joined_values[column], errors="coerce")
+    matched_row_count = int(result["liquidation_event_count_1h"].notna().sum())
+    null_rates = {
+        column: float(result[column].isna().mean()) if len(result) else 0.0
+        for column in output_columns
+    }
+    record = _family_materialization_record(
+        family="liquidation",
+        family_payload=family_payload,
+        event_time_field=event_time_field,
+        input_columns=list(family_frame.columns),
+        output_columns=output_columns,
+        joined=True,
+        skipped_reason="",
+        source_row_count=len(family_frame),
+        matched_row_count=matched_row_count,
+        unmatched_row_count=int(len(frame) - matched_row_count),
+        null_rates=null_rates,
+    )
+    record["aggregation_window_ms"] = window_ms
+    record["asof_direction"] = "windowed_backward"
+    record["lookahead_policy"] = "liquidation_event_time_ms_in_bar_time_minus_1h_to_bar_time"
+    return result, record
+
+
+def _liquidation_window_sum(
+    frame: pd.DataFrame,
+    aliases: tuple[str, ...],
+    *,
+    left_idx: np.ndarray,
+    right_idx: np.ndarray,
+    require_observed: bool = True,
+) -> np.ndarray:
+    series = _first_numeric_series(frame, aliases)
+    if series is None:
+        return np.full(len(left_idx), np.nan, dtype="float64")
+    values = pd.to_numeric(series, errors="coerce").to_numpy(dtype="float64")
+    observed = np.isfinite(values)
+    if not require_observed:
+        values = np.where(observed, values, 1.0)
+        observed = np.ones(len(values), dtype=bool)
+    prefix_values = np.concatenate([[0.0], np.cumsum(np.where(observed, values, 0.0))])
+    prefix_observed = np.concatenate([[0], np.cumsum(observed.astype(int))])
+    sums = prefix_values[right_idx] - prefix_values[left_idx]
+    observed_counts = prefix_observed[right_idx] - prefix_observed[left_idx]
+    return np.where(observed_counts > 0, sums, np.nan)
+
+
+def _liquidation_window_product_sum(
+    frame: pd.DataFrame,
+    value_aliases: tuple[str, ...],
+    weight_aliases: tuple[str, ...],
+    *,
+    left_idx: np.ndarray,
+    right_idx: np.ndarray,
+) -> np.ndarray:
+    values = _first_numeric_series(frame, value_aliases)
+    weights = _first_numeric_series(frame, weight_aliases)
+    if values is None or weights is None:
+        return np.full(len(left_idx), np.nan, dtype="float64")
+    product = pd.to_numeric(values, errors="coerce") * pd.to_numeric(weights, errors="coerce")
+    observed = np.isfinite(product.to_numpy(dtype="float64"))
+    payload = product.to_numpy(dtype="float64")
+    prefix_values = np.concatenate([[0.0], np.cumsum(np.where(observed, payload, 0.0))])
+    prefix_observed = np.concatenate([[0], np.cumsum(observed.astype(int))])
+    sums = prefix_values[right_idx] - prefix_values[left_idx]
+    observed_counts = prefix_observed[right_idx] - prefix_observed[left_idx]
+    return np.where(observed_counts > 0, sums, np.nan)
+
+
+def _liquidation_has_supported_measure(frame: pd.DataFrame) -> bool:
+    return any(
+        _first_numeric_series(frame, aliases) is not None
+        for aliases in (
+            ("liquidation_event_count",),
+            ("liquidation_quote_notional",),
+            ("liquidation_buy_notional",),
+            ("liquidation_sell_notional",),
+            ("liquidation_quantity",),
+            ("liquidation_side_imbalance",),
+            ("liquidation_vwap_price",),
+        )
+    )
 
 
 def _derived_agg_trade_signed_ratio(frame: pd.DataFrame) -> pd.Series | None:

@@ -20,7 +20,7 @@ from tradingbotsuite.features.cache import (
     write_feature_cache_artifact,
 )
 from tradingbotsuite.features.split_transforms import fit_transform_split_train_only
-from tradingbotsuite.features.registry import PERP_CONTEXT_V2_COLUMNS
+from tradingbotsuite.features.registry import LIQUIDATION_CONTEXT_COLUMNS, PERP_CONTEXT_V2_COLUMNS
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
 
 
@@ -381,6 +381,251 @@ def test_perp_context_v2_uses_backward_asof_context_for_all_current_families(tmp
     assert features["perp_premium"].iloc[1:4].tolist() == [0.002, 0.002, 0.002]
     assert features["oi_notional"].iloc[1:4].tolist() == [10_000.0, 10_000.0, 10_000.0]
     assert features["flow_buy_sell_ratio"].iloc[1:4].tolist() == [1.5, 1.5, 1.5]
+
+
+def test_liquidation_context_materialization_uses_window_without_carryforward(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1_000, 2_000, 3_604_000],
+            "symbol": ["BTCUSDT", "BTCUSDT", "BTCUSDT"],
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [10.0, 11.0, 12.0],
+        }
+    )
+    liquidation = pd.DataFrame(
+        {
+            "event_time_ms": [1_500],
+            "symbol": ["BTCUSDT"],
+            "liquidation_event_count": [2.0],
+            "liquidation_quote_notional": [300.0],
+            "liquidation_buy_notional": [100.0],
+            "liquidation_sell_notional": [200.0],
+            "liquidation_quantity": [3.0],
+        }
+    )
+    liquidation_path = tmp_path / "liquidation.parquet"
+    liquidation.to_parquet(liquidation_path, index=False)
+
+    context = materialize_fixture_family_context(
+        cycle,
+        optional_context_families={
+            "liquidation": {
+                "path": str(liquidation_path),
+                "sha256": "liquidation-hash",
+                "row_count": len(liquidation),
+                "columns": list(liquidation.columns),
+                "event_time_field": "event_time_ms",
+            }
+        },
+    )
+
+    assert pd.isna(context.frame["liquidation_event_count_1h"].iloc[0])
+    assert context.frame["liquidation_event_count_1h"].iloc[1] == 2.0
+    assert pd.isna(context.frame["liquidation_event_count_1h"].iloc[2])
+    assert context.frame["liquidation_quote_notional_1h"].iloc[1] == 300.0
+    assert context.frame["liquidation_side_imbalance_1h"].iloc[1] == pytest.approx((100.0 - 200.0) / 300.0)
+    record = context.evidence["family_records"][0]
+    assert record["family"] == "liquidation"
+    assert record["asof_direction"] == "windowed_backward"
+    assert record["aggregation_window_ms"] == 3_600_000
+    assert record["matched_row_count"] == 1
+
+
+def test_liquidation_context_v1_feature_pack_derives_registered_columns(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1_000 + (index * 900_000) for index in range(240)],
+            "symbol": ["BTCUSDT"] * 240,
+            "open": [100.0 + index * 0.1 for index in range(240)],
+            "high": [101.0 + index * 0.1 for index in range(240)],
+            "low": [99.0 + index * 0.1 for index in range(240)],
+            "close": [100.5 + index * 0.1 for index in range(240)],
+            "volume": [10.0 + index for index in range(240)],
+        }
+    )
+    liquidation = pd.DataFrame(
+        {
+            "event_time_ms": [int(cycle["bar_time_ms"].iloc[index]) for index in range(32, 240, 16)],
+            "symbol": ["BTCUSDT"] * 13,
+            "liquidation_event_count": [1.0 + (index % 3) for index in range(13)],
+            "liquidation_quote_notional": [1_000.0 + index * 250.0 for index in range(13)],
+            "liquidation_buy_notional": [350.0 + index * 100.0 for index in range(13)],
+            "liquidation_sell_notional": [650.0 + index * 150.0 for index in range(13)],
+            "liquidation_quantity": [10.0 + index for index in range(13)],
+        }
+    )
+    liquidation_path = tmp_path / "liquidation.parquet"
+    liquidation.to_parquet(liquidation_path, index=False)
+
+    context = materialize_fixture_family_context(
+        cycle,
+        optional_context_families={
+            "liquidation": {
+                "path": str(liquidation_path),
+                "sha256": "liquidation-hash",
+                "row_count": len(liquidation),
+                "columns": list(liquidation.columns),
+                "event_time_field": "event_time_ms",
+                "latest_window_only": True,
+                "coverage_scope": "latest_window_backfill",
+                "retention_policy": {"claim": "not_multi_year_coverage"},
+            }
+        },
+    )
+    built = build_registered_feature_set(
+        context.frame,
+        feature_set_id="features_liquidation_context_v1",
+        interval_ms=900_000,
+    )
+    features = built.result.frame
+
+    assert built.result.manifest.feature_columns == LIQUIDATION_CONTEXT_COLUMNS
+    assert set(LIQUIDATION_CONTEXT_COLUMNS) <= set(features.columns)
+    assert features["liq_event_count_1h"].notna().any()
+    assert features["liq_total_notional_1h"].notna().any()
+    assert features["liq_net_notional_1h"].dropna().lt(0.0).any()
+    assert features["liq_imbalance_ratio_1h"].dropna().between(-1.0, 1.0).all()
+    assert features["liq_total_notional_z_7d"].notna().sum() > 0
+    assert features["liq_time_since_last_event_h"].dropna().ge(0.0).all()
+    assert features["quality_has_liquidation_gap"].isin([0.0, 1.0]).all()
+    assert features["quality_liquidation_provider_backed"].max() == 1.0
+    assert features["quality_liquidation_latest_window_context_only"].eq(1.0).all()
+
+
+def test_liquidation_context_v1_uses_notional_weighted_side_imbalance(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1_000, 2_000, 3_000],
+            "symbol": ["BTCUSDT", "BTCUSDT", "BTCUSDT"],
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [10.0, 11.0, 12.0],
+        }
+    )
+    liquidation = pd.DataFrame(
+        {
+            "event_time_ms": [1_500, 2_500],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "liquidation_event_count": [1.0, 1.0],
+            "liquidation_quote_notional": [100.0, 300.0],
+            "liquidation_side_imbalance": [-1.0, 1.0],
+        }
+    )
+    liquidation_path = tmp_path / "liquidation.parquet"
+    liquidation.to_parquet(liquidation_path, index=False)
+    context = materialize_fixture_family_context(
+        cycle,
+        optional_context_families={
+            "liquidation": {
+                "path": str(liquidation_path),
+                "sha256": "liquidation-hash",
+                "row_count": len(liquidation),
+                "columns": list(liquidation.columns),
+                "event_time_field": "event_time_ms",
+            }
+        },
+    )
+    built = build_registered_feature_set(
+        context.frame,
+        feature_set_id="features_liquidation_context_v1",
+        interval_ms=1000,
+    )
+    features = built.result.frame
+
+    assert features["liq_total_notional_1h"].iloc[2] == 400.0
+    assert features["liq_imbalance_ratio_1h"].iloc[2] == pytest.approx((300.0 - 100.0) / 400.0)
+    assert features["liq_net_notional_1h"].iloc[2] == pytest.approx(200.0)
+    assert features["liq_buy_notional_1h"].isna().all()
+    assert features["liq_sell_notional_1h"].isna().all()
+
+
+def test_required_liquidation_context_without_supported_measure_is_rejected(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1_000, 2_000],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.5, 101.5],
+            "volume": [10.0, 11.0],
+        }
+    )
+    liquidation = pd.DataFrame(
+        {
+            "event_time_ms": [1_500],
+            "symbol": ["BTCUSDT"],
+        }
+    )
+    liquidation_path = tmp_path / "liquidation.parquet"
+    liquidation.to_parquet(liquidation_path, index=False)
+
+    with pytest.raises(ValueError, match="fixture_context_family_no_supported_columns:liquidation"):
+        materialize_fixture_family_context(
+            cycle,
+            optional_context_families={
+                "liquidation": {
+                    "path": str(liquidation_path),
+                    "sha256": "liquidation-hash",
+                    "row_count": len(liquidation),
+                    "columns": list(liquidation.columns),
+                    "event_time_field": "event_time_ms",
+                    "required": True,
+                }
+            },
+        )
+
+
+def test_liquidation_context_feature_cache_identity_includes_context_family_hash(tmp_path) -> None:
+    frame = _perp_context_v2_frame(row_count=48)
+    liquidation = pd.DataFrame(
+        {
+            "event_time_ms": [int(frame["bar_time_ms"].iloc[4])],
+            "symbol": ["BTCUSDT"],
+            "liquidation_event_count": [1.0],
+            "liquidation_quote_notional": [1_000.0],
+        }
+    )
+    liquidation_path = tmp_path / "liquidation.parquet"
+    liquidation.to_parquet(liquidation_path, index=False)
+    context = materialize_fixture_family_context(
+        frame,
+        optional_context_families={
+            "liquidation": {
+                "path": str(liquidation_path),
+                "sha256": "liquidation-hash",
+                "row_count": len(liquidation),
+                "columns": list(liquidation.columns),
+                "event_time_field": "event_time_ms",
+            }
+        },
+    )
+    materialized = materialize_registered_feature_set(context.frame, feature_set_id="features_liquidation_context_v1")
+    identity = FeatureCacheIdentity(
+        dataset_sha256="dataset",
+        feature_set_id="features_liquidation_context_v1",
+        feature_manifest_sha256=materialized.built.result.manifest.manifest_sha256,
+        builder_version=FEATURE_BUILDER_VERSION,
+        interval_ms=900_000,
+        source_column_mapping=materialized.built.source_column_mapping,
+        fixture_family_context_sha256=context.context_sha256,
+    )
+    changed = FeatureCacheIdentity(
+        dataset_sha256="dataset",
+        feature_set_id="features_liquidation_context_v1",
+        feature_manifest_sha256=materialized.built.result.manifest.manifest_sha256,
+        builder_version=FEATURE_BUILDER_VERSION,
+        interval_ms=900_000,
+        source_column_mapping=materialized.built.source_column_mapping,
+        fixture_family_context_sha256="different-context",
+    )
+
+    assert identity.key() != changed.key()
 
 
 def test_perp_context_v2_feature_cache_identity_includes_context_family_hash(tmp_path) -> None:

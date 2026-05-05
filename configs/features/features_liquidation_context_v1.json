@@ -1,0 +1,46 @@
+{
+  "availability_columns": [
+    "missing_liq_event_count_1h",
+    "missing_liq_total_notional_1h",
+    "missing_liq_buy_notional_1h",
+    "missing_liq_sell_notional_1h",
+    "missing_liq_net_notional_1h",
+    "missing_liq_imbalance_ratio_1h",
+    "missing_liq_total_notional_z_7d",
+    "missing_liq_time_since_last_event_h",
+    "missing_liq_absorption_reclaim_bps",
+    "missing_quality_has_liquidation_gap",
+    "missing_quality_liquidation_provider_backed",
+    "missing_quality_liquidation_latest_window_context_only"
+  ],
+  "feature_columns": [
+    "liq_event_count_1h",
+    "liq_total_notional_1h",
+    "liq_buy_notional_1h",
+    "liq_sell_notional_1h",
+    "liq_net_notional_1h",
+    "liq_imbalance_ratio_1h",
+    "liq_total_notional_z_7d",
+    "liq_time_since_last_event_h",
+    "liq_absorption_reclaim_bps",
+    "quality_has_liquidation_gap",
+    "quality_liquidation_provider_backed",
+    "quality_liquidation_latest_window_context_only"
+  ],
+  "feature_packs": [
+    "liquidation_context_v1"
+  ],
+  "feature_set_id": "features_liquidation_context_v1",
+  "feature_set_version": "v1",
+  "fit_scope": "stateless",
+  "imputation_policy": "explicit_missingness_plus_train_only_neutral",
+  "input_families": [
+    "liquidation"
+  ],
+  "leakage_risks": [],
+  "manifest_sha256": "9125f4bef19c18bb81177eb920083443b6866d0a768121046ab1968807db231c",
+  "manifest_version": "feature-manifest-v1",
+  "max_feature_age_ms": null,
+  "point_in_time_safe": true,
+  "tests": []
+}

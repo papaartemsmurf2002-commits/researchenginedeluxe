@@ -14,7 +14,7 @@ from tradingbotsuite.features import (
     fit_train_only_preprocessor,
     validate_feature_manifest,
 )
-from tradingbotsuite.features.registry import WT3D_COLUMNS, manifest_from_preset
+from tradingbotsuite.features.registry import LIQUIDATION_CONTEXT_COLUMNS, WT3D_COLUMNS, manifest_from_preset
 from tradingbotsuite.research.hmm_knn import WT3D_FEATURE_COLUMNS
 
 PERP_CONTEXT_V2_COLUMNS = (
@@ -77,6 +77,7 @@ def test_feature_registry_contains_stage_four_packs_and_presets() -> None:
         "volatility_v1",
         "perp_context_v1",
         "perp_context_v2",
+        "liquidation_context_v1",
         "microstructure_context_v1",
         "wt3d_v1",
         "cross_asset_v1",
@@ -89,6 +90,10 @@ def test_feature_registry_contains_stage_four_packs_and_presets() -> None:
     assert registry["perp_context_v2"].input_families == ("funding_rate", "premium_index", "open_interest", "agg_trade")
     assert registry["perp_context_v2"].point_in_time_safe is True
     assert registry["perp_context_v2"].optional is True
+    assert feature_set_presets()["features_liquidation_context_v1"] == ("liquidation_context_v1",)
+    assert registry["liquidation_context_v1"].input_families == ("liquidation",)
+    assert registry["liquidation_context_v1"].point_in_time_safe is True
+    assert registry["liquidation_context_v1"].optional is True
     assert feature_set_presets()["features_microstructure_filter_only"] == ("microstructure_context_v1",)
     assert feature_set_presets()["features_cross_asset_context"] == ("cross_asset_v1",)
 
@@ -131,6 +136,18 @@ def test_perp_context_v2_manifest_contract_contains_required_columns_and_familie
     assert manifest.feature_columns == PERP_CONTEXT_V2_COLUMNS
     assert manifest.input_families == ("funding_rate", "premium_index", "open_interest", "agg_trade")
     assert not {"liquidation", "depth_snapshot", "book_ticker", "cross_exchange", "cross_asset", "eth"} & set(
+        manifest.input_families
+    )
+    assert validate_feature_manifest(manifest).valid is True
+
+
+def test_liquidation_context_v1_manifest_contract_contains_required_columns_and_family() -> None:
+    manifest = manifest_from_preset("features_liquidation_context_v1")
+
+    assert manifest.feature_packs == ("liquidation_context_v1",)
+    assert manifest.feature_columns == LIQUIDATION_CONTEXT_COLUMNS
+    assert manifest.input_families == ("liquidation",)
+    assert not {"funding_rate", "open_interest", "premium_index", "agg_trade", "depth_snapshot", "book_ticker"} & set(
         manifest.input_families
     )
     assert validate_feature_manifest(manifest).valid is True
@@ -196,6 +213,23 @@ def test_perp_context_v2_missing_optional_context_is_nan_with_quality_flags() ->
     assert result.frame["quality_context_missing_count"].ge(3.0).all()
     assert result.frame["missing_quality_context_missing_count"].eq(0).all()
     assert "perp_last_funding_rate" in result.availability_report.missing_context_columns
+
+
+def test_liquidation_context_missing_windows_are_nan_with_quality_flags() -> None:
+    result = build_feature_frame(
+        _bars().loc[:, ["bar_time_ms", "open", "high", "low", "close"]],
+        feature_set_id="features_liquidation_context_v1",
+        feature_packs=feature_set_presets()["features_liquidation_context_v1"],
+        interval_ms=900_000,
+    )
+
+    assert result.frame["liq_event_count_1h"].isna().all()
+    assert result.frame["missing_liq_event_count_1h"].eq(1).all()
+    assert result.frame["liq_total_notional_1h"].isna().all()
+    assert result.frame["quality_has_liquidation_gap"].eq(1.0).all()
+    assert result.frame["quality_liquidation_provider_backed"].eq(0.0).all()
+    assert result.frame["quality_liquidation_latest_window_context_only"].eq(0.0).all()
+    assert "liq_event_count_1h" in result.availability_report.missing_context_columns
 
 
 def test_no_wt_feature_set_runs_without_wt_columns() -> None:
