@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import time
 from dataclasses import dataclass, replace
 from hashlib import sha256
@@ -74,6 +75,8 @@ from tradingbotsuite.strategies.parameters import (
 
 RESEARCH_CYCLE_RUNNER_VERSION = "historical-research-cycle-runner-v1"
 RESEARCH_CYCLE_MANIFEST_VERSION = "historical-research-cycle-manifest-v1"
+TRIAL_BUDGET_REPORT_VERSION = "trial-budget-report-v1"
+OVERFIT_ADJUSTMENT_REPORT_VERSION = "overfit-adjustment-report-v1"
 SUPPORTED_SEARCH_METHODS = {"grid", "random", "latin_hypercube", "coarse_lhs", "sobol"}
 SEARCH_METHOD_ALIASES = {"adaptive_grid": "grid"}
 NO_TRADE_BASELINE_STRATEGY_ID = "baseline_no_trade"
@@ -693,6 +696,30 @@ def run_historical_research_cycle(
 
     ablation_report_path = output_dir / "ablation_report.json"
     _write_json(ablation_report_path, _ablation_report(rankings, spec=spec))
+    trial_budget_report_path = output_dir / "trial_budget_report.json"
+    trial_budget_report = _trial_budget_report(
+        spec=spec,
+        candidates=candidates,
+        rankings=rankings,
+        backtest_index_records=backtest_index_records,
+        split_records=split_records,
+        cost_stress_records=cost_stress_records,
+        search_mode=search_mode,
+        search_method=search_method,
+    )
+    _write_json(trial_budget_report_path, trial_budget_report)
+    overfit_adjustment_report_path = output_dir / "overfit_adjustment_report.json"
+    _write_json(
+        overfit_adjustment_report_path,
+        _overfit_adjustment_report(
+            spec=spec,
+            rankings=rankings,
+            stability_regions=stability_regions,
+            split_records=split_records,
+            cost_stress_records=cost_stress_records,
+            trial_budget_report=trial_budget_report,
+        ),
+    )
     rejection_report_path = output_dir / "rejection_report.md"
     rejection_report_path.write_text(_rejection_report(rankings, spec=spec, data_source=data_source), encoding="utf-8")
     required_outputs = {
@@ -712,6 +739,8 @@ def run_historical_research_cycle(
         "metrics_by_holding_window": str(metrics_by_holding_path),
         "metrics_by_cost_stress": str(metrics_by_cost_stress_path),
         "ablation_report": str(ablation_report_path),
+        "trial_budget_report": str(trial_budget_report_path),
+        "overfit_adjustment_report": str(overfit_adjustment_report_path),
         "rejection_report": str(rejection_report_path),
     }
     manifest = {
@@ -2762,7 +2791,10 @@ def _optional_float(value: Any) -> float | None:
     try:
         if pd.isna(value):
             return None
-        return float(value)
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return None
+        return numeric
     except (TypeError, ValueError):
         return None
 
@@ -3003,6 +3035,311 @@ def _stability_row_gate_reasons(stability: Mapping[str, Any]) -> list[str]:
     if str(stability.get("decision") or "") != "accepted_region":
         reasons.append("stability_region_accepted_decision_required")
     return reasons
+
+
+def _trial_budget_report(
+    *,
+    spec: HistoricalResearchCycleSpec,
+    candidates: list[dict[str, Any]],
+    rankings: pd.DataFrame,
+    backtest_index_records: list[dict[str, Any]],
+    split_records: list[dict[str, Any]],
+    cost_stress_records: list[dict[str, Any]],
+    search_mode: str,
+    search_method: str,
+) -> dict[str, Any]:
+    source_counts = _candidate_source_counts(candidates)
+    comparator_count = sum(1 for candidate in candidates if bool(candidate.get("comparator_injected", False)))
+    shortlisted_count = int(rankings["split_evaluated"].fillna(False).astype(bool).sum()) if "split_evaluated" in rankings else 0
+    return {
+        "trial_budget_report_version": TRIAL_BUDGET_REPORT_VERSION,
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+        "intended_use": "research_diagnostic_only",
+        "diagnostic_only": True,
+        "candidate_pack_metric_gate_enabled": False,
+        "cycle_id": spec.cycle_id,
+        "symbol": spec.symbol,
+        "candidate_search_mode": search_mode,
+        "candidate_search_method": search_method,
+        "optimizer_method_sequence": list(spec.optimizer.method_sequence),
+        "budget_policy": {
+            "max_candidates_per_strategy": int(spec.optimizer.max_candidates_per_strategy),
+            "top_regions_to_refine": int(spec.optimizer.top_regions_to_refine),
+            "shortlist_policy": "top_regions_to_refine_candidates_receive_split_and_cost_stress",
+            "deduplication_scope": "candidate_config_sha256_unique_candidate_space",
+        },
+        "candidate_counts": {
+            "candidate_count": int(len(candidates)),
+            "research_candidate_count": int(max(0, len(candidates) - comparator_count)),
+            "comparator_candidate_count": int(comparator_count),
+            "shortlisted_candidate_count": int(shortlisted_count),
+            "pre_dedup_candidate_count": None,
+            "deduplicated_candidate_count": int(len(candidates)),
+            "duplicate_candidate_count": None,
+            "duplicate_count_scope": "pre-dedup_generation_attempts_not_materialized_by_historical_runner",
+        },
+        "effective_trial_count": int(len(candidates)),
+        "aggregate_backtest_count": int(len(candidates)),
+        "split_backtest_count": int(len(split_records)),
+        "cost_stress_backtest_count": int(len(cost_stress_records)),
+        "total_backtest_evaluation_count": int(len(backtest_index_records)),
+        "trials_by_strategy": _candidate_counts(candidates, "strategy_id"),
+        "trials_by_feature_set": _candidate_counts(candidates, "feature_set_id"),
+        "trials_by_holding_window": _candidate_counts(candidates, "holding_window"),
+        "trials_by_exit_policy": _candidate_counts(candidates, "exit_policy_id"),
+        "trials_by_candidate_source": source_counts,
+        "trials_by_search_method": _candidate_counts(candidates, "search_method"),
+        "trials_by_optimizer_stage": source_counts,
+        "budget_status": "diagnostic_only_reported",
+        "budget_reasons": [],
+        "limitations": [
+            "Trial accounting is candidate-space based and does not claim independent OOS trials.",
+            "Injected comparators are counted because they affect ranking and candidate-family comparisons.",
+            "Duplicate generation attempts before candidate-id deduplication are not materialized by the historical runner.",
+        ],
+    }
+
+
+def _overfit_adjustment_report(
+    *,
+    spec: HistoricalResearchCycleSpec,
+    rankings: pd.DataFrame,
+    stability_regions: pd.DataFrame,
+    split_records: list[dict[str, Any]],
+    cost_stress_records: list[dict[str, Any]],
+    trial_budget_report: Mapping[str, Any],
+) -> dict[str, Any]:
+    effective_trial_count = int(trial_budget_report.get("effective_trial_count", len(rankings)))
+    stability_by_candidate = {str(row["candidate_id"]): row for row in stability_regions.to_dict("records")}
+    split_by_candidate = _records_by_candidate(split_records)
+    cost_by_candidate = _records_by_candidate(cost_stress_records)
+    family_scores = _overfit_family_scores(rankings)
+    candidate_rows: list[dict[str, Any]] = []
+    for row in rankings.to_dict("records"):
+        diagnostic = _overfit_candidate_diagnostic(
+            row,
+            stability=stability_by_candidate.get(str(row.get("candidate_id")), {}),
+            split_records=split_by_candidate.get(str(row.get("candidate_id")), []),
+            cost_stress_records=cost_by_candidate.get(str(row.get("candidate_id")), []),
+            family_scores=family_scores,
+            effective_trial_count=effective_trial_count,
+        )
+        candidate_rows.append(diagnostic)
+    ordered = sorted(
+        range(len(candidate_rows)),
+        key=lambda index: (
+            float(candidate_rows[index]["overfit_adjusted_score"]),
+            str(candidate_rows[index]["candidate_id"]),
+        ),
+        reverse=True,
+    )
+    for rank, index in enumerate(ordered, start=1):
+        candidate_rows[index]["overfit_adjusted_rank"] = rank
+
+    family_rows = _overfit_family_diagnostics(rankings, family_scores)
+    adjusted_scores = [float(row["overfit_adjusted_score"]) for row in candidate_rows]
+    return {
+        "overfit_adjustment_report_version": OVERFIT_ADJUSTMENT_REPORT_VERSION,
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+        "intended_use": "research_diagnostic_only",
+        "diagnostic_scope": "candidate_rankings_trial_budget_stability_split_cost_stress",
+        "hard_gate_enabled": False,
+        "candidate_pack_gate_enabled": False,
+        "cycle_id": spec.cycle_id,
+        "symbol": spec.symbol,
+        "trial_budget_summary": {
+            "effective_trial_count": effective_trial_count,
+            "candidate_count": int(len(rankings)),
+            "shortlisted_candidate_count": int(
+                rankings["split_evaluated"].fillna(False).astype(bool).sum()
+            )
+            if "split_evaluated" in rankings
+            else 0,
+        },
+        "adjustment_methods": [
+            "trial_count_log_penalty_proxy",
+            "family_rank_pbo_proxy",
+            "split_cost_stress_cpcv_proxy",
+            "stability_decision_penalty",
+        ],
+        "candidate_diagnostics": candidate_rows,
+        "family_diagnostics": family_rows,
+        "summary": {
+            "candidate_count": int(len(candidate_rows)),
+            "best_overfit_adjusted_score": max(adjusted_scores) if adjusted_scores else None,
+            "median_overfit_adjusted_score": _median(adjusted_scores),
+            "gate_decisions_changed": False,
+        },
+        "limitations": [
+            "Deflated Sharpe, PBO, and CPCV values are deterministic diagnostics derived from available cycle artifacts, not formal OOS acceptance tests.",
+            "No candidate-pack metric gate, promotion gate, or live-readiness gate is enabled by this report.",
+            "Latest-window provider fixtures remain local research evidence and do not establish production performance.",
+        ],
+    }
+
+
+def _overfit_candidate_diagnostic(
+    row: Mapping[str, Any],
+    *,
+    stability: Mapping[str, Any],
+    split_records: list[dict[str, Any]],
+    cost_stress_records: list[dict[str, Any]],
+    family_scores: Mapping[str, list[float]],
+    effective_trial_count: int,
+) -> dict[str, Any]:
+    raw_score = _optional_float(row.get("optimizer_final_score"))
+    if raw_score is None:
+        raw_score = _optional_float(row.get("final_score")) or 0.0
+    family_key = _overfit_family_key(row)
+    scores = family_scores.get(family_key, [raw_score])
+    sorted_scores = sorted(scores, reverse=True)
+    family_count = len(sorted_scores)
+    family_rank = sorted_scores.index(raw_score) + 1 if raw_score in sorted_scores else family_count
+    family_median = _median(sorted_scores) or 0.0
+    pbo_proxy = float((family_rank - 1) / max(1, family_count - 1)) if family_count > 1 else 0.0
+    split_consistency = _bounded_unit(_optional_float(row.get("split_consistency")), default=0.0)
+    cost_survival = _bounded_unit(_optional_float(row.get("cost_stress_survival")), default=0.0)
+    cpcv_score_proxy = float(split_consistency * cost_survival)
+    stability_decision = str(stability.get("decision") or row.get("stability_region_decision") or "")
+    stability_penalty = 0.005 if stability_decision != "accepted_region" else 0.0
+    trial_penalty = 0.001 * math.log1p(max(0, int(effective_trial_count) - 1))
+    family_penalty = 0.001 * math.log1p(max(0, family_count - 1))
+    pbo_penalty = 0.005 * pbo_proxy
+    cpcv_penalty = 0.005 * (1.0 - cpcv_score_proxy)
+    adjusted_score = raw_score - trial_penalty - family_penalty - pbo_penalty - cpcv_penalty - stability_penalty
+    reasons = _overfit_diagnostic_reasons(
+        row,
+        split_records=split_records,
+        cost_stress_records=cost_stress_records,
+        pbo_proxy=pbo_proxy,
+        cpcv_score_proxy=cpcv_score_proxy,
+        stability_decision=stability_decision,
+    )
+    return {
+        "candidate_id": str(row.get("candidate_id")),
+        "strategy_id": str(row.get("strategy_id")),
+        "feature_set_id": str(row.get("feature_set_id")),
+        "holding_window": str(row.get("holding_window")),
+        "exit_policy_id": str(row.get("exit_policy_id", "fixed_holding_window")),
+        "raw_rank_score": float(raw_score),
+        "raw_expectancy": _json_nullable(_optional_float(row.get("costed_expectancy"))),
+        "trade_count": int(row.get("trade_count", 0) or 0),
+        "split_count": int(len(split_records)),
+        "cost_stress_survival_score": _json_nullable(_optional_float(row.get("cost_stress_survival"))),
+        "stability_decision": stability_decision,
+        "effective_trial_count": int(effective_trial_count),
+        "family_trial_count": int(family_count),
+        "family_rank": int(family_rank),
+        "family_best_to_median_gap": float((sorted_scores[0] if sorted_scores else raw_score) - family_median),
+        "deflated_sharpe": float(raw_score / math.sqrt(max(1.0, math.log1p(max(1, effective_trial_count))))),
+        "pbo": pbo_proxy,
+        "cpcv_score": cpcv_score_proxy,
+        "overfit_adjusted_score": float(adjusted_score),
+        "overfit_adjusted_rank": None,
+        "diagnostic_status": "review" if reasons else "clear",
+        "diagnostic_reasons": "|".join(reasons),
+        "adjustment_scope": "diagnostic_only_not_candidate_gate",
+    }
+
+
+def _overfit_diagnostic_reasons(
+    row: Mapping[str, Any],
+    *,
+    split_records: list[dict[str, Any]],
+    cost_stress_records: list[dict[str, Any]],
+    pbo_proxy: float,
+    cpcv_score_proxy: float,
+    stability_decision: str,
+) -> list[str]:
+    reasons: list[str] = []
+    if int(row.get("trade_count", 0) or 0) <= 0:
+        reasons.append("no_trades")
+    if not split_records:
+        reasons.append("split_validation_not_evaluated")
+    if not cost_stress_records:
+        reasons.append("cost_stress_not_evaluated")
+    if pbo_proxy >= 0.75:
+        reasons.append("weak_family_rank_proxy")
+    if cpcv_score_proxy < 0.25:
+        reasons.append("weak_split_cost_stress_proxy")
+    if stability_decision != "accepted_region":
+        reasons.append("stability_region_not_accepted")
+    return reasons
+
+
+def _overfit_family_scores(rankings: pd.DataFrame) -> dict[str, list[float]]:
+    scores: dict[str, list[float]] = {}
+    for row in rankings.to_dict("records"):
+        score = _optional_float(row.get("optimizer_final_score"))
+        if score is None:
+            score = _optional_float(row.get("final_score")) or 0.0
+        scores.setdefault(_overfit_family_key(row), []).append(float(score))
+    return scores
+
+
+def _overfit_family_diagnostics(rankings: pd.DataFrame, family_scores: Mapping[str, list[float]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    family_meta: dict[str, Mapping[str, Any]] = {}
+    for row in rankings.to_dict("records"):
+        family_meta.setdefault(_overfit_family_key(row), row)
+    for family_key, scores in sorted(family_scores.items()):
+        meta = family_meta.get(family_key, {})
+        ordered = sorted(scores, reverse=True)
+        median_score = _median(ordered) or 0.0
+        rows.append(
+            {
+                "family_key": family_key,
+                "strategy_id": str(meta.get("strategy_id", "")),
+                "feature_set_id": str(meta.get("feature_set_id", "")),
+                "holding_window": str(meta.get("holding_window", "")),
+                "exit_policy_id": str(meta.get("exit_policy_id", "fixed_holding_window")),
+                "candidate_count": int(len(scores)),
+                "best_optimizer_score": float(ordered[0]) if ordered else None,
+                "median_optimizer_score": float(median_score),
+                "best_to_median_gap": float((ordered[0] if ordered else 0.0) - median_score),
+            }
+        )
+    return rows
+
+
+def _overfit_family_key(row: Mapping[str, Any]) -> str:
+    parts = [
+        str(row.get("strategy_id", "")),
+        str(row.get("feature_set_id", "")),
+        str(row.get("holding_window", "")),
+        str(row.get("exit_policy_id", "fixed_holding_window")),
+    ]
+    return "|".join(parts)
+
+
+def _candidate_counts(candidates: list[dict[str, Any]], field: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        key = str(candidate.get(field, "unknown"))
+        counts[key] = counts.get(key, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _bounded_unit(value: float | None, *, default: float) -> float:
+    if value is None:
+        return float(default)
+    return float(max(0.0, min(1.0, value)))
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(float(value) for value in values)
+    midpoint = len(ordered) // 2
+    if len(ordered) % 2:
+        return float(ordered[midpoint])
+    return float((ordered[midpoint - 1] + ordered[midpoint]) / 2.0)
 
 
 def _ablation_report(rankings: pd.DataFrame, *, spec: HistoricalResearchCycleSpec) -> dict[str, Any]:

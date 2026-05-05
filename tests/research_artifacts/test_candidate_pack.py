@@ -246,6 +246,38 @@ def _cycle_outputs(
             }
         ),
     )
+    trial_budget = _write_json(
+        root / "trial_budget_report.json",
+        {
+            "trial_budget_report_version": "trial-budget-report-v1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "diagnostic_only": True,
+            "candidate_pack_metric_gate_enabled": False,
+            "effective_trial_count": 1,
+            "candidate_counts": {"candidate_count": 1, "comparator_candidate_count": 0},
+        },
+    )
+    overfit_adjustment = _write_json(
+        root / "overfit_adjustment_report.json",
+        {
+            "overfit_adjustment_report_version": "overfit-adjustment-report-v1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "hard_gate_enabled": False,
+            "candidate_pack_gate_enabled": False,
+            "candidate_diagnostics": [
+                {
+                    "candidate_id": candidate_id,
+                    "overfit_adjusted_score": 0.01,
+                    "diagnostic_status": "clear",
+                    "adjustment_scope": "diagnostic_only_not_candidate_gate",
+                }
+            ],
+        },
+    )
     rankings = pd.DataFrame(
         [
             {
@@ -560,6 +592,8 @@ def _cycle_outputs(
                 "metrics_by_holding_window": str(root / "metrics_by_holding_window.parquet"),
                 "stability_regions": str(stability_path),
                 "ablation_report": str(ablation),
+                "trial_budget_report": str(trial_budget),
+                "overfit_adjustment_report": str(overfit_adjustment),
                 "rejection_report": str(rejection_report),
             },
         },
@@ -613,6 +647,22 @@ def test_research_candidate_pack_is_research_only_and_rejected_for_live_input(tm
     assert "candidate_backtest_manifest:aggregate" in manifest["evidence_summary"]["artifact_names"]
     assert live_validation.allowed is False
     assert "research_only_artifact_rejected_for_live_input" in live_validation.reasons
+
+
+def test_research_candidate_pack_treats_overfit_reports_as_diagnostics(tmp_path: Path) -> None:
+    cycle_manifest = _cycle_outputs(tmp_path)
+    manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+    overfit_path = Path(manifest["required_outputs"]["overfit_adjustment_report"])
+    overfit = json.loads(overfit_path.read_text(encoding="utf-8"))
+    overfit["candidate_diagnostics"][0]["diagnostic_status"] = "review"
+    overfit["candidate_diagnostics"][0]["diagnostic_reasons"] = "weak_family_rank_proxy"
+    overfit["candidate_diagnostics"][0]["pbo"] = 1.0
+    overfit_path.write_text(json.dumps(overfit, indent=2, sort_keys=True), encoding="utf-8")
+
+    gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+    assert gate.status == "passed"
+    assert not any("overfit" in reason for reason in gate.reasons)
 
 
 def test_research_candidate_pack_includes_lower_timeframe_source_evidence(tmp_path: Path) -> None:

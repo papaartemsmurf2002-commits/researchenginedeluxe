@@ -37,6 +37,8 @@ REQUIRED_PACK_EVIDENCE_OUTPUTS = frozenset(
         "metrics_by_holding_window",
         "stability_regions",
         "ablation_report",
+        "trial_budget_report",
+        "overfit_adjustment_report",
         "rejection_report",
     }
 )

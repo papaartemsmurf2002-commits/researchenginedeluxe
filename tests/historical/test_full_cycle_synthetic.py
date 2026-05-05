@@ -81,6 +81,8 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     metrics_by_split = pd.read_parquet(manifest["required_outputs"]["metrics_by_split"])
     metrics_by_regime = pd.read_parquet(manifest["required_outputs"]["metrics_by_regime"])
     metrics_by_side = pd.read_parquet(manifest["required_outputs"]["metrics_by_side"])
+    trial_budget_report = json.loads(Path(manifest["required_outputs"]["trial_budget_report"]).read_text(encoding="utf-8"))
+    overfit_report = json.loads(Path(manifest["required_outputs"]["overfit_adjustment_report"]).read_text(encoding="utf-8"))
 
     assert manifest["research_cycle_manifest_version"] == "historical-research-cycle-manifest-v1"
     assert manifest["research_only"] is True
@@ -103,6 +105,21 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert manifest["backtest_backend_summary"]["fallback_count"] == 0
     for output_path in manifest["required_outputs"].values():
         assert Path(output_path).exists()
+    assert trial_budget_report["trial_budget_report_version"] == "trial-budget-report-v1"
+    assert trial_budget_report["research_only"] is True
+    assert trial_budget_report["candidate_pack_metric_gate_enabled"] is False
+    assert trial_budget_report["effective_trial_count"] == manifest["candidate_count"]
+    assert trial_budget_report["total_backtest_evaluation_count"] == len(backtest_index)
+    assert sum(trial_budget_report["trials_by_candidate_source"].values()) == manifest["candidate_count"]
+    assert "metadata_default_seed" in trial_budget_report["trials_by_candidate_source"]
+    assert "metadata_default_search" in trial_budget_report["trials_by_candidate_source"]
+    assert overfit_report["overfit_adjustment_report_version"] == "overfit-adjustment-report-v1"
+    assert overfit_report["hard_gate_enabled"] is False
+    assert overfit_report["candidate_pack_gate_enabled"] is False
+    assert len(overfit_report["candidate_diagnostics"]) == len(rankings)
+    assert {row["adjustment_scope"] for row in overfit_report["candidate_diagnostics"]} == {
+        "diagnostic_only_not_candidate_gate"
+    }
     assert feature_build_manifest["feature_build_manifest_version"] == "historical-research-feature-build-v2"
     assert feature_build_manifest["feature_computation_scope"] == "materialized_registered_feature_sets"
     assert {record["cache_status"] for record in feature_build_manifest["feature_sets"]} == {"miss"}
@@ -520,6 +537,7 @@ def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     candidate_space_manifest = json.loads(Path(manifest["required_outputs"]["candidate_space_manifest"]).read_text(encoding="utf-8"))
+    trial_budget_report = json.loads(Path(manifest["required_outputs"]["trial_budget_report"]).read_text(encoding="utf-8"))
     rankings = pd.read_parquet(result.candidate_rankings_path)
     stability_regions = pd.read_parquet(manifest["required_outputs"]["stability_regions"])
 
@@ -532,6 +550,11 @@ def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions
     assert explicit_policy["enabled"] is False
     assert explicit_policy["default_search_source"] == "disabled_explicit_search_spaces_supplied"
     assert sum(explicit_policy["candidate_source_counts"].values()) == candidate_space_manifest["candidate_count"]
+    assert trial_budget_report["candidate_search_mode"] == "explicit_search_spaces"
+    assert trial_budget_report["effective_trial_count"] == 6
+    assert trial_budget_report["trials_by_candidate_source"]["optimizer_search_space"] == 4
+    assert trial_budget_report["trials_by_candidate_source"]["no_trade_comparator_injected"] == 1
+    assert trial_budget_report["trials_by_candidate_source"]["transparent_default_comparator_injected"] == 1
     assert {record["coverage_status"] for record in candidate_space_manifest["baseline_comparator_coverage"]} == {"complete"}
     assert {"no_trade_comparator_injected", "transparent_default_comparator_injected"} <= set(rankings["candidate_source"])
     assert not {"metadata_default_seed", "metadata_default_search"} & set(rankings["candidate_source"])
