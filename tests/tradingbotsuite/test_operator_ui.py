@@ -8,6 +8,7 @@ import time
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -590,6 +591,10 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "What The Research System Builds" in response.text
     assert "Historical Cycle Review" in response.text
     assert "run-historical-research-cycle" in response.text
+    assert "Run Historical Cycle" in response.text
+    assert "Run Full Research Review" in response.text
+    assert "Local Action History" in response.text
+    assert "isolated job-specific output directories" in response.text
     assert "Profitability Chart" in response.text
     assert "Research Graphs" in response.text
     assert "historical_research_cycle" in response.text
@@ -600,6 +605,7 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "/api/operator/stage13/readiness" in response.text
     assert "Provider Pipeline" in response.text
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
+    assert "/api/operator/research/jobs/run-historical-research-cycle" in response.text
     assert "hmm_knn_artifact" in response.text
     assert "observe_only" in response.text
     assert "Legacy" not in response.text
@@ -1192,6 +1198,132 @@ def test_operator_research_experiment_rejects_live_mode(app_config, sample_bars,
 
     assert response.status_code == 409
     assert "live mode" in response.json()["detail"]
+
+
+def test_operator_historical_cycle_job_writes_isolated_output(app_config, sample_bars, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    original_output_dir = tmp_path / "checked_cycle_output"
+    observed: dict[str, object] = {}
+
+    def fake_run_historical_research_cycle(*, spec_path, app_config):
+        payload = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+        output_dir = Path(str(payload["output_dir"]))
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "research_cycle_manifest.json"
+        rankings_path = output_dir / "candidate_rankings.parquet"
+        backtest_index_path = output_dir / "backtest_index.parquet"
+        rejection_report_path = output_dir / "rejection_report.md"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "cycle_id": payload["cycle_id"],
+                    "output_dir": str(output_dir),
+                }
+            ),
+            encoding="utf-8",
+        )
+        rankings_path.write_text("fake", encoding="utf-8")
+        backtest_index_path.write_text("fake", encoding="utf-8")
+        rejection_report_path.write_text("fake", encoding="utf-8")
+        observed["spec_path"] = str(spec_path)
+        observed["payload"] = payload
+        return SimpleNamespace(
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            candidate_rankings_path=rankings_path,
+            backtest_index_path=backtest_index_path,
+            rejection_report_path=rejection_report_path,
+        )
+
+    monkeypatch.setattr(
+        "tradingbotsuite.operator_console.run_historical_research_cycle",
+        fake_run_historical_research_cycle,
+    )
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_historical_cycle.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    spec_path = research_dir / "cycle_specs" / "cycle.json"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "cycle_id": "operator-cycle",
+                "symbol": "BTCUSDT",
+                "output_dir": str(original_output_dir),
+                "holding_windows": ["4h"],
+                "data": {"synthetic_fixture": True, "synthetic_row_count": 20},
+                "features": {"feature_sets": ["features_price_trend_vol"]},
+                "strategies": ["baseline_no_trade"],
+                "validation": {"min_splits": 1, "trade_count_floor": 0},
+                "optimizer": {"max_candidates_per_strategy": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-historical-research-cycle",
+            json={"spec_path": str(spec_path)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert job["status"] == "succeeded"
+    assert job["result"]["overwrite_protection"] == "isolated_output_dir"
+    isolated_payload = observed["payload"]
+    isolated_output_dir = Path(str(isolated_payload["output_dir"]))
+    isolated_output_dir.resolve().relative_to(research_dir.resolve())
+    assert isolated_output_dir != original_output_dir
+    assert not original_output_dir.exists()
+    assert Path(str(job["result"]["isolated_spec_path"])).exists()
+    assert Path(str(job["result"]["research_cycle_manifest_path"])).exists()
+
+
+def test_operator_historical_cycle_rejects_unallowlisted_spec_path(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_historical_cycle_reject.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    spec_path = tmp_path / "outside_specs" / "cycle.json"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(json.dumps({"cycle_id": "bad-cycle"}), encoding="utf-8")
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-historical-research-cycle",
+            json={"spec_path": str(spec_path)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert response.status_code == 400
+    assert "spec_path must be inside" in response.json()["detail"]
 
 
 def test_operator_snapshot_handles_microstructure_exception(app_config, sample_bars) -> None:

@@ -210,6 +210,20 @@
     color: var(--accent);
     font-weight: 700;
   }
+  .action-history {
+    display: grid;
+    gap: 10px;
+  }
+  .action-history-row {
+    display: grid;
+    grid-template-columns: minmax(150px, 0.7fr) minmax(160px, 1fr) minmax(120px, 0.5fr);
+    gap: 10px;
+    align-items: start;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    background: #111923;
+  }
   @media (max-width: 1100px) {
     .run-grid,
     .evidence-grid {
@@ -234,10 +248,14 @@
     .control-grid {
       grid-template-columns: 1fr;
     }
+    .action-history-row {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
 
 <div class="research-shell">
+  <span id="repo-root-value" data-path="{{ repo_root }}" hidden></span>
   <section class="research-hero">
     <h1>Research Control Room</h1>
     <div class="hero-copy">
@@ -257,7 +275,10 @@
         <h2>Pick The Work You Need</h2>
         <div class="muted">Start from the operator intent. Each path explains what it tests, when to use it, and where the evidence lands.</div>
       </div>
-      <div id="job-response" class="empty">No job submitted.</div>
+      <div class="stack">
+        <button onclick="queueFullResearchReview()">Run Full Research Review</button>
+        <div id="job-response" class="empty">No job submitted.</div>
+      </div>
     </div>
 
     <div class="run-grid">
@@ -346,7 +367,7 @@
 
       <div class="run-workspace">
         <h3>Historical Cycle Review</h3>
-        <div class="muted">Full historical cycles are current-branch research runs. The operator tab reviews their artifacts; run the cycle command from a terminal when you need new candidate rankings.</div>
+        <div class="muted">Full historical cycles are current-branch research runs. The button below queues an isolated operator run so checked evidence directories are not overwritten.</div>
         <div class="control-grid">
           <label>Cycle preset
             <select id="historical-cycle-preset" onchange="applyHistoricalPreset()">
@@ -367,6 +388,11 @@
           <code id="historical-cycle-command" class="mono"></code>
           <button class="secondary" onclick="copyHistoricalCommand()">Copy</button>
         </div>
+        <div class="inline-buttons" style="margin-top:14px;">
+          <button onclick="queueHistoricalCycle()">Run Historical Cycle</button>
+          <button class="ghost" onclick="applyHistoricalPreset()">Refresh Command</button>
+        </div>
+        <div class="muted" style="margin-top:8px;">Overwrite protection: operator runs write to isolated job-specific output directories under the configured research output root.</div>
         <div id="historical-cycle-explainer" class="explain-grid"></div>
       </div>
     </div>
@@ -430,6 +456,18 @@
       </div>
     </div>
     <div id="research-status" class="stat-grid"></div>
+    <div id="active-job-summary" class="empty" style="margin-top:12px;">No active research jobs.</div>
+  </section>
+
+  <section class="research-band">
+    <div class="band-heading">
+      <div>
+        <h3>Local Action History</h3>
+        <div class="muted">Stored in this browser so you can see what this operator page submitted, even after refresh. Server-side truth remains in Jobs.</div>
+      </div>
+      <button class="ghost" onclick="clearLocalActionHistory()">Clear Local History</button>
+    </div>
+    <div id="local-action-history" class="action-history empty">No local actions recorded.</div>
   </section>
 
   <section class="research-band">
@@ -458,7 +496,7 @@
       <summary>Advanced Signal-History Diagnostics</summary>
       <p class="muted">Use these only when you intentionally need the older persisted-signal model diagnostics. They require saved BTC signal history and remain offline observe-only checks.</p>
       <div class="inline-buttons">
-        <button onclick="queueJob('/api/operator/research/jobs/build-dataset', {})">Build Signal Dataset</button>
+        <button onclick="queueJob('/api/operator/research/jobs/build-dataset', {}, 'Build signal dataset')">Build Signal Dataset</button>
         <button class="secondary" onclick="queueTrainLatest()">Train Latest Signal Dataset</button>
         <button class="secondary" onclick="queueCalibrateLatest()">Calibrate Latest Signal Model</button>
         <button class="secondary" onclick="queueReplayLatest()">Replay Latest Signal Artifact</button>
@@ -488,6 +526,10 @@
 {% block scripts %}
 <script>
   let latestArtifacts = [];
+  const repoRootElement = document.getElementById("repo-root-value");
+  const repoRoot = repoRootElement ? repoRootElement.dataset.path : ".";
+  const localHistoryKey = "tbs.research.localActionHistory.v1";
+  const localSettingsKey = "tbs.research.settings.v1";
 
   const providerStageDetails = {
     intake: [
@@ -552,6 +594,83 @@
     return latestArtifacts.find(item => item.type === type) || null;
   }
 
+  function powershellQuote(value) {
+    return `'${String(value).replaceAll("'", "''")}'`;
+  }
+
+  function localSettings() {
+    try {
+      return JSON.parse(localStorage.getItem(localSettingsKey) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function saveLocalSettings(partial) {
+    try {
+      localStorage.setItem(localSettingsKey, JSON.stringify({ ...localSettings(), ...partial }));
+    } catch {
+      return;
+    }
+  }
+
+  function localActionHistory() {
+    try {
+      const rows = JSON.parse(localStorage.getItem(localHistoryKey) || "[]");
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveLocalActionHistory(rows) {
+    try {
+      localStorage.setItem(localHistoryKey, JSON.stringify(rows.slice(0, 40)));
+    } catch {
+      return;
+    }
+  }
+
+  function rememberLocalAction(action, status, payload = {}, response = {}) {
+    const rows = localActionHistory();
+    rows.unshift({
+      time: new Date().toISOString(),
+      action,
+      status,
+      job_id: response.job_id || null,
+      payload,
+    });
+    saveLocalActionHistory(rows);
+    renderLocalActionHistory();
+  }
+
+  function renderLocalActionHistory() {
+    const target = document.getElementById("local-action-history");
+    if (!target) return;
+    const rows = localActionHistory();
+    if (!rows.length) {
+      target.className = "action-history empty";
+      target.innerHTML = "No local actions recorded.";
+      return;
+    }
+    target.className = "action-history";
+    target.innerHTML = rows.slice(0, 12).map(row => `
+      <div class="action-history-row">
+        <div>
+          <strong>${window.TBS.escapeHtml(row.action || "research action")}</strong>
+          <div class="muted">${window.TBS.escapeHtml(new Date(row.time).toLocaleString())}</div>
+        </div>
+        <div class="mono">${window.TBS.escapeHtml(row.job_id || "not queued")}</div>
+        <div>${window.TBS.pill(row.status || "recorded", row.status === "queued" ? "ok" : (row.status === "rejected" ? "bad" : "neutral"))}</div>
+      </div>
+    `).join("");
+  }
+
+  function clearLocalActionHistory() {
+    saveLocalActionHistory([]);
+    renderLocalActionHistory();
+  }
+
   function renderExplainItems(targetId, rows) {
     const target = document.getElementById(targetId);
     if (!target) return;
@@ -570,16 +689,19 @@
       button.classList.toggle("active", button.dataset.stage === details);
     });
     renderExplainItems("provider-stage-explainer", providerStageDetails[details]);
+    saveLocalSettings({ providerStage: details });
   }
 
   function applyProviderPreset() {
     const preset = document.getElementById("provider-pipeline-preset").value;
     document.getElementById("provider-pipeline-spec").value = preset;
+    saveLocalSettings({ providerPreset: preset });
   }
 
   function applyExperimentPreset() {
     const preset = document.getElementById("research-experiment-preset").value;
     document.getElementById("research-experiment-spec").value = preset;
+    saveLocalSettings({ experimentPreset: preset });
     renderExplainItems("experiment-explainer", experimentDetails[preset] || [
       ["What It Tests", "The experiment defined by the editable spec path."],
       ["When To Use", "Use when you are intentionally running a custom checked-in experiment spec."],
@@ -590,7 +712,8 @@
   function applyHistoricalPreset() {
     const spec = document.getElementById("historical-cycle-preset").value;
     const focus = document.getElementById("historical-cycle-focus").value;
-    const command = `python -m tradingbotsuite.main run-historical-research-cycle --spec ${spec}`;
+    saveLocalSettings({ historicalPreset: spec, historicalFocus: focus });
+    const command = `Set-Location -LiteralPath ${powershellQuote(repoRoot)}; python -m tradingbotsuite.main run-historical-research-cycle --spec ${powershellQuote(spec)}`;
     document.getElementById("historical-cycle-command").textContent = command;
     renderExplainItems("historical-cycle-explainer", historicalFocusDetails[focus] || historicalFocusDetails.strategy);
   }
@@ -599,27 +722,38 @@
     const command = document.getElementById("historical-cycle-command").textContent;
     try {
       await navigator.clipboard.writeText(command);
-      document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Command copied</strong><br>Run it from the repository root terminal.</div>';
+      document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Command copied</strong><br>The command changes into the repository root before running.</div>';
     } catch (error) {
       document.getElementById("job-response").innerHTML = `<div class="error-box"><strong>Copy failed</strong><br>${window.TBS.escapeHtml(command)}</div>`;
     }
   }
 
   function initializeResearchControls() {
+    const settings = localSettings();
+    if (settings.providerPreset) document.getElementById("provider-pipeline-preset").value = settings.providerPreset;
+    if (settings.experimentPreset) document.getElementById("research-experiment-preset").value = settings.experimentPreset;
+    if (settings.historicalPreset) document.getElementById("historical-cycle-preset").value = settings.historicalPreset;
+    if (settings.historicalFocus) document.getElementById("historical-cycle-focus").value = settings.historicalFocus;
     applyProviderPreset();
     applyExperimentPreset();
     applyHistoricalPreset();
-    selectProviderStage("intake");
+    selectProviderStage(settings.providerStage || "intake");
+    renderLocalActionHistory();
   }
 
-  async function queueJob(url, payload) {
+  async function queueJob(url, payload, actionLabel = "Research job") {
     try {
       const response = await window.TBS.postJson(url, payload);
       document.getElementById("job-response").innerHTML = `<div class="success-box"><strong>Job queued</strong><br>${window.TBS.escapeHtml(response.job_id || "queued")}</div>`;
+      rememberLocalAction(actionLabel, "queued", payload, response);
+      await refreshResearch();
+      return response;
     } catch (error) {
       document.getElementById("job-response").innerHTML = `<div class="error-box"><strong>Job rejected</strong><br>${window.TBS.escapeHtml(String(error.message || error))}</div>`;
+      rememberLocalAction(actionLabel, "rejected", payload, {});
+      await refreshResearch();
+      return null;
     }
-    await refreshResearch();
   }
 
   async function queueTrainLatest() {
@@ -628,7 +762,7 @@
       document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No dataset found</strong><br>Build a signal dataset first.</div>';
       return;
     }
-    await queueJob("/api/operator/research/jobs/train-model", { dataset_path: dataset.manifest.dataset_path });
+    await queueJob("/api/operator/research/jobs/train-model", { dataset_path: dataset.manifest.dataset_path }, "Train signal dataset");
   }
 
   async function queueCalibrateLatest() {
@@ -637,7 +771,7 @@
       document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No training artifact found</strong><br>Train the signal model first.</div>';
       return;
     }
-    await queueJob("/api/operator/research/jobs/calibrate-model", { train_manifest_path: train.path });
+    await queueJob("/api/operator/research/jobs/calibrate-model", { train_manifest_path: train.path }, "Calibrate signal model");
   }
 
   async function queueReplayLatest() {
@@ -646,20 +780,35 @@
       document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No calibrated artifact found</strong><br>Calibrate the signal model first.</div>';
       return;
     }
-    await queueJob("/api/operator/research/jobs/replay-eval", { artifact_manifest_path: artifact.path });
+    await queueJob("/api/operator/research/jobs/replay-eval", { artifact_manifest_path: artifact.path }, "Replay signal artifact");
   }
 
-  async function queueProviderPipeline() {
-    await queueJob("/api/operator/research/jobs/prepare-hmm-knn-research-data", {
+  async function queueProviderPipeline(actionLabel = "Provider pipeline") {
+    return await queueJob("/api/operator/research/jobs/prepare-hmm-knn-research-data", {
       spec_path: document.getElementById("provider-pipeline-spec").value,
       stage: document.getElementById("provider-pipeline-stage").value || "intake",
-    });
+    }, actionLabel);
   }
 
-  async function queueResearchExperiment() {
-    await queueJob("/api/operator/research/jobs/run-research-experiment", {
+  async function queueResearchExperiment(actionLabel = "Research experiment") {
+    return await queueJob("/api/operator/research/jobs/run-research-experiment", {
       spec_path: document.getElementById("research-experiment-spec").value,
-    });
+    }, actionLabel);
+  }
+
+  async function queueHistoricalCycle(actionLabel = "Historical research cycle") {
+    return await queueJob("/api/operator/research/jobs/run-historical-research-cycle", {
+      spec_path: document.getElementById("historical-cycle-preset").value,
+      overwrite_protection: "isolated_output_dir",
+    }, actionLabel);
+  }
+
+  async function queueFullResearchReview() {
+    selectProviderStage("all");
+    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing full review</strong><br>Provider refresh, experiment bundle, and historical cycle are being submitted.</div>';
+    await queueProviderPipeline("Full review: provider all");
+    await queueResearchExperiment("Full review: experiment");
+    await queueHistoricalCycle("Full review: historical cycle");
   }
 
   function formatNumber(value) {
@@ -1059,6 +1208,25 @@
     drawBarChart("holding-window-chart", holdingRows, { empty: "No holding-window metrics yet." });
   }
 
+  function renderActiveJobSummary(jobs) {
+    const target = document.getElementById("active-job-summary");
+    if (!target) return;
+    const active = jobs.find(job => job.status === "queued" || job.status === "running");
+    const latest = jobs[0] || null;
+    if (active) {
+      target.className = "success-box";
+      target.innerHTML = `<strong>Active job</strong><br>${window.TBS.escapeHtml(active.job_type)} / ${window.TBS.escapeHtml(active.status)} / ${window.TBS.escapeHtml(active.job_id)}`;
+      return;
+    }
+    if (latest) {
+      target.className = latest.status === "failed" ? "error-box" : "success-box";
+      target.innerHTML = `<strong>Latest job</strong><br>${window.TBS.escapeHtml(latest.job_type)} / ${window.TBS.escapeHtml(latest.status)} / ${window.TBS.escapeHtml(latest.job_id)}`;
+      return;
+    }
+    target.className = "empty";
+    target.textContent = "No active research jobs.";
+  }
+
   async function refreshResearch() {
     const [jobsIndex, artifactsIndex, shadowDiagnostics, stage13Readiness] = await Promise.all([
       window.TBS.getJson("/api/operator/research/jobs"),
@@ -1073,6 +1241,7 @@
       jobs.push(await window.TBS.getJson(`/api/operator/research/jobs/${job.job_id}`));
     }
     document.getElementById("jobs-list").innerHTML = jobs.length ? jobs.map(renderJobRow).join("") : '<tr><td colspan="5">No jobs yet.</td></tr>';
+    renderActiveJobSummary(jobs);
     document.getElementById("artifacts-list").innerHTML = latestArtifacts.length ? latestArtifacts.map(renderArtifactCard).join("") : '<div class="empty">No research artifacts created yet.</div>';
 
     const latestDataset = pickLatest("dataset");

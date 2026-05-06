@@ -38,6 +38,17 @@ from tradingbotsuite.research.workflow import build_dataset, calibrate_model_art
 from tradingbotsuite.web.app import create_app
 
 app = create_app() if __name__ != "__main__" else None
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _resolve_cli_path(path: str | Path) -> Path:
+    candidate = Path(path).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    repo_candidate = REPO_ROOT / candidate
+    if repo_candidate.exists():
+        return repo_candidate.resolve()
+    return candidate.resolve() if candidate.exists() else candidate
 
 
 def parse_args() -> argparse.Namespace:
@@ -409,7 +420,7 @@ def _run_benchmark_research_experiment_command(args: argparse.Namespace) -> dict
 def _run_historical_research_cycle_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("run-historical-research-cycle")
     result = run_historical_research_cycle(
-        spec_path=Path(args.spec),
+        spec_path=_resolve_cli_path(args.spec),
         app_config=config,
     )
     return {

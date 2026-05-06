@@ -129,6 +129,27 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             raise HTTPException(status_code=400, detail="experiment pipeline_spec must be inside configs/data or the research output directory")
         return spec_path
 
+    def validate_historical_cycle_request(payload: dict[str, Any]) -> Path:
+        spec_path = resolve_operator_path(payload.get("spec_path") or "configs/research/full_cycle_btcusdt_perp_context_v2.json")
+        research_root = resolve_operator_path(active_config().research.output_dir)
+        allowed_spec_roots = [
+            (repo_root / "configs" / "research").resolve(),
+            research_root,
+        ]
+        if not spec_path.is_file():
+            raise HTTPException(status_code=400, detail="historical cycle spec_path does not exist")
+        if not any(is_relative_to(spec_path, root) for root in allowed_spec_roots):
+            raise HTTPException(status_code=400, detail="historical cycle spec_path must be inside configs/research or the research output directory")
+        try:
+            spec_payload = json.loads(spec_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"historical cycle spec is not valid JSON: {exc}") from exc
+        if not isinstance(spec_payload, dict):
+            raise HTTPException(status_code=400, detail="historical cycle spec must be a JSON object")
+        if not str(spec_payload.get("cycle_id") or "").strip():
+            raise HTTPException(status_code=400, detail="historical cycle spec requires cycle_id")
+        return spec_path
+
     def template_context(request: Request, page: str, *, session: dict[str, Any] | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         session = session or load_session(request) or {}
         execution_target = "paper"
@@ -143,6 +164,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             "execution_target": execution_target,
             "hyperliquid_base_url": current_config.hyperliquid.base_url,
             "hyperliquid_live_enabled": current_config.hyperliquid.enable_live,
+            "repo_root": str(repo_root),
         }
         if extra:
             context.update(extra)
@@ -367,6 +389,24 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
                 "run-research-experiment",
                 {
                     "spec_path": str(spec_path),
+                },
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/operator/research/jobs/run-historical-research-cycle")
+    async def operator_run_historical_research_cycle(request: Request):
+        require_same_origin(request)
+        session = require_session_json(request)
+        require_csrf(request, session)
+        payload = await request.json()
+        spec_path = validate_historical_cycle_request(payload)
+        try:
+            return await service.queue_job(
+                "run-historical-research-cycle",
+                {
+                    "spec_path": str(spec_path),
+                    "overwrite_protection": "isolated_output_dir",
                 },
             )
         except ValueError as exc:

@@ -25,12 +25,28 @@ from tradingbotsuite.promotion.stage13_readiness import build_stage13_readiness_
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, prepare_hmm_knn_research_data
 from tradingbotsuite.research.experiment_runner import run_research_experiment
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
+from tradingbotsuite.research_cycle import HistoricalResearchCycleSpec, run_historical_research_cycle
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 AMBIGUOUS_SAFETY_REASONS = {
     SafeModeReason.POSITION_AMBIGUITY,
     SafeModeReason.RECONCILIATION_MISMATCH,
     SafeModeReason.RECONCILIATION_STALE,
 }
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _safe_operator_path_part(value: str) -> str:
+    safe = "".join(char.lower() if char.isalnum() else "-" for char in str(value)).strip("-")
+    return safe[:96] or "operator-job"
 
 
 class TraceRecorder:
@@ -871,6 +887,13 @@ class OperatorConsoleService:
                 "conclusion_path": str(result.conclusion_path),
                 "pipeline_summary_path": str(result.pipeline_summary_path),
             }
+        if job_type == "run-historical-research-cycle":
+            result = await asyncio.to_thread(
+                self._run_isolated_historical_research_cycle,
+                Path(str(request["spec_path"])),
+                job_id,
+            )
+            return result
         if job_type == "train-model":
             dataset_path = Path(request["dataset_path"])
             manifest_path = await asyncio.to_thread(train_model, self.config, dataset_path=dataset_path)
@@ -890,6 +913,51 @@ class OperatorConsoleService:
             )
             return {"metrics_path": str(metrics_path)}
         raise ValueError(f"unsupported job type: {job_type}")
+
+    def _run_isolated_historical_research_cycle(self, spec_path: Path, job_id: str) -> dict[str, Any]:
+        resolved_spec_path = Path(spec_path).expanduser().resolve()
+        spec = HistoricalResearchCycleSpec.from_path(resolved_spec_path)
+        research_root = self._research_root()
+        safe_job_id = _safe_operator_path_part(job_id)
+        safe_cycle_id = _safe_operator_path_part(spec.cycle_id)
+        output_dir = (research_root / "operator_runs" / "historical_cycles" / safe_cycle_id / safe_job_id).resolve()
+        if not _is_relative_to(output_dir, research_root):
+            raise ValueError("historical cycle output_dir must stay inside the configured research output directory")
+        if output_dir.exists() and any(output_dir.iterdir()):
+            raise ValueError(f"historical cycle output_dir already contains files: {output_dir}")
+
+        isolated_spec_dir = (research_root / "operator_runs" / "cycle_specs" / safe_job_id).resolve()
+        if not _is_relative_to(isolated_spec_dir, research_root):
+            raise ValueError("historical cycle resolved spec path must stay inside the configured research output directory")
+        isolated_spec_dir.mkdir(parents=True, exist_ok=False)
+        isolated_spec_path = isolated_spec_dir / "cycle_spec.json"
+        isolated_payload = spec.to_payload()
+        isolated_payload["output_dir"] = str(output_dir)
+        isolated_payload["operator_job_id"] = job_id
+        isolated_payload["operator_original_spec_path"] = str(resolved_spec_path)
+        isolated_payload["operator_overwrite_protection"] = "isolated_output_dir"
+        isolated_spec_path.write_text(json.dumps(isolated_payload, indent=2, sort_keys=True), encoding="utf-8")
+
+        result = run_historical_research_cycle(
+            spec_path=isolated_spec_path,
+            app_config=self.config,
+        )
+        return {
+            "output_dir": str(result.output_dir),
+            "isolated_spec_path": str(isolated_spec_path),
+            "source_spec_path": str(resolved_spec_path),
+            "overwrite_protection": "isolated_output_dir",
+            "research_cycle_manifest_path": str(result.manifest_path),
+            "candidate_rankings_path": str(result.candidate_rankings_path),
+            "backtest_index_path": str(result.backtest_index_path),
+            "rejection_report_path": str(result.rejection_report_path),
+        }
+
+    def _research_root(self) -> Path:
+        path = Path(self.config.research.output_dir).expanduser()
+        if path.is_absolute():
+            return path.resolve()
+        return (REPO_ROOT / path).resolve()
 
     def _parse_markdown_sections(self, text: str) -> list[dict[str, Any]]:
         sections: list[dict[str, Any]] = []

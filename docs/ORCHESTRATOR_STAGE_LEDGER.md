@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R70 operator research product redesign
+Current stage: Stage R71 operator historical-cycle job UX
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR70 operator research product redesign complete
+Stage status: closed - WPR71 operator historical-cycle job UX complete
 Last updated: 2026-05-06
 
 ## Stage entry decision
@@ -110,6 +110,7 @@ Last updated: 2026-05-06
 | WPR68-01-operator-quickstart-documentation | Codex Research Agent | closed | `README.md`, `docs/OPERATOR_QUICKSTART.md`, `docs/OPERATOR_GUIDE.md`, `src/tradingbotsuite/operator_console.py`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR68-01-operator-quickstart-documentation.md`, `docs/stage_reports/STAGE_R68_OPERATOR_QUICKSTART_DOCUMENTATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added compact operator quickstart, linked it from README and the long operator guide, exposed it first in UI Guides, and passed compile, operator UI tests, and diff check. |
 | WPR69-01-operator-research-tab-expansion | Codex Research Agent | closed | `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR69-01-operator-research-tab-expansion.md`, `docs/stage_reports/STAGE_R69_OPERATOR_RESEARCH_TAB_EXPANSION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Expanded Research tab explanations, added read-only profitability/research chart panels, added historical research-cycle artifact summaries, and passed compile, operator UI tests, script parse check, and diff check. |
 | WPR70-01-operator-research-product-redesign | Codex Research Agent | closed | `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR70-01-operator-research-product-redesign.md`, `docs/stage_reports/STAGE_R70_OPERATOR_RESEARCH_PRODUCT_REDESIGN_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Rebuilt the operator Research tab as a preset-driven research control room with explained stages, current historical-cycle review, evidence charts, and guarded signal-history diagnostics; validation passed. |
+| WPR71-01-operator-historical-cycle-job-ux | Codex Research Agent | closed | `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/historical/test_full_cycle_synthetic.py`, `docs/work_packets/WPR71-01-operator-historical-cycle-job-ux.md`, `docs/stage_reports/STAGE_R71_OPERATOR_HISTORICAL_CYCLE_JOB_UX_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added safe operator historical-cycle job execution, overwrite protection, full-run buttoning, local UI action history, robust repo-relative CLI spec resolution, and validation evidence. |
 
 ## Gate checklist
 
@@ -402,3 +403,8 @@ Reason: The operator Research tab now explains data intake, feature construction
 
 Decision: R70 operator research product redesign complete; Research page is now the current-branch research control room
 Reason: The operator Research tab now starts from operator intent, uses preset-driven provider and experiment controls, explains intake/dataset/evidence/all stages inline, provides exact historical-cycle review commands, keeps current artifact charts and diagnostics prominent, and moves older signal-history model tooling into advanced diagnostics. This wave is UI/template and focused test coverage only; it does not change provider execution, research-cycle execution, live execution, promotion behavior, generated evidence, or research-only boundaries.
+
+## Operator historical-cycle job UX wave
+
+Decision: R71 operator historical-cycle job UX complete; historical-cycle review is button-driven and overwrite-protected
+Reason: The operator Research tab now queues historical research cycles through a safe operator job endpoint that rewrites checked specs into isolated job-specific output directories under the configured research output root. The page also has a full research review button, browser-local action history, clearer active/latest job status, and PowerShell commands that change into the repo root. The CLI now resolves repo-relative historical-cycle spec paths from outside the repo. This wave does not change historical-cycle research semantics, live execution, promotion behavior, or research-only boundaries.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -845,3 +846,33 @@ def test_historical_research_cycle_cli_command_runs(tmp_path: Path) -> None:
 
     assert Path(str(payload["research_cycle_manifest_path"])).exists()
     assert Path(str(payload["candidate_rankings_path"])).exists()
+
+
+def test_historical_research_cycle_cli_resolves_repo_relative_spec(monkeypatch, tmp_path: Path) -> None:
+    observed: dict[str, Path] = {}
+    output_dir = tmp_path / "cli-relative-output"
+    output_dir.mkdir()
+    manifest_path = output_dir / "research_cycle_manifest.json"
+    rankings_path = output_dir / "candidate_rankings.parquet"
+    backtest_index_path = output_dir / "backtest_index.parquet"
+    rejection_report_path = output_dir / "rejection_report.md"
+    for path in (manifest_path, rankings_path, backtest_index_path, rejection_report_path):
+        path.write_text("{}", encoding="utf-8")
+
+    def fake_run_historical_research_cycle(*, spec_path, app_config):
+        observed["spec_path"] = Path(spec_path)
+        return SimpleNamespace(
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            candidate_rankings_path=rankings_path,
+            backtest_index_path=backtest_index_path,
+            rejection_report_path=rejection_report_path,
+        )
+
+    monkeypatch.setattr(main, "run_historical_research_cycle", fake_run_historical_research_cycle)
+    args = argparse.Namespace(spec="configs/research/full_cycle_btcusdt_perp_context_v2.json")
+
+    payload = main._run_historical_research_cycle_command(args)
+
+    assert observed["spec_path"] == (main.REPO_ROOT / args.spec).resolve()
+    assert Path(str(payload["research_cycle_manifest_path"])).exists()
