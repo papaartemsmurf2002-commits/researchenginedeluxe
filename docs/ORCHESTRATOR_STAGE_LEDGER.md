@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R68 operator quickstart documentation
+Current stage: Stage R69 operator research tab expansion
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR68 operator quickstart documentation complete
+Stage status: closed - WPR69 operator research tab expansion complete
 Last updated: 2026-05-06
 
 ## Stage entry decision
@@ -108,6 +108,7 @@ Last updated: 2026-05-06
 | WPR66-01-interval-aware-feature-building | Codex Research Agent | closed | `src/tradingbotsuite/research_cycle/runner.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `docs/work_packets/WPR66-01-interval-aware-feature-building.md`, `docs/stage_reports/STAGE_R66_INTERVAL_AWARE_FEATURE_BUILDING_REPORT.md`, `docs/RESEARCH_V3_PERP_AGENT_DEVELOPMENT_PLAN.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added interval-aware historical-cycle feature building, feature/cache interval evidence, WPR64 1m liquidation tmp-cycle regression, 15m preservation checks, and validation recorded in Stage R66 report. |
 | WPR67-01-repo-structure-dependency-fuse | Codex Research Agent | closed | `AGENTS.md`, `START_HERE.md`, `README.md`, `src/tradingbotsuite/__init__.py`, `src/tradingbotsuite/backtesting/__init__.py`, `src/tradingbotsuite/data/__init__.py`, `src/tradingbotsuite/features/__init__.py`, `src/tradingbotsuite/live/__init__.py`, `src/tradingbotsuite/research_artifacts/__init__.py`, `src/tradingbotsuite/research_cycle/__init__.py`, `src/tradingbotsuite/strategies/__init__.py`, `src/tradingbotsuite/ui/research_app.py`, `tests/integration/test_research_ui.py`, `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`, `docs/work_packets/WPR67-01-repo-structure-dependency-fuse.md`, `docs/stage_reports/STAGE_R67_REPO_STRUCTURE_DEPENDENCY_FUSE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Final review found no P0/P1 blockers, added the repo structure/dependency fuse and critical pointers, hardened standalone research UI path/live execution boundaries, and passed compile, focused UI, contracts, live, import-boundary, and full-suite validation. |
 | WPR68-01-operator-quickstart-documentation | Codex Research Agent | closed | `README.md`, `docs/OPERATOR_QUICKSTART.md`, `docs/OPERATOR_GUIDE.md`, `src/tradingbotsuite/operator_console.py`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR68-01-operator-quickstart-documentation.md`, `docs/stage_reports/STAGE_R68_OPERATOR_QUICKSTART_DOCUMENTATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added compact operator quickstart, linked it from README and the long operator guide, exposed it first in UI Guides, and passed compile, operator UI tests, and diff check. |
+| WPR69-01-operator-research-tab-expansion | Codex Research Agent | closed | `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR69-01-operator-research-tab-expansion.md`, `docs/stage_reports/STAGE_R69_OPERATOR_RESEARCH_TAB_EXPANSION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Expanded Research tab explanations, added read-only profitability/research chart panels, added historical research-cycle artifact summaries, and passed compile, operator UI tests, script parse check, and diff check. |
 
 ## Gate checklist
 
@@ -390,3 +391,8 @@ Reason: Final review found no open P0/P1 blockers. The branch now has a visible 
 
 Decision: R68 operator quickstart documentation complete; operator-facing compact run card is ready
 Reason: The branch now has a compact `docs/OPERATOR_QUICKSTART.md` with ready-to-use commands, page explanations, safe daily workflow, button rules, safety-response table, research-job boundaries, live/testnet checklist, shell fallback, common fixes, and stop conditions. The operator UI exposes it as the first Guides document. This wave is documentation/UI-guide wiring only and does not change operator command behavior, live execution, research execution, promotion behavior, or generated artifacts.
+
+## Operator research tab expansion wave
+
+Decision: R69 operator research tab expansion complete; Research page now covers the full research branch
+Reason: The operator Research tab now explains data intake, feature construction, strategy research, backtests/exits, optimizer/gates, and promotion boundaries instead of presenting the page as mostly HMM/KNN. It adds read-only chart panels for profitability, candidate mix, gate status, and holding windows, backed by existing model/HMM metrics and historical research-cycle artifacts. This wave is UI/artifact-summary only and does not change operator commands, research execution, live execution, promotion behavior, generated artifacts, or research-only boundaries.

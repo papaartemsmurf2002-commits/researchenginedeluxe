@@ -1,10 +1,56 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Research</h1>
-<p class="muted">V2 stays observe-only until offline evidence is good enough. The workflow here is: build BTC dataset, train baseline, calibrate probabilities, then run walk-forward replay.</p>
+<p class="muted">Research is an offline evidence workspace. It collects provider data, builds fixture packs, materializes features, tests strategies and exits, ranks candidates, and blocks weak evidence before anything can reach promotion review.</p>
 <div class="grid">
+  <div class="card wide">
+    <h3>Research Tracks</h3>
+    <div class="grid">
+      <div class="card alt">
+        <h4>Data Intake</h4>
+        <div class="muted">Binance REST, Binance Vision, Crypto Lake free-sample fallback, Hyperliquid archives, and local manifests feed explicit provenance and quality reports.</div>
+      </div>
+      <div class="card alt">
+        <h4>Feature Lab</h4>
+        <div class="muted">Registered feature packs build completed-bar, perp context, HMM/KNN, WT3D, and liquidation-context inputs without lookahead or silent zero-filling.</div>
+      </div>
+      <div class="card alt">
+        <h4>Strategy Tests</h4>
+        <div class="muted">Transparent baselines, perp context strategies, funding/OI timing, HMM/KNN filters, and liquidation classifiers are compared under the same signal contract.</div>
+      </div>
+      <div class="card alt">
+        <h4>Backtests And Exits</h4>
+        <div class="muted">Fixed holds, funding-aware exits, OI contraction exits, lower-timeframe triple barriers, costs, funding, and split evidence are recorded as research artifacts.</div>
+      </div>
+      <div class="card alt">
+        <h4>Optimizer And Gates</h4>
+        <div class="muted">Candidate search, stability regions, trial-budget diagnostics, ablation, cost stress, and candidate-pack gates reject fragile results by default.</div>
+      </div>
+      <div class="card alt">
+        <h4>Promotion Boundary</h4>
+        <div class="muted">Everything here stays observe-only unless a later promotion process explicitly validates it. This page does not place orders or switch runtime mode.</div>
+      </div>
+    </div>
+  </div>
+  <div class="card wide">
+    <h3>What To Run</h3>
+    <div class="grid">
+      <div class="card alt">
+        <h4>Provider Pipeline</h4>
+        <div class="muted">Use this when you need fresh archive/provider inputs, quality reports, and experiment evidence from configured provider specs.</div>
+      </div>
+      <div class="card alt">
+        <h4>Research Experiment</h4>
+        <div class="muted">Use this for configured experiment bundles that execute data, validation, and backtest evidence under the current research contract.</div>
+      </div>
+      <div class="card alt">
+        <h4>Legacy V2 Model Flow</h4>
+        <div class="muted">Use build-dataset, train, calibrate, and replay only for the older signal-history model workflow. It is still offline and observe-only.</div>
+      </div>
+    </div>
+  </div>
   <div class="card">
-    <h3>Workflow</h3>
+    <h3>Legacy V2 Model Workflow</h3>
     <div class="workflow-step">
       <strong>1. Build Dataset</strong>
       <div class="muted">Reads persisted BTC signals, reconstructs signal-time features, applies the same triple-barrier math used live, and writes a parquet dataset plus manifest.</div>
@@ -62,6 +108,29 @@
       <label>Spec Path <input id="research-experiment-spec" value="configs/experiments/v2_btc_phase1_research_experiment.json"></label>
     </div>
     <button class="secondary" onclick="queueResearchExperiment()">Run Research Experiment</button>
+  </div>
+  <div class="card wide">
+    <h3>Profitability Chart</h3>
+    <p class="muted">Read-only chart from current model metrics and historical research-cycle rankings. Positive bars are not promotion claims; they are research evidence that still must pass gates.</p>
+    <canvas id="profitability-chart" height="220" style="width:100%; max-height:260px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+    <div id="profitability-chart-note" class="muted" style="margin-top:8px;"></div>
+  </div>
+  <div class="card wide">
+    <h3>Research Graphs</h3>
+    <div class="grid">
+      <div class="card alt">
+        <h4>Candidate Mix</h4>
+        <canvas id="candidate-mix-chart" height="180" style="width:100%; max-height:220px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+      </div>
+      <div class="card alt">
+        <h4>Gate Status</h4>
+        <canvas id="gate-status-chart" height="180" style="width:100%; max-height:220px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+      </div>
+      <div class="card alt">
+        <h4>Holding Windows</h4>
+        <canvas id="holding-window-chart" height="180" style="width:100%; max-height:220px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+      </div>
+    </div>
   </div>
   <div class="card wide">
     <h3>Latest Status</h3>
@@ -201,6 +270,37 @@
     const summary = item.summary || {};
     const metrics = item.metrics || {};
     const monitoring = item.monitoring || {};
+    if (item.type === "historical_research_cycle") {
+      const rankings = summary.rankings || {};
+      const gate = summary.gate_report || {};
+      const top = (rankings.top_candidates || [])[0] || {};
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>Historical research cycle</strong>
+            ${window.TBS.pill(summary.candidate_pack_written ? "pack_written" : "gated", summary.candidate_pack_written ? "ok" : "warn")}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Cycle", window.TBS.escapeHtml(String(summary.cycle_id || "n/a"))],
+            ["Symbol", window.TBS.escapeHtml(String(summary.symbol || "n/a"))],
+            ["Candidates", window.TBS.toMono(summary.candidate_count ?? "n/a")],
+            ["Aggregate Backtests", window.TBS.toMono(summary.aggregate_backtest_count ?? "n/a")],
+            ["Split Backtests", window.TBS.toMono(summary.split_backtest_count ?? "n/a")],
+            ["Cost Stress", window.TBS.toMono(summary.cost_stress_backtest_count ?? "n/a")],
+            ["Best Score", window.TBS.toMono(formatNumber(rankings.best_final_score))],
+            ["Best Net Return", window.TBS.toMono(formatNumber(rankings.best_net_return))],
+            ["Worst Drawdown", window.TBS.toMono(formatNumber(rankings.worst_drawdown))],
+            ["Gate Passed", window.TBS.toMono(gate.passed_count ?? "n/a")],
+          ])}
+          <div class="muted" style="margin-top:8px;">Top candidate: ${window.TBS.escapeHtml(top.strategy_id || "n/a")} / ${window.TBS.escapeHtml(top.holding_window || "n/a")} / ${window.TBS.escapeHtml(top.decision || "n/a")}</div>
+          <details class="details">
+            <summary>Cycle manifest and ranking summary</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, rankings, gate_report: gate, holding_windows: summary.holding_windows || {} }))}</pre>
+          </details>
+        </div>
+      `;
+    }
     if (item.type === "hmm_knn_artifact") {
       const alerts = monitoring.alerts || [];
       return `
@@ -461,6 +561,134 @@
     `;
   }
 
+  function canvasContext(id) {
+    const canvas = document.getElementById(id);
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    const scale = window.devicePixelRatio || 1;
+    canvas.width = Math.max(320, Math.floor(rect.width * scale));
+    canvas.height = Math.max(160, Math.floor(Number(canvas.getAttribute("height") || 180) * scale));
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    return { canvas, ctx, width: canvas.width / scale, height: canvas.height / scale };
+  }
+
+  function drawEmptyChart(id, message) {
+    const target = canvasContext(id);
+    if (!target) return;
+    const { ctx, width, height } = target;
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#9aa7b4";
+    ctx.font = "13px Segoe UI, sans-serif";
+    ctx.fillText(message, 16, height / 2);
+  }
+
+  function drawBarChart(id, rows, options = {}) {
+    const target = canvasContext(id);
+    if (!target) return;
+    const { ctx, width, height } = target;
+    ctx.clearRect(0, 0, width, height);
+    if (!rows.length) {
+      drawEmptyChart(id, options.empty || "No chart data available.");
+      return;
+    }
+    const padding = { left: 44, right: 18, top: 20, bottom: 54 };
+    const values = rows.map(row => Number(row.value)).filter(Number.isFinite);
+    const min = Math.min(0, ...values);
+    const max = Math.max(0, ...values);
+    const span = max - min || 1;
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
+    const zeroY = padding.top + ((max - 0) / span) * chartHeight;
+    ctx.strokeStyle = "#303947";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, zeroY);
+    ctx.lineTo(width - padding.right, zeroY);
+    ctx.stroke();
+    const barGap = 8;
+    const barWidth = Math.max(12, (chartWidth - barGap * (rows.length - 1)) / rows.length);
+    rows.forEach((row, index) => {
+      const value = Number(row.value);
+      const x = padding.left + index * (barWidth + barGap);
+      const y = padding.top + ((max - value) / span) * chartHeight;
+      const barTop = Math.min(y, zeroY);
+      const barHeight = Math.max(2, Math.abs(zeroY - y));
+      ctx.fillStyle = value >= 0 ? "#73d18a" : "#ff8f83";
+      ctx.fillRect(x, barTop, barWidth, barHeight);
+      ctx.fillStyle = "#c7d0da";
+      ctx.font = "11px Segoe UI, sans-serif";
+      ctx.save();
+      ctx.translate(x + 2, height - 14);
+      ctx.rotate(-0.55);
+      ctx.fillText(String(row.label).slice(0, 18), 0, 0);
+      ctx.restore();
+    });
+    ctx.fillStyle = "#9aa7b4";
+    ctx.font = "12px Segoe UI, sans-serif";
+    ctx.fillText(formatNumber(max), 8, padding.top + 8);
+    ctx.fillText(formatNumber(min), 8, padding.top + chartHeight);
+  }
+
+  function drawHorizontalCountChart(id, counts, options = {}) {
+    const rows = Object.entries(counts || {}).map(([label, value]) => ({ label, value: Number(value) })).filter(row => Number.isFinite(row.value) && row.value > 0).slice(0, 10);
+    const target = canvasContext(id);
+    if (!target) return;
+    const { ctx, width, height } = target;
+    ctx.clearRect(0, 0, width, height);
+    if (!rows.length) {
+      drawEmptyChart(id, options.empty || "No chart data available.");
+      return;
+    }
+    const max = Math.max(...rows.map(row => row.value), 1);
+    const rowHeight = Math.max(18, Math.min(28, (height - 28) / rows.length));
+    rows.forEach((row, index) => {
+      const y = 14 + index * rowHeight;
+      const barWidth = (width - 170) * (row.value / max);
+      ctx.fillStyle = "#2f81f7";
+      ctx.fillRect(150, y, Math.max(2, barWidth), rowHeight - 6);
+      ctx.fillStyle = "#c7d0da";
+      ctx.font = "12px Segoe UI, sans-serif";
+      ctx.fillText(row.label.slice(0, 22), 10, y + rowHeight - 10);
+      ctx.fillText(String(row.value), 156 + barWidth, y + rowHeight - 10);
+    });
+  }
+
+  function latestCycle() {
+    return latestArtifacts.find(item => item.type === "historical_research_cycle") || null;
+  }
+
+  function renderResearchCharts() {
+    const cycle = latestCycle();
+    const model = pickLatest("model_artifact");
+    const hmm = pickLatest("hmm_knn_artifact");
+    const rows = [];
+    const candidates = (((cycle || {}).summary || {}).rankings || {}).top_candidates || [];
+    for (const candidate of candidates.slice(0, 10)) {
+      rows.push({
+        label: `${candidate.strategy_id || "candidate"} ${candidate.holding_window || ""}`,
+        value: candidate.net_return_after_fees_slippage_funding ?? candidate.costed_expectancy ?? candidate.final_score,
+      });
+    }
+    if (model?.summary?.v2_expectancy !== undefined && model?.summary?.v2_expectancy !== null) {
+      rows.push({ label: "legacy v2 expectancy", value: model.summary.v2_expectancy });
+    }
+    if (model?.summary?.baseline_expectancy !== undefined && model?.summary?.baseline_expectancy !== null) {
+      rows.push({ label: "v1 baseline expectancy", value: model.summary.baseline_expectancy });
+    }
+    if (hmm?.summary?.meta_expectancy !== undefined && hmm?.summary?.meta_expectancy !== null) {
+      rows.push({ label: "hmm/knn meta expectancy", value: hmm.summary.meta_expectancy });
+    }
+    drawBarChart("profitability-chart", rows.slice(0, 12), { empty: "No profitability artifacts found yet." });
+    document.getElementById("profitability-chart-note").textContent = cycle
+      ? `Latest cycle: ${cycle.summary?.cycle_id || "unknown"} | candidates: ${cycle.summary?.candidate_count ?? "n/a"} | acceptance: ${cycle.summary?.candidate_acceptance_scope || "n/a"}`
+      : "No historical research cycle found. Run or copy cycle artifacts under the research output directory to populate the chart.";
+    drawHorizontalCountChart("candidate-mix-chart", (((cycle || {}).summary || {}).rankings || {}).strategy_counts || {}, { empty: "No candidate strategy mix yet." });
+    drawHorizontalCountChart("gate-status-chart", (((cycle || {}).summary || {}).rankings || {}).decision_counts || {}, { empty: "No gate decisions yet." });
+    const holdingRows = ((((cycle || {}).summary || {}).holding_windows || {}).rows || []).map(row => ({ label: row.holding_window, value: row.best_final_score ?? row.median_costed_expectancy ?? 0 }));
+    drawBarChart("holding-window-chart", holdingRows, { empty: "No holding-window metrics yet." });
+  }
+
   async function refreshResearch() {
     const [jobsIndex, artifactsIndex, shadowDiagnostics, stage13Readiness] = await Promise.all([
       window.TBS.getJson("/api/operator/research/jobs"),
@@ -482,11 +710,14 @@
     const latestModel = pickLatest("model_artifact");
     const latestHmm = pickLatest("hmm_knn_artifact");
     const latestExperiment = pickLatest("research_experiment_run");
+    const latestHistoricalCycle = pickLatest("historical_research_cycle");
     document.getElementById("research-status").innerHTML = [
       ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
       ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
       ["Latest Model", latestModel?.summary?.model_version ?? "n/a"],
       ["Promotion Ready", latestModel?.summary?.promotion_ready ? "yes" : "no"],
+      ["Historical Cycle", latestHistoricalCycle?.summary?.cycle_id ?? "n/a"],
+      ["Cycle Candidates", latestHistoricalCycle?.summary?.candidate_count ?? "n/a"],
       ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
       ["HMM/KNN Alerts", latestHmm?.summary?.monitoring_alert_count ?? "n/a"],
       ["Latest Experiment", latestExperiment?.summary?.conclusion_status ?? "n/a"],
@@ -499,6 +730,7 @@
     document.getElementById("shadow-diagnostics-panel").innerHTML = renderShadowDiagnosticsPanel(shadowDiagnostics);
     document.getElementById("stage13-readiness-panel").innerHTML = renderStage13ReadinessPanel(stage13Readiness);
     document.getElementById("hmm-monitoring-panel").innerHTML = renderHmmMonitoringPanel(latestHmm);
+    renderResearchCharts();
   }
 
   refreshResearch();

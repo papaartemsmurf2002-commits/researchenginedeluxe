@@ -8,6 +8,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.microstructure_prediction import build_microstructure_prediction
 from tradingbotsuite.core.models import RuntimeMode, SafeModeReason, SignalDirection, TradeStatus
@@ -543,10 +545,158 @@ class OperatorConsoleService:
                     },
                 }
             )
+        for cycle_manifest in sorted(base_dir.rglob("research_cycle_manifest.json")):
+            payload = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+            required_outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            rankings_summary = self._summarize_research_cycle_rankings(required_outputs.get("candidate_rankings"))
+            gate_summary = self._summarize_research_cycle_gate_report(required_outputs.get("candidate_gate_report"))
+            holding_summary = self._summarize_research_cycle_holding_windows(required_outputs.get("metrics_by_holding_window"))
+            artifacts.append(
+                {
+                    "type": "historical_research_cycle",
+                    "path": str(cycle_manifest),
+                    "sort_time": cycle_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "cycle_id": payload.get("cycle_id"),
+                        "symbol": payload.get("symbol"),
+                        "candidate_count": payload.get("candidate_count"),
+                        "candidate_search_mode": payload.get("candidate_search_mode"),
+                        "candidate_search_method": payload.get("candidate_search_method"),
+                        "aggregate_backtest_count": payload.get("aggregate_backtest_count"),
+                        "split_backtest_count": payload.get("split_backtest_count"),
+                        "cost_stress_backtest_count": payload.get("cost_stress_backtest_count"),
+                        "candidate_pack_written": payload.get("candidate_pack_written"),
+                        "candidate_acceptance_scope": payload.get("candidate_acceptance_scope"),
+                        "backtest_backend_requested": payload.get("backtest_backend_requested"),
+                        "runtime_seconds": ((payload.get("runtime") or {}).get("elapsed_seconds")),
+                        "data_source_type": ((payload.get("data_source") or {}).get("source_type")),
+                        "research_only": payload.get("research_only"),
+                        "observe_only": payload.get("observe_only"),
+                        "promotion_ready": payload.get("promotion_ready"),
+                        "rankings": rankings_summary,
+                        "gate_report": gate_summary,
+                        "holding_windows": holding_summary,
+                    },
+                }
+            )
         artifacts.sort(key=lambda item: float(item.get("sort_time") or 0.0), reverse=True)
         for artifact in artifacts:
             artifact.pop("sort_time", None)
         return artifacts
+
+    def _summarize_research_cycle_rankings(self, raw_path: object) -> dict[str, Any]:
+        path = self._existing_path(raw_path)
+        if path is None:
+            return {"available": False, "reason": "candidate_rankings_missing"}
+        try:
+            frame = pd.read_parquet(path)
+        except Exception as exc:
+            return {"available": False, "path": str(path), "reason": str(exc)}
+        if frame.empty:
+            return {"available": True, "path": str(path), "candidate_count": 0, "top_candidates": []}
+        sorted_frame = frame.sort_values(["final_score", "trade_count"], ascending=[False, False], kind="mergesort") if "final_score" in frame else frame
+        top_candidates: list[dict[str, Any]] = []
+        for row in sorted_frame.head(12).to_dict("records"):
+            top_candidates.append(
+                {
+                    "candidate_id": str(row.get("candidate_id", "")),
+                    "strategy_id": str(row.get("strategy_id", "")),
+                    "feature_set_id": str(row.get("feature_set_id", "")),
+                    "holding_window": str(row.get("holding_window", "")),
+                    "exit_policy_id": str(row.get("exit_policy_id", "")),
+                    "decision": str(row.get("decision", "")),
+                    "final_score": self._float_or_none(row.get("final_score")),
+                    "costed_expectancy": self._float_or_none(row.get("costed_expectancy")),
+                    "net_return_after_fees_slippage_funding": self._float_or_none(row.get("net_return_after_fees_slippage_funding")),
+                    "max_drawdown": self._float_or_none(row.get("max_drawdown")),
+                    "profit_factor": self._float_or_none(row.get("profit_factor")),
+                    "trade_count": self._int_or_none(row.get("trade_count")),
+                    "failure_reasons": str(row.get("failure_reasons", "")),
+                }
+            )
+        return {
+            "available": True,
+            "path": str(path),
+            "candidate_count": int(len(frame)),
+            "decision_counts": self._value_counts(frame, "decision"),
+            "strategy_counts": self._value_counts(frame, "strategy_id"),
+            "feature_set_counts": self._value_counts(frame, "feature_set_id"),
+            "exit_policy_counts": self._value_counts(frame, "exit_policy_id"),
+            "best_final_score": self._float_or_none(frame["final_score"].max()) if "final_score" in frame else None,
+            "best_costed_expectancy": self._float_or_none(frame["costed_expectancy"].max()) if "costed_expectancy" in frame else None,
+            "best_net_return": self._float_or_none(frame["net_return_after_fees_slippage_funding"].max()) if "net_return_after_fees_slippage_funding" in frame else None,
+            "worst_drawdown": self._float_or_none(frame["max_drawdown"].min()) if "max_drawdown" in frame else None,
+            "top_candidates": top_candidates,
+        }
+
+    def _summarize_research_cycle_gate_report(self, raw_path: object) -> dict[str, Any]:
+        path = self._existing_path(raw_path)
+        if path is None:
+            return {"available": False, "reason": "candidate_gate_report_missing"}
+        try:
+            frame = pd.read_parquet(path)
+        except Exception as exc:
+            return {"available": False, "path": str(path), "reason": str(exc)}
+        return {
+            "available": True,
+            "path": str(path),
+            "row_count": int(len(frame)),
+            "acceptance_scope_counts": self._value_counts(frame, "candidate_acceptance_scope"),
+            "decision_counts": self._value_counts(frame, "decision"),
+            "passed_count": int(pd.to_numeric(frame.get("gate_passed", pd.Series(dtype=bool)), errors="coerce").fillna(False).astype(bool).sum()) if "gate_passed" in frame else None,
+        }
+
+    def _summarize_research_cycle_holding_windows(self, raw_path: object) -> dict[str, Any]:
+        path = self._existing_path(raw_path)
+        if path is None:
+            return {"available": False, "reason": "metrics_by_holding_window_missing"}
+        try:
+            frame = pd.read_parquet(path)
+        except Exception as exc:
+            return {"available": False, "path": str(path), "reason": str(exc)}
+        rows: list[dict[str, Any]] = []
+        for row in frame.to_dict("records"):
+            rows.append(
+                {
+                    "holding_window": str(row.get("holding_window", "")),
+                    "candidate_count": self._int_or_none(row.get("candidate_count")),
+                    "holding_window_trade_count": self._int_or_none(row.get("holding_window_trade_count")),
+                    "median_costed_expectancy": self._float_or_none(row.get("median_costed_expectancy")),
+                    "best_final_score": self._float_or_none(row.get("best_final_score")),
+                }
+            )
+        return {"available": True, "path": str(path), "rows": rows}
+
+    def _existing_path(self, raw_path: object) -> Path | None:
+        if not raw_path:
+            return None
+        path = Path(str(raw_path))
+        if not path.is_absolute():
+            path = (self.config.research.output_dir / path).resolve()
+        return path if path.exists() else None
+
+    def _value_counts(self, frame: pd.DataFrame, column: str) -> dict[str, int]:
+        if column not in frame:
+            return {}
+        return {str(key): int(value) for key, value in frame[column].fillna("missing").astype(str).value_counts().sort_index().items()}
+
+    def _float_or_none(self, value: object) -> float | None:
+        try:
+            numeric = float(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+        if pd.isna(numeric):
+            return None
+        return numeric
+
+    def _int_or_none(self, value: object) -> int | None:
+        try:
+            if pd.isna(value):
+                return None
+            return int(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
 
     def list_guide_documents(self) -> list[dict[str, Any]]:
         root = Path(__file__).resolve().parents[2]

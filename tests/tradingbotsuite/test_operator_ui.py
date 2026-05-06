@@ -9,6 +9,7 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+import pandas as pd
 from fastapi.testclient import TestClient
 
 from tradingbotsuite.config import AppConfig, OperatorUIConfig
@@ -461,6 +462,115 @@ def test_operator_artifacts_include_provider_pipeline_outputs(app_config, sample
     assert by_type["hmm_knn_experiment_matrix"]["summary"]["research_boundary_passed"] is True
 
 
+def test_operator_artifacts_include_historical_cycle_profitability_summary(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    cycle_dir = research_dir / "historical_cycles" / "fixture-cycle"
+    cycle_dir.mkdir(parents=True)
+    rankings_path = cycle_dir / "candidate_rankings.parquet"
+    gate_path = cycle_dir / "candidate_gate_report.parquet"
+    holding_path = cycle_dir / "metrics_by_holding_window.parquet"
+    pd.DataFrame(
+        [
+            {
+                "candidate_id": "candidate-a",
+                "strategy_id": "perp_basis_convergence_v2",
+                "feature_set_id": "features_perp_context_v2",
+                "holding_window": "4h",
+                "exit_policy_id": "fixed_holding_window",
+                "decision": "rejected",
+                "final_score": 0.04,
+                "costed_expectancy": 0.01,
+                "net_return_after_fees_slippage_funding": 0.03,
+                "max_drawdown": -0.01,
+                "profit_factor": 1.2,
+                "trade_count": 4,
+                "failure_reasons": "research_gate_rejected",
+            },
+            {
+                "candidate_id": "candidate-b",
+                "strategy_id": "baseline_no_trade",
+                "feature_set_id": "features_perp_context_v2",
+                "holding_window": "1h",
+                "exit_policy_id": "fixed_holding_window",
+                "decision": "comparator",
+                "final_score": 0.0,
+                "costed_expectancy": 0.0,
+                "net_return_after_fees_slippage_funding": 0.0,
+                "max_drawdown": 0.0,
+                "profit_factor": 0.0,
+                "trade_count": 0,
+                "failure_reasons": "",
+            },
+        ]
+    ).to_parquet(rankings_path, index=False)
+    pd.DataFrame(
+        [
+            {"candidate_id": "candidate-a", "candidate_acceptance_scope": "research_gate_evaluated_fail_closed", "gate_passed": False, "decision": "rejected"},
+            {"candidate_id": "candidate-b", "candidate_acceptance_scope": "comparator_only", "gate_passed": False, "decision": "comparator"},
+        ]
+    ).to_parquet(gate_path, index=False)
+    pd.DataFrame(
+        [
+            {"holding_window": "4h", "candidate_count": 1, "holding_window_trade_count": 4, "median_costed_expectancy": 0.01, "best_final_score": 0.04},
+            {"holding_window": "1h", "candidate_count": 1, "holding_window_trade_count": 0, "median_costed_expectancy": 0.0, "best_final_score": 0.0},
+        ]
+    ).to_parquet(holding_path, index=False)
+    (cycle_dir / "research_cycle_manifest.json").write_text(
+        json.dumps(
+            {
+                "research_cycle_manifest_version": "historical-research-cycle-manifest-v1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "cycle_id": "fixture-cycle",
+                "symbol": "BTCUSDT",
+                "candidate_count": 2,
+                "candidate_search_mode": "metadata_default_search",
+                "candidate_search_method": "metadata_capped_grid",
+                "aggregate_backtest_count": 2,
+                "split_backtest_count": 1,
+                "cost_stress_backtest_count": 1,
+                "candidate_pack_written": False,
+                "candidate_acceptance_scope": "research_gate_evaluated_fail_closed",
+                "backtest_backend_requested": "reference",
+                "runtime": {"elapsed_seconds": 1.25},
+                "data_source": {"source_type": "historical_fixture_pack"},
+                "required_outputs": {
+                    "candidate_rankings": str(rankings_path),
+                    "candidate_gate_report": str(gate_path),
+                    "metrics_by_holding_window": str(holding_path),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_ui.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        payload = client.get("/api/operator/research/artifacts").json()
+
+    cycle = next(artifact for artifact in payload["items"] if artifact["type"] == "historical_research_cycle")
+    assert cycle["summary"]["cycle_id"] == "fixture-cycle"
+    assert cycle["summary"]["rankings"]["best_net_return"] == 0.03
+    assert cycle["summary"]["rankings"]["strategy_counts"]["perp_basis_convergence_v2"] == 1
+    assert cycle["summary"]["rankings"]["decision_counts"]["rejected"] == 1
+    assert cycle["summary"]["gate_report"]["passed_count"] == 0
+    assert cycle["summary"]["holding_windows"]["rows"][0]["holding_window"] == "4h"
+
+
 def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config, sample_bars) -> None:
     config = _operator_config(app_config)
     app = create_app(config)
@@ -470,6 +580,12 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
         response = client.get("/ui/research")
 
     assert response.status_code == 200
+    assert "Research Tracks" in response.text
+    assert "Data Intake" in response.text
+    assert "Backtests And Exits" in response.text
+    assert "Profitability Chart" in response.text
+    assert "Research Graphs" in response.text
+    assert "historical_research_cycle" in response.text
     assert "HMM/KNN Monitoring" in response.text
     assert "Shadow Diagnostics" in response.text
     assert "Stage 13 Readiness" in response.text
