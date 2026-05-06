@@ -1,193 +1,615 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Research</h1>
-<p class="muted">Research is an offline evidence workspace. It collects provider data, builds fixture packs, materializes features, tests strategies and exits, ranks candidates, and blocks weak evidence before anything can reach promotion review.</p>
-<div class="grid">
-  <div class="card wide">
-    <h3>Research Tracks</h3>
-    <div class="grid">
-      <div class="card alt">
-        <h4>Data Intake</h4>
-        <div class="muted">Binance REST, Binance Vision, Crypto Lake free-sample fallback, Hyperliquid archives, and local manifests feed explicit provenance and quality reports.</div>
+<style>
+  .research-shell {
+    display: grid;
+    gap: 18px;
+    font-family: "Segoe UI", Arial, sans-serif;
+  }
+  .research-shell .card {
+    border-radius: 8px;
+  }
+  .research-hero {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 22px;
+    background:
+      linear-gradient(135deg, rgba(47, 129, 247, 0.22), rgba(115, 209, 138, 0.10)),
+      linear-gradient(180deg, #151b23, #111821);
+  }
+  .research-hero h1 {
+    margin: 0 0 8px 0;
+    font-size: 34px;
+    letter-spacing: 0;
+  }
+  .hero-copy {
+    max-width: 980px;
+    color: #c7d0da;
+    line-height: 1.5;
+  }
+  .hero-strip {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+  .research-band {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .band-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+  .band-heading h2,
+  .band-heading h3 {
+    margin-bottom: 6px;
+  }
+  .run-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.9fr) minmax(320px, 1.4fr);
+    gap: 16px;
+    align-items: stretch;
+  }
+  .intent-list {
+    display: grid;
+    gap: 10px;
+  }
+  .intent-tile,
+  .viz-panel,
+  .run-workspace {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #111923;
+  }
+  .intent-tile {
+    padding: 12px;
+    border-left: 3px solid #73d18a;
+  }
+  .intent-tile:nth-child(2) {
+    border-left-color: #f0c36a;
+  }
+  .intent-tile:nth-child(3) {
+    border-left-color: #2f81f7;
+  }
+  .intent-tile:nth-child(4) {
+    border-left-color: #ff8f83;
+  }
+  .intent-tile strong,
+  .stage-option strong,
+  .explain-item strong,
+  .flow-step strong {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .run-workspace {
+    padding: 16px;
+    background: #101820;
+  }
+  .control-grid {
+    display: grid;
+    grid-template-columns: minmax(240px, 1fr) minmax(220px, 0.8fr);
+    gap: 14px;
+  }
+  .control-grid label {
+    display: grid;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .control-grid select,
+  .control-grid input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .stage-picker {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(120px, 1fr));
+    gap: 10px;
+    margin: 14px 0;
+  }
+  .stage-option {
+    text-align: left;
+    border: 1px solid var(--border);
+    background: #131c27;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 118px;
+  }
+  .stage-option.active {
+    border-color: #73d18a;
+    background: linear-gradient(180deg, rgba(23, 57, 35, 0.9), rgba(19, 28, 39, 0.95));
+    box-shadow: inset 0 0 0 1px rgba(115, 209, 138, 0.28);
+  }
+  .stage-option .muted {
+    display: block;
+    line-height: 1.35;
+  }
+  .explain-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(190px, 1fr));
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .explain-item {
+    border-left: 3px solid #73d18a;
+    padding-left: 12px;
+    min-height: 72px;
+  }
+  .command-box {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: center;
+    background: #0f1620;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 10px;
+  }
+  .command-box code {
+    white-space: normal;
+    word-break: break-word;
+  }
+  .evidence-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 16px;
+  }
+  .viz-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .viz-panel {
+    padding: 12px;
+  }
+  .research-chart {
+    width: 100%;
+    max-height: 260px;
+    background: #0f1620;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .flow-steps {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .flow-step {
+    border-top: 3px solid #2f81f7;
+    padding: 10px 8px 0 0;
+  }
+  .flow-step:nth-child(2) {
+    border-top-color: #73d18a;
+  }
+  .flow-step:nth-child(3) {
+    border-top-color: #f0c36a;
+  }
+  .flow-step:nth-child(4) {
+    border-top-color: #ff8f83;
+  }
+  .flow-step:nth-child(5) {
+    border-top-color: #c7d0da;
+  }
+  .advanced-diagnostics {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    background: #101820;
+  }
+  .advanced-diagnostics summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  @media (max-width: 1100px) {
+    .run-grid,
+    .evidence-grid {
+      grid-template-columns: 1fr;
+    }
+    .stage-picker,
+    .viz-grid,
+    .flow-steps,
+    .explain-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+  }
+  @media (max-width: 640px) {
+    .research-hero h1 {
+      font-size: 28px;
+    }
+    .band-heading,
+    .command-box {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+    .control-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="research-shell">
+  <section class="research-hero">
+    <h1>Research Control Room</h1>
+    <div class="hero-copy">
+      Run offline provider preparation, experiment bundles, and historical-cycle evidence review from one place. This page never places orders, never changes runtime mode, and never turns research output into live signals.
+    </div>
+    <div class="hero-strip">
+      <span class="pill neutral">research_only</span>
+      <span class="pill neutral">observe_only</span>
+      <span class="pill warn">promotion_ready: false by default</span>
+      <span class="pill ok">current branch workflow</span>
+    </div>
+  </section>
+
+  <section class="research-band">
+    <div class="band-heading">
+      <div>
+        <h2>Pick The Work You Need</h2>
+        <div class="muted">Start from the operator intent. Each path explains what it tests, when to use it, and where the evidence lands.</div>
       </div>
-      <div class="card alt">
-        <h4>Feature Lab</h4>
-        <div class="muted">Registered feature packs build completed-bar, perp context, HMM/KNN, WT3D, and liquidation-context inputs without lookahead or silent zero-filling.</div>
+      <div id="job-response" class="empty">No job submitted.</div>
+    </div>
+
+    <div class="run-grid">
+      <div class="intent-list">
+        <div class="intent-tile">
+          <strong>1. Provider Pipeline</strong>
+          <div class="muted">Prepare or verify provider/archive inputs before deeper research. Best first step when data may be stale or missing.</div>
+        </div>
+        <div class="intent-tile">
+          <strong>2. Research Experiment</strong>
+          <div class="muted">Run a configured bundle that ties provider manifests, dataset preparation, validation, and evidence checks together.</div>
+        </div>
+        <div class="intent-tile">
+          <strong>3. Historical Cycle Review</strong>
+          <div class="muted">Inspect full-cycle strategy rankings, holding windows, gate reports, profitability charts, and candidate rejection evidence.</div>
+        </div>
+        <div class="intent-tile">
+          <strong>4. Evidence Review</strong>
+          <div class="muted">Use Jobs, Artifacts, HMM/KNN monitoring, shadow diagnostics, and Stage 13 readiness to understand what is blocked or complete.</div>
+        </div>
       </div>
-      <div class="card alt">
-        <h4>Strategy Tests</h4>
-        <div class="muted">Transparent baselines, perp context strategies, funding/OI timing, HMM/KNN filters, and liquidation classifiers are compared under the same signal contract.</div>
+
+      <div class="run-workspace">
+        <h3>Provider Pipeline</h3>
+        <div class="muted">Use this to prepare archive/provider research data. The stage buttons below are the actual execution scope sent to the queued job.</div>
+        <div class="control-grid">
+          <label>Preset
+            <select id="provider-pipeline-preset" onchange="applyProviderPreset()">
+              <option value="configs/data/v2_btc_hmm_knn_provider_pipeline.json">BTCUSDT HMM/KNN provider pipeline</option>
+            </select>
+          </label>
+          <label>Editable spec path
+            <input id="provider-pipeline-spec" type="text" value="configs/data/v2_btc_hmm_knn_provider_pipeline.json">
+          </label>
+        </div>
+        <input id="provider-pipeline-stage" type="hidden" value="intake">
+        <div class="stage-picker" id="provider-stage-picker">
+          <button type="button" class="stage-option active" data-stage="intake" onclick="selectProviderStage('intake')">
+            <strong>Intake</strong>
+            <span class="muted">Collect or register source manifests and write provider quality evidence.</span>
+          </button>
+          <button type="button" class="stage-option" data-stage="dataset" onclick="selectProviderStage('dataset')">
+            <strong>Dataset</strong>
+            <span class="muted">Build configured research datasets from already prepared provider inputs.</span>
+          </button>
+          <button type="button" class="stage-option" data-stage="evidence" onclick="selectProviderStage('evidence')">
+            <strong>Evidence</strong>
+            <span class="muted">Run configured checks and summaries against prepared data outputs.</span>
+          </button>
+          <button type="button" class="stage-option" data-stage="all" onclick="selectProviderStage('all')">
+            <strong>All</strong>
+            <span class="muted">Run intake, dataset, and evidence in order when you want a complete refresh.</span>
+          </button>
+        </div>
+        <div class="explain-grid" id="provider-stage-explainer"></div>
+        <div class="inline-buttons" style="margin-top:14px;">
+          <button onclick="queueProviderPipeline()">Run Provider Stage</button>
+          <button class="ghost" onclick="selectProviderStage('all')">Select Full Refresh</button>
+        </div>
       </div>
-      <div class="card alt">
-        <h4>Backtests And Exits</h4>
-        <div class="muted">Fixed holds, funding-aware exits, OI contraction exits, lower-timeframe triple barriers, costs, funding, and split evidence are recorded as research artifacts.</div>
+    </div>
+  </section>
+
+  <section class="research-band">
+    <div class="run-grid">
+      <div class="run-workspace">
+        <h3>Research Experiment</h3>
+        <div class="muted">Use experiment presets when you want a configured evidence bundle rather than manually stepping through pipeline stages.</div>
+        <div class="control-grid">
+          <label>Preset
+            <select id="research-experiment-preset" onchange="applyExperimentPreset()">
+              <option value="configs/experiments/v2_btc_phase1_research_experiment.json">BTC phase 1 research bundle</option>
+              <option value="configs/experiments/v2_btc_hmm_knn_current_artifact_experiments.json">HMM/KNN current artifact checks</option>
+              <option value="configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json">HMM/KNN deterministic sweep</option>
+            </select>
+          </label>
+          <label>Editable spec path
+            <input id="research-experiment-spec" type="text" value="configs/experiments/v2_btc_phase1_research_experiment.json">
+          </label>
+        </div>
+        <div class="explain-grid" id="experiment-explainer"></div>
+        <div class="inline-buttons" style="margin-top:14px;">
+          <button onclick="queueResearchExperiment()">Run Research Experiment</button>
+        </div>
       </div>
-      <div class="card alt">
-        <h4>Optimizer And Gates</h4>
-        <div class="muted">Candidate search, stability regions, trial-budget diagnostics, ablation, cost stress, and candidate-pack gates reject fragile results by default.</div>
+
+      <div class="run-workspace">
+        <h3>Historical Cycle Review</h3>
+        <div class="muted">Full historical cycles are current-branch research runs. The operator tab reviews their artifacts; run the cycle command from a terminal when you need new candidate rankings.</div>
+        <div class="control-grid">
+          <label>Cycle preset
+            <select id="historical-cycle-preset" onchange="applyHistoricalPreset()">
+              <option value="configs/research/full_cycle_btcusdt_perp_context_v2.json">BTCUSDT perp context V2 cycle</option>
+              <option value="configs/research/full_cycle_ethusdt_perp_context_v2.json">ETHUSDT perp context V2 cycle</option>
+              <option value="configs/research/full_cycle_btc_v1.json">BTC baseline cycle</option>
+            </select>
+          </label>
+          <label>What this tests
+            <select id="historical-cycle-focus" onchange="applyHistoricalPreset()">
+              <option value="strategy">Strategies, exits, splits, and gates</option>
+              <option value="holding">Holding periods and exit behavior</option>
+              <option value="stability">Optimizer stability and rejection evidence</option>
+            </select>
+          </label>
+        </div>
+        <div class="command-box">
+          <code id="historical-cycle-command" class="mono"></code>
+          <button class="secondary" onclick="copyHistoricalCommand()">Copy</button>
+        </div>
+        <div id="historical-cycle-explainer" class="explain-grid"></div>
       </div>
-      <div class="card alt">
-        <h4>Promotion Boundary</h4>
-        <div class="muted">Everything here stays observe-only unless a later promotion process explicitly validates it. This page does not place orders or switch runtime mode.</div>
+    </div>
+  </section>
+
+  <section class="research-band">
+    <div class="band-heading">
+      <div>
+        <h3>What The Research System Builds</h3>
+        <div class="muted">This is the current evidence path behind the UI. Failures are expected to be explicit and visible.</div>
       </div>
     </div>
-  </div>
-  <div class="card wide">
-    <h3>What To Run</h3>
-    <div class="grid">
-      <div class="card alt">
-        <h4>Provider Pipeline</h4>
-        <div class="muted">Use this when you need fresh archive/provider inputs, quality reports, and experiment evidence from configured provider specs.</div>
+    <div class="flow-steps">
+      <div class="flow-step"><strong>Provider data</strong><div class="muted">Binance REST, Binance Vision, free Crypto Lake samples, Hyperliquid archives, or local manifests.</div></div>
+      <div class="flow-step"><strong>Fixture and features</strong><div class="muted">Validated provenance, completed-bar features, context joins, missingness flags, and cache identity.</div></div>
+      <div class="flow-step"><strong>Strategy tests</strong><div class="muted">Transparent baselines, perp context strategies, HMM/KNN filters, and liquidation diagnostics under one contract.</div></div>
+      <div class="flow-step"><strong>Backtests and exits</strong><div class="muted">Split-safe backtests, fixed holds, triple barriers, exit policies, costs, funding, and stress evidence.</div></div>
+      <div class="flow-step"><strong>Gates</strong><div class="muted">Ranking, stability, rejection reports, candidate-pack checks, and blocked promotion by default.</div></div>
+    </div>
+  </section>
+
+  <section class="research-band">
+    <div class="band-heading">
+      <div>
+        <h3>Profitability Chart</h3>
+        <div class="muted">Read-only chart from current model metrics and historical research-cycle rankings. Positive bars are evidence to review, not a promotion claim.</div>
       </div>
-      <div class="card alt">
-        <h4>Research Experiment</h4>
-        <div class="muted">Use this for configured experiment bundles that execute data, validation, and backtest evidence under the current research contract.</div>
-      </div>
-      <div class="card alt">
-        <h4>Legacy V2 Model Flow</h4>
-        <div class="muted">Use build-dataset, train, calibrate, and replay only for the older signal-history model workflow. It is still offline and observe-only.</div>
-      </div>
     </div>
-  </div>
-  <div class="card">
-    <h3>Legacy V2 Model Workflow</h3>
-    <div class="workflow-step">
-      <strong>1. Build Dataset</strong>
-      <div class="muted">Reads persisted BTC signals, reconstructs signal-time features, applies the same triple-barrier math used live, and writes a parquet dataset plus manifest.</div>
-    </div>
-    <div class="workflow-step">
-      <strong>2. Train Model</strong>
-      <div class="muted">Fits the baseline logistic-regression model on the dataset. This is still offline only and does not change live behavior.</div>
-    </div>
-    <div class="workflow-step">
-      <strong>3. Calibrate</strong>
-      <div class="muted">Applies isotonic calibration when the sample is large enough, or a safer fallback when it is not.</div>
-    </div>
-    <div class="workflow-step">
-      <strong>4. Replay Evaluate</strong>
-      <div class="muted">Runs walk-forward out-of-sample checks and compares V2 against the current V1 baseline before any promotion is even considered.</div>
-    </div>
-  </div>
-  <div class="card">
-    <h3>Before You Build</h3>
-    <div class="stack">
-      <div class="list-item">You need persisted BTC signal history in SQLite. No signals means no dataset.</div>
-      <div class="list-item">The builder reconstructs signal-time context, not just raw price rows. It uses stored signals plus Binance history.</div>
-      <div class="list-item">Missing additive features such as funding or open interest do not get fabricated. They become explicit missingness flags.</div>
-      <div class="list-item">A good dataset is not just “finished”. Check row count, class balance, and missing-feature rates before training.</div>
-    </div>
-  </div>
-  <div class="card">
-    <h3>Actions</h3>
-    <div class="inline-buttons">
-      <button onclick="queueJob('/api/operator/research/jobs/build-dataset', {})">Build Dataset</button>
-      <button class="secondary" onclick="queueTrainLatest()">Train Latest Dataset</button>
-      <button class="secondary" onclick="queueCalibrateLatest()">Calibrate Latest Train</button>
-      <button class="secondary" onclick="queueReplayLatest()">Replay Latest Artifact</button>
-    </div>
-    <div id="job-response" class="empty" style="margin-top:12px;">No job submitted.</div>
-  </div>
-  <div class="card wide">
-    <h3>Provider Pipeline</h3>
-    <div class="grid">
-      <label>Spec Path <input id="provider-pipeline-spec" value="configs/data/v2_btc_hmm_knn_provider_pipeline.json"></label>
-      <label>Stage
-        <select id="provider-pipeline-stage">
-          <option value="intake">Intake</option>
-          <option value="dataset">Dataset</option>
-          <option value="evidence">Evidence</option>
-          <option value="all">All</option>
-        </select>
-      </label>
-    </div>
-    <button class="secondary" onclick="queueProviderPipeline()">Run Pipeline</button>
-  </div>
-  <div class="card wide">
-    <h3>Research Experiment</h3>
-    <div class="grid">
-      <label>Spec Path <input id="research-experiment-spec" value="configs/experiments/v2_btc_phase1_research_experiment.json"></label>
-    </div>
-    <button class="secondary" onclick="queueResearchExperiment()">Run Research Experiment</button>
-  </div>
-  <div class="card wide">
-    <h3>Profitability Chart</h3>
-    <p class="muted">Read-only chart from current model metrics and historical research-cycle rankings. Positive bars are not promotion claims; they are research evidence that still must pass gates.</p>
-    <canvas id="profitability-chart" height="220" style="width:100%; max-height:260px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+    <canvas id="profitability-chart" class="research-chart" height="220"></canvas>
     <div id="profitability-chart-note" class="muted" style="margin-top:8px;"></div>
-  </div>
-  <div class="card wide">
-    <h3>Research Graphs</h3>
-    <div class="grid">
-      <div class="card alt">
+  </section>
+
+  <section class="research-band">
+    <div class="band-heading">
+      <div>
+        <h3>Research Graphs</h3>
+        <div class="muted">These charts summarize the newest artifacts that the operator API can see.</div>
+      </div>
+    </div>
+    <div class="viz-grid">
+      <div class="viz-panel">
         <h4>Candidate Mix</h4>
-        <canvas id="candidate-mix-chart" height="180" style="width:100%; max-height:220px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+        <canvas id="candidate-mix-chart" class="research-chart" height="180"></canvas>
       </div>
-      <div class="card alt">
+      <div class="viz-panel">
         <h4>Gate Status</h4>
-        <canvas id="gate-status-chart" height="180" style="width:100%; max-height:220px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+        <canvas id="gate-status-chart" class="research-chart" height="180"></canvas>
       </div>
-      <div class="card alt">
+      <div class="viz-panel">
         <h4>Holding Windows</h4>
-        <canvas id="holding-window-chart" height="180" style="width:100%; max-height:220px; background:#0f1620; border:1px solid var(--border); border-radius:10px;"></canvas>
+        <canvas id="holding-window-chart" class="research-chart" height="180"></canvas>
       </div>
     </div>
-  </div>
-  <div class="card wide">
-    <h3>Latest Status</h3>
+  </section>
+
+  <section class="research-band">
+    <div class="band-heading">
+      <div>
+        <h3>Latest Status</h3>
+        <div class="muted">Fast read of the newest dataset, experiment, cycle, model, and monitoring artifacts.</div>
+      </div>
+    </div>
     <div id="research-status" class="stat-grid"></div>
-  </div>
-  <div class="card wide">
-    <h3>Shadow Diagnostics</h3>
-    <div id="shadow-diagnostics-panel" class="empty">No shadow diagnostics found.</div>
-  </div>
-  <div class="card wide">
-    <h3>Stage 13 Readiness</h3>
-    <div id="stage13-readiness-panel" class="empty">Stage 13 readiness has not been planned.</div>
-  </div>
-  <div class="card wide">
-    <h3>HMM/KNN Monitoring</h3>
-    <div id="hmm-monitoring-panel" class="empty">No HMM/KNN monitoring report found.</div>
-  </div>
-  <div class="card wide">
-    <h3>How Dataset Build Works</h3>
-    <div class="grid">
-      <div class="card alt">
-        <h4>Inputs</h4>
-        <div class="muted">Stored BTC signals, Binance 15m history, and any available signal-time context already saved in decision packets.</div>
+  </section>
+
+  <section class="research-band">
+    <div class="evidence-grid">
+      <div>
+        <h3>Shadow Diagnostics</h3>
+        <div class="muted">Read-only shadow scoring visibility. This does not authorize live execution.</div>
+        <div id="shadow-diagnostics-panel" class="empty" style="margin-top:10px;">No shadow diagnostics found.</div>
       </div>
-      <div class="card alt">
-        <h4>Processing</h4>
-        <div class="muted">The builder preloads one shared bar range, slices it locally per signal, rebuilds features, freezes ATR barriers, and labels outcomes with the same exit logic used live.</div>
-      </div>
-      <div class="card alt">
-        <h4>Outputs</h4>
-        <div class="muted">A parquet dataset for training plus a manifest with row count, dataset hash, config snapshot, and missing-feature rates.</div>
-      </div>
-      <div class="card alt">
-        <h4>Quality Check</h4>
-        <div class="muted">Do not move to training blindly. First confirm the dataset is large enough, not one-sided, and not dominated by missing features.</div>
+      <div>
+        <h3>Stage 13 Readiness</h3>
+        <div class="muted">Promotion and live-readiness planning remains blocked until the required evidence exists.</div>
+        <div id="stage13-readiness-panel" class="empty" style="margin-top:10px;">Stage 13 readiness has not been planned.</div>
       </div>
     </div>
-  </div>
-  <div class="card wide">
+  </section>
+
+  <section class="research-band">
+    <h3>HMM/KNN Monitoring</h3>
+    <div class="muted">Observe-only diagnostics for HMM/KNN artifacts: entropy, no-trade behavior, neighbor quality, drift, outages, and alerts.</div>
+    <div id="hmm-monitoring-panel" class="empty" style="margin-top:10px;">No HMM/KNN monitoring report found.</div>
+  </section>
+
+  <section class="research-band">
+    <details class="advanced-diagnostics">
+      <summary>Advanced Signal-History Diagnostics</summary>
+      <p class="muted">Use these only when you intentionally need the older persisted-signal model diagnostics. They require saved BTC signal history and remain offline observe-only checks.</p>
+      <div class="inline-buttons">
+        <button onclick="queueJob('/api/operator/research/jobs/build-dataset', {})">Build Signal Dataset</button>
+        <button class="secondary" onclick="queueTrainLatest()">Train Latest Signal Dataset</button>
+        <button class="secondary" onclick="queueCalibrateLatest()">Calibrate Latest Signal Model</button>
+        <button class="secondary" onclick="queueReplayLatest()">Replay Latest Signal Artifact</button>
+      </div>
+      <div class="explain-grid">
+        <div class="explain-item"><strong>Inputs</strong><div class="muted">Persisted BTC signals, saved decision context, and matching exchange bars.</div></div>
+        <div class="explain-item"><strong>Checks</strong><div class="muted">Signal-time feature reconstruction, class balance, missing-feature rates, calibration, and replay evaluation.</div></div>
+        <div class="explain-item"><strong>Boundary</strong><div class="muted">These diagnostics do not replace the current historical-cycle research flow.</div></div>
+      </div>
+    </details>
+  </section>
+
+  <section class="research-band">
     <h3>Jobs</h3>
     <table>
       <thead><tr><th>Requested</th><th>Type</th><th>Status</th><th>Summary</th><th>Details</th></tr></thead>
       <tbody id="jobs-list"><tr><td colspan="5">Loading...</td></tr></tbody>
     </table>
-  </div>
-  <div class="card wide">
+  </section>
+
+  <section class="research-band">
     <h3>Artifacts</h3>
     <div id="artifacts-list" class="grid"></div>
-  </div>
+  </section>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
   let latestArtifacts = [];
 
+  const providerStageDetails = {
+    intake: [
+      ["What It Tests", "Provider access, source manifests, gaps, duplicates, hashes, and explicit data-quality alerts."],
+      ["When To Use", "Use first when you have no fresh provider artifacts or after changing data source assumptions."],
+      ["Where It Writes", "Research output directory under provider/archive manifests and data-quality reports."]
+    ],
+    dataset: [
+      ["What It Tests", "Dataset construction from prepared inputs, schema compatibility, feature inputs, and manifest identity."],
+      ["When To Use", "Use after intake succeeds and you want a new dataset without re-registering sources."],
+      ["Where It Writes", "Dataset and dataset manifest artifacts visible in the Artifacts section."]
+    ],
+    evidence: [
+      ["What It Tests", "Configured evidence checks, experiment summaries, conclusions, and rejection reasons."],
+      ["When To Use", "Use after datasets are already prepared and you only need evidence refresh or review."],
+      ["Where It Writes", "Research pipeline and experiment evidence manifests in the research output directory."]
+    ],
+    all: [
+      ["What It Tests", "Full provider path: intake, dataset build, evidence checks, and final summary."],
+      ["When To Use", "Use for a complete refresh after changing provider specs or before serious research review."],
+      ["Where It Writes", "All provider-pipeline artifact families; watch Jobs and Artifacts for each output."]
+    ]
+  };
+
+  const experimentDetails = {
+    "configs/experiments/v2_btc_phase1_research_experiment.json": [
+      ["What It Tests", "BTC phase-1 configured provider/data/evidence path."],
+      ["When To Use", "Use as the default operator experiment bundle for a current branch smoke-through."],
+      ["Where It Writes", "Research experiment run manifest and conclusion text."]
+    ],
+    "configs/experiments/v2_btc_hmm_knn_current_artifact_experiments.json": [
+      ["What It Tests", "Current HMM/KNN artifact contract, monitoring, and observe-only boundary."],
+      ["When To Use", "Use after HMM/KNN artifacts are created and you want focused diagnostics."],
+      ["Where It Writes", "HMM/KNN experiment matrix and run artifacts."]
+    ],
+    "configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json": [
+      ["What It Tests", "Deterministic HMM/KNN sweep behavior and repeatable experiment matrix output."],
+      ["When To Use", "Use when validating repeatability or comparing HMM/KNN parameter surfaces."],
+      ["Where It Writes", "Experiment matrix manifests and per-run evidence summaries."]
+    ]
+  };
+
+  const historicalFocusDetails = {
+    strategy: [
+      ["What It Tests", "Strategy candidates, comparators, validation splits, costs, funding, exits, and gate decisions."],
+      ["When To Use", "Use when ranking candidate strategies or checking why a candidate was rejected."],
+      ["Where It Writes", "research_cycle_manifest.json, candidate_rankings.parquet, backtest index, gate report, and rejection report."]
+    ],
+    holding: [
+      ["What It Tests", "Whether fixed holding windows or configured exits close positions before, at, or after the planned horizon."],
+      ["When To Use", "Use when comparing 1h, 4h, 12h, 24h, 72h, or 7d behavior and exit-policy tradeoffs."],
+      ["Where It Writes", "metrics_by_holding_window.parquet plus candidate ranking rows with holding-window identity."]
+    ],
+    stability: [
+      ["What It Tests", "Optimizer stability, region-of-stability evidence, spike rejection, and candidate-pack eligibility."],
+      ["When To Use", "Use after promising returns appear and you need to know whether they survive gates."],
+      ["Where It Writes", "Candidate gate report, stability evidence, rejection report, and candidate-pack decision metadata."]
+    ]
+  };
+
   function pickLatest(type) {
     return latestArtifacts.find(item => item.type === type) || null;
+  }
+
+  function renderExplainItems(targetId, rows) {
+    const target = document.getElementById(targetId);
+    if (!target) return;
+    target.innerHTML = rows.map(([title, text]) => `
+      <div class="explain-item">
+        <strong>${window.TBS.escapeHtml(title)}</strong>
+        <div class="muted">${window.TBS.escapeHtml(text)}</div>
+      </div>
+    `).join("");
+  }
+
+  function selectProviderStage(stage) {
+    const details = providerStageDetails[stage] ? stage : "intake";
+    document.getElementById("provider-pipeline-stage").value = details;
+    document.querySelectorAll("#provider-stage-picker .stage-option").forEach(button => {
+      button.classList.toggle("active", button.dataset.stage === details);
+    });
+    renderExplainItems("provider-stage-explainer", providerStageDetails[details]);
+  }
+
+  function applyProviderPreset() {
+    const preset = document.getElementById("provider-pipeline-preset").value;
+    document.getElementById("provider-pipeline-spec").value = preset;
+  }
+
+  function applyExperimentPreset() {
+    const preset = document.getElementById("research-experiment-preset").value;
+    document.getElementById("research-experiment-spec").value = preset;
+    renderExplainItems("experiment-explainer", experimentDetails[preset] || [
+      ["What It Tests", "The experiment defined by the editable spec path."],
+      ["When To Use", "Use when you are intentionally running a custom checked-in experiment spec."],
+      ["Where It Writes", "Research experiment run artifacts in the configured research output directory."]
+    ]);
+  }
+
+  function applyHistoricalPreset() {
+    const spec = document.getElementById("historical-cycle-preset").value;
+    const focus = document.getElementById("historical-cycle-focus").value;
+    const command = `python -m tradingbotsuite.main run-historical-research-cycle --spec ${spec}`;
+    document.getElementById("historical-cycle-command").textContent = command;
+    renderExplainItems("historical-cycle-explainer", historicalFocusDetails[focus] || historicalFocusDetails.strategy);
+  }
+
+  async function copyHistoricalCommand() {
+    const command = document.getElementById("historical-cycle-command").textContent;
+    try {
+      await navigator.clipboard.writeText(command);
+      document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Command copied</strong><br>Run it from the repository root terminal.</div>';
+    } catch (error) {
+      document.getElementById("job-response").innerHTML = `<div class="error-box"><strong>Copy failed</strong><br>${window.TBS.escapeHtml(command)}</div>`;
+    }
+  }
+
+  function initializeResearchControls() {
+    applyProviderPreset();
+    applyExperimentPreset();
+    applyHistoricalPreset();
+    selectProviderStage("intake");
   }
 
   async function queueJob(url, payload) {
@@ -203,7 +625,7 @@
   async function queueTrainLatest() {
     const dataset = pickLatest("dataset");
     if (!dataset) {
-      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No dataset found</strong><br>Build a dataset first.</div>';
+      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No dataset found</strong><br>Build a signal dataset first.</div>';
       return;
     }
     await queueJob("/api/operator/research/jobs/train-model", { dataset_path: dataset.manifest.dataset_path });
@@ -212,7 +634,7 @@
   async function queueCalibrateLatest() {
     const train = pickLatest("train_artifact");
     if (!train) {
-      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No training artifact found</strong><br>Train the model first.</div>';
+      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No training artifact found</strong><br>Train the signal model first.</div>';
       return;
     }
     await queueJob("/api/operator/research/jobs/calibrate-model", { train_manifest_path: train.path });
@@ -221,20 +643,16 @@
   async function queueReplayLatest() {
     const artifact = pickLatest("model_artifact");
     if (!artifact) {
-      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No calibrated artifact found</strong><br>Calibrate the model first.</div>';
+      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No calibrated artifact found</strong><br>Calibrate the signal model first.</div>';
       return;
     }
     await queueJob("/api/operator/research/jobs/replay-eval", { artifact_manifest_path: artifact.path });
   }
 
   async function queueProviderPipeline() {
-    const stage = document.getElementById("provider-pipeline-stage").value;
-    if (stage !== "intake" && !window.confirm(`Queue provider pipeline stage "${stage}"?`)) {
-      return;
-    }
     await queueJob("/api/operator/research/jobs/prepare-hmm-knn-research-data", {
       spec_path: document.getElementById("provider-pipeline-spec").value,
-      stage,
+      stage: document.getElementById("provider-pipeline-stage").value || "intake",
     });
   }
 
@@ -244,9 +662,21 @@
     });
   }
 
+  function formatNumber(value) {
+    if (value === null || value === undefined || value === "n/a") return "n/a";
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric.toFixed(4) : String(value);
+  }
+
+  function formatRate(value) {
+    if (value === null || value === undefined || value === "n/a") return "n/a";
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${(numeric * 100).toFixed(1)}%` : String(value);
+  }
+
   function renderJobRow(job) {
     const stateClass = job.status === "succeeded" ? "ok" : (job.status === "failed" ? "bad" : "warn");
-    const summary = job.result ? Object.entries(job.result).map(([k, v]) => `${k}: ${v}`).join(" | ") : (job.error_text || "waiting");
+    const summary = job.result ? Object.entries(job.result).map(([key, value]) => `${key}: ${value}`).join(" | ") : (job.error_text || "waiting");
     return `
       <tr>
         <td>${window.TBS.formatTime(job.requested_at_ms)}</td>
@@ -266,6 +696,19 @@
     `;
   }
 
+  function artifactStatusPill(item, summary) {
+    if (item.type === "historical_research_cycle") {
+      return window.TBS.pill(summary.candidate_pack_written ? "pack_written" : "gated", summary.candidate_pack_written ? "ok" : "warn");
+    }
+    if (summary.conclusion_status) {
+      return window.TBS.pill(summary.conclusion_status, summary.conclusion_status === "supported" ? "ok" : (summary.conclusion_status === "rejected" ? "bad" : "warn"));
+    }
+    if (summary.overall_status) {
+      return window.TBS.pill(summary.overall_status, summary.overall_status === "passed" ? "ok" : "warn");
+    }
+    return window.TBS.pill("observe_only", "neutral");
+  }
+
   function renderArtifactCard(item) {
     const summary = item.summary || {};
     const metrics = item.metrics || {};
@@ -277,8 +720,8 @@
       return `
         <div class="card alt">
           <div class="split">
-            <strong>Historical research cycle</strong>
-            ${window.TBS.pill(summary.candidate_pack_written ? "pack_written" : "gated", summary.candidate_pack_written ? "ok" : "warn")}
+            <strong>historical_research_cycle</strong>
+            ${artifactStatusPill(item, summary)}
           </div>
           ${window.TBS.renderKv([
             ["Path", window.TBS.toMono(item.path)],
@@ -306,7 +749,7 @@
       return `
         <div class="card alt">
           <div class="split">
-            <strong>HMM/KNN research</strong>
+            <strong>hmm_knn_artifact</strong>
             ${window.TBS.pill("observe_only", "neutral")}
           </div>
           ${window.TBS.renderKv([
@@ -328,71 +771,27 @@
         </div>
       `;
     }
-    if (item.type === "research_pipeline") {
-      return `
-        <div class="card alt">
-          <div class="split">
-            <strong>Research pipeline</strong>
-            ${window.TBS.pill(summary.conclusion_status || "inconclusive", summary.conclusion_status === "supported" ? "ok" : (summary.conclusion_status === "rejected" ? "bad" : "warn"))}
-          </div>
-          ${window.TBS.renderKv([
-            ["Path", window.TBS.toMono(item.path)],
-            ["Version", window.TBS.escapeHtml(String(summary.version || "n/a"))],
-            ["Stage", window.TBS.escapeHtml(String(summary.stage_requested || "n/a"))],
-            ["Evidence", window.TBS.escapeHtml(`${summary.evidence_mode || "n/a"} / ${summary.evidence_status || "n/a"}`)],
-            ["Data Alerts", window.TBS.toMono(summary.data_quality_alert_count ?? "n/a")],
-            ["Failures", window.TBS.toMono(summary.top_failure_count ?? "n/a")],
-          ])}
-          <div class="muted" style="margin-top:8px;">${window.TBS.escapeHtml(summary.conclusion_reason || "")}</div>
-          <details class="details">
-            <summary>Pipeline summary</summary>
-            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
-          </details>
-        </div>
-      `;
-    }
-    if (item.type === "hmm_knn_experiment_matrix") {
-      return `
-        <div class="card alt">
-          <div class="split">
-            <strong>HMM/KNN experiment matrix</strong>
-            ${window.TBS.pill(summary.overall_status || "unknown", summary.overall_status === "passed" ? "ok" : "warn")}
-          </div>
-          ${window.TBS.renderKv([
-            ["Path", window.TBS.toMono(item.path)],
-            ["Name", window.TBS.escapeHtml(String(summary.name || "n/a"))],
-            ["Experiments", window.TBS.toMono(summary.experiment_count ?? "n/a")],
-            ["Workers", window.TBS.toMono(summary.effective_workers ?? "n/a")],
-            ["Boundary", window.TBS.escapeHtml(summary.research_boundary_passed ? "passed" : "failed")],
-          ])}
-          <details class="details">
-            <summary>Experiment manifest</summary>
-            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
-          </details>
-        </div>
-      `;
-    }
-    if (item.type === "research_experiment_run") {
+    if (item.type === "research_pipeline" || item.type === "research_experiment_run" || item.type === "hmm_knn_experiment_matrix") {
       const providers = summary.provider_statuses || [];
       return `
         <div class="card alt">
           <div class="split">
-            <strong>Research experiment run</strong>
-            ${window.TBS.pill(summary.conclusion_status || "inconclusive", summary.conclusion_status === "supported" ? "ok" : (summary.conclusion_status === "rejected" ? "bad" : "warn"))}
+            <strong>${window.TBS.escapeHtml(item.type)}</strong>
+            ${artifactStatusPill(item, summary)}
           </div>
           ${window.TBS.renderKv([
             ["Path", window.TBS.toMono(item.path)],
-            ["Name", window.TBS.escapeHtml(String(summary.name || "n/a"))],
-            ["Run", window.TBS.escapeHtml(String(summary.run_id || "n/a"))],
+            ["Name", window.TBS.escapeHtml(String(summary.name || summary.version || "n/a"))],
+            ["Run", window.TBS.escapeHtml(String(summary.run_id || summary.stage_requested || "n/a"))],
             ["Pipeline", window.TBS.escapeHtml(String(summary.pipeline_status || "n/a"))],
             ["Evidence", window.TBS.escapeHtml(String(summary.evidence_status || "n/a"))],
-            ["Data Alerts", window.TBS.toMono(summary.data_quality_alert_count ?? "n/a")],
-            ["Boundary", window.TBS.escapeHtml(summary.research_boundary_passed ? "passed" : "failed")],
+            ["Data Alerts", window.TBS.toMono(summary.data_quality_alert_count ?? summary.alert_count ?? "n/a")],
+            ["Boundary", window.TBS.escapeHtml(summary.research_boundary_passed === false ? "failed" : "passed/observe-only")],
           ])}
           ${providers.length ? `<div class="muted" style="margin-top:8px;">Providers: ${providers.map(provider => `${window.TBS.escapeHtml(provider.source_name || "unknown")}=${window.TBS.escapeHtml(provider.status || "unknown")}`).join(", ")}</div>` : ""}
-          <div class="muted" style="margin-top:8px;">${window.TBS.escapeHtml(summary.conclusion_reason || "")}</div>
+          ${summary.conclusion_reason ? `<div class="muted" style="margin-top:8px;">${window.TBS.escapeHtml(summary.conclusion_reason)}</div>` : ""}
           <details class="details">
-            <summary>Run manifest / conclusion</summary>
+            <summary>Manifest / conclusion</summary>
             <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, conclusion: item.conclusion_text || null }))}</pre>
           </details>
         </div>
@@ -402,7 +801,7 @@
       return `
         <div class="card alt">
           <div class="split">
-            <strong>${window.TBS.escapeHtml(item.type.replaceAll("_", " "))}</strong>
+            <strong>${window.TBS.escapeHtml(item.type)}</strong>
             ${window.TBS.pill("observe_only", "neutral")}
           </div>
           ${window.TBS.renderKv([
@@ -439,27 +838,15 @@
           ["Rows", window.TBS.toMono(summary.row_count || summary.train_rows || summary.total_rows || "n/a")],
           ["Model", window.TBS.escapeHtml(String(summary.model_version || "n/a"))],
           ["Calibration", window.TBS.escapeHtml(String(summary.calibration_version || "n/a"))],
-          ["V2 Expectancy", window.TBS.toMono(summary.v2_expectancy ?? "n/a")],
+          ["Signal Expectancy", window.TBS.toMono(summary.v2_expectancy ?? "n/a")],
         ])}
-        ${topMissing.length ? `<div class="muted" style="margin-top:8px;">Top missing feature rates: ${topMissing.map(([k, v]) => `${k}=${Number(v).toFixed(2)}`).join(", ")}</div>` : ""}
+        ${topMissing.length ? `<div class="muted" style="margin-top:8px;">Top missing feature rates: ${topMissing.map(([key, value]) => `${window.TBS.escapeHtml(key)}=${Number(value).toFixed(2)}`).join(", ")}</div>` : ""}
         <details class="details">
           <summary>Manifest / metrics</summary>
           <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, metrics: item.metrics || null }))}</pre>
         </details>
       </div>
     `;
-  }
-
-  function formatNumber(value) {
-    if (value === null || value === undefined || value === "n/a") return "n/a";
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? numeric.toFixed(4) : String(value);
-  }
-
-  function formatRate(value) {
-    if (value === null || value === undefined || value === "n/a") return "n/a";
-    const numeric = Number(value);
-    return Number.isFinite(numeric) ? `${(numeric * 100).toFixed(1)}%` : String(value);
   }
 
   function renderHmmMonitoringPanel(item) {
@@ -476,31 +863,13 @@
     const alerts = monitoring.alerts || [];
     const alertState = alerts.some(alert => alert.severity === "warn") ? "warn" : "neutral";
     return `
-      <div class="grid">
-        <div class="stat">
-          <div class="label">Status</div>
-          <div class="value">${window.TBS.pill(alerts.length ? `${alerts.length} alerts` : "quiet", alertState)}</div>
-        </div>
-        <div class="stat">
-          <div class="label">No-Trade Rate</div>
-          <div class="value">${window.TBS.escapeHtml(formatRate(entropy.regime_no_trade_rate))}</div>
-        </div>
-        <div class="stat">
-          <div class="label">Entropy p95</div>
-          <div class="value">${window.TBS.escapeHtml(formatNumber(entropy.posterior_entropy_p95))}</div>
-        </div>
-        <div class="stat">
-          <div class="label">Max Regime Drift</div>
-          <div class="value">${window.TBS.escapeHtml(formatNumber(drift.max_drift))}</div>
-        </div>
-        <div class="stat">
-          <div class="label">Neighbor Quality p05</div>
-          <div class="value">${window.TBS.escapeHtml(formatNumber(neighbor.neighbor_distance_quality_p05))}</div>
-        </div>
-        <div class="stat">
-          <div class="label">Feature Outages</div>
-          <div class="value">${window.TBS.escapeHtml(String(featureOutages.high_outage_feature_count ?? "n/a"))}</div>
-        </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="label">Status</div><div class="value">${window.TBS.pill(alerts.length ? `${alerts.length} alerts` : "quiet", alertState)}</div></div>
+        <div class="stat"><div class="label">No-Trade Rate</div><div class="value">${window.TBS.escapeHtml(formatRate(entropy.regime_no_trade_rate))}</div></div>
+        <div class="stat"><div class="label">Entropy p95</div><div class="value">${window.TBS.escapeHtml(formatNumber(entropy.posterior_entropy_p95))}</div></div>
+        <div class="stat"><div class="label">Max Regime Drift</div><div class="value">${window.TBS.escapeHtml(formatNumber(drift.max_drift))}</div></div>
+        <div class="stat"><div class="label">Neighbor Quality p05</div><div class="value">${window.TBS.escapeHtml(formatNumber(neighbor.neighbor_distance_quality_p05))}</div></div>
+        <div class="stat"><div class="label">Feature Outages</div><div class="value">${window.TBS.escapeHtml(String(featureOutages.high_outage_feature_count ?? "n/a"))}</div></div>
       </div>
       <div class="muted" style="margin-top:12px;">
         Plan ${window.TBS.escapeHtml(summary.plan_version || "n/a")} | rows ${window.TBS.escapeHtml(summary.row_count ?? "n/a")} | live-vs-replay ${window.TBS.escapeHtml(monitoring.live_vs_replay_mismatch || "n/a")} | calibration ${window.TBS.escapeHtml(calibration.available ? "available" : "unavailable")}
@@ -644,7 +1013,8 @@
     const rowHeight = Math.max(18, Math.min(28, (height - 28) / rows.length));
     rows.forEach((row, index) => {
       const y = 14 + index * rowHeight;
-      const barWidth = (width - 170) * (row.value / max);
+      const availableWidth = Math.max(80, width - 170);
+      const barWidth = availableWidth * (row.value / max);
       ctx.fillStyle = "#2f81f7";
       ctx.fillRect(150, y, Math.max(2, barWidth), rowHeight - 6);
       ctx.fillStyle = "#c7d0da";
@@ -671,10 +1041,10 @@
       });
     }
     if (model?.summary?.v2_expectancy !== undefined && model?.summary?.v2_expectancy !== null) {
-      rows.push({ label: "legacy v2 expectancy", value: model.summary.v2_expectancy });
+      rows.push({ label: "signal model expectancy", value: model.summary.v2_expectancy });
     }
     if (model?.summary?.baseline_expectancy !== undefined && model?.summary?.baseline_expectancy !== null) {
-      rows.push({ label: "v1 baseline expectancy", value: model.summary.baseline_expectancy });
+      rows.push({ label: "baseline expectancy", value: model.summary.baseline_expectancy });
     }
     if (hmm?.summary?.meta_expectancy !== undefined && hmm?.summary?.meta_expectancy !== null) {
       rows.push({ label: "hmm/knn meta expectancy", value: hmm.summary.meta_expectancy });
@@ -682,7 +1052,7 @@
     drawBarChart("profitability-chart", rows.slice(0, 12), { empty: "No profitability artifacts found yet." });
     document.getElementById("profitability-chart-note").textContent = cycle
       ? `Latest cycle: ${cycle.summary?.cycle_id || "unknown"} | candidates: ${cycle.summary?.candidate_count ?? "n/a"} | acceptance: ${cycle.summary?.candidate_acceptance_scope || "n/a"}`
-      : "No historical research cycle found. Run or copy cycle artifacts under the research output directory to populate the chart.";
+      : "No historical research cycle found. Run a historical-cycle command from the repo root or copy cycle artifacts into the research output directory.";
     drawHorizontalCountChart("candidate-mix-chart", (((cycle || {}).summary || {}).rankings || {}).strategy_counts || {}, { empty: "No candidate strategy mix yet." });
     drawHorizontalCountChart("gate-status-chart", (((cycle || {}).summary || {}).rankings || {}).decision_counts || {}, { empty: "No gate decisions yet." });
     const holdingRows = ((((cycle || {}).summary || {}).holding_windows || {}).rows || []).map(row => ({ label: row.holding_window, value: row.best_final_score ?? row.median_costed_expectancy ?? 0 }));
@@ -715,7 +1085,7 @@
       ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
       ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
       ["Latest Model", latestModel?.summary?.model_version ?? "n/a"],
-      ["Promotion Ready", latestModel?.summary?.promotion_ready ? "yes" : "no"],
+      ["Boundary", "observe-only"],
       ["Historical Cycle", latestHistoricalCycle?.summary?.cycle_id ?? "n/a"],
       ["Cycle Candidates", latestHistoricalCycle?.summary?.candidate_count ?? "n/a"],
       ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
@@ -723,7 +1093,7 @@
       ["Latest Experiment", latestExperiment?.summary?.conclusion_status ?? "n/a"],
     ].map(([label, value]) => `
       <div class="stat">
-        <div class="label">${label}</div>
+        <div class="label">${window.TBS.escapeHtml(label)}</div>
         <div class="value">${window.TBS.escapeHtml(String(value))}</div>
       </div>
     `).join("");
@@ -733,6 +1103,7 @@
     renderResearchCharts();
   }
 
+  initializeResearchControls();
   refreshResearch();
   setInterval(refreshResearch, 4000);
 </script>

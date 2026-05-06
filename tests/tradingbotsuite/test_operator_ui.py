@@ -580,9 +580,16 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
         response = client.get("/ui/research")
 
     assert response.status_code == 200
-    assert "Research Tracks" in response.text
-    assert "Data Intake" in response.text
-    assert "Backtests And Exits" in response.text
+    assert "Research Control Room" in response.text
+    assert "Pick The Work You Need" in response.text
+    assert "Run Provider Stage" in response.text
+    assert "Intake" in response.text
+    assert "Dataset" in response.text
+    assert "Evidence" in response.text
+    assert "All" in response.text
+    assert "What The Research System Builds" in response.text
+    assert "Historical Cycle Review" in response.text
+    assert "run-historical-research-cycle" in response.text
     assert "Profitability Chart" in response.text
     assert "Research Graphs" in response.text
     assert "historical_research_cycle" in response.text
@@ -595,6 +602,10 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
     assert "hmm_knn_artifact" in response.text
     assert "observe_only" in response.text
+    assert "Legacy" not in response.text
+    assert "legacy" not in response.text
+    assert "TradingView" not in response.text
+    assert "tradingview" not in response.text
     assert "/api/operator/commands/" not in response.text
     assert "set-mode" not in response.text
     assert "manual-signal" not in response.text
