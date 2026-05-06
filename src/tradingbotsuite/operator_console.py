@@ -559,6 +559,7 @@ class OperatorConsoleService:
             return root / "docs" / name
 
         docs = [
+            ("operator-quickstart", "Operator Quickstart", doc_path("OPERATOR_QUICKSTART.md")),
             ("operator-guide", "Operator Guide", doc_path("OPERATOR_GUIDE.md")),
             ("microstructure-reliability", "Microstructure Reliability", doc_path("MICROSTRUCTURE_RELIABILITY.md")),
         ]

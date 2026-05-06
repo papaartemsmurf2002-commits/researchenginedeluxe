@@ -1,5 +1,8 @@
 # Operator Guide
 
+For day-to-day operation, start with `docs/OPERATOR_QUICKSTART.md`. This file
+is the longer technical reference.
+
 ## Modes
 
 - `shadow`: produces intended actions without exchange-side orders

@@ -1093,6 +1093,8 @@ def test_operator_guides_page_includes_embedded_docs(app_config, sample_bars) ->
         _login(client, "operator-secret")
         response = client.get("/ui/guides")
     assert response.status_code == 200
+    assert "Operator Quickstart" in response.text
+    assert "First Safe Run" in response.text
     assert "Operator Guide" in response.text
     assert "Microstructure Reliability" in response.text
 
@@ -1106,6 +1108,7 @@ def test_operator_guides_api_returns_docs(app_config, sample_bars) -> None:
         response = client.get("/api/operator/guides")
     assert response.status_code == 200
     titles = [item["title"] for item in response.json()["items"]]
+    assert titles[0] == "Operator Quickstart"
     assert "Operator Guide" in titles
 
 

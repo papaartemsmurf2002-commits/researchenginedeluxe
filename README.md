@@ -66,6 +66,9 @@ python tools\tradingbotsuite\run_server.py
 
 Then open `http://127.0.0.1:8000/ui`.
 
+For compact operator instructions, use `docs/OPERATOR_QUICKSTART.md`. The same
+quickstart is also embedded in the operator UI `Guides` page.
+
 ## Repository Map
 
 For the current research branch architecture, package responsibilities,
