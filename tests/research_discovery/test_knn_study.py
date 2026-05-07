@@ -18,6 +18,10 @@ from tradingbotsuite.research_discovery.knn_study import (
     materialize_regime_local_knn_predictions,
     write_knn_study_artifacts,
 )
+from tradingbotsuite.research_discovery.strategy_integration import (
+    account_hmm_knn_local_analog_strategy,
+    write_strategy_accounting_artifacts,
+)
 
 
 FEATURE_COLUMNS = (
@@ -192,6 +196,40 @@ def test_knn_study_writes_research_only_artifacts(tmp_path: Path) -> None:
     assert manifest["required_outputs"]["knn_predictions"] == str(artifacts.predictions_path)
     assert not predictions.empty
     assert not diagnostics.empty
+
+
+def test_knn_predictions_flow_into_strategy_accounting(tmp_path: Path) -> None:
+    frame, splits = _hmm_frame()
+    result = materialize_regime_local_knn_predictions(frame, splits=splits, spec=_knn_spec())
+
+    accounting = account_hmm_knn_local_analog_strategy(
+        result.frame,
+        holding_window="24h",
+        strategy_config={
+            "spacing_bars": 1,
+            "min_neighbor_count": 1,
+            "min_neighbor_agreement": 0.01,
+            "min_neighbor_distance_quality": 0.0,
+            "min_vote_margin": 0.0,
+            "posterior_threshold": 0.01,
+            "entropy_threshold": 1.0,
+            "probability_threshold": 0.50,
+            "expected_value_threshold": -0.02,
+        },
+    )
+    artifacts = write_strategy_accounting_artifacts(tmp_path / "strategy", accounting)
+    manifest = json.loads(artifacts.manifest_path.read_text(encoding="utf-8"))
+    signals = pd.read_parquet(artifacts.signals_path)
+
+    assert manifest["strategy_accounting_manifest_version"] == "discovery-strategy-accounting-manifest-v1"
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["raw_knn_accepted_row_count"] > 0
+    assert manifest["plugin_signal_count"] > 0
+    assert manifest["backtest_executable_signal_count"] == manifest["plugin_signal_count"]
+    assert manifest["filter_block_count"] == 0
+    assert not signals.empty
 
 
 def test_knn_study_spec_config_loads() -> None:

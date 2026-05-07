@@ -114,19 +114,88 @@ class CycleDataSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class CycleFeatureSpec:
-    feature_sets: tuple[str, ...] = DEFAULT_FEATURE_SETS
+class MaterializedPredictionOverlaySpec:
+    feature_set_id: str
+    kind: str
+    predictions_path: Path
+    manifest_path: Path | None = None
+    join_key: str = "source_row_index"
 
     @classmethod
-    def from_payload(cls, payload: Mapping[str, Any] | None) -> "CycleFeatureSpec":
+    def from_payload(cls, payload: Mapping[str, Any], *, base_path: Path) -> "MaterializedPredictionOverlaySpec":
+        if not isinstance(payload, Mapping):
+            raise ValueError("features.materialized_prediction_overlays entries must be JSON objects")
+        feature_set_id = str(payload.get("feature_set_id") or "").strip()
+        if not feature_set_id:
+            raise ValueError("features.materialized_prediction_overlays.feature_set_id is required")
+        kind = str(payload.get("kind", "hmm_knn_local_analog_v2")).strip()
+        if kind != "hmm_knn_local_analog_v2":
+            raise ValueError(f"unsupported materialized prediction overlay kind: {kind}")
+        if not payload.get("predictions_path"):
+            raise ValueError("features.materialized_prediction_overlays.predictions_path is required")
+        join_key = str(payload.get("join_key", "source_row_index")).strip()
+        if join_key not in {"source_row_index", "bar_time_ms", "feature_time_ms"}:
+            raise ValueError(f"unsupported materialized prediction overlay join_key: {join_key}")
+        return cls(
+            feature_set_id=feature_set_id,
+            kind=kind,
+            predictions_path=_resolve_path(payload["predictions_path"], base_path=base_path),
+            manifest_path=(
+                _resolve_path(payload["manifest_path"], base_path=base_path)
+                if payload.get("manifest_path")
+                else None
+            ),
+            join_key=join_key,
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "feature_set_id": self.feature_set_id,
+            "kind": self.kind,
+            "predictions_path": str(self.predictions_path),
+            "manifest_path": str(self.manifest_path) if self.manifest_path is not None else None,
+            "join_key": self.join_key,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CycleFeatureSpec:
+    feature_sets: tuple[str, ...] = DEFAULT_FEATURE_SETS
+    materialized_prediction_overlays: tuple[MaterializedPredictionOverlaySpec, ...] = ()
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any] | None, *, base_path: Path) -> "CycleFeatureSpec":
         payload = payload or {}
         feature_sets = tuple(str(item) for item in payload.get("feature_sets", DEFAULT_FEATURE_SETS))
         if not feature_sets:
             raise ValueError("at least one feature set is required")
-        return cls(feature_sets=feature_sets)
+        raw_overlays = payload.get("materialized_prediction_overlays", ())
+        if isinstance(raw_overlays, Mapping):
+            raw_overlays = (raw_overlays,)
+        overlays = tuple(
+            MaterializedPredictionOverlaySpec.from_payload(item, base_path=base_path)
+            for item in raw_overlays
+        )
+        unknown_feature_sets = sorted({overlay.feature_set_id for overlay in overlays} - set(feature_sets))
+        if unknown_feature_sets:
+            raise ValueError(f"materialized prediction overlay feature_set_id not declared: {', '.join(unknown_feature_sets)}")
+        duplicate_keys = [
+            f"{overlay.feature_set_id}:{overlay.kind}"
+            for overlay in overlays
+            if sum(1 for item in overlays if item.feature_set_id == overlay.feature_set_id and item.kind == overlay.kind) > 1
+        ]
+        if duplicate_keys:
+            raise ValueError(f"duplicate materialized prediction overlay: {sorted(set(duplicate_keys))[0]}")
+        return cls(feature_sets=feature_sets, materialized_prediction_overlays=overlays)
 
     def to_payload(self) -> dict[str, Any]:
-        return {"feature_sets": list(self.feature_sets)}
+        return {
+            "feature_sets": list(self.feature_sets),
+            "materialized_prediction_overlays": [
+                overlay.to_payload()
+                for overlay in self.materialized_prediction_overlays
+            ],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,7 +350,7 @@ class HistoricalResearchCycleSpec:
             symbol=str(payload.get("symbol", "BTCUSDT")).upper(),
             holding_windows=holding_windows,
             data=CycleDataSpec.from_payload(payload.get("data"), base_path=base_path),
-            features=CycleFeatureSpec.from_payload(payload.get("features")),
+            features=CycleFeatureSpec.from_payload(payload.get("features"), base_path=base_path),
             strategies=strategies,
             validation=CycleValidationSpec.from_payload(payload.get("validation")),
             optimizer=CycleOptimizerSpec.from_payload(payload.get("optimizer")),

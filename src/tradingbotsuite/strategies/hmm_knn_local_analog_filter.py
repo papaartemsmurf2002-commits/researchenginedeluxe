@@ -63,7 +63,7 @@ class HmmKnnLocalAnalogFilterStrategy(RuleBasedStrategy):
             if routed is None:
                 continue
             side, strength = routed
-            signals.append(RuleSignal(index, side, strength, confidence_from_strength(strength), skip_reason="hmm_knn_local_analog_filter"))
+            signals.append(RuleSignal(index, side, strength, confidence_from_strength(strength)))
         return signals
 
 

@@ -1162,7 +1162,7 @@ def test_hmm_knn_local_analog_filter_v2_outputs_research_only_signals() -> None:
     assert set(signals["side"]) == {"long", "short"}
     assert signals["feature_set_id"].eq("features_perp_context_v2").all()
     assert signals["strategy_id"].eq("hmm_knn_local_analog_filter_v2").all()
-    assert signals["skip_reason"].eq("hmm_knn_local_analog_filter").all()
+    assert signals["skip_reason"].fillna("").eq("").all()
     assert signals["research_only"].all()
 
 

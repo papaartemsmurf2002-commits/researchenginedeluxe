@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R76 regime-local KNN study foundation
+Current stage: Stage R77 WT/KNN strategy candidate integration
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR76 regime-local KNN study foundation complete
+Stage status: closed - WPR77 WT/KNN strategy candidate integration complete
 Last updated: 2026-05-07
 
 ## Stage entry decision
@@ -118,6 +118,7 @@ Last updated: 2026-05-07
 | WPR74-01-discovery-feature-column-sets | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/contracts/test_import_boundaries.py`, `docs/work_packets/WPR74-01-discovery-feature-column-sets.md`, `docs/stage_reports/STAGE_R74_DISCOVERY_FEATURE_COLUMN_SETS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added bounded discovery-side KNN feature-column set manifests and validation, checked V4 column-set config, run-manifest feature-set evidence, focused tests, and validation recorded in Stage R74 report. |
 | WPR75-01-split-safe-hmm-materialization | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR75-01-split-safe-hmm-materialization.md`, `docs/stage_reports/STAGE_R75_SPLIT_SAFE_HMM_MATERIALIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added train-only per-split HMM materialization, required posterior/router columns, artifact writer, checked config, split-safety tests, future-perturbation tests, and validation recorded in Stage R75 report. |
 | WPR76-01-regime-local-knn-study-engine | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR76-01-regime-local-knn-study-engine.md`, `docs/stage_reports/STAGE_R76_REGIME_LOCAL_KNN_STUDY_ENGINE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added deterministic regime-local KNN study engine, same-regime neighbor pools, prediction columns, neighbor diagnostics, artifact writer, split-safety tests, future-perturbation tests, and validation recorded in Stage R76 report. |
+| WPR77-01-wt-knn-strategy-candidate-integration | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/strategies/hmm_knn_local_analog_filter.py`, `tests/research_discovery/**`, `tests/contracts/test_research_cycle_contract.py`, `tests/contracts/test_strategy_contracts.py`, `docs/work_packets/WPR77-01-wt-knn-strategy-candidate-integration.md`, `docs/stage_reports/STAGE_R77_WT_KNN_STRATEGY_CANDIDATE_INTEGRATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added opt-in historical-cycle materialized prediction overlays, overlay identity/hash evidence, split-safe HMM/KNN overlay validation, discovery strategy accounting artifacts, executable HMM/KNN local analog signals, focused tests, full contracts, and temp overlay smoke validation. |
 
 ## Gate checklist
 
@@ -450,3 +451,8 @@ Reason: The branch now has a discovery-side HMM materializer that fits Gaussian 
 
 Decision: R76 regime-local KNN study foundation complete; ready to open WPR77 WT/KNN strategy candidate integration planning/implementation
 Reason: The branch now has a deterministic discovery-side regime-local KNN reference engine that consumes split-safe HMM rows, fits scalers on train rows only, restricts local analog pools to prior same-regime neighbors by default, emits existing HMM/KNN strategy prediction columns, writes neighbor diagnostics and KNN study artifacts, and proves neighbor safety with focused future-perturbation tests. This wave does not wire strategy candidates into historical cycles, change optimizer behavior, expose UI controls, bridge candidate packs, claim promotion readiness, or add live execution.
+
+## WT/KNN strategy candidate integration wave
+
+Decision: R77 WT/KNN strategy candidate integration complete; ready to open WPR78 perp context and filter ablation matrix planning/implementation
+Reason: Historical research-cycle specs now support explicit materialized prediction overlays for split-safe HMM/KNN discovery outputs, the runner validates research-only overlay manifests, approved columns, one-to-one alignment, and accepted-neighbor split safety before candidate backtests, and feature-build identity records include post-overlay frame hashes. Discovery now writes strategy accounting for raw accepted KNN rows, plugin signals, executable signals, filter blocks, and optional executed trades. `hmm_knn_local_analog_filter_v2` active signals are executable by the standard backtest path. This wave does not change checked BTCUSDT/ETHUSDT configs, optimizer gates, UI behavior, candidate-pack promotion, live execution, or promotion readiness.

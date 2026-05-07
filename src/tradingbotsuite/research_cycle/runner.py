@@ -65,6 +65,7 @@ from tradingbotsuite.strategies import (
     signal_density_controls,
     strategy_parameter_manifest,
 )
+from tradingbotsuite.strategies.hmm_knn_local_analog_filter import REQUIRED_HMM_KNN_LOCAL_ANALOG_COLUMNS
 from tradingbotsuite.strategies.parameters import (
     allowed_parameter_names,
     allowed_parameter_values,
@@ -410,6 +411,8 @@ def run_historical_research_cycle(
         output_dir=output_dir,
         feature_cache_dir=feature_cache_dir,
     )
+    if spec.features.materialized_prediction_overlays:
+        feature_build = _apply_materialized_prediction_overlays(feature_build, spec=spec)
     feature_build_manifest = feature_build.manifest
     feature_frames = feature_build.frames_by_feature_set
     feature_build_path = output_dir / "feature_build_manifest.json"
@@ -1178,6 +1181,221 @@ def _feature_build_manifest(
         }
     )
     return FeatureBuildResult(manifest=payload, frames_by_feature_set=frames_by_feature_set)
+
+
+def _apply_materialized_prediction_overlays(
+    feature_build: FeatureBuildResult,
+    *,
+    spec: HistoricalResearchCycleSpec,
+) -> FeatureBuildResult:
+    frames = {feature_set_id: frame.copy() for feature_set_id, frame in feature_build.frames_by_feature_set.items()}
+    manifest = dict(feature_build.manifest)
+    records = [dict(record) for record in manifest.get("feature_sets", [])]
+    overlay_records: list[dict[str, Any]] = []
+    for overlay in spec.features.materialized_prediction_overlays:
+        feature_set_id = overlay.feature_set_id
+        if feature_set_id not in frames:
+            raise ValueError(f"materialized_prediction_overlay_missing_feature_frame:{feature_set_id}")
+        if not overlay.predictions_path.exists():
+            raise ValueError(f"materialized_prediction_overlay_missing_predictions:{overlay.predictions_path}")
+        predictions = pd.read_parquet(overlay.predictions_path)
+        overlay_manifest = _materialized_prediction_overlay_manifest(overlay.manifest_path)
+        frame_before = frames[feature_set_id]
+        frame_after, evidence = _merge_materialized_prediction_overlay(
+            frame_before,
+            predictions,
+            feature_set_id=feature_set_id,
+            kind=overlay.kind,
+            join_key=overlay.join_key,
+        )
+        evidence.update(
+            {
+                "predictions_path": str(overlay.predictions_path),
+                "predictions_sha256": _file_sha256(overlay.predictions_path),
+                "manifest_path": str(overlay.manifest_path) if overlay.manifest_path is not None else None,
+                "manifest_sha256": _file_sha256(overlay.manifest_path) if overlay.manifest_path is not None else None,
+                "manifest_version": overlay_manifest.get("knn_study_manifest_version"),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        )
+        frames[feature_set_id] = frame_after
+        overlay_records.append(evidence)
+        _update_feature_record_for_overlay(records, feature_set_id=feature_set_id, frame=frame_after, evidence=evidence)
+
+    identity_records = [
+        {
+            "feature_set_id": record["feature_set_id"],
+            "feature_cache_key": record.get("feature_cache_key"),
+            "feature_manifest_sha256": record.get("feature_manifest_sha256"),
+            "feature_frame_sha256": record.get("feature_frame_sha256"),
+            "interval_ms": record.get("interval_ms"),
+            "row_count": record.get("row_count"),
+            "materialized_prediction_overlays": record.get("materialized_prediction_overlays", []),
+        }
+        for record in records
+    ]
+    manifest["feature_computation_scope"] = "materialized_registered_feature_sets_with_prediction_overlays"
+    manifest["feature_sets"] = records
+    manifest["materialized_prediction_overlay_count"] = len(overlay_records)
+    manifest["materialized_prediction_overlays"] = overlay_records
+    manifest["feature_build_sha256"] = _stable_hash(
+        {
+            "feature_build_manifest_version": manifest["feature_build_manifest_version"],
+            "feature_computation_scope": manifest["feature_computation_scope"],
+            "dataset_sha256": manifest["dataset_sha256"],
+            "primary_interval_ms": manifest["primary_interval_ms"],
+            "fixture_family_context_sha256": manifest.get("fixture_family_context_sha256"),
+            "feature_sets": identity_records,
+        }
+    )
+    return FeatureBuildResult(manifest=manifest, frames_by_feature_set=frames)
+
+
+def _materialized_prediction_overlay_manifest(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {}
+    if not path.exists():
+        raise ValueError(f"materialized_prediction_overlay_missing_manifest:{path}")
+    payload = _read_json(path)
+    if payload.get("research_only") is not True or payload.get("observe_only") is not True:
+        raise ValueError("materialized_prediction_overlay_manifest_not_research_observe_only")
+    if payload.get("promotion_ready") is not False:
+        raise ValueError("materialized_prediction_overlay_manifest_promotion_ready")
+    if payload.get("split_safety_passed") is False:
+        raise ValueError("materialized_prediction_overlay_manifest_split_safety_failed")
+    return payload
+
+
+def _merge_materialized_prediction_overlay(
+    frame: pd.DataFrame,
+    predictions: pd.DataFrame,
+    *,
+    feature_set_id: str,
+    kind: str,
+    join_key: str,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    missing = [column for column in REQUIRED_HMM_KNN_LOCAL_ANALOG_COLUMNS if column not in predictions.columns]
+    if missing:
+        raise ValueError(f"materialized_prediction_overlay_missing_columns:{','.join(missing)}")
+    if join_key not in predictions.columns:
+        raise ValueError(f"materialized_prediction_overlay_missing_join_key:{join_key}")
+    if len(predictions) != len(frame):
+        raise ValueError(f"materialized_prediction_overlay_row_count_mismatch:{feature_set_id}")
+    _validate_materialized_prediction_split_safety(predictions)
+
+    base = frame.copy()
+    if join_key == "source_row_index" and join_key not in base.columns:
+        base[join_key] = range(len(base))
+    if join_key not in base.columns:
+        raise ValueError(f"materialized_prediction_overlay_feature_frame_missing_join_key:{join_key}")
+    if base[join_key].isna().any() or predictions[join_key].isna().any():
+        raise ValueError(f"materialized_prediction_overlay_null_join_key:{join_key}")
+    if base[join_key].duplicated().any() or predictions[join_key].duplicated().any():
+        raise ValueError(f"materialized_prediction_overlay_duplicate_join_key:{join_key}")
+    if set(base[join_key].tolist()) != set(predictions[join_key].tolist()):
+        raise ValueError(f"materialized_prediction_overlay_unmatched_rows:{feature_set_id}")
+
+    overlay_columns = [column for column in REQUIRED_HMM_KNN_LOCAL_ANALOG_COLUMNS if column != join_key]
+    selected = predictions[[join_key, *overlay_columns]].copy()
+    drop_existing = [column for column in overlay_columns if column in base.columns]
+    if drop_existing:
+        base = base.drop(columns=drop_existing)
+    merged = base.merge(selected, on=join_key, how="left", sort=False, validate="one_to_one")
+    if len(merged) != len(base):
+        raise ValueError(f"materialized_prediction_overlay_merge_row_count_changed:{feature_set_id}")
+    if merged[join_key].isna().any():
+        raise ValueError(f"materialized_prediction_overlay_unmatched_rows:{feature_set_id}")
+    return merged, {
+        "overlay_version": "historical-cycle-materialized-prediction-overlay-v1",
+        "feature_set_id": feature_set_id,
+        "kind": kind,
+        "join_key": join_key,
+        "row_count": int(len(merged)),
+        "overlay_column_count": int(len(overlay_columns) + 1),
+        "overlay_columns": [join_key, *overlay_columns],
+        "raw_knn_accepted_row_count": int(_accepted_knn_rows(merged).sum()),
+        "split_safety_rule": "neighbor_min_source_index <= neighbor_max_source_index <= hmm_fit_end_row < source_row_index",
+        "split_safety_passed": True,
+    }
+
+
+def _validate_materialized_prediction_split_safety(predictions: pd.DataFrame) -> None:
+    accepted = _accepted_knn_rows(predictions)
+    if not accepted.any():
+        return
+    numeric = {
+        column: pd.to_numeric(predictions[column], errors="coerce")
+        for column in ("neighbor_min_source_index", "neighbor_max_source_index", "hmm_fit_end_row", "source_row_index")
+    }
+    safe = (
+        numeric["neighbor_min_source_index"].notna()
+        & numeric["neighbor_max_source_index"].notna()
+        & numeric["hmm_fit_end_row"].notna()
+        & numeric["source_row_index"].notna()
+        & (numeric["neighbor_min_source_index"] >= 0)
+        & (numeric["neighbor_max_source_index"] >= 0)
+        & (numeric["hmm_fit_end_row"] >= 0)
+        & (numeric["source_row_index"] >= 0)
+        & (numeric["neighbor_min_source_index"] <= numeric["neighbor_max_source_index"])
+        & (numeric["neighbor_max_source_index"] <= numeric["hmm_fit_end_row"])
+        & (numeric["hmm_fit_end_row"] < numeric["source_row_index"])
+    )
+    if bool((accepted & ~safe).any()):
+        raise ValueError("materialized_prediction_overlay_split_safety_failed")
+
+
+def _accepted_knn_rows(frame: pd.DataFrame) -> pd.Series:
+    accepted = frame["accepted_by_knn"].map(_strict_bool_flag)
+    skip_clear = frame["knn_skip_reason"].map(_skip_reason_clear)
+    return accepted & skip_clear
+
+
+def _strict_bool_flag(value: Any) -> bool:
+    if isinstance(value, bool):
+        return bool(value)
+    if pd.isna(value):
+        return False
+    normalized = str(value).strip().lower()
+    return normalized in {"1", "true", "yes", "y"}
+
+
+def _skip_reason_clear(value: Any) -> bool:
+    if value is None or pd.isna(value):
+        return True
+    return str(value).strip().lower() in {"", "none", "nan", "null"}
+
+
+def _update_feature_record_for_overlay(
+    records: list[dict[str, Any]],
+    *,
+    feature_set_id: str,
+    frame: pd.DataFrame,
+    evidence: Mapping[str, Any],
+) -> None:
+    for record in records:
+        if str(record.get("feature_set_id")) != feature_set_id:
+            continue
+        overlays = list(record.get("materialized_prediction_overlays") or [])
+        previous_hash = record.get("feature_frame_sha256")
+        overlays.append(dict(evidence))
+        record["pre_overlay_feature_frame_sha256"] = previous_hash
+        record["feature_frame_sha256"] = _frame_hash(frame)
+        record["column_count"] = int(len(frame.columns))
+        record["materialized_prediction_overlay_count"] = len(overlays)
+        record["materialized_prediction_overlays"] = overlays
+        record["materialized_prediction_columns"] = sorted(
+            {
+                column
+                for overlay in overlays
+                for column in overlay.get("overlay_columns", [])
+            }
+        )
+        record["feature_artifact_sha256"] = None
+        record["cache_status"] = f"{record.get('cache_status')}_with_prediction_overlay"
+        return
+    raise ValueError(f"materialized_prediction_overlay_missing_feature_record:{feature_set_id}")
 
 
 def _cycle_feature_interval_evidence(

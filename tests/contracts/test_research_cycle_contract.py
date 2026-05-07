@@ -3,10 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from tradingbotsuite.research.command_registry import RESEARCH_COMMANDS
-from tradingbotsuite.research_cycle.runner import _baseline_comparator_coverage, _candidate_space
+from tradingbotsuite.research_cycle.runner import (
+    FeatureBuildResult,
+    _apply_materialized_prediction_overlays,
+    _baseline_comparator_coverage,
+    _candidate_space,
+)
 from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec
 
 
@@ -14,6 +20,70 @@ def _write_json(path: Path, payload: dict[str, object]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return path
+
+
+def _feature_build_fixture(*, row_count: int) -> FeatureBuildResult:
+    frame = pd.DataFrame(
+        {
+            "bar_time_ms": [1712649600000 + index * 900_000 for index in range(row_count)],
+            "feature_time_ms": [1712649600000 + index * 900_000 for index in range(row_count)],
+            "open": [100.0 + index for index in range(row_count)],
+            "high": [101.0 + index for index in range(row_count)],
+            "low": [99.0 + index for index in range(row_count)],
+            "close": [100.5 + index for index in range(row_count)],
+            "volume": [10.0] * row_count,
+        }
+    )
+    return FeatureBuildResult(
+        manifest={
+            "feature_build_manifest_version": "historical-research-feature-build-v2",
+            "feature_computation_scope": "materialized_registered_feature_sets",
+            "dataset_sha256": "dataset-hash",
+            "primary_interval_ms": 900_000,
+            "feature_sets": [
+                {
+                    "feature_set_id": "features_perp_context_v2",
+                    "feature_cache_key": "cache-key",
+                    "feature_manifest_sha256": "feature-manifest-hash",
+                    "feature_frame_sha256": "pre-overlay-hash",
+                    "interval_ms": 900_000,
+                    "row_count": row_count,
+                    "column_count": len(frame.columns),
+                    "cache_status": "disabled",
+                }
+            ],
+        },
+        frames_by_feature_set={"features_perp_context_v2": frame},
+    )
+
+
+def _overlay_predictions(*, row_count: int) -> pd.DataFrame:
+    rows = []
+    for index in range(row_count):
+        accepted = index > 0
+        rows.append(
+            {
+                "source_row_index": index,
+                "p_up_barrier": 0.62 if index % 2 == 0 else 0.30,
+                "p_down_barrier": 0.38 if index % 2 == 0 else 0.70,
+                "expected_net_return_after_costs": 0.001,
+                "neighbor_agreement": 0.70,
+                "neighbor_distance_quality": 0.80,
+                "neighbor_count": 8,
+                "neighbor_min_source_index": 0 if accepted else -1,
+                "neighbor_max_source_index": index - 1 if accepted else -1,
+                "knn_vote_margin": 0.24,
+                "accepted_by_knn": accepted,
+                "knn_skip_reason": "" if accepted else "insufficient_regime_neighbors",
+                "top_regime_label": "trend",
+                "max_regime_probability": 0.80,
+                "posterior_entropy": 0.20,
+                "recent_regime_flip": False,
+                "regime_no_trade": False,
+                "hmm_fit_end_row": index - 1 if accepted else -1,
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> None:
@@ -42,6 +112,137 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.to_payload()["validation"]["min_cost_stress_survival_rate"] == 1.0
     assert spec.exits.exit_policies[0]["exit_policy_id"] == "fixed_holding_window"
     assert spec.to_payload()["exits"]["exit_policies"][0]["exit_policy_id"] == "fixed_holding_window"
+    assert spec.features.materialized_prediction_overlays == ()
+
+
+def test_historical_research_cycle_spec_accepts_materialized_prediction_overlays(tmp_path: Path) -> None:
+    predictions_path = tmp_path / "knn_predictions.parquet"
+    predictions_path.write_bytes(b"placeholder")
+    manifest_path = tmp_path / "knn_study_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "prediction-overlay-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "feature_set_id": "features_perp_context_v2",
+                        "kind": "hmm_knn_local_analog_v2",
+                        "predictions_path": "knn_predictions.parquet",
+                        "manifest_path": "knn_study_manifest.json",
+                    }
+                ],
+            },
+        },
+    )
+
+    spec = HistoricalResearchCycleSpec.from_path(spec_path)
+    overlay = spec.features.materialized_prediction_overlays[0]
+
+    assert overlay.feature_set_id == "features_perp_context_v2"
+    assert overlay.predictions_path == predictions_path.resolve()
+    assert spec.to_payload()["features"]["materialized_prediction_overlays"][0]["kind"] == "hmm_knn_local_analog_v2"
+
+
+def test_historical_research_cycle_spec_rejects_overlay_for_undeclared_feature_set(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "bad-overlay-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_price_trend_vol"],
+                "materialized_prediction_overlays": [
+                    {
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": "knn_predictions.parquet",
+                    }
+                ],
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="overlay feature_set_id not declared"):
+        HistoricalResearchCycleSpec.from_path(spec_path)
+
+
+def test_materialized_prediction_overlay_updates_feature_frame_identity(tmp_path: Path) -> None:
+    predictions_path = tmp_path / "knn_predictions.parquet"
+    manifest_path = tmp_path / "knn_study_manifest.json"
+    _overlay_predictions(row_count=8).to_parquet(predictions_path, index=False)
+    _write_json(
+        manifest_path,
+        {
+            "knn_study_manifest_version": "discovery-knn-study-manifest-v1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "split_safety_passed": True,
+        },
+    )
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "overlay-identity-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": str(predictions_path),
+                        "manifest_path": str(manifest_path),
+                    }
+                ],
+            },
+        },
+    )
+    feature_build = _feature_build_fixture(row_count=8)
+
+    updated = _apply_materialized_prediction_overlays(
+        feature_build,
+        spec=HistoricalResearchCycleSpec.from_path(spec_path),
+    )
+    record = updated.manifest["feature_sets"][0]
+    frame = updated.frames_by_feature_set["features_perp_context_v2"]
+
+    assert "p_up_barrier" in frame.columns
+    assert record["feature_frame_sha256"] != record["pre_overlay_feature_frame_sha256"]
+    assert record["materialized_prediction_overlay_count"] == 1
+    assert updated.manifest["feature_computation_scope"] == "materialized_registered_feature_sets_with_prediction_overlays"
+    assert updated.manifest["materialized_prediction_overlays"][0]["raw_knn_accepted_row_count"] == 7
+
+
+def test_materialized_prediction_overlay_rejects_future_neighbor_boundary(tmp_path: Path) -> None:
+    predictions = _overlay_predictions(row_count=8)
+    predictions.loc[3, "neighbor_max_source_index"] = 99
+    predictions_path = tmp_path / "knn_predictions.parquet"
+    predictions.to_parquet(predictions_path, index=False)
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "unsafe-overlay-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": str(predictions_path),
+                    }
+                ],
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="materialized_prediction_overlay_split_safety_failed"):
+        _apply_materialized_prediction_overlays(
+            _feature_build_fixture(row_count=8),
+            spec=HistoricalResearchCycleSpec.from_path(spec_path),
+        )
 
 
 @pytest.mark.parametrize("backend", ["reference", "vector_fixed_holding", "auto"])
