@@ -1,9 +1,9 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R71 operator historical-cycle job UX
+Current stage: Stage R72 discovery engine planning
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR71 operator historical-cycle job UX complete
-Last updated: 2026-05-06
+Stage status: closed - WPR72 discovery engine planning addendum complete
+Last updated: 2026-05-07
 
 ## Stage entry decision
 
@@ -111,6 +111,9 @@ Last updated: 2026-05-06
 | WPR69-01-operator-research-tab-expansion | Codex Research Agent | closed | `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR69-01-operator-research-tab-expansion.md`, `docs/stage_reports/STAGE_R69_OPERATOR_RESEARCH_TAB_EXPANSION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Expanded Research tab explanations, added read-only profitability/research chart panels, added historical research-cycle artifact summaries, and passed compile, operator UI tests, script parse check, and diff check. |
 | WPR70-01-operator-research-product-redesign | Codex Research Agent | closed | `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR70-01-operator-research-product-redesign.md`, `docs/stage_reports/STAGE_R70_OPERATOR_RESEARCH_PRODUCT_REDESIGN_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Rebuilt the operator Research tab as a preset-driven research control room with explained stages, current historical-cycle review, evidence charts, and guarded signal-history diagnostics; validation passed. |
 | WPR71-01-operator-historical-cycle-job-ux | Codex Research Agent | closed | `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/historical/test_full_cycle_synthetic.py`, `docs/work_packets/WPR71-01-operator-historical-cycle-job-ux.md`, `docs/stage_reports/STAGE_R71_OPERATOR_HISTORICAL_CYCLE_JOB_UX_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added safe operator historical-cycle job execution, overwrite protection, full-run buttoning, local UI action history, robust repo-relative CLI spec resolution, and validation evidence. |
+| WPR72-01-discovery-engine-agent-plan | Codex Research Agent | closed | `docs/RESEARCH_V4_DISCOVERY_ENGINE_AGENT_PLAN.md`, `docs/work_packets/WPR72-01-discovery-engine-agent-plan.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Curated the next-stage discovery-engine plan: split-safe HMM regime materialization, regime-local KNN tuning, perp/microstructure ablation boundaries, resumable snapshots, and staged implementation packets. |
+| WPR72-02-discovery-feature-set-flexibility-addendum | Codex Research Agent | closed | `docs/RESEARCH_V4_DISCOVERY_ENGINE_AGENT_PLAN.md`, `docs/work_packets/WPR72-02-discovery-feature-set-flexibility-addendum.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Refined V4 plan with bounded flexible KNN feature-column sets, optional WT/WT3D handling, non-WT alternatives, feature-combination stability diagnostics, and calculation-correctness standards. |
+| WPR72-03-implementation-handoff | Codex Research Agent | closed | `docs/RESEARCH_V4_IMPLEMENTATION_AGENT_HANDOFF.md`, `docs/work_packets/WPR72-03-implementation-handoff.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added a ready implementation handoff and prompt for the next agent to open WPR73 Discovery Run Manager work. |
 
 ## Gate checklist
 
@@ -408,3 +411,18 @@ Reason: The operator Research tab now starts from operator intent, uses preset-d
 
 Decision: R71 operator historical-cycle job UX complete; historical-cycle review is button-driven and overwrite-protected
 Reason: The operator Research tab now queues historical research cycles through a safe operator job endpoint that rewrites checked specs into isolated job-specific output directories under the configured research output root. The page also has a full research review button, browser-local action history, clearer active/latest job status, and PowerShell commands that change into the repo root. The CLI now resolves repo-relative historical-cycle spec paths from outside the repo. This wave does not change historical-cycle research semantics, live execution, promotion behavior, or research-only boundaries.
+
+## Discovery engine planning wave
+
+Decision: R72 discovery engine planning complete; ready to open WPR73 discovery run manager implementation
+Reason: The branch now has a repo-native V4 discovery-engine agent plan that digests the latest operator research direction and sparse idea notes into additive implementation packets. The plan keeps perp/microstructure context semi-separate until ablation evidence exists, defines HMM as a split-safe regime materialization layer, defines regime-local KNN studies and WT/KNN high-signal entry discovery, and requires resumable day-long runs with 30-minute snapshots. This wave is planning-only and does not change research execution, live execution, promotion behavior, generated artifacts, or candidate-pack gates.
+
+## Discovery feature-set flexibility addendum wave
+
+Decision: R72 addendum complete; WPR73 remains the next implementation entry point
+Reason: The V4 discovery plan now treats KNN feature-column sets as bounded research variables rather than fixed truth or uncontrolled brute-force search. It distinguishes registered feature-set manifests from KNN column-set variants, treats WT and WT3D as optional candidates rather than privileged defaults, requires non-WT alternatives, adds feature-combination stability diagnostics separate from the existing region-of-stability gate, and adds calculation-correctness standards for future implementation agents. This wave is documentation-only and does not change research execution, feature math, live execution, promotion behavior, generated artifacts, or candidate-pack gates.
+
+## Implementation handoff wave
+
+Decision: R72 handoff complete; next agent should open WPR73 Discovery Run Manager
+Reason: The branch now has a concise V4 implementation handoff with a ready prompt for the next agent. It directs WPR73 to build the discovery run manager foundation first: specs, isolated output paths, run manifests, run state, immutable trial records, atomic snapshots, resume behavior, and focused tests. This wave is documentation-only and does not change research execution, feature math, live execution, promotion behavior, generated artifacts, or candidate-pack gates.
