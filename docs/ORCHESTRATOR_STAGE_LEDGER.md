@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R72 discovery engine planning
+Current stage: Stage R74 discovery feature-column set foundation
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR72 discovery engine planning addendum complete
+Stage status: closed - WPR74 discovery feature-column set foundation complete
 Last updated: 2026-05-07
 
 ## Stage entry decision
@@ -114,6 +114,8 @@ Last updated: 2026-05-07
 | WPR72-01-discovery-engine-agent-plan | Codex Research Agent | closed | `docs/RESEARCH_V4_DISCOVERY_ENGINE_AGENT_PLAN.md`, `docs/work_packets/WPR72-01-discovery-engine-agent-plan.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Curated the next-stage discovery-engine plan: split-safe HMM regime materialization, regime-local KNN tuning, perp/microstructure ablation boundaries, resumable snapshots, and staged implementation packets. |
 | WPR72-02-discovery-feature-set-flexibility-addendum | Codex Research Agent | closed | `docs/RESEARCH_V4_DISCOVERY_ENGINE_AGENT_PLAN.md`, `docs/work_packets/WPR72-02-discovery-feature-set-flexibility-addendum.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Refined V4 plan with bounded flexible KNN feature-column sets, optional WT/WT3D handling, non-WT alternatives, feature-combination stability diagnostics, and calculation-correctness standards. |
 | WPR72-03-implementation-handoff | Codex Research Agent | closed | `docs/RESEARCH_V4_IMPLEMENTATION_AGENT_HANDOFF.md`, `docs/work_packets/WPR72-03-implementation-handoff.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added a ready implementation handoff and prompt for the next agent to open WPR73 Discovery Run Manager work. |
+| WPR73-01-discovery-run-manager | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/contracts/test_import_boundaries.py`, `docs/work_packets/WPR73-01-discovery-run-manager.md`, `docs/stage_reports/STAGE_R73_DISCOVERY_RUN_MANAGER_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added the research-only discovery run manager foundation with specs, isolated output paths, manifests, run state, immutable placeholder trials, atomic snapshots, ledgers, resume behavior, boundary coverage, and validation recorded in Stage R73 report. |
+| WPR74-01-discovery-feature-column-sets | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/contracts/test_import_boundaries.py`, `docs/work_packets/WPR74-01-discovery-feature-column-sets.md`, `docs/stage_reports/STAGE_R74_DISCOVERY_FEATURE_COLUMN_SETS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added bounded discovery-side KNN feature-column set manifests and validation, checked V4 column-set config, run-manifest feature-set evidence, focused tests, and validation recorded in Stage R74 report. |
 
 ## Gate checklist
 
@@ -426,3 +428,13 @@ Reason: The V4 discovery plan now treats KNN feature-column sets as bounded rese
 
 Decision: R72 handoff complete; next agent should open WPR73 Discovery Run Manager
 Reason: The branch now has a concise V4 implementation handoff with a ready prompt for the next agent. It directs WPR73 to build the discovery run manager foundation first: specs, isolated output paths, run manifests, run state, immutable trial records, atomic snapshots, resume behavior, and focused tests. This wave is documentation-only and does not change research execution, feature math, live execution, promotion behavior, generated artifacts, or candidate-pack gates.
+
+## Discovery run manager foundation wave
+
+Decision: R73 discovery run manager foundation complete; ready to open WPR74 core discovery feature-pack planning/implementation
+Reason: The branch now has a research-only `tradingbotsuite.research_discovery` package that parses discovery specs, resolves isolated output directories under the configured research output root, writes run manifests and resolved specs, maintains resumable run state, records immutable placeholder trials, writes atomic snapshots, and maintains interesting/blocked/filter-blocker ledgers. The new package is covered by import-boundary tests and focused resume/snapshot/state tests. This wave intentionally does not add feature math, HMM materialization, KNN search, optimizer changes, UI behavior, candidate-pack bridge behavior, promotion readiness, or live execution.
+
+## Discovery feature-column set foundation wave
+
+Decision: R74 discovery feature-column set foundation complete; ready to open WPR75 split-safe HMM materialization planning/implementation
+Reason: The branch now has a bounded discovery-side feature-column set manifest contract that keeps KNN study column sets separate from registered `features_*` manifests, validates selected columns against existing feature manifests, requires WT3D sets to keep no-WT comparators, includes a first-class non-WT alternative, and records selected feature-column set evidence in discovery run manifests. This wave selects existing feature columns only and does not add feature math, HMM materialization, KNN search, optimizer changes, UI behavior, candidate-pack bridge behavior, promotion readiness, or live execution.

@@ -1,0 +1,54 @@
+{
+  "spec_version": "discovery-run-spec-v1",
+  "run_id": "quick_smoke_btcusdt_v4",
+  "symbol": "BTCUSDT",
+  "timeframe": "15m",
+  "discovery_mode": "quick_smoke",
+  "research_output_dir": "data/research",
+  "feature_column_sets_path": "configs/discovery/feature_column_sets_v4.json",
+  "feature_column_set_ids": [
+    "price_trend_vol",
+    "compact_wt3d_base",
+    "alternative_non_wt_price_state"
+  ],
+  "budget": {
+    "max_trials": 3,
+    "trial_batch_size": 1,
+    "snapshot_interval_minutes": 30,
+    "rng_seed": 73
+  },
+  "trial_templates": [
+    {
+      "trial_id": "trial-000001",
+      "candidate_id": "quick-smoke-placeholder-interesting",
+      "ledger_kind": "interesting",
+      "candidate_family": "placeholder_discovery_candidate",
+      "score": 0.1,
+      "payload": {
+        "purpose": "plumbing-only interesting ledger row"
+      }
+    },
+    {
+      "trial_id": "trial-000002",
+      "candidate_id": "quick-smoke-placeholder-blocked",
+      "ledger_kind": "blocked",
+      "candidate_family": "placeholder_discovery_candidate",
+      "score": 0.0,
+      "blocker_code": "placeholder_trial_no_knn_engine",
+      "payload": {
+        "purpose": "plumbing-only blocked ledger row"
+      }
+    },
+    {
+      "trial_id": "trial-000003",
+      "candidate_id": "quick-smoke-placeholder-filter-blocked",
+      "ledger_kind": "filter_blocked",
+      "candidate_family": "placeholder_discovery_candidate",
+      "score": 0.0,
+      "filter_blocker_code": "placeholder_filter_blocker",
+      "payload": {
+        "purpose": "plumbing-only filter blocker ledger row"
+      }
+    }
+  ]
+}

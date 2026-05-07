@@ -1,0 +1,150 @@
+{
+  "manifest_version": "discovery-feature-column-set-manifest-v1",
+  "manifest_id": "discovery_feature_column_sets_v4",
+  "feature_column_set_version": "v1",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "notes": [
+    "Discovery-side KNN feature-column sets are bounded selections from registered feature-set manifests.",
+    "WT3D is optional and must keep a no-WT comparator.",
+    "Disabled rows reserve future feature math without pretending it is implemented."
+  ],
+  "feature_column_sets": [
+    {
+      "feature_column_set_id": "price_trend_vol",
+      "registered_feature_set_id": "features_price_trend_vol",
+      "columns": [
+        "log_return_1",
+        "log_return_4",
+        "trend_slope_20",
+        "efficiency_ratio",
+        "directional_slope_atr",
+        "realized_volatility",
+        "atr_percentile"
+      ],
+      "scaler_policy": "train_only_robust_zscore",
+      "clamp_policy": "train_only_clip_5_95",
+      "maximum_dimensions": 8,
+      "required_comparator_set": null,
+      "allowed_experimental_additions": [
+        "efficiency_ratio",
+        "atr_percentile",
+        "volatility_shock_zscore"
+      ],
+      "enabled": true,
+      "disabled_reason": "",
+      "role": "no_wt_baseline"
+    },
+    {
+      "feature_column_set_id": "compact_wt3d_base",
+      "registered_feature_set_id": "features_price_trend_vol_wt3d",
+      "columns": [
+        "log_return_1",
+        "log_return_4",
+        "trend_slope_20",
+        "efficiency_ratio",
+        "directional_slope_atr",
+        "realized_volatility",
+        "wt3d_normal",
+        "wt3d_slope"
+      ],
+      "scaler_policy": "train_only_robust_zscore",
+      "clamp_policy": "train_only_clip_5_95",
+      "maximum_dimensions": 8,
+      "required_comparator_set": "price_trend_vol",
+      "allowed_experimental_additions": [
+        "wt3d_fast_normal_spread",
+        "wt3d_mtf_agreement"
+      ],
+      "enabled": true,
+      "disabled_reason": "",
+      "role": "wt3d_optional_comparator"
+    },
+    {
+      "feature_column_set_id": "alternative_non_wt_price_state",
+      "registered_feature_set_id": "features_price_trend_vol",
+      "columns": [
+        "path_zscore_20",
+        "efficiency_ratio",
+        "range_width",
+        "choppiness",
+        "directional_di_spread",
+        "hurst_proxy",
+        "atr_percentile",
+        "volatility_shock_zscore"
+      ],
+      "scaler_policy": "train_only_robust_zscore",
+      "clamp_policy": "train_only_clip_5_95",
+      "maximum_dimensions": 8,
+      "required_comparator_set": "price_trend_vol",
+      "allowed_experimental_additions": [
+        "adx_proxy",
+        "vol_of_vol"
+      ],
+      "enabled": true,
+      "disabled_reason": "",
+      "role": "non_wt_alternative"
+    },
+    {
+      "feature_column_set_id": "perp_feature_addition_smoke",
+      "registered_feature_set_id": "features_full_context_no_wt",
+      "columns": [
+        "log_return_1",
+        "trend_slope_20",
+        "efficiency_ratio",
+        "realized_volatility",
+        "basis_bps",
+        "funding_rate",
+        "open_interest_change_pct",
+        "premium_basis_rate"
+      ],
+      "scaler_policy": "train_only_robust_zscore",
+      "clamp_policy": "train_only_clip_5_95",
+      "maximum_dimensions": 8,
+      "required_comparator_set": "price_trend_vol",
+      "allowed_experimental_additions": [],
+      "enabled": true,
+      "disabled_reason": "",
+      "role": "perp_features_only_smoke"
+    },
+    {
+      "feature_column_set_id": "liquidation_feature_addition_smoke",
+      "registered_feature_set_id": "features_liquidation_context_v1",
+      "columns": [
+        "liq_event_count_1h",
+        "liq_total_notional_1h",
+        "liq_imbalance_ratio_1h",
+        "liq_total_notional_z_7d",
+        "liq_absorption_reclaim_bps",
+        "quality_liquidation_provider_backed"
+      ],
+      "scaler_policy": "train_only_robust_zscore",
+      "clamp_policy": "train_only_clip_5_95",
+      "maximum_dimensions": 8,
+      "required_comparator_set": "price_trend_vol",
+      "allowed_experimental_additions": [],
+      "enabled": true,
+      "disabled_reason": "",
+      "role": "microstructure_liquidation_proxy_smoke"
+    },
+    {
+      "feature_column_set_id": "future_ntri_entropy_additions",
+      "registered_feature_set_id": "features_price_trend_vol",
+      "columns": [],
+      "scaler_policy": "train_only_robust_zscore",
+      "clamp_policy": "train_only_clip_5_95",
+      "maximum_dimensions": 8,
+      "required_comparator_set": "price_trend_vol",
+      "allowed_experimental_additions": [
+        "ntri",
+        "rolling_shannon_entropy",
+        "lag1_autocorrelation",
+        "hvr_short_long"
+      ],
+      "enabled": false,
+      "disabled_reason": "feature_math_not_implemented_in_wpr74",
+      "role": "future_disabled_placeholders"
+    }
+  ]
+}
