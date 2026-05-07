@@ -1,0 +1,21 @@
+{
+  "spec_version": "discovery-hmm-materialization-spec-v1",
+  "feature_columns": [
+    "log_return_1",
+    "log_return_4",
+    "trend_slope_20",
+    "efficiency_ratio",
+    "directional_slope_atr",
+    "realized_volatility",
+    "atr_percentile"
+  ],
+  "n_states": 4,
+  "posterior_threshold": 0.6,
+  "entropy_threshold": 0.78,
+  "flip_cooldown_bars": 2,
+  "min_training_rows": 32,
+  "random_state": 73,
+  "max_iter": 100,
+  "covariance_type": "diag",
+  "hmm_feature_pack_id": "discovery_hmm_price_trend_vol_v4"
+}

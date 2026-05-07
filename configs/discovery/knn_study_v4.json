@@ -1,0 +1,25 @@
+{
+  "spec_version": "discovery-knn-study-spec-v1",
+  "feature_column_set_id": "price_trend_vol",
+  "feature_columns": [
+    "log_return_1",
+    "log_return_4",
+    "trend_slope_20",
+    "efficiency_ratio",
+    "directional_slope_atr",
+    "realized_volatility",
+    "atr_percentile"
+  ],
+  "label_column": "label_up",
+  "pnl_column": "label_return",
+  "label_horizon": "4h",
+  "k": 8,
+  "distance_metric": "euclidean",
+  "probability_threshold": 0.55,
+  "expected_value_threshold": 0.0,
+  "min_neighbor_count": 4,
+  "min_neighbor_agreement": 0.55,
+  "min_distance_quality": 0.01,
+  "vote_margin_threshold": 0.05,
+  "same_regime_only": true
+}

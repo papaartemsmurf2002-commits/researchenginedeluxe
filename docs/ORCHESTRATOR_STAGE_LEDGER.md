@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R74 discovery feature-column set foundation
+Current stage: Stage R76 regime-local KNN study foundation
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR74 discovery feature-column set foundation complete
+Stage status: closed - WPR76 regime-local KNN study foundation complete
 Last updated: 2026-05-07
 
 ## Stage entry decision
@@ -116,6 +116,8 @@ Last updated: 2026-05-07
 | WPR72-03-implementation-handoff | Codex Research Agent | closed | `docs/RESEARCH_V4_IMPLEMENTATION_AGENT_HANDOFF.md`, `docs/work_packets/WPR72-03-implementation-handoff.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added a ready implementation handoff and prompt for the next agent to open WPR73 Discovery Run Manager work. |
 | WPR73-01-discovery-run-manager | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/contracts/test_import_boundaries.py`, `docs/work_packets/WPR73-01-discovery-run-manager.md`, `docs/stage_reports/STAGE_R73_DISCOVERY_RUN_MANAGER_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added the research-only discovery run manager foundation with specs, isolated output paths, manifests, run state, immutable placeholder trials, atomic snapshots, ledgers, resume behavior, boundary coverage, and validation recorded in Stage R73 report. |
 | WPR74-01-discovery-feature-column-sets | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/contracts/test_import_boundaries.py`, `docs/work_packets/WPR74-01-discovery-feature-column-sets.md`, `docs/stage_reports/STAGE_R74_DISCOVERY_FEATURE_COLUMN_SETS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added bounded discovery-side KNN feature-column set manifests and validation, checked V4 column-set config, run-manifest feature-set evidence, focused tests, and validation recorded in Stage R74 report. |
+| WPR75-01-split-safe-hmm-materialization | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR75-01-split-safe-hmm-materialization.md`, `docs/stage_reports/STAGE_R75_SPLIT_SAFE_HMM_MATERIALIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added train-only per-split HMM materialization, required posterior/router columns, artifact writer, checked config, split-safety tests, future-perturbation tests, and validation recorded in Stage R75 report. |
+| WPR76-01-regime-local-knn-study-engine | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR76-01-regime-local-knn-study-engine.md`, `docs/stage_reports/STAGE_R76_REGIME_LOCAL_KNN_STUDY_ENGINE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added deterministic regime-local KNN study engine, same-regime neighbor pools, prediction columns, neighbor diagnostics, artifact writer, split-safety tests, future-perturbation tests, and validation recorded in Stage R76 report. |
 
 ## Gate checklist
 
@@ -438,3 +440,13 @@ Reason: The branch now has a research-only `tradingbotsuite.research_discovery` 
 
 Decision: R74 discovery feature-column set foundation complete; ready to open WPR75 split-safe HMM materialization planning/implementation
 Reason: The branch now has a bounded discovery-side feature-column set manifest contract that keeps KNN study column sets separate from registered `features_*` manifests, validates selected columns against existing feature manifests, requires WT3D sets to keep no-WT comparators, includes a first-class non-WT alternative, and records selected feature-column set evidence in discovery run manifests. This wave selects existing feature columns only and does not add feature math, HMM materialization, KNN search, optimizer changes, UI behavior, candidate-pack bridge behavior, promotion readiness, or live execution.
+
+## Split-safe HMM materialization foundation wave
+
+Decision: R75 split-safe HMM materialization foundation complete; ready to open WPR76 regime-local KNN study engine planning/implementation
+Reason: The branch now has a discovery-side HMM materializer that fits Gaussian mixture regimes only on each split's training rows, applies train-only scaling, emits existing strategy-consumer posterior columns plus `hmm_model_id`, `hmm_feature_pack_id`, and `hmm_split_id`, writes HMM materialization artifacts, and proves `hmm_fit_end_row < source_row_index` with focused tests including future-row perturbation. This wave does not add KNN search, strategy candidate wiring, optimizer changes, UI behavior, candidate-pack bridge behavior, promotion readiness, or live execution.
+
+## Regime-local KNN study foundation wave
+
+Decision: R76 regime-local KNN study foundation complete; ready to open WPR77 WT/KNN strategy candidate integration planning/implementation
+Reason: The branch now has a deterministic discovery-side regime-local KNN reference engine that consumes split-safe HMM rows, fits scalers on train rows only, restricts local analog pools to prior same-regime neighbors by default, emits existing HMM/KNN strategy prediction columns, writes neighbor diagnostics and KNN study artifacts, and proves neighbor safety with focused future-perturbation tests. This wave does not wire strategy candidates into historical cycles, change optimizer behavior, expose UI controls, bridge candidate packs, claim promotion readiness, or add live execution.
