@@ -11,6 +11,11 @@ from tradingbotsuite.research_discovery.ablation_matrix import (
     build_perp_filter_ablation_matrix,
     write_perp_filter_ablation_artifacts,
 )
+from tradingbotsuite.research_discovery.benchmark import (
+    DISCOVERY_BENCHMARK_TIERS,
+    DiscoveryBenchmarkResult,
+    write_discovery_benchmark_report,
+)
 from tradingbotsuite.research_discovery.exit_lab import (
     DiscoveryExitLabArtifactResult,
     DiscoveryExitLabResult,
@@ -62,6 +67,8 @@ __all__ = [
     "AblationComparisonSpec",
     "DiscoveryRunResult",
     "DiscoveryRunSpec",
+    "DiscoveryBenchmarkResult",
+    "DISCOVERY_BENCHMARK_TIERS",
     "PerpFilterAblationArtifactResult",
     "PerpFilterAblationMatrixResult",
     "PerpFilterAblationMatrixSpec",
@@ -75,6 +82,7 @@ __all__ = [
     "write_hmm_materialization_artifacts",
     "write_knn_study_artifacts",
     "write_discovery_exit_lab_artifacts",
+    "write_discovery_benchmark_report",
     "write_perp_filter_ablation_artifacts",
     "write_strategy_accounting_artifacts",
 ]

@@ -3,6 +3,7 @@ from __future__ import annotations
 RESEARCH_COMMANDS = frozenset(
     {
         "benchmark-research-experiment",
+        "benchmark-discovery-run",
         "benchmark-historical-research-cycle",
         "build-historical-fixture-pack",
         "build-dataset",

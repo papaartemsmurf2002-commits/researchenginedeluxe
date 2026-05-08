@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R80 operator discovery UI
+Current stage: Stage R81 deep discovery benchmarks
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR80 operator discovery UI complete
+Stage status: closed - WPR81 deep discovery benchmarks complete
 Last updated: 2026-05-08
 
 ## Stage entry decision
@@ -122,6 +122,7 @@ Last updated: 2026-05-08
 | WPR78-01-perp-context-filter-ablation-matrix | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR78-01-perp-context-filter-ablation-matrix.md`, `docs/stage_reports/STAGE_R78_PERP_CONTEXT_FILTER_ABLATION_MATRIX_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added discovery-side perp/filter ablation matrix evaluation, checked config, feature-combination stability diagnostics, default-filter guardrails, artifact writer, focused tests, and validation evidence. |
 | WPR79-01-discovery-exit-lab | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR79-01-discovery-exit-lab.md`, `docs/stage_reports/STAGE_R79_DISCOVERY_EXIT_LAB_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added discovery-side exit lab evaluation, checked config, trade-density-gated exit family comparisons, artifact writer, focused tests, and validation evidence. |
 | WPR80-01-operator-discovery-ui | Codex Research Agent | closed | `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR80-01-operator-discovery-ui.md`, `docs/stage_reports/STAGE_R80_OPERATOR_DISCOVERY_UI_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added guarded operator discovery launch/resume jobs, isolated discovery output rewriting, discovery artifact summaries for state/snapshots/ledgers/blockers, Research-tab controls and charting, focused operator tests, and validation evidence. |
+| WPR81-01-deep-discovery-benchmarks | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/live/test_preflight.py`, `docs/work_packets/WPR81-01-deep-discovery-benchmarks.md`, `docs/stage_reports/STAGE_R81_DEEP_DISCOVERY_BENCHMARKS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added quick/standard/deep discovery benchmark tiers, resume-vs-uninterrupted ledger equality checks, snapshot and trial integrity checks, artifact overhead gate, CLI command, live-preflight research-command registration, focused tests, and validation evidence. |
 
 ## Gate checklist
 
@@ -474,3 +475,8 @@ Reason: The discovery package now writes a research-only exit lab matrix and fam
 
 Decision: R80 operator discovery UI complete; ready to open WPR81 deep discovery benchmarks planning/implementation
 Reason: The operator Research tab can now queue guarded V4 discovery runs with stop-after-trials and resume controls, rewriting specs into the configured research output root and preserving research-job live/safety blocks. Discovery run artifacts are visible as observe-only cards and charts with state, snapshots, candidate ledgers, blocker counts, and research-only boundary flags. This wave does not change discovery math, historical-cycle semantics, checked BTCUSDT/ETHUSDT configs, candidate-pack gates, promotion readiness, live execution, or sizing.
+
+## Deep discovery benchmarks wave
+
+Decision: R81 deep discovery benchmarks complete; ready to open WPR82 candidate pack bridge planning/implementation
+Reason: The branch now has research-only quick, standard, and deep discovery benchmark tiers that generate isolated discovery specs, compare uninterrupted runs with interrupted/resumed runs, verify completed-ledger hash equality, validate snapshot readability and final state agreement, check immutable trial-record hashes, and gate artifact overhead without making performance, profit, promotion, or live-readiness claims. The new `benchmark-discovery-run` CLI is registered as a research command and rejected in live preflight. This wave does not change discovery math, historical-cycle semantics, checked BTCUSDT/ETHUSDT configs, candidate-pack gates, promotion readiness, live execution, or sizing.

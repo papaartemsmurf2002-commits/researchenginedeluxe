@@ -64,6 +64,13 @@ def test_live_preflight_rejects_research_command_even_when_other_live_checks_pas
     assert f"live_runtime_rejects_research_command:{command}" in exc_info.value.report.blockers
 
 
+def test_discovery_benchmark_command_is_live_rejected(tmp_path: Path) -> None:
+    with pytest.raises(LivePreflightError) as exc_info:
+        assert_live_preflight(_safe_live_config(tmp_path), command="benchmark-discovery-run")
+
+    assert "live_runtime_rejects_research_command:benchmark-discovery-run" in exc_info.value.report.blockers
+
+
 def test_execution_journal_evidence_contract_reports_missing_live_order_evidence(tmp_path: Path) -> None:
     report = build_live_preflight_report(
         _safe_live_config(tmp_path),

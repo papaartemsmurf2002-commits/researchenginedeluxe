@@ -25,6 +25,7 @@ from tradingbotsuite.research.feature_ablation import write_feature_ablation_pla
 from tradingbotsuite.research.stage12_research import write_stage12_research_plan
 from tradingbotsuite.research_cycle import run_historical_research_cycle, write_research_cycle_benchmark_report
 from tradingbotsuite.research_cycle.benchmark import BENCHMARK_TIERS
+from tradingbotsuite.research_discovery.benchmark import DISCOVERY_BENCHMARK_TIERS, write_discovery_benchmark_report
 from tradingbotsuite.promotion.stage13_readiness import write_stage13_readiness_plan
 from tradingbotsuite.research.market_data import (
     collect_binance_usdm_bars,
@@ -207,6 +208,19 @@ def parse_args() -> argparse.Namespace:
         "--allow-failed-gate",
         action="store_true",
         help="Write a report-only benchmark payload even when the benchmark gate fails",
+    )
+
+    discovery_benchmark = subparsers.add_parser(
+        "benchmark-discovery-run",
+        help="Run a research-only discovery run-manager benchmark gate",
+    )
+    discovery_benchmark.add_argument("--tier", choices=sorted(DISCOVERY_BENCHMARK_TIERS), default="quick")
+    discovery_benchmark.add_argument("--output-dir", default=None)
+    discovery_benchmark.add_argument("--repeat", type=int, default=1)
+    discovery_benchmark.add_argument(
+        "--allow-failed-gate",
+        action="store_true",
+        help="Write a report-only benchmark payload even when the discovery benchmark gate fails",
     )
 
     feature_ablation = subparsers.add_parser("plan-feature-ablation", help="Write Stage 12.1 feature ablation manifests")
@@ -470,6 +484,44 @@ def _run_benchmark_historical_research_cycle_command(args: argparse.Namespace) -
     return payload
 
 
+def _run_benchmark_discovery_command(args: argparse.Namespace) -> dict[str, object]:
+    import json
+
+    config = _config_for_command("benchmark-discovery-run")
+    result = write_discovery_benchmark_report(
+        output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+        tier=args.tier,
+        repeat=args.repeat,
+        app_config=config,
+    )
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    gate = dict(report.get("benchmark_gate") or {})
+    payload = {
+        "output_dir": str(result.output_dir),
+        "benchmark_report_path": str(result.report_path),
+        "tier": str(report.get("tier") or args.tier),
+        "repeat": int(report.get("repeat") or args.repeat),
+        "benchmark_gate_passed": bool(gate.get("passed", False)),
+        "evidence_complete": bool(gate.get("evidence_complete", False)),
+        "failure_reasons": list(gate.get("failure_reasons") or []),
+        "skipped_reasons": list(gate.get("skipped_reasons") or []),
+        "incomplete_evidence_reasons": list(gate.get("incomplete_evidence_reasons") or []),
+        "allow_failed_gate": bool(getattr(args, "allow_failed_gate", False)),
+    }
+    if not payload["benchmark_gate_passed"] and not payload["allow_failed_gate"]:
+        reasons = []
+        for reason in [
+            *payload["failure_reasons"],
+            *payload["skipped_reasons"],
+            *payload["incomplete_evidence_reasons"],
+        ]:
+            if reason not in reasons:
+                reasons.append(reason)
+        detail = ",".join(str(reason) for reason in reasons) or "benchmark_gate_failed"
+        raise ValueError(f"benchmark_discovery_run_gate_failed:{detail}")
+    return payload
+
+
 def _run_plan_feature_ablation_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("plan-feature-ablation")
     result = write_feature_ablation_plan(
@@ -700,6 +752,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_benchmark_historical_research_cycle_command(args), indent=2))
+    elif args.command == "benchmark-discovery-run":
+        import json
+
+        print(json.dumps(_run_benchmark_discovery_command(args), indent=2))
     elif args.command == "plan-feature-ablation":
         import json
 

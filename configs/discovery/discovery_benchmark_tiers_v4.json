@@ -1,0 +1,52 @@
+{
+  "config_version": "discovery-benchmark-tiers-v1",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "tiers": {
+    "quick": {
+      "discovery_mode": "quick_smoke",
+      "symbol": "BTCUSDT",
+      "timeframe": "15m",
+      "max_trials": 3,
+      "trial_batch_size": 1,
+      "snapshot_interval_minutes": 30,
+      "feature_column_set_ids": [
+        "price_trend_vol"
+      ],
+      "claim_scope": "plumbing_resume_snapshot_regression_guardrail"
+    },
+    "standard": {
+      "discovery_mode": "entry_discovery_standard",
+      "symbol": "BTCUSDT",
+      "timeframe": "15m",
+      "max_trials": 5,
+      "trial_batch_size": 2,
+      "snapshot_interval_minutes": 30,
+      "feature_column_set_ids": [
+        "price_trend_vol",
+        "alternative_non_wt_price_state"
+      ],
+      "claim_scope": "bounded_standard_discovery_manager_regression_guardrail"
+    },
+    "deep": {
+      "discovery_mode": "deep_candidate_harvest",
+      "symbol": "BTCUSDT",
+      "timeframe": "15m",
+      "max_trials": 8,
+      "trial_batch_size": 2,
+      "snapshot_interval_minutes": 30,
+      "feature_column_set_ids": [
+        "price_trend_vol",
+        "compact_wt3d_base",
+        "alternative_non_wt_price_state"
+      ],
+      "claim_scope": "bounded_deep_discovery_manager_regression_guardrail_not_day_long_evidence"
+    }
+  },
+  "notes": [
+    "WPR81 tiers benchmark discovery run-manager resume and snapshot integrity only.",
+    "These tiers do not prove strategy profitability, candidate-pack eligibility, live readiness, or production speed.",
+    "Deep tier remains bounded for local validation until a later persistent study backend adds true day-long workloads."
+  ]
+}
