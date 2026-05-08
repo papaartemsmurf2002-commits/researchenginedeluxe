@@ -1,0 +1,22 @@
+{
+  "bridge_version": "discovery-candidate-pack-bridge-v1",
+  "description": "Research-only audit config for evaluating discovery winners against the existing historical-cycle candidate-pack validator. This bridge writes eligibility evidence only and never writes candidate packs.",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_written": false,
+  "write_candidate_packs": false,
+  "required_inputs": {
+    "discovery_manifest_path": "set per run: data/research/discovery_runs/<run_id>/discovery_run_manifest.json",
+    "cycle_manifest_path": "set per historical cycle: data/research/historical_cycles/<cycle_id>/research_cycle_manifest.json",
+    "candidate_id_map_json": "{}"
+  },
+  "fail_closed_policy": [
+    "discovery_run_manifest_version_required",
+    "discovery_run_state_must_be_completed",
+    "historical_cycle_manifest_required",
+    "candidate_must_be_in_interesting_candidates",
+    "candidate_must_not_be_in_blocked_candidates_or_filter_blockers",
+    "existing_evaluate_research_candidate_gate_must_pass"
+  ]
+}

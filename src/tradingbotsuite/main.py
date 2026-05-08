@@ -26,6 +26,10 @@ from tradingbotsuite.research.stage12_research import write_stage12_research_pla
 from tradingbotsuite.research_cycle import run_historical_research_cycle, write_research_cycle_benchmark_report
 from tradingbotsuite.research_cycle.benchmark import BENCHMARK_TIERS
 from tradingbotsuite.research_discovery.benchmark import DISCOVERY_BENCHMARK_TIERS, write_discovery_benchmark_report
+from tradingbotsuite.research_discovery.candidate_pack_bridge import (
+    evaluate_discovery_candidate_pack_eligibility,
+    write_discovery_candidate_pack_eligibility,
+)
 from tradingbotsuite.promotion.stage13_readiness import write_stage13_readiness_plan
 from tradingbotsuite.research.market_data import (
     collect_binance_usdm_bars,
@@ -221,6 +225,19 @@ def parse_args() -> argparse.Namespace:
         "--allow-failed-gate",
         action="store_true",
         help="Write a report-only benchmark payload even when the discovery benchmark gate fails",
+    )
+
+    discovery_pack_bridge = subparsers.add_parser(
+        "evaluate-discovery-candidate-pack-eligibility",
+        help="Write a research-only discovery-to-candidate-pack eligibility audit",
+    )
+    discovery_pack_bridge.add_argument("--discovery-manifest", required=True)
+    discovery_pack_bridge.add_argument("--cycle-manifest", default=None)
+    discovery_pack_bridge.add_argument("--output-dir", default=None)
+    discovery_pack_bridge.add_argument(
+        "--candidate-id-map-json",
+        default=None,
+        help="JSON object mapping discovery candidate ids to historical-cycle candidate ids",
     )
 
     feature_ablation = subparsers.add_parser("plan-feature-ablation", help="Write Stage 12.1 feature ablation manifests")
@@ -522,6 +539,41 @@ def _run_benchmark_discovery_command(args: argparse.Namespace) -> dict[str, obje
     return payload
 
 
+def _run_discovery_candidate_pack_bridge_command(args: argparse.Namespace) -> dict[str, object]:
+    import json
+
+    config = _config_for_command("evaluate-discovery-candidate-pack-eligibility")
+    candidate_id_map = json.loads(args.candidate_id_map_json) if args.candidate_id_map_json else {}
+    if not isinstance(candidate_id_map, dict):
+        raise ValueError("candidate-id-map-json must be a JSON object")
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=_resolve_cli_path(args.discovery_manifest),
+        cycle_manifest_path=_resolve_cli_path(args.cycle_manifest) if args.cycle_manifest is not None else None,
+        candidate_id_map={str(key): str(value) for key, value in candidate_id_map.items()},
+    )
+    output_dir = (
+        Path(args.output_dir)
+        if args.output_dir is not None
+        else config.research.output_dir / "discovery_candidate_pack_bridge"
+    )
+    artifact = write_discovery_candidate_pack_eligibility(output_dir=output_dir, result=result)
+    manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    summary = dict(manifest.get("summary") or {})
+    return {
+        "output_dir": str(artifact.output_dir),
+        "bridge_manifest_path": str(artifact.manifest_path),
+        "eligibility_path": str(artifact.eligibility_path),
+        "rejections_path": str(artifact.rejections_path),
+        "candidate_count": int(summary.get("candidate_count") or 0),
+        "eligible_count": int(summary.get("eligible_count") or 0),
+        "blocked_count": int(summary.get("blocked_count") or 0),
+        "global_reasons": list(manifest.get("global_reasons") or []),
+        "candidate_pack_written": False,
+        "candidate_pack_paths": [],
+        "promotion_ready": False,
+    }
+
+
 def _run_plan_feature_ablation_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("plan-feature-ablation")
     result = write_feature_ablation_plan(
@@ -756,6 +808,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_benchmark_discovery_command(args), indent=2))
+    elif args.command == "evaluate-discovery-candidate-pack-eligibility":
+        import json
+
+        print(json.dumps(_run_discovery_candidate_pack_bridge_command(args), indent=2))
     elif args.command == "plan-feature-ablation":
         import json
 

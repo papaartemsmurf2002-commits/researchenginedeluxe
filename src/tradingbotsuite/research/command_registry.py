@@ -10,6 +10,7 @@ RESEARCH_COMMANDS = frozenset(
         "calibrate-model",
         "collect-binance-bars",
         "collect-binance-context",
+        "evaluate-discovery-candidate-pack-eligibility",
         "fetch-binance-vision",
         "fetch-crypto-lake",
         "monitor-hmm-knn",

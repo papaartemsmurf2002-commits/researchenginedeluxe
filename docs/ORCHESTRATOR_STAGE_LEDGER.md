@@ -1,9 +1,9 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R81 deep discovery benchmarks
+Current stage: Stage R82 candidate pack bridge
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR81 deep discovery benchmarks complete
-Last updated: 2026-05-08
+Stage status: closed - WPR82 candidate pack bridge complete
+Last updated: 2026-05-09
 
 ## Stage entry decision
 
@@ -123,6 +123,7 @@ Last updated: 2026-05-08
 | WPR79-01-discovery-exit-lab | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR79-01-discovery-exit-lab.md`, `docs/stage_reports/STAGE_R79_DISCOVERY_EXIT_LAB_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added discovery-side exit lab evaluation, checked config, trade-density-gated exit family comparisons, artifact writer, focused tests, and validation evidence. |
 | WPR80-01-operator-discovery-ui | Codex Research Agent | closed | `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR80-01-operator-discovery-ui.md`, `docs/stage_reports/STAGE_R80_OPERATOR_DISCOVERY_UI_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added guarded operator discovery launch/resume jobs, isolated discovery output rewriting, discovery artifact summaries for state/snapshots/ledgers/blockers, Research-tab controls and charting, focused operator tests, and validation evidence. |
 | WPR81-01-deep-discovery-benchmarks | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/live/test_preflight.py`, `docs/work_packets/WPR81-01-deep-discovery-benchmarks.md`, `docs/stage_reports/STAGE_R81_DEEP_DISCOVERY_BENCHMARKS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added quick/standard/deep discovery benchmark tiers, resume-vs-uninterrupted ledger equality checks, snapshot and trial integrity checks, artifact overhead gate, CLI command, live-preflight research-command registration, focused tests, and validation evidence. |
+| WPR82-01-candidate-pack-bridge | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/live/test_preflight.py`, `docs/work_packets/WPR82-01-candidate-pack-bridge.md`, `docs/stage_reports/STAGE_R82_CANDIDATE_PACK_BRIDGE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added a research-only discovery candidate-pack eligibility bridge that validates completed discovery run state, ledgers, trial hashes, and existing historical-cycle candidate gates, writes audit artifacts only, registers the CLI as live-rejected research, and preserves candidate-pack writer ownership. |
 
 ## Gate checklist
 
@@ -480,3 +481,8 @@ Reason: The operator Research tab can now queue guarded V4 discovery runs with s
 
 Decision: R81 deep discovery benchmarks complete; ready to open WPR82 candidate pack bridge planning/implementation
 Reason: The branch now has research-only quick, standard, and deep discovery benchmark tiers that generate isolated discovery specs, compare uninterrupted runs with interrupted/resumed runs, verify completed-ledger hash equality, validate snapshot readability and final state agreement, check immutable trial-record hashes, and gate artifact overhead without making performance, profit, promotion, or live-readiness claims. The new `benchmark-discovery-run` CLI is registered as a research command and rejected in live preflight. This wave does not change discovery math, historical-cycle semantics, checked BTCUSDT/ETHUSDT configs, candidate-pack gates, promotion readiness, live execution, or sizing.
+
+## Candidate pack bridge wave
+
+Decision: R82 candidate pack bridge complete; V4 discovery implementation can continue with post-bridge planning
+Reason: The branch now has a research-only discovery candidate-pack eligibility bridge that evaluates completed discovery-run candidates against the existing historical-cycle `evaluate_research_candidate_gate` validator, requires intact discovery state, ledgers, and trial-record hashes, blocks discovery-only or blocker-ledger candidates, and writes observe-only eligibility/rejection artifacts with `candidate_pack_written: false`. The new `evaluate-discovery-candidate-pack-eligibility` CLI is registered as a research command and rejected in live preflight. This wave does not write candidate packs, change historical-cycle semantics, weaken candidate-pack gates, claim promotion readiness, add live execution, or affect sizing.

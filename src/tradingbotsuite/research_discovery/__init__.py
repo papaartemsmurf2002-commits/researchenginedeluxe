@@ -16,6 +16,14 @@ from tradingbotsuite.research_discovery.benchmark import (
     DiscoveryBenchmarkResult,
     write_discovery_benchmark_report,
 )
+from tradingbotsuite.research_discovery.candidate_pack_bridge import (
+    DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION,
+    DiscoveryCandidatePackBridgeArtifactResult,
+    DiscoveryCandidatePackBridgeResult,
+    evaluate_discovery_candidate_pack_eligibility,
+    validate_discovery_candidate_pack_bridge_manifest,
+    write_discovery_candidate_pack_eligibility,
+)
 from tradingbotsuite.research_discovery.exit_lab import (
     DiscoveryExitLabArtifactResult,
     DiscoveryExitLabResult,
@@ -68,6 +76,9 @@ __all__ = [
     "DiscoveryRunResult",
     "DiscoveryRunSpec",
     "DiscoveryBenchmarkResult",
+    "DiscoveryCandidatePackBridgeArtifactResult",
+    "DiscoveryCandidatePackBridgeResult",
+    "DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION",
     "DISCOVERY_BENCHMARK_TIERS",
     "PerpFilterAblationArtifactResult",
     "PerpFilterAblationMatrixResult",
@@ -79,8 +90,11 @@ __all__ = [
     "materialize_split_safe_hmm_regimes",
     "materialize_regime_local_knn_predictions",
     "run_discovery",
+    "evaluate_discovery_candidate_pack_eligibility",
     "write_hmm_materialization_artifacts",
     "write_knn_study_artifacts",
+    "validate_discovery_candidate_pack_bridge_manifest",
+    "write_discovery_candidate_pack_eligibility",
     "write_discovery_exit_lab_artifacts",
     "write_discovery_benchmark_report",
     "write_perp_filter_ablation_artifacts",
