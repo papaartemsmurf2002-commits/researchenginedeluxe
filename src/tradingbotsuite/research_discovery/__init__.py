@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 from tradingbotsuite.research_discovery.runner import DiscoveryRunResult, run_discovery
+from tradingbotsuite.research_discovery.ablation_matrix import (
+    AblationComparisonSpec,
+    PerpFilterAblationArtifactResult,
+    PerpFilterAblationMatrixResult,
+    PerpFilterAblationMatrixSpec,
+    build_perp_filter_ablation_matrix,
+    write_perp_filter_ablation_artifacts,
+)
 from tradingbotsuite.research_discovery.feature_sets import (
     DiscoveryFeatureColumnSetManifest,
     load_feature_column_set_manifest,
@@ -39,14 +47,20 @@ __all__ = [
     "KnnStudyArtifactResult",
     "KnnStudyResult",
     "KnnStudySpec",
+    "AblationComparisonSpec",
     "DiscoveryRunResult",
     "DiscoveryRunSpec",
+    "PerpFilterAblationArtifactResult",
+    "PerpFilterAblationMatrixResult",
+    "PerpFilterAblationMatrixSpec",
     "account_hmm_knn_local_analog_strategy",
+    "build_perp_filter_ablation_matrix",
     "load_feature_column_set_manifest",
     "materialize_split_safe_hmm_regimes",
     "materialize_regime_local_knn_predictions",
     "run_discovery",
     "write_hmm_materialization_artifacts",
     "write_knn_study_artifacts",
+    "write_perp_filter_ablation_artifacts",
     "write_strategy_accounting_artifacts",
 ]

@@ -1,0 +1,96 @@
+{
+  "matrix_id": "perp_filter_ablation_matrix_v4",
+  "group_columns": [
+    "holding_window",
+    "exit_policy_params_json"
+  ],
+  "feature_column_sets_path": "feature_column_sets_v4.json",
+  "min_feature_combination_score_delta": 0.0,
+  "min_feature_combination_trade_count": 1,
+  "comparisons": [
+    {
+      "comparison_id": "no_perp_reference",
+      "axis": "no_perp",
+      "treatment_selector": {
+        "feature_set_id": "features_price_trend_vol"
+      },
+      "comparator_selector": {},
+      "requires_comparator": false,
+      "filter_default_candidate": false,
+      "notes": "Transparent no-perp reference only; not a filter default claim."
+    },
+    {
+      "comparison_id": "perp_feature_addition_vs_no_perp",
+      "axis": "perp_feature",
+      "treatment_selector": {
+        "feature_set_id": "features_perp_context_v2"
+      },
+      "comparator_selector": {
+        "feature_set_id": "features_price_trend_vol"
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "filter_default_candidate": true,
+      "notes": "Perp features must beat no-perp after costs before default use."
+    },
+    {
+      "comparison_id": "hmm_knn_filter_vs_perp_strategy",
+      "axis": "perp_filter",
+      "treatment_selector": {
+        "strategy_id": "hmm_knn_local_analog_filter_v2"
+      },
+      "comparator_selector": {
+        "strategy_id": [
+          "perp_basis_convergence_v2",
+          "funding_crowding_fade_v2",
+          "oi_flow_breakout_v2",
+          "funding_window_timing_v1"
+        ]
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "filter_default_candidate": true,
+      "notes": "KNN/HMM filter must beat transparent perp strategies before default use."
+    },
+    {
+      "comparison_id": "perp_strategy_vs_no_trade",
+      "axis": "perp_strategy",
+      "treatment_selector": {
+        "strategy_id": [
+          "perp_basis_convergence_v2",
+          "funding_crowding_fade_v2",
+          "oi_flow_breakout_v2",
+          "funding_window_timing_v1"
+        ]
+      },
+      "comparator_selector": {
+        "strategy_id": "baseline_no_trade"
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "filter_default_candidate": true,
+      "notes": "Perp strategy candidates must beat no-trade comparators."
+    },
+    {
+      "comparison_id": "perp_exit_vs_fixed_holding",
+      "axis": "perp_exit",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "funding_aware_exit_v1",
+          "oi_contraction_exit_v1"
+        ]
+      },
+      "comparator_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "filter_default_candidate": true,
+      "notes": "Perp-aware exits must beat fixed holding in the same group before default use."
+    }
+  ]
+}
