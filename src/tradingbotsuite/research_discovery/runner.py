@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -108,6 +108,7 @@ def run_discovery(
         write_run_state(state_path, state)
 
     existing_records = _load_existing_trial_records(output_dir / "trials", run_id=spec.run_id)
+    _assert_state_trial_records_present(state, existing_records)
     state = _merge_state_records(state, existing_records, updated_at_utc=iso_utc(now()))
     write_run_state(state_path, state)
 
@@ -123,7 +124,15 @@ def run_discovery(
         blocked_path=blocked_path,
         filter_blockers_path=filter_blockers_path,
     )
-    initial_snapshot = _snapshot(output_dir, spec=spec, state=state, records=existing_records, sequence=state.snapshot_count + 1, clock=now)
+    last_snapshot_at = now()
+    initial_snapshot = _snapshot(
+        output_dir,
+        spec=spec,
+        state=state,
+        records=existing_records,
+        sequence=state.snapshot_count + 1,
+        created_at=last_snapshot_at,
+    )
     snapshot_paths.append(initial_snapshot)
     state = state.with_snapshot(path=initial_snapshot, updated_at_utc=iso_utc(now()))
     write_run_state(state_path, state)
@@ -142,18 +151,31 @@ def run_discovery(
         completed_ids.add(record.trial_id)
         executed_this_call += 1
         batch_completed += 1
-        if batch_completed >= spec.budget.trial_batch_size:
+        snapshot_at = now()
+        if batch_completed >= spec.budget.trial_batch_size or _snapshot_interval_due(
+            last_snapshot_at,
+            snapshot_at,
+            spec.budget.snapshot_interval_minutes,
+        ):
             _write_ledgers(
                 records=_ordered_records(existing_records.values()),
                 interesting_path=interesting_path,
                 blocked_path=blocked_path,
                 filter_blockers_path=filter_blockers_path,
             )
-            snapshot = _snapshot(output_dir, spec=spec, state=state, records=existing_records, sequence=state.snapshot_count + 1, clock=now)
+            snapshot = _snapshot(
+                output_dir,
+                spec=spec,
+                state=state,
+                records=existing_records,
+                sequence=state.snapshot_count + 1,
+                created_at=snapshot_at,
+            )
             snapshot_paths.append(snapshot)
             state = state.with_snapshot(path=snapshot, updated_at_utc=iso_utc(now()))
             write_run_state(state_path, state)
             batch_completed = 0
+            last_snapshot_at = snapshot_at
 
     if batch_completed:
         _write_ledgers(
@@ -162,7 +184,15 @@ def run_discovery(
             blocked_path=blocked_path,
             filter_blockers_path=filter_blockers_path,
         )
-        snapshot = _snapshot(output_dir, spec=spec, state=state, records=existing_records, sequence=state.snapshot_count + 1, clock=now)
+        last_snapshot_at = now()
+        snapshot = _snapshot(
+            output_dir,
+            spec=spec,
+            state=state,
+            records=existing_records,
+            sequence=state.snapshot_count + 1,
+            created_at=last_snapshot_at,
+        )
         snapshot_paths.append(snapshot)
         state = state.with_snapshot(path=snapshot, updated_at_utc=iso_utc(now()))
         write_run_state(state_path, state)
@@ -180,7 +210,14 @@ def run_discovery(
         blocked_path=blocked_path,
         filter_blockers_path=filter_blockers_path,
     )
-    final_snapshot = _snapshot(output_dir, spec=spec, state=state, records=existing_records, sequence=state.snapshot_count + 1, clock=now)
+    final_snapshot = _snapshot(
+        output_dir,
+        spec=spec,
+        state=state,
+        records=existing_records,
+        sequence=state.snapshot_count + 1,
+        created_at=now(),
+    )
     snapshot_paths.append(final_snapshot)
     state = state.with_snapshot(path=final_snapshot, updated_at_utc=iso_utc(now()))
     write_run_state(state_path, state)
@@ -315,6 +352,23 @@ def _merge_state_records(
     return merged
 
 
+def _assert_state_trial_records_present(
+    state: DiscoveryRunState,
+    records: Mapping[str, DiscoveryTrialRecord],
+) -> None:
+    completed_ids = set(state.completed_trial_ids)
+    hash_ids = set(str(item) for item in state.completed_trial_hashes)
+    missing_completed = sorted(completed_ids - set(records))
+    missing_hash_records = sorted(hash_ids - set(records))
+    missing_hashes = sorted(completed_ids - hash_ids)
+    if missing_completed:
+        raise ValueError(f"completed trial record missing on resume: {','.join(missing_completed)}")
+    if missing_hash_records:
+        raise ValueError(f"completed trial hash references missing record: {','.join(missing_hash_records)}")
+    if missing_hashes:
+        raise ValueError(f"completed trial state hash missing on resume: {','.join(missing_hashes)}")
+
+
 def _write_ledgers(
     *,
     records: list[DiscoveryTrialRecord],
@@ -349,13 +403,13 @@ def _snapshot(
     state: DiscoveryRunState,
     records: Mapping[str, DiscoveryTrialRecord],
     sequence: int,
-    clock: Callable[[], datetime],
+    created_at: datetime,
 ) -> Path:
     return write_snapshot(
         output_dir,
         run_id=spec.run_id,
         sequence=sequence,
-        created_at=clock(),
+        created_at=created_at,
         summary={
             "status": state.status,
             "discovery_mode": spec.discovery_mode,
@@ -377,3 +431,9 @@ def _record_counts(records: Mapping[str, DiscoveryTrialRecord]) -> dict[str, int
         "blocked_candidates": sum(1 for record in values if record.ledger_kind == "blocked"),
         "filter_blockers": sum(1 for record in values if record.ledger_kind == "filter_blocked"),
     }
+
+
+def _snapshot_interval_due(previous: datetime, current: datetime, interval_minutes: int) -> bool:
+    previous_utc = previous if previous.tzinfo is not None else previous.replace(tzinfo=current.tzinfo)
+    current_utc = current if current.tzinfo is not None else current.replace(tzinfo=previous_utc.tzinfo)
+    return current_utc - previous_utc >= timedelta(minutes=int(interval_minutes))

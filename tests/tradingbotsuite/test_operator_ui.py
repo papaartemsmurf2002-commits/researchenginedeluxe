@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 
 from tradingbotsuite.config import AppConfig, OperatorUIConfig
@@ -942,6 +943,50 @@ def test_operator_research_job_blocked_in_live_mode_without_position(app_config,
         )
     assert response.status_code == 409
     assert "live mode" in response.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    ("endpoint", "field_name"),
+    [
+        ("/api/operator/research/jobs/train-model", "dataset_path"),
+        ("/api/operator/research/jobs/calibrate-model", "train_manifest_path"),
+        ("/api/operator/research/jobs/replay-eval", "artifact_manifest_path"),
+    ],
+)
+def test_operator_model_artifact_jobs_reject_paths_outside_research_root(
+    app_config,
+    sample_bars,
+    tmp_path,
+    endpoint: str,
+    field_name: str,
+) -> None:
+    research_dir = tmp_path / "research"
+    outside_file = tmp_path / "outside" / "artifact.json"
+    outside_file.parent.mkdir(parents=True)
+    outside_file.write_text("{}", encoding="utf-8")
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / f"{field_name}.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            endpoint,
+            json={field_name: str(outside_file)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert response.status_code == 400
+    assert "must be inside the research output directory" in response.json()["detail"]
 
 
 def test_operator_provider_pipeline_job_defaults_to_intake_and_completes(app_config, sample_bars, tmp_path, monkeypatch) -> None:

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.main import _run_discovery_candidate_pack_bridge_command
@@ -132,6 +133,78 @@ def test_bridge_blocks_tampered_trial_hash(tmp_path: Path) -> None:
     assert "discovery_trial_record_hash_mismatch:trial-000001" in result.eligibility.loc[0, "bridge_reasons"]
 
 
+def test_bridge_blocks_tampered_interesting_ledger_candidate(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    interesting = pd.read_parquet(discovery.interesting_candidates_path)
+    fabricated = dict(interesting.iloc[0].to_dict())
+    fabricated["candidate_id"] = "fabricated-candidate"
+    pd.concat([interesting, pd.DataFrame([fabricated])], ignore_index=True).to_parquet(
+        discovery.interesting_candidates_path,
+        index=False,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        candidate_id_map={"fabricated-candidate": "candidate-1", "bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "discovery_ledger_records_mismatch:interesting_candidates" in result.manifest["global_reasons"]
+    assert result.eligibility["bridge_status"].eq("blocked").all()
+
+
+def test_bridge_blocks_run_state_status_tamper_on_incomplete_run(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        stop_after_trials=1,
+        clock=_clock,
+    )
+    state = json.loads(discovery.run_state_path.read_text(encoding="utf-8"))
+    state["status"] = "completed"
+    discovery.run_state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    reasons = result.eligibility.loc[0, "bridge_reasons"]
+    assert "discovery_run_state_manifest_state_mismatch" in reasons
+    assert "discovery_completed_trial_count_mismatch" in reasons
+
+
+def test_bridge_blocks_live_adjacent_trial_record_field(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    trial_path = discovery.output_dir / "trials" / "trial-000001.json"
+    payload = json.loads(trial_path.read_text(encoding="utf-8"))
+    payload["promotion_candidate_manifest_version"] = "forbidden"
+    trial_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "discovery_trial_record_boundary_violation:trial-000001" in result.eligibility.loc[0, "bridge_reasons"]
+
+
 def test_bridge_blocks_candidates_also_seen_in_blocker_ledgers(tmp_path: Path) -> None:
     candidate_id = "duplicate-candidate"
     discovery = run_discovery(
@@ -192,7 +265,8 @@ def test_bridge_propagates_existing_candidate_gate_reasons(tmp_path: Path) -> No
     assert result.eligibility.loc[0, "research_candidate_gate_status"] == "blocked"
 
 
-def test_bridge_cli_payload_writes_audit_artifacts_without_pack_paths(tmp_path: Path) -> None:
+def test_bridge_cli_payload_writes_audit_artifacts_without_pack_paths(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("tradingbotsuite.main.AppConfig.from_env", lambda: _app_config(tmp_path))
     discovery = run_discovery(
         spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
         app_config=_app_config(tmp_path),
@@ -204,7 +278,7 @@ def test_bridge_cli_payload_writes_audit_artifacts_without_pack_paths(tmp_path: 
         Namespace(
             discovery_manifest=str(discovery.manifest_path),
             cycle_manifest=str(cycle_manifest),
-            output_dir=str(tmp_path / "cli-bridge"),
+            output_dir=str(tmp_path / "research" / "cli-bridge"),
             candidate_id_map_json=json.dumps({"bridge-run-candidate-000001": "candidate-1"}),
         )
     )
@@ -214,3 +288,65 @@ def test_bridge_cli_payload_writes_audit_artifacts_without_pack_paths(tmp_path: 
     assert payload["candidate_pack_written"] is False
     assert payload["candidate_pack_paths"] == []
     assert Path(str(payload["bridge_manifest_path"])).exists()
+
+
+def test_bridge_cli_default_output_is_isolated_under_research_root(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("tradingbotsuite.main.AppConfig.from_env", lambda: _app_config(tmp_path))
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    payload = _run_discovery_candidate_pack_bridge_command(
+        Namespace(
+            discovery_manifest=str(discovery.manifest_path),
+            cycle_manifest=str(cycle_manifest),
+            output_dir=None,
+            candidate_id_map_json=json.dumps({"bridge-run-candidate-000001": "candidate-1"}),
+        )
+    )
+
+    output_dir = Path(str(payload["output_dir"]))
+    output_dir.relative_to((tmp_path / "research" / "discovery_candidate_pack_bridge").resolve())
+    assert Path(str(payload["bridge_manifest_path"])).exists()
+
+
+def test_bridge_cli_rejects_output_dir_outside_research_root(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("tradingbotsuite.main.AppConfig.from_env", lambda: _app_config(tmp_path))
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    with pytest.raises(ValueError, match="output_dir must stay inside"):
+        _run_discovery_candidate_pack_bridge_command(
+            Namespace(
+                discovery_manifest=str(discovery.manifest_path),
+                cycle_manifest=str(cycle_manifest),
+                output_dir=str(tmp_path / "outside"),
+                candidate_id_map_json=json.dumps({"bridge-run-candidate-000001": "candidate-1"}),
+            )
+        )
+
+
+def test_bridge_writer_refuses_existing_audit_artifacts(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+    output_dir = tmp_path / "bridge-output"
+    write_discovery_candidate_pack_eligibility(output_dir=output_dir, result=result)
+
+    with pytest.raises(ValueError, match="refusing to overwrite existing discovery candidate-pack bridge artifacts"):
+        write_discovery_candidate_pack_eligibility(output_dir=output_dir, result=result)

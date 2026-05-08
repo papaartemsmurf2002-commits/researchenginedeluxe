@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -278,8 +279,9 @@ def write_hmm_materialization_artifacts(
     regime_posteriors_path = output_dir / "regime_posteriors.parquet"
     split_summary_path = output_dir / "hmm_split_summary.parquet"
     manifest_path = output_dir / "hmm_materialization_manifest.json"
-    result.frame.to_parquet(regime_posteriors_path, index=False)
-    pd.DataFrame(result.manifest.get("split_records") or []).to_parquet(split_summary_path, index=False)
+    _assert_new_artifact_paths(regime_posteriors_path, split_summary_path, manifest_path)
+    _atomic_write_parquet(result.frame, regime_posteriors_path)
+    _atomic_write_parquet(pd.DataFrame(result.manifest.get("split_records") or []), split_summary_path)
     manifest = dict(result.manifest)
     manifest["required_outputs"] = {
         "hmm_materialization_manifest": str(manifest_path),
@@ -488,3 +490,20 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _assert_new_artifact_paths(*paths: Path) -> None:
+    existing = [str(path) for path in paths if path.exists()]
+    if existing:
+        raise ValueError("refusing to overwrite existing HMM materialization artifacts: " + ",".join(existing))
+
+
+def _atomic_write_parquet(frame: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        frame.to_parquet(tmp_path, index=False)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()

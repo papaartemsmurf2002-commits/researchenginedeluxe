@@ -22,6 +22,7 @@ RESEARCH_COMMANDS = frozenset(
         "replay-hmm-knn",
         "research",
         "research-hmm-knn",
+        "run-discovery",
         "run-hmm-knn-experiments",
         "run-historical-research-cycle",
         "run-research-experiment",

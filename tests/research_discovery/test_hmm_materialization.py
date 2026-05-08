@@ -160,6 +160,16 @@ def test_hmm_materialization_writes_research_only_artifacts(tmp_path: Path) -> N
     assert not split_summary.empty
 
 
+def test_hmm_materialization_artifacts_refuse_overwrite(tmp_path: Path) -> None:
+    frame = _feature_frame()
+    result = materialize_split_safe_hmm_regimes(frame, splits=_splits(frame), spec=_spec())
+    output_dir = tmp_path / "hmm"
+    write_hmm_materialization_artifacts(output_dir, result)
+
+    with pytest.raises(ValueError, match="refusing to overwrite existing HMM materialization artifacts"):
+        write_hmm_materialization_artifacts(output_dir, result)
+
+
 def test_hmm_materialization_spec_config_loads() -> None:
     spec = HmmMaterializationSpec.from_path(Path("configs/discovery/hmm_materialization_v4.json"))
 

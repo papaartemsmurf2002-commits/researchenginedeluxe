@@ -126,6 +126,10 @@ def test_knn_study_emits_strategy_prediction_columns_and_split_safe_neighbors() 
     assert (evaluated["neighbor_min_source_index"] <= evaluated["neighbor_max_source_index"]).all()
     assert (evaluated["neighbor_max_source_index"] <= evaluated["hmm_fit_end_row"]).all()
     assert (evaluated["hmm_fit_end_row"] < evaluated["source_row_index"]).all()
+    assert (
+        result.neighbor_diagnostics["neighbor_source_index"] + result.manifest["label_horizon_bars"]
+        < result.neighbor_diagnostics["source_row_index"]
+    ).all()
     assert result.manifest["split_safety_passed"] is True
     assert result.manifest["research_only"] is True
     assert result.manifest["observe_only"] is True
@@ -196,6 +200,16 @@ def test_knn_study_writes_research_only_artifacts(tmp_path: Path) -> None:
     assert manifest["required_outputs"]["knn_predictions"] == str(artifacts.predictions_path)
     assert not predictions.empty
     assert not diagnostics.empty
+
+
+def test_knn_study_artifacts_refuse_overwrite(tmp_path: Path) -> None:
+    frame, splits = _hmm_frame()
+    result = materialize_regime_local_knn_predictions(frame, splits=splits, spec=_knn_spec())
+    output_dir = tmp_path / "knn"
+    write_knn_study_artifacts(output_dir, result)
+
+    with pytest.raises(ValueError, match="refusing to overwrite existing KNN study artifacts"):
+        write_knn_study_artifacts(output_dir, result)
 
 
 def test_knn_predictions_flow_into_strategy_accounting(tmp_path: Path) -> None:

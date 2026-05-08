@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -38,6 +40,7 @@ REQUIRED_HMM_COLUMNS = (
     "source_row_index",
 )
 SUPPORTED_DISTANCE_METRICS = ("euclidean", "manhattan", "cosine")
+LABEL_HORIZON_RE = re.compile(r"^\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>bars?|b|m|min|minute|minutes|h|hour|hours|d|day|days)\s*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +190,7 @@ def materialize_regime_local_knn_predictions(
     result = _empty_result(ordered)
     diagnostics: list[dict[str, Any]] = []
     split_records: list[dict[str, Any]] = []
+    label_horizon_bars = _label_horizon_bars(ordered, spec.label_horizon)
 
     for split in splits:
         validation_positions = _validation_positions(split, row_count=len(ordered))
@@ -197,7 +201,16 @@ def materialize_regime_local_knn_predictions(
             split_records.append(_blocked_split_record(split, reason="no_training_rows", validation_count=len(validation_positions)))
             continue
         train = ordered.iloc[train_positions].copy()
-        train = train.dropna(subset=[spec.label_column, spec.pnl_column], how="any")
+        validation_source_min = int(
+            pd.to_numeric(ordered.iloc[validation_positions]["source_row_index"], errors="raise")
+            .astype("int64")
+            .min()
+        )
+        train_source = pd.to_numeric(train["source_row_index"], errors="raise").astype("int64")
+        safe_train_source_max = validation_source_min - label_horizon_bars - 1
+        horizon_safe_train = train.loc[train_source <= safe_train_source_max].copy()
+        label_horizon_dropped = int(len(train) - len(horizon_safe_train))
+        train = horizon_safe_train.dropna(subset=[spec.label_column, spec.pnl_column], how="any")
         if len(train) < spec.min_neighbor_count:
             split_records.append(
                 _blocked_split_record(
@@ -205,6 +218,8 @@ def materialize_regime_local_knn_predictions(
                     reason="insufficient_labeled_training_rows",
                     validation_count=len(validation_positions),
                     train_row_count=len(train),
+                    label_horizon_bars=label_horizon_bars,
+                    label_horizon_dropped_count=label_horizon_dropped,
                 )
             )
             continue
@@ -241,6 +256,9 @@ def materialize_regime_local_knn_predictions(
                 "train_row_count": int(len(train)),
                 "validation_row_count": int(len(validation_positions)),
                 "accepted_prediction_count": int(materialized_count),
+                "label_horizon_bars": int(label_horizon_bars),
+                "label_horizon_dropped_count": int(label_horizon_dropped),
+                "safe_train_source_max": int(safe_train_source_max),
             }
         )
 
@@ -262,6 +280,8 @@ def materialize_regime_local_knn_predictions(
         "split_records": split_records,
         "required_output_columns": list(KNN_PREDICTION_COLUMNS),
         "split_safety_rule": "neighbor_min_source_index <= neighbor_max_source_index <= hmm_fit_end_row < source_row_index",
+        "label_safety_rule": "training_label_source_row_index + label_horizon_bars < validation_source_row_index",
+        "label_horizon_bars": int(label_horizon_bars),
         "split_safety_passed": bool(_split_safety_passed(result)),
         "live_fetch_used": False,
         "order_placement_used": False,
@@ -276,8 +296,9 @@ def write_knn_study_artifacts(output_dir: Path, result: KnnStudyResult) -> KnnSt
     predictions_path = output_dir / "knn_predictions.parquet"
     diagnostics_path = output_dir / "neighbor_diagnostics.parquet"
     manifest_path = output_dir / "knn_study_manifest.json"
-    result.frame.to_parquet(predictions_path, index=False)
-    result.neighbor_diagnostics.to_parquet(diagnostics_path, index=False)
+    _assert_new_artifact_paths(predictions_path, diagnostics_path, manifest_path)
+    _atomic_write_parquet(result.frame, predictions_path)
+    _atomic_write_parquet(result.neighbor_diagnostics, diagnostics_path)
     manifest = dict(result.manifest)
     manifest["required_outputs"] = {
         "knn_study_manifest": str(manifest_path),
@@ -468,6 +489,46 @@ def _validation_positions(split: WalkForwardSplit, *, row_count: int) -> list[in
     return list(range(start, end + 1))
 
 
+def _label_horizon_bars(frame: pd.DataFrame, label_horizon: str) -> int:
+    normalized = str(label_horizon or "").strip().lower()
+    match = LABEL_HORIZON_RE.match(normalized)
+    if not match:
+        raise ValueError(f"unsupported label_horizon: {label_horizon}")
+    value = float(match.group("value"))
+    unit = match.group("unit")
+    if value <= 0.0 or not math.isfinite(value):
+        raise ValueError("label_horizon must be positive")
+    if unit in {"b", "bar", "bars"}:
+        return max(1, int(math.ceil(value)))
+    horizon_ms = _duration_ms(value, unit)
+    bar_ms = _infer_bar_duration_ms(frame)
+    return max(1, int(math.ceil(horizon_ms / bar_ms)))
+
+
+def _duration_ms(value: float, unit: str) -> float:
+    if unit in {"m", "min", "minute", "minutes"}:
+        return value * 60_000.0
+    if unit in {"h", "hour", "hours"}:
+        return value * 3_600_000.0
+    if unit in {"d", "day", "days"}:
+        return value * 86_400_000.0
+    raise ValueError(f"unsupported label_horizon unit: {unit}")
+
+
+def _infer_bar_duration_ms(frame: pd.DataFrame) -> float:
+    for column in ("bar_time_ms", "timestamp_ms", "open_time_ms", "time_ms"):
+        if column not in frame.columns:
+            continue
+        values = pd.to_numeric(frame[column], errors="coerce").dropna().sort_values(kind="mergesort")
+        diffs = values.diff().dropna()
+        diffs = diffs[diffs > 0]
+        if not diffs.empty:
+            duration = float(diffs.median())
+            if math.isfinite(duration) and duration > 0.0:
+                return duration
+    raise ValueError("label_horizon time units require a monotonic millisecond bar-time column")
+
+
 def _numeric_matrix(frame: pd.DataFrame, columns: Sequence[str]) -> np.ndarray:
     values = frame.loc[:, list(columns)].apply(pd.to_numeric, errors="coerce").replace([np.inf, -np.inf], np.nan)
     return values.to_numpy(dtype=float)
@@ -491,6 +552,8 @@ def _blocked_split_record(
     reason: str,
     validation_count: int,
     train_row_count: int = 0,
+    label_horizon_bars: int | None = None,
+    label_horizon_dropped_count: int = 0,
 ) -> dict[str, Any]:
     return {
         "split_id": str(split.split_id),
@@ -498,6 +561,8 @@ def _blocked_split_record(
         "reason": reason,
         "train_row_count": int(train_row_count),
         "validation_row_count": int(validation_count),
+        "label_horizon_bars": int(label_horizon_bars) if label_horizon_bars is not None else None,
+        "label_horizon_dropped_count": int(label_horizon_dropped_count),
     }
 
 
@@ -534,3 +599,20 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _assert_new_artifact_paths(*paths: Path) -> None:
+    existing = [str(path) for path in paths if path.exists()]
+    if existing:
+        raise ValueError("refusing to overwrite existing KNN study artifacts: " + ",".join(existing))
+
+
+def _atomic_write_parquet(frame: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        frame.to_parquet(tmp_path, index=False)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()

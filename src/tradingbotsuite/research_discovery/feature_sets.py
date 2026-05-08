@@ -185,6 +185,20 @@ def validate_feature_column_set_manifest(
         disabled = sorted(item_id for item_id in selected_ids if item_id in by_id and not by_id[item_id].enabled)
         if disabled:
             errors.append(f"selected_feature_column_set_disabled:{','.join(disabled)}")
+        selected = {item_id for item_id in selected_ids if item_id in by_id}
+        missing_comparators = sorted(
+            f"{item.feature_column_set_id}:{item.required_comparator_set}"
+            for item_id in selected
+            for item in (by_id[item_id],)
+            if item.contains_wt3d
+            and item.required_comparator_set
+            and item.required_comparator_set not in selected
+        )
+        if missing_comparators:
+            errors.append(
+                "selected_wt3d_feature_column_set_requires_selected_comparator:"
+                + ",".join(missing_comparators)
+            )
     if errors:
         raise ValueError(";".join(errors))
     return FeatureColumnSetValidation(valid=True, errors=())

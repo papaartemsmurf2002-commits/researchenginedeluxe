@@ -81,6 +81,13 @@ def test_discovery_candidate_pack_bridge_command_is_live_rejected(tmp_path: Path
     )
 
 
+def test_operator_discovery_command_is_live_rejected(tmp_path: Path) -> None:
+    with pytest.raises(LivePreflightError) as exc_info:
+        assert_live_preflight(_safe_live_config(tmp_path), command="run-discovery")
+
+    assert "live_runtime_rejects_research_command:run-discovery" in exc_info.value.report.blockers
+
+
 def test_execution_journal_evidence_contract_reports_missing_live_order_evidence(tmp_path: Path) -> None:
     report = build_live_preflight_report(
         _safe_live_config(tmp_path),

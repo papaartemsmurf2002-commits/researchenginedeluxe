@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import numbers
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Mapping
+from uuid import uuid4
 
 import pandas as pd
 
@@ -26,6 +28,22 @@ LIVE_ADJACENT_VERSION_FIELDS = frozenset(
         "testnet_validation_manifest_version",
         "live_run_manifest_version",
     }
+)
+DISCOVERY_LEDGER_COLUMNS = (
+    "run_id",
+    "trial_id",
+    "attempt_id",
+    "trial_index",
+    "candidate_id",
+    "candidate_family",
+    "ledger_kind",
+    "score",
+    "blocker_code",
+    "filter_blocker_code",
+    "research_only",
+    "observe_only",
+    "promotion_ready",
+    "record_sha256",
 )
 
 
@@ -64,6 +82,16 @@ def evaluate_discovery_candidate_pack_eligibility(
     interesting = _read_required_frame(required_outputs.get("interesting_candidates"), global_reasons, "interesting_candidates")
     blocked = _read_required_frame(required_outputs.get("blocked_candidates"), global_reasons, "blocked_candidates")
     filter_blockers = _read_required_frame(required_outputs.get("filter_blockers"), global_reasons, "filter_blockers")
+    if state_payload is not None:
+        global_reasons.extend(
+            _ledger_integrity_reasons(
+                state_payload=state_payload,
+                required_outputs=required_outputs,
+                interesting=interesting,
+                blocked=blocked,
+                filter_blockers=filter_blockers,
+            )
+        )
 
     rows: list[dict[str, Any]] = []
     if interesting is not None and not interesting.empty:
@@ -163,8 +191,9 @@ def write_discovery_candidate_pack_eligibility(
     manifest_path = output_dir / "candidate_pack_eligibility_manifest.json"
     eligibility_path = output_dir / "candidate_pack_eligibility.parquet"
     rejections_path = output_dir / "candidate_pack_bridge_rejections.md"
-    result.eligibility.to_parquet(eligibility_path, index=False)
-    rejections_path.write_text(result.rejections_markdown, encoding="utf-8")
+    _assert_new_artifact_paths(manifest_path, eligibility_path, rejections_path)
+    _atomic_write_parquet(result.eligibility, eligibility_path)
+    _atomic_write_text(rejections_path, result.rejections_markdown)
     manifest = dict(result.manifest)
     manifest["eligibility_artifact_version"] = DISCOVERY_CANDIDATE_PACK_ELIGIBILITY_VERSION
     manifest["required_outputs"] = {
@@ -241,10 +270,23 @@ def _run_state_reasons(
 ) -> list[str]:
     reasons: list[str] = []
     reasons.extend(_research_boundary_reasons(state_payload, "run_state"))
+    manifest_state = manifest.get("state")
+    if not isinstance(manifest_state, Mapping):
+        reasons.append("discovery_manifest_embedded_state_required")
+    elif dict(manifest_state) != dict(state_payload):
+        reasons.append("discovery_run_state_manifest_state_mismatch")
     if state_payload.get("status") != "completed":
         reasons.append("discovery_run_state_must_be_completed")
     if str(state_payload.get("run_id") or "") != str(manifest.get("run_id") or ""):
         reasons.append("discovery_run_state_run_id_mismatch")
+    completed_ids = [str(item) for item in state_payload.get("completed_trial_ids") or []]
+    counts = manifest.get("counts") if isinstance(manifest.get("counts"), Mapping) else {}
+    manifest_completed = counts.get("completed_trials")
+    if manifest_completed is not None and int(manifest_completed) != len(completed_ids):
+        reasons.append("discovery_manifest_completed_trial_count_mismatch")
+    expected_trials = _expected_trial_count(required_outputs, reasons)
+    if state_payload.get("status") == "completed" and expected_trials is not None and len(completed_ids) != expected_trials:
+        reasons.append("discovery_completed_trial_count_mismatch")
     trials_dir_raw = required_outputs.get("trials")
     if not trials_dir_raw:
         reasons.append("discovery_trials_dir_required")
@@ -253,7 +295,6 @@ def _run_state_reasons(
     if not trials_dir.exists():
         reasons.append("discovery_trials_dir_missing")
         return reasons
-    completed_ids = [str(item) for item in state_payload.get("completed_trial_ids") or []]
     hashes = dict(state_payload.get("completed_trial_hashes") or {})
     for trial_id in completed_ids:
         trial_path = trials_dir / f"{trial_id}.json"
@@ -262,8 +303,12 @@ def _run_state_reasons(
             continue
         try:
             record = read_trial_record(trial_path)
-        except ValueError:
-            reasons.append(f"discovery_trial_record_hash_mismatch:{trial_id}")
+        except ValueError as exc:
+            message = str(exc)
+            if "boundary violation" in message:
+                reasons.append(f"discovery_trial_record_boundary_violation:{trial_id}")
+            else:
+                reasons.append(f"discovery_trial_record_hash_mismatch:{trial_id}")
             continue
         expected_hash = str(hashes.get(trial_id) or "")
         actual_hash = str(record.to_payload().get("record_sha256") or "")
@@ -274,6 +319,80 @@ def _run_state_reasons(
         if record.status != "completed":
             reasons.append(f"discovery_trial_status_not_completed:{trial_id}")
     return reasons
+
+
+def _ledger_integrity_reasons(
+    *,
+    state_payload: Mapping[str, Any],
+    required_outputs: Mapping[str, Any],
+    interesting: pd.DataFrame | None,
+    blocked: pd.DataFrame | None,
+    filter_blockers: pd.DataFrame | None,
+) -> list[str]:
+    reasons: list[str] = []
+    trials_dir_raw = required_outputs.get("trials")
+    if not trials_dir_raw:
+        return reasons
+    trials_dir = Path(str(trials_dir_raw))
+    expected_by_name = {
+        "interesting_candidates": [],
+        "blocked_candidates": [],
+        "filter_blockers": [],
+    }
+    ledger_name_by_kind = {
+        "interesting": "interesting_candidates",
+        "blocked": "blocked_candidates",
+        "filter_blocked": "filter_blockers",
+    }
+    for trial_id in [str(item) for item in state_payload.get("completed_trial_ids") or []]:
+        trial_path = trials_dir / f"{trial_id}.json"
+        if not trial_path.exists():
+            continue
+        try:
+            record = read_trial_record(trial_path)
+        except ValueError:
+            continue
+        ledger_name = ledger_name_by_kind.get(record.ledger_kind)
+        if ledger_name is None:
+            reasons.append(f"discovery_trial_record_unknown_ledger_kind:{trial_id}:{record.ledger_kind}")
+            continue
+        payload = record.to_payload()
+        expected_by_name[ledger_name].append({column: payload.get(column, "") for column in DISCOVERY_LEDGER_COLUMNS})
+    for name, frame in {
+        "interesting_candidates": interesting,
+        "blocked_candidates": blocked,
+        "filter_blockers": filter_blockers,
+    }.items():
+        if frame is None:
+            continue
+        if list(frame.columns) != list(DISCOVERY_LEDGER_COLUMNS):
+            reasons.append(f"discovery_ledger_schema_mismatch:{name}")
+            continue
+        expected = _normalized_ledger_rows(pd.DataFrame(expected_by_name[name], columns=list(DISCOVERY_LEDGER_COLUMNS)))
+        actual = _normalized_ledger_rows(frame)
+        if actual != expected:
+            reasons.append(f"discovery_ledger_records_mismatch:{name}")
+    return reasons
+
+
+def _expected_trial_count(required_outputs: Mapping[str, Any], reasons: list[str]) -> int | None:
+    resolved_spec_raw = required_outputs.get("discovery_spec_resolved")
+    if not resolved_spec_raw:
+        reasons.append("discovery_resolved_spec_path_required")
+        return None
+    resolved_spec_path = Path(str(resolved_spec_raw))
+    if not resolved_spec_path.exists():
+        reasons.append("discovery_resolved_spec_path_missing")
+        return None
+    try:
+        payload = _read_json(resolved_spec_path)
+    except ValueError:
+        reasons.append("discovery_resolved_spec_invalid_json")
+        return None
+    budget = payload.get("budget") if isinstance(payload.get("budget"), Mapping) else {}
+    max_trials = int(budget.get("max_trials") or 0)
+    templates = payload.get("trial_templates") if isinstance(payload.get("trial_templates"), list) else []
+    return min(max_trials, len(templates)) if templates else max_trials
 
 
 def _read_required_json(raw_path: Any, reasons: list[str], name: str) -> dict[str, Any] | None:
@@ -336,6 +455,31 @@ def _candidate_ids(frame: pd.DataFrame | None) -> set[str]:
     if frame is None or frame.empty or "candidate_id" not in frame.columns:
         return set()
     return {str(value) for value in frame["candidate_id"].dropna().tolist() if str(value)}
+
+
+def _normalized_ledger_rows(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    if frame.empty:
+        return []
+    ordered = frame.loc[:, list(DISCOVERY_LEDGER_COLUMNS)].sort_values(
+        ["trial_index", "trial_id", "ledger_kind"],
+        kind="mergesort",
+    )
+    rows: list[dict[str, Any]] = []
+    for row in ordered.to_dict("records"):
+        rows.append({column: _normalized_ledger_value(row.get(column, "")) for column in DISCOVERY_LEDGER_COLUMNS})
+    return rows
+
+
+def _normalized_ledger_value(value: Any) -> Any:
+    if value is None or pd.isna(value):
+        return ""
+    if isinstance(value, bool) or value.__class__.__name__ == "bool_":
+        return bool(value)
+    if isinstance(value, numbers.Integral):
+        return int(value)
+    if isinstance(value, numbers.Real):
+        return float(value)
+    return str(value)
 
 
 def _summary(eligibility: pd.DataFrame, global_reasons: list[str]) -> dict[str, Any]:
@@ -409,3 +553,31 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _assert_new_artifact_paths(*paths: Path) -> None:
+    existing = [str(path) for path in paths if path.exists()]
+    if existing:
+        raise ValueError("refusing to overwrite existing discovery candidate-pack bridge artifacts: " + ",".join(existing))
+
+
+def _atomic_write_parquet(frame: pd.DataFrame, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        frame.to_parquet(tmp_path, index=False)
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        tmp_path.write_text(text, encoding="utf-8")
+        tmp_path.replace(path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()

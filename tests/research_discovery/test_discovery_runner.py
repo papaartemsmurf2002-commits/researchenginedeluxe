@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -11,12 +11,23 @@ from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.research_discovery.runner import run_discovery
 
 
-def _write_spec(path: Path, *, run_id: str, max_trials: int = 3) -> Path:
+def _write_spec(
+    path: Path,
+    *,
+    run_id: str,
+    max_trials: int = 3,
+    trial_batch_size: int = 1,
+    snapshot_interval_minutes: int = 30,
+) -> Path:
     payload: dict[str, object] = {
         "run_id": run_id,
         "symbol": "BTCUSDT",
         "timeframe": "15m",
-        "budget": {"max_trials": max_trials, "trial_batch_size": 1, "snapshot_interval_minutes": 30},
+        "budget": {
+            "max_trials": max_trials,
+            "trial_batch_size": trial_batch_size,
+            "snapshot_interval_minutes": snapshot_interval_minutes,
+        },
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -98,6 +109,34 @@ def test_discovery_runner_rejects_changed_spec_on_resume(tmp_path: Path) -> None
 
     with pytest.raises(ValueError, match="changed discovery spec"):
         run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), resume=True, clock=_clock)
+
+
+def test_discovery_runner_rejects_resume_with_missing_completed_trial_record(tmp_path: Path) -> None:
+    spec_path = _write_spec(tmp_path / "specs" / "quick.json", run_id="missing-record-run")
+    partial = run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), stop_after_trials=1, clock=_clock)
+    (partial.output_dir / "trials" / "trial-000001.json").unlink()
+
+    with pytest.raises(ValueError, match="completed trial record missing on resume"):
+        run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), resume=True, clock=_clock)
+
+
+def test_discovery_runner_honors_snapshot_interval_between_batches(tmp_path: Path) -> None:
+    spec_path = _write_spec(
+        tmp_path / "specs" / "interval.json",
+        run_id="interval-run",
+        max_trials=3,
+        trial_batch_size=99,
+        snapshot_interval_minutes=30,
+    )
+    calls = {"count": 0}
+
+    def advancing_clock() -> datetime:
+        calls["count"] += 1
+        return datetime(2026, 5, 7, 10, 0, tzinfo=timezone.utc) + timedelta(minutes=31 * calls["count"])
+
+    result = run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=advancing_clock)
+
+    assert len(result.snapshot_paths) >= 4
 
 
 def test_discovery_runner_records_feature_column_set_evidence(tmp_path: Path) -> None:

@@ -70,6 +70,18 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         except ValueError:
             return False
 
+    def validate_research_file_path(payload: dict[str, Any], field_name: str) -> Path:
+        raw_path = payload.get(field_name)
+        if raw_path is None or str(raw_path).strip() == "":
+            raise HTTPException(status_code=400, detail=f"{field_name} is required")
+        path = resolve_operator_path(raw_path)
+        research_root = resolve_operator_path(active_config().research.output_dir)
+        if not path.is_file():
+            raise HTTPException(status_code=400, detail=f"{field_name} does not exist")
+        if not is_relative_to(path, research_root):
+            raise HTTPException(status_code=400, detail=f"{field_name} must be inside the research output directory")
+        return path
+
     def validate_provider_pipeline_request(payload: dict[str, Any]) -> Path:
         spec_path = resolve_operator_path(payload.get("spec_path") or "configs/data/v2_btc_hmm_knn_provider_pipeline.json")
         research_root = resolve_operator_path(active_config().research.output_dir)
@@ -478,8 +490,9 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         session = require_session_json(request)
         require_csrf(request, session)
         payload = await request.json()
+        dataset_path = validate_research_file_path(payload, "dataset_path")
         try:
-            return await service.queue_job("train-model", {"dataset_path": str(payload["dataset_path"])})
+            return await service.queue_job("train-model", {"dataset_path": str(dataset_path)})
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -489,8 +502,9 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         session = require_session_json(request)
         require_csrf(request, session)
         payload = await request.json()
+        train_manifest_path = validate_research_file_path(payload, "train_manifest_path")
         try:
-            return await service.queue_job("calibrate-model", {"train_manifest_path": str(payload["train_manifest_path"])})
+            return await service.queue_job("calibrate-model", {"train_manifest_path": str(train_manifest_path)})
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -500,7 +514,8 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         session = require_session_json(request)
         require_csrf(request, session)
         payload = await request.json()
+        artifact_manifest_path = validate_research_file_path(payload, "artifact_manifest_path")
         try:
-            return await service.queue_job("replay-eval", {"artifact_manifest_path": str(payload["artifact_manifest_path"])})
+            return await service.queue_job("replay-eval", {"artifact_manifest_path": str(artifact_manifest_path)})
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc

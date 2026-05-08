@@ -108,3 +108,10 @@ def test_selected_disabled_feature_column_set_fails_closed() -> None:
 
     with pytest.raises(ValueError, match="selected_feature_column_set_disabled"):
         validate_feature_column_set_manifest(manifest, selected_ids=("future_ntri_entropy_additions",))
+
+
+def test_selected_wt3d_feature_column_set_requires_selected_comparator() -> None:
+    manifest = load_feature_column_set_manifest(Path("configs/discovery/feature_column_sets_v4.json"))
+
+    with pytest.raises(ValueError, match="selected_wt3d_feature_column_set_requires_selected_comparator"):
+        validate_feature_column_set_manifest(manifest, selected_ids=("compact_wt3d_base",))

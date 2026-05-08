@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tradingbotsuite.config import AppConfig
@@ -274,6 +275,48 @@ def _config_for_command(command: str | None) -> AppConfig:
     if command is not None:
         assert_research_command_not_live(config, command)
     return config
+
+
+def _research_output_root(config: AppConfig) -> Path:
+    path = Path(config.research.output_dir).expanduser()
+    if path.is_absolute():
+        return path.resolve()
+    return (REPO_ROOT / path).resolve()
+
+
+def _resolve_research_output_dir(raw_path: str | Path, *, config: AppConfig, field_name: str) -> Path:
+    root = _research_output_root(config)
+    candidate = Path(raw_path).expanduser()
+    if not candidate.is_absolute():
+        candidate = root / candidate
+    resolved = candidate.resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must stay inside the configured research output directory") from exc
+    return resolved
+
+
+def _default_discovery_bridge_output_dir(
+    config: AppConfig,
+    result: object,
+) -> Path:
+    manifest = dict(getattr(result, "manifest", {}) or {})
+    discovery_path = Path(str(getattr(result, "discovery_manifest_path", "discovery")))
+    run_part = _safe_cli_path_part(discovery_path.parent.name or discovery_path.stem or "discovery")
+    source_hash = str(manifest.get("source_discovery_manifest_sha256") or "missing")[:12]
+    cycle_hash = str(manifest.get("source_cycle_manifest_sha256") or "no-cycle")[:12]
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return (
+        _research_output_root(config)
+        / "discovery_candidate_pack_bridge"
+        / f"{run_part}_{timestamp}_{source_hash}_{cycle_hash}"
+    )
+
+
+def _safe_cli_path_part(value: str) -> str:
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in str(value).strip())
+    return (safe or "run")[:96]
 
 
 def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, object]:
@@ -552,9 +595,9 @@ def _run_discovery_candidate_pack_bridge_command(args: argparse.Namespace) -> di
         candidate_id_map={str(key): str(value) for key, value in candidate_id_map.items()},
     )
     output_dir = (
-        Path(args.output_dir)
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
         if args.output_dir is not None
-        else config.research.output_dir / "discovery_candidate_pack_bridge"
+        else _default_discovery_bridge_output_dir(config, result)
     )
     artifact = write_discovery_candidate_pack_eligibility(output_dir=output_dir, result=result)
     manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))

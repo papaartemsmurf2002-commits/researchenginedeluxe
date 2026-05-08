@@ -11,6 +11,25 @@ from tradingbotsuite.research_discovery.snapshots import atomic_write_json
 
 DISCOVERY_RUN_STATE_VERSION = "discovery-run-state-v1"
 DISCOVERY_TRIAL_RECORD_VERSION = "discovery-trial-record-v1"
+LIVE_ADJACENT_VERSION_FIELDS = frozenset(
+    {
+        "promotion_candidate_manifest_version",
+        "paper_run_manifest_version",
+        "shadow_run_archive_manifest_version",
+        "testnet_validation_manifest_version",
+        "live_run_manifest_version",
+    }
+)
+LIVE_BOUNDARY_FIELDS = (
+    "live_signal_input",
+    "position_sizing_input",
+    "operator_control_input",
+    "live_execution_input",
+    "runtime_control_input",
+    "live_fetch_used",
+    "order_placement_used",
+    "runtime_mode_changed",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,6 +215,9 @@ def write_run_state(path: Path, state: DiscoveryRunState) -> Path:
 
 def read_trial_record(path: Path) -> DiscoveryTrialRecord:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    reasons = _trial_record_boundary_reasons(payload)
+    if reasons:
+        raise ValueError(f"trial record boundary violation at {path}: {';'.join(reasons)}")
     expected_hash = str(payload.get("record_sha256") or "")
     actual_hash = payload_sha256(payload)
     if expected_hash and expected_hash != actual_hash:
@@ -218,3 +240,19 @@ def payload_sha256(payload: Mapping[str, Any]) -> str:
     normalized.pop("record_sha256", None)
     encoded = json.dumps(normalized, sort_keys=True, default=str, allow_nan=False).encode("utf-8")
     return sha256(encoded).hexdigest()
+
+
+def _trial_record_boundary_reasons(payload: Mapping[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if any(field in payload for field in LIVE_ADJACENT_VERSION_FIELDS):
+        reasons.append("live_or_promotion_manifest_version_forbidden")
+    if payload.get("research_only") is not True:
+        reasons.append("research_only_required")
+    if payload.get("observe_only") is not True:
+        reasons.append("observe_only_required")
+    if payload.get("promotion_ready") is not False:
+        reasons.append("promotion_ready_must_be_false")
+    for field in LIVE_BOUNDARY_FIELDS:
+        if field in payload and payload.get(field) is not False:
+            reasons.append(f"{field}_must_be_false")
+    return reasons
