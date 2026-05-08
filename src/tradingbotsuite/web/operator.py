@@ -14,6 +14,7 @@ from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.models import RuntimeMode, SignalDirection
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, DATA_PIPELINE_STAGES
 from tradingbotsuite.operator_console import OperatorConsoleService
+from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec
 
 
 def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorConsoleService) -> None:
@@ -149,6 +150,45 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         if not str(spec_payload.get("cycle_id") or "").strip():
             raise HTTPException(status_code=400, detail="historical cycle spec requires cycle_id")
         return spec_path
+
+    def validate_discovery_run_request(payload: dict[str, Any]) -> Path:
+        spec_path = resolve_operator_path(payload.get("spec_path") or "configs/discovery/quick_smoke_btcusdt_v4.json")
+        research_root = resolve_operator_path(active_config().research.output_dir)
+        allowed_spec_roots = [
+            (repo_root / "configs" / "discovery").resolve(),
+            research_root,
+        ]
+        if not spec_path.is_file():
+            raise HTTPException(status_code=400, detail="discovery spec_path does not exist")
+        if not any(is_relative_to(spec_path, root) for root in allowed_spec_roots):
+            raise HTTPException(status_code=400, detail="discovery spec_path must be inside configs/discovery or the research output directory")
+        try:
+            spec_payload = json.loads(spec_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"discovery spec is not valid JSON: {exc}") from exc
+        if not isinstance(spec_payload, dict):
+            raise HTTPException(status_code=400, detail="discovery spec must be a JSON object")
+        try:
+            DiscoveryRunSpec.from_payload(spec_payload, spec_path=spec_path, repo_root=repo_root)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"discovery spec is invalid: {exc}") from exc
+        raw_output_dir = spec_payload.get("output_dir")
+        if raw_output_dir:
+            output_dir = resolve_operator_path(raw_output_dir)
+            if not is_relative_to(output_dir, research_root):
+                raise HTTPException(status_code=400, detail="discovery output_dir must be inside the configured research output directory")
+        return spec_path
+
+    def validate_stop_after_trials(raw_value: object) -> int | None:
+        if raw_value is None or str(raw_value).strip() == "":
+            return None
+        try:
+            value = int(raw_value)  # type: ignore[arg-type]
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail="stop_after_trials must be a positive integer") from exc
+        if value <= 0:
+            raise HTTPException(status_code=400, detail="stop_after_trials must be a positive integer")
+        return value
 
     def template_context(request: Request, page: str, *, session: dict[str, Any] | None = None, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         session = session or load_session(request) or {}
@@ -407,6 +447,26 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
                 {
                     "spec_path": str(spec_path),
                     "overwrite_protection": "isolated_output_dir",
+                },
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/operator/research/jobs/run-discovery")
+    async def operator_run_discovery(request: Request):
+        require_same_origin(request)
+        session = require_session_json(request)
+        require_csrf(request, session)
+        payload = await request.json()
+        spec_path = validate_discovery_run_request(payload)
+        try:
+            return await service.queue_job(
+                "run-discovery",
+                {
+                    "spec_path": str(spec_path),
+                    "resume": bool(payload.get("resume", False)),
+                    "stop_after_trials": validate_stop_after_trials(payload.get("stop_after_trials")),
+                    "overwrite_protection": "isolated_run_id_output_dir",
                 },
             )
         except ValueError as exc:

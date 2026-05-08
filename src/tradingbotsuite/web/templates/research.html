@@ -395,6 +395,35 @@
         <div class="muted" style="margin-top:8px;">Overwrite protection: operator runs write to isolated job-specific output directories under the configured research output root.</div>
         <div id="historical-cycle-explainer" class="explain-grid"></div>
       </div>
+
+      <div class="run-workspace">
+        <h3>V4 Discovery Run</h3>
+        <div class="muted">Queue resumable discovery-manager runs. Operator launches rewrite the spec into a stable run directory under the configured research output root.</div>
+        <div class="control-grid">
+          <label>Discovery preset
+            <select id="discovery-run-preset" onchange="applyDiscoveryPreset()">
+              <option value="configs/discovery/quick_smoke_btcusdt_v4.json">BTCUSDT quick smoke discovery</option>
+            </select>
+          </label>
+          <label>Editable spec path
+            <input id="discovery-run-spec" type="text" value="configs/discovery/quick_smoke_btcusdt_v4.json">
+          </label>
+          <label>Stop after trials
+            <input id="discovery-stop-after-trials" type="number" min="1" step="1" placeholder="all configured">
+          </label>
+          <label>Resume existing run
+            <select id="discovery-resume">
+              <option value="false">Start or require clean run</option>
+              <option value="true">Resume paused run</option>
+            </select>
+          </label>
+        </div>
+        <div class="inline-buttons" style="margin-top:14px;">
+          <button onclick="queueDiscoveryRun()">Run Discovery</button>
+          <button class="secondary" onclick="queueDiscoveryRun('Resume discovery run', true)">Resume Discovery</button>
+        </div>
+        <div id="discovery-run-explainer" class="explain-grid"></div>
+      </div>
     </div>
   </section>
 
@@ -444,6 +473,10 @@
       <div class="viz-panel">
         <h4>Holding Windows</h4>
         <canvas id="holding-window-chart" class="research-chart" height="180"></canvas>
+      </div>
+      <div class="viz-panel">
+        <h4>Discovery Ledger</h4>
+        <canvas id="discovery-ledger-chart" class="research-chart" height="180"></canvas>
       </div>
     </div>
   </section>
@@ -590,6 +623,14 @@
     ]
   };
 
+  const discoveryDetails = {
+    "configs/discovery/quick_smoke_btcusdt_v4.json": [
+      ["What It Tests", "Discovery manager plumbing: isolated specs, run state, immutable trials, snapshots, and candidate ledgers."],
+      ["When To Use", "Use for WPR80 smoke checks or to verify that discovery output is visible before longer harvest runs."],
+      ["Where It Writes", "operator_runs/discovery_runs under the configured research output directory with research_only ledgers and snapshots."]
+    ]
+  };
+
   function pickLatest(type) {
     return latestArtifacts.find(item => item.type === type) || null;
   }
@@ -718,6 +759,17 @@
     renderExplainItems("historical-cycle-explainer", historicalFocusDetails[focus] || historicalFocusDetails.strategy);
   }
 
+  function applyDiscoveryPreset() {
+    const preset = document.getElementById("discovery-run-preset").value;
+    document.getElementById("discovery-run-spec").value = preset;
+    saveLocalSettings({ discoveryPreset: preset });
+    renderExplainItems("discovery-run-explainer", discoveryDetails[preset] || [
+      ["What It Tests", "The discovery run defined by the editable spec path."],
+      ["When To Use", "Use when intentionally running a custom discovery spec under configs/discovery or the research output root."],
+      ["Where It Writes", "Research-only discovery run artifacts under the configured research output directory."]
+    ]);
+  }
+
   async function copyHistoricalCommand() {
     const command = document.getElementById("historical-cycle-command").textContent;
     try {
@@ -734,9 +786,11 @@
     if (settings.experimentPreset) document.getElementById("research-experiment-preset").value = settings.experimentPreset;
     if (settings.historicalPreset) document.getElementById("historical-cycle-preset").value = settings.historicalPreset;
     if (settings.historicalFocus) document.getElementById("historical-cycle-focus").value = settings.historicalFocus;
+    if (settings.discoveryPreset) document.getElementById("discovery-run-preset").value = settings.discoveryPreset;
     applyProviderPreset();
     applyExperimentPreset();
     applyHistoricalPreset();
+    applyDiscoveryPreset();
     selectProviderStage(settings.providerStage || "intake");
     renderLocalActionHistory();
   }
@@ -803,6 +857,17 @@
     }, actionLabel);
   }
 
+  async function queueDiscoveryRun(actionLabel = "Discovery run", forceResume = null) {
+    const stopAfter = document.getElementById("discovery-stop-after-trials").value;
+    const resumeValue = forceResume === null ? document.getElementById("discovery-resume").value === "true" : Boolean(forceResume);
+    return await queueJob("/api/operator/research/jobs/run-discovery", {
+      spec_path: document.getElementById("discovery-run-spec").value,
+      resume: resumeValue,
+      stop_after_trials: stopAfter ? Number(stopAfter) : null,
+      overwrite_protection: "isolated_run_id_output_dir",
+    }, actionLabel);
+  }
+
   async function queueFullResearchReview() {
     selectProviderStage("all");
     document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing full review</strong><br>Provider refresh, experiment bundle, and historical cycle are being submitted.</div>';
@@ -848,6 +913,9 @@
   function artifactStatusPill(item, summary) {
     if (item.type === "historical_research_cycle") {
       return window.TBS.pill(summary.candidate_pack_written ? "pack_written" : "gated", summary.candidate_pack_written ? "ok" : "warn");
+    }
+    if (item.type === "discovery_run") {
+      return window.TBS.pill(summary.status || "observe_only", summary.status === "completed" ? "ok" : "warn");
     }
     if (summary.conclusion_status) {
       return window.TBS.pill(summary.conclusion_status, summary.conclusion_status === "supported" ? "ok" : (summary.conclusion_status === "rejected" ? "bad" : "warn"));
@@ -916,6 +984,55 @@
           <details class="details">
             <summary>Manifest / metrics / monitoring</summary>
             <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, metrics: item.metrics || null, monitoring: monitoring || null }))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "discovery_run") {
+      const interesting = summary.interesting_candidates || {};
+      const blocked = summary.blocked_candidates || {};
+      const filterBlocked = summary.filter_blockers || {};
+      const latestSnapshot = summary.latest_snapshot || {};
+      const ledgerRows = [
+        ...(interesting.rows || []),
+        ...(blocked.rows || []),
+        ...(filterBlocked.rows || [])
+      ].slice(0, 8);
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>discovery_run</strong>
+            ${artifactStatusPill(item, summary)}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Run", window.TBS.escapeHtml(String(summary.run_id || "n/a"))],
+            ["Mode", window.TBS.escapeHtml(String(summary.discovery_mode || "n/a"))],
+            ["Symbol", window.TBS.escapeHtml(String(summary.symbol || "n/a"))],
+            ["Status", window.TBS.escapeHtml(String(summary.status || "n/a"))],
+            ["Completed Trials", window.TBS.toMono(`${summary.completed_trial_count ?? 0}/${summary.budget_max_trials ?? "n/a"}`)],
+            ["Interesting", window.TBS.toMono(interesting.row_count ?? 0)],
+            ["Blocked", window.TBS.toMono(blocked.row_count ?? 0)],
+            ["Filter Blocked", window.TBS.toMono(filterBlocked.row_count ?? 0)],
+            ["Snapshots", window.TBS.toMono(summary.snapshot_count ?? "n/a")],
+            ["Promotion Ready", window.TBS.escapeHtml(String(summary.promotion_ready))],
+          ])}
+          ${ledgerRows.length ? `
+            <table style="margin-top:12px;">
+              <thead><tr><th>Candidate</th><th>Ledger</th><th>Score</th><th>Blocker</th></tr></thead>
+              <tbody>${ledgerRows.map(row => `
+                <tr>
+                  <td>${window.TBS.escapeHtml(row.candidate_id || "n/a")}</td>
+                  <td>${window.TBS.escapeHtml(row.ledger_kind || "n/a")}</td>
+                  <td>${window.TBS.toMono(formatNumber(row.score))}</td>
+                  <td>${window.TBS.escapeHtml(row.blocker_code || row.filter_blocker_code || "")}</td>
+                </tr>
+              `).join("")}</tbody>
+            </table>
+          ` : '<div class="empty" style="margin-top:10px;">No discovery ledger rows yet.</div>'}
+          <details class="details">
+            <summary>Manifest / ledgers / latest snapshot</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, ledgers: { interesting, blocked, filter_blockers: filterBlocked }, latest_snapshot: latestSnapshot }))}</pre>
           </details>
         </div>
       `;
@@ -1177,8 +1294,13 @@
     return latestArtifacts.find(item => item.type === "historical_research_cycle") || null;
   }
 
+  function latestDiscoveryRun() {
+    return latestArtifacts.find(item => item.type === "discovery_run") || null;
+  }
+
   function renderResearchCharts() {
     const cycle = latestCycle();
+    const discovery = latestDiscoveryRun();
     const model = pickLatest("model_artifact");
     const hmm = pickLatest("hmm_knn_artifact");
     const rows = [];
@@ -1206,6 +1328,7 @@
     drawHorizontalCountChart("gate-status-chart", (((cycle || {}).summary || {}).rankings || {}).decision_counts || {}, { empty: "No gate decisions yet." });
     const holdingRows = ((((cycle || {}).summary || {}).holding_windows || {}).rows || []).map(row => ({ label: row.holding_window, value: row.best_final_score ?? row.median_costed_expectancy ?? 0 }));
     drawBarChart("holding-window-chart", holdingRows, { empty: "No holding-window metrics yet." });
+    drawHorizontalCountChart("discovery-ledger-chart", ((discovery || {}).summary || {}).counts || {}, { empty: "No discovery run ledgers yet." });
   }
 
   function renderActiveJobSummary(jobs) {
@@ -1250,6 +1373,7 @@
     const latestHmm = pickLatest("hmm_knn_artifact");
     const latestExperiment = pickLatest("research_experiment_run");
     const latestHistoricalCycle = pickLatest("historical_research_cycle");
+    const latestDiscovery = pickLatest("discovery_run");
     document.getElementById("research-status").innerHTML = [
       ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
       ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
@@ -1257,6 +1381,8 @@
       ["Boundary", "observe-only"],
       ["Historical Cycle", latestHistoricalCycle?.summary?.cycle_id ?? "n/a"],
       ["Cycle Candidates", latestHistoricalCycle?.summary?.candidate_count ?? "n/a"],
+      ["Discovery Run", latestDiscovery?.summary?.run_id ?? "n/a"],
+      ["Discovery Status", latestDiscovery?.summary?.status ?? "n/a"],
       ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
       ["HMM/KNN Alerts", latestHmm?.summary?.monitoring_alert_count ?? "n/a"],
       ["Latest Experiment", latestExperiment?.summary?.conclusion_status ?? "n/a"],

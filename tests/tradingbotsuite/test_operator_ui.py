@@ -592,6 +592,11 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Historical Cycle Review" in response.text
     assert "run-historical-research-cycle" in response.text
     assert "Run Historical Cycle" in response.text
+    assert "V4 Discovery Run" in response.text
+    assert "Run Discovery" in response.text
+    assert "Resume Discovery" in response.text
+    assert "Discovery Ledger" in response.text
+    assert "discovery_run" in response.text
     assert "Run Full Research Review" in response.text
     assert "Local Action History" in response.text
     assert "isolated job-specific output directories" in response.text
@@ -606,6 +611,7 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Provider Pipeline" in response.text
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
     assert "/api/operator/research/jobs/run-historical-research-cycle" in response.text
+    assert "/api/operator/research/jobs/run-discovery" in response.text
     assert "hmm_knn_artifact" in response.text
     assert "observe_only" in response.text
     assert "Legacy" not in response.text
@@ -1318,6 +1324,132 @@ def test_operator_historical_cycle_rejects_unallowlisted_spec_path(app_config, s
         csrf_token = _login(client, "operator-secret")
         response = client.post(
             "/api/operator/research/jobs/run-historical-research-cycle",
+            json={"spec_path": str(spec_path)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert response.status_code == 400
+    assert "spec_path must be inside" in response.json()["detail"]
+
+
+def test_operator_discovery_job_writes_research_only_artifacts(app_config, sample_bars, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_discovery.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-discovery",
+            json={"spec_path": "configs/discovery/quick_smoke_btcusdt_v4.json"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert job["status"] == "succeeded"
+    assert job["result"]["overwrite_protection"] == "isolated_run_id_output_dir"
+    output_dir = Path(str(job["result"]["output_dir"]))
+    output_dir.resolve().relative_to(research_dir.resolve())
+    assert Path(str(job["result"]["isolated_spec_path"])).exists()
+    assert Path(str(job["result"]["discovery_run_manifest_path"])).exists()
+    assert Path(str(job["result"]["run_state_path"])).exists()
+
+    discovery = next(artifact for artifact in artifacts if artifact["type"] == "discovery_run")
+    assert discovery["summary"]["run_id"] == "quick_smoke_btcusdt_v4"
+    assert discovery["summary"]["status"] == "completed"
+    assert discovery["summary"]["research_only"] is True
+    assert discovery["summary"]["observe_only"] is True
+    assert discovery["summary"]["promotion_ready"] is False
+    assert discovery["summary"]["candidate_pack_written"] is False
+    assert discovery["summary"]["counts"]["completed_trials"] == 3
+    assert discovery["summary"]["interesting_candidates"]["row_count"] == 1
+    assert discovery["summary"]["blocked_candidates"]["row_count"] == 1
+    assert discovery["summary"]["filter_blockers"]["row_count"] == 1
+    assert discovery["summary"]["latest_snapshot"]["available"] is True
+
+
+def test_operator_discovery_job_can_pause_and_resume(app_config, sample_bars, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_discovery_resume.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        first_response = client.post(
+            "/api/operator/research/jobs/run-discovery",
+            json={"spec_path": "configs/discovery/quick_smoke_btcusdt_v4.json", "stop_after_trials": 1},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        first_job = _wait_for_job(client, first_response.json()["job_id"])
+        first_state = json.loads(Path(str(first_job["result"]["run_state_path"])).read_text(encoding="utf-8"))
+        second_response = client.post(
+            "/api/operator/research/jobs/run-discovery",
+            json={"spec_path": "configs/discovery/quick_smoke_btcusdt_v4.json", "resume": True},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        second_job = _wait_for_job(client, second_response.json()["job_id"])
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
+
+    assert first_response.status_code == 200
+    assert first_job["status"] == "succeeded"
+    assert first_state["status"] == "in_progress"
+    assert first_state["completed_trial_ids"] == ["trial-000001"]
+    assert second_response.status_code == 200
+    assert second_job["status"] == "succeeded"
+    assert second_job["result"]["resume"] is True
+    assert second_job["result"]["output_dir"] == first_job["result"]["output_dir"]
+    discovery = next(artifact for artifact in artifacts if artifact["type"] == "discovery_run")
+    assert discovery["summary"]["status"] == "completed"
+    assert discovery["summary"]["counts"]["completed_trials"] == 3
+
+
+def test_operator_discovery_rejects_unallowlisted_spec_path(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_discovery_reject.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    spec_path = tmp_path / "outside_specs" / "discovery.json"
+    spec_path.parent.mkdir(parents=True)
+    spec_path.write_text(json.dumps({"run_id": "bad-discovery"}), encoding="utf-8")
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-discovery",
             json={"spec_path": str(spec_path)},
             headers={"X-CSRF-Token": csrf_token},
         )

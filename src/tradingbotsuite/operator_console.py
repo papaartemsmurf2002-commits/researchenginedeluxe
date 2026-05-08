@@ -26,6 +26,8 @@ from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, 
 from tradingbotsuite.research.experiment_runner import run_research_experiment
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.research_cycle import HistoricalResearchCycleSpec, run_historical_research_cycle
+from tradingbotsuite.research_discovery.runner import run_discovery
+from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -596,10 +598,98 @@ class OperatorConsoleService:
                     },
                 }
             )
+        for discovery_manifest in sorted(base_dir.rglob("discovery_run_manifest.json")):
+            payload = json.loads(discovery_manifest.read_text(encoding="utf-8"))
+            required_outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            artifacts.append(
+                {
+                    "type": "discovery_run",
+                    "path": str(discovery_manifest),
+                    "sort_time": discovery_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "run_id": payload.get("run_id"),
+                        "symbol": payload.get("symbol"),
+                        "timeframe": payload.get("timeframe"),
+                        "discovery_mode": payload.get("discovery_mode"),
+                        "status": ((payload.get("state") or {}).get("status")),
+                        "message": ((payload.get("state") or {}).get("message")),
+                        "completed_trial_count": len(((payload.get("state") or {}).get("completed_trial_ids") or [])),
+                        "failed_trial_count": len(((payload.get("state") or {}).get("failed_trial_ids") or [])),
+                        "snapshot_count": ((payload.get("state") or {}).get("snapshot_count")),
+                        "last_snapshot_path": ((payload.get("state") or {}).get("last_snapshot_path")),
+                        "budget_max_trials": ((payload.get("budget") or {}).get("max_trials")),
+                        "candidate_pack_written": payload.get("candidate_pack_written"),
+                        "candidate_acceptance_scope": payload.get("candidate_acceptance_scope"),
+                        "runtime_seconds": ((payload.get("runtime") or {}).get("elapsed_seconds")),
+                        "research_only": payload.get("research_only"),
+                        "observe_only": payload.get("observe_only"),
+                        "promotion_ready": payload.get("promotion_ready"),
+                        "counts": payload.get("counts") or {},
+                        "interesting_candidates": self._summarize_discovery_ledger(required_outputs.get("interesting_candidates")),
+                        "blocked_candidates": self._summarize_discovery_ledger(required_outputs.get("blocked_candidates")),
+                        "filter_blockers": self._summarize_discovery_ledger(required_outputs.get("filter_blockers")),
+                        "latest_snapshot": self._summarize_discovery_snapshot(required_outputs.get("snapshots")),
+                    },
+                }
+            )
         artifacts.sort(key=lambda item: float(item.get("sort_time") or 0.0), reverse=True)
         for artifact in artifacts:
             artifact.pop("sort_time", None)
         return artifacts
+
+    def _summarize_discovery_ledger(self, raw_path: object) -> dict[str, Any]:
+        path = self._existing_path(raw_path)
+        if path is None:
+            return {"available": False, "reason": "ledger_missing"}
+        try:
+            frame = pd.read_parquet(path)
+        except Exception as exc:
+            return {"available": False, "path": str(path), "reason": str(exc)}
+        rows: list[dict[str, Any]] = []
+        sort_frame = frame.sort_values("score", ascending=False, kind="mergesort") if "score" in frame else frame
+        for row in sort_frame.head(8).to_dict("records"):
+            rows.append(
+                {
+                    "trial_id": str(row.get("trial_id", "")),
+                    "candidate_id": str(row.get("candidate_id", "")),
+                    "candidate_family": str(row.get("candidate_family", "")),
+                    "ledger_kind": str(row.get("ledger_kind", "")),
+                    "score": self._float_or_none(row.get("score")),
+                    "blocker_code": str(row.get("blocker_code", "")),
+                    "filter_blocker_code": str(row.get("filter_blocker_code", "")),
+                    "promotion_ready": bool(row.get("promotion_ready")) if "promotion_ready" in row else False,
+                }
+            )
+        return {
+            "available": True,
+            "path": str(path),
+            "row_count": int(len(frame)),
+            "candidate_family_counts": self._value_counts(frame, "candidate_family"),
+            "blocker_counts": self._value_counts(frame, "blocker_code"),
+            "filter_blocker_counts": self._value_counts(frame, "filter_blocker_code"),
+            "rows": rows,
+        }
+
+    def _summarize_discovery_snapshot(self, raw_path: object) -> dict[str, Any]:
+        path = self._existing_path(raw_path)
+        if path is None:
+            return {"available": False, "reason": "snapshot_dir_missing"}
+        snapshot_dir = path if path.is_dir() else path.parent
+        snapshots = sorted(snapshot_dir.glob("*_snapshot.json"))
+        if not snapshots:
+            return {"available": False, "path": str(snapshot_dir), "reason": "no_snapshots"}
+        latest = snapshots[-1]
+        try:
+            payload = json.loads(latest.read_text(encoding="utf-8"))
+        except Exception as exc:
+            return {"available": False, "path": str(latest), "reason": str(exc)}
+        return {
+            "available": True,
+            "path": str(latest),
+            "created_at_utc": payload.get("created_at_utc"),
+            "summary": payload.get("summary") or {},
+        }
 
     def _summarize_research_cycle_rankings(self, raw_path: object) -> dict[str, Any]:
         path = self._existing_path(raw_path)
@@ -894,6 +984,15 @@ class OperatorConsoleService:
                 job_id,
             )
             return result
+        if job_type == "run-discovery":
+            result = await asyncio.to_thread(
+                self._run_isolated_discovery,
+                Path(str(request["spec_path"])),
+                job_id,
+                bool(request.get("resume", False)),
+                self._positive_int_or_none(request.get("stop_after_trials")),
+            )
+            return result
         if job_type == "train-model":
             dataset_path = Path(request["dataset_path"])
             manifest_path = await asyncio.to_thread(train_model, self.config, dataset_path=dataset_path)
@@ -952,6 +1051,64 @@ class OperatorConsoleService:
             "backtest_index_path": str(result.backtest_index_path),
             "rejection_report_path": str(result.rejection_report_path),
         }
+
+    def _run_isolated_discovery(
+        self,
+        spec_path: Path,
+        job_id: str,
+        resume: bool,
+        stop_after_trials: int | None,
+    ) -> dict[str, Any]:
+        resolved_spec_path = Path(spec_path).expanduser().resolve()
+        spec = DiscoveryRunSpec.from_path(resolved_spec_path)
+        research_root = self._research_root()
+        safe_job_id = _safe_operator_path_part(job_id)
+        safe_run_id = _safe_operator_path_part(spec.run_id)
+        output_dir = (research_root / "operator_runs" / "discovery_runs" / safe_run_id).resolve()
+        if not _is_relative_to(output_dir, research_root):
+            raise ValueError("discovery output_dir must stay inside the configured research output directory")
+
+        isolated_spec_dir = (research_root / "operator_runs" / "discovery_specs" / safe_run_id / safe_job_id).resolve()
+        if not _is_relative_to(isolated_spec_dir, research_root):
+            raise ValueError("discovery resolved spec path must stay inside the configured research output directory")
+        isolated_spec_dir.mkdir(parents=True, exist_ok=False)
+        isolated_spec_path = isolated_spec_dir / "discovery_spec.json"
+        isolated_payload = spec.to_payload()
+        isolated_payload["research_output_dir"] = str(research_root)
+        isolated_payload["output_dir"] = str(output_dir)
+        isolated_payload["operator_job_id"] = job_id
+        isolated_payload["operator_original_spec_path"] = str(resolved_spec_path)
+        isolated_payload["operator_overwrite_protection"] = "isolated_run_id_output_dir"
+        isolated_spec_path.write_text(json.dumps(isolated_payload, indent=2, sort_keys=True), encoding="utf-8")
+
+        result = run_discovery(
+            spec_path=isolated_spec_path,
+            app_config=self.config,
+            resume=resume,
+            stop_after_trials=stop_after_trials,
+        )
+        return {
+            "output_dir": str(result.output_dir),
+            "isolated_spec_path": str(isolated_spec_path),
+            "source_spec_path": str(resolved_spec_path),
+            "overwrite_protection": "isolated_run_id_output_dir",
+            "resume": resume,
+            "stop_after_trials": stop_after_trials,
+            "discovery_run_manifest_path": str(result.manifest_path),
+            "run_state_path": str(result.run_state_path),
+            "interesting_candidates_path": str(result.interesting_candidates_path),
+            "blocked_candidates_path": str(result.blocked_candidates_path),
+            "filter_blockers_path": str(result.filter_blockers_path),
+            "snapshot_count": len(result.snapshot_paths),
+        }
+
+    def _positive_int_or_none(self, value: object) -> int | None:
+        if value is None or str(value).strip() == "":
+            return None
+        parsed = int(value)  # type: ignore[arg-type]
+        if parsed <= 0:
+            raise ValueError("stop_after_trials must be positive when supplied")
+        return parsed
 
     def _research_root(self) -> Path:
         path = Path(self.config.research.output_dir).expanduser()

@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R79 discovery exit lab
+Current stage: Stage R80 operator discovery UI
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR79 discovery exit lab complete
+Stage status: closed - WPR80 operator discovery UI complete
 Last updated: 2026-05-08
 
 ## Stage entry decision
@@ -121,6 +121,7 @@ Last updated: 2026-05-08
 | WPR77-01-wt-knn-strategy-candidate-integration | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/strategies/hmm_knn_local_analog_filter.py`, `tests/research_discovery/**`, `tests/contracts/test_research_cycle_contract.py`, `tests/contracts/test_strategy_contracts.py`, `docs/work_packets/WPR77-01-wt-knn-strategy-candidate-integration.md`, `docs/stage_reports/STAGE_R77_WT_KNN_STRATEGY_CANDIDATE_INTEGRATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added opt-in historical-cycle materialized prediction overlays, overlay identity/hash evidence, split-safe HMM/KNN overlay validation, discovery strategy accounting artifacts, executable HMM/KNN local analog signals, focused tests, full contracts, and temp overlay smoke validation. |
 | WPR78-01-perp-context-filter-ablation-matrix | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR78-01-perp-context-filter-ablation-matrix.md`, `docs/stage_reports/STAGE_R78_PERP_CONTEXT_FILTER_ABLATION_MATRIX_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added discovery-side perp/filter ablation matrix evaluation, checked config, feature-combination stability diagnostics, default-filter guardrails, artifact writer, focused tests, and validation evidence. |
 | WPR79-01-discovery-exit-lab | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR79-01-discovery-exit-lab.md`, `docs/stage_reports/STAGE_R79_DISCOVERY_EXIT_LAB_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added discovery-side exit lab evaluation, checked config, trade-density-gated exit family comparisons, artifact writer, focused tests, and validation evidence. |
+| WPR80-01-operator-discovery-ui | Codex Research Agent | closed | `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR80-01-operator-discovery-ui.md`, `docs/stage_reports/STAGE_R80_OPERATOR_DISCOVERY_UI_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added guarded operator discovery launch/resume jobs, isolated discovery output rewriting, discovery artifact summaries for state/snapshots/ledgers/blockers, Research-tab controls and charting, focused operator tests, and validation evidence. |
 
 ## Gate checklist
 
@@ -468,3 +469,8 @@ Reason: The discovery package now writes a research-only perp/filter ablation ma
 
 Decision: R79 discovery exit lab complete; ready to open WPR80 operator discovery UI planning/implementation
 Reason: The discovery package now writes a research-only exit lab matrix and family summary that compare fixed-holding references, barrier exits, funding/OI exits, HMM/KNN-adjacent exits, and trailing/risk-control exits only after fixed-holding entry candidates satisfy configured trade-density floors. Missing HMM/KNN exit evidence remains pending, low-density entries are skipped, and winners remain research-only diagnostics. This wave does not add exit policy math, change checked BTCUSDT/ETHUSDT historical-cycle configs, alter candidate-pack gates, claim promotion readiness, expose UI controls, add live execution, or affect sizing.
+
+## Operator discovery UI wave
+
+Decision: R80 operator discovery UI complete; ready to open WPR81 deep discovery benchmarks planning/implementation
+Reason: The operator Research tab can now queue guarded V4 discovery runs with stop-after-trials and resume controls, rewriting specs into the configured research output root and preserving research-job live/safety blocks. Discovery run artifacts are visible as observe-only cards and charts with state, snapshots, candidate ledgers, blocker counts, and research-only boundary flags. This wave does not change discovery math, historical-cycle semantics, checked BTCUSDT/ETHUSDT configs, candidate-pack gates, promotion readiness, live execution, or sizing.
