@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R78 perp context and filter ablation matrix
+Current stage: Stage R79 discovery exit lab
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR78 perp context and filter ablation matrix complete
+Stage status: closed - WPR79 discovery exit lab complete
 Last updated: 2026-05-08
 
 ## Stage entry decision
@@ -120,6 +120,7 @@ Last updated: 2026-05-08
 | WPR76-01-regime-local-knn-study-engine | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR76-01-regime-local-knn-study-engine.md`, `docs/stage_reports/STAGE_R76_REGIME_LOCAL_KNN_STUDY_ENGINE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added deterministic regime-local KNN study engine, same-regime neighbor pools, prediction columns, neighbor diagnostics, artifact writer, split-safety tests, future-perturbation tests, and validation recorded in Stage R76 report. |
 | WPR77-01-wt-knn-strategy-candidate-integration | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/strategies/hmm_knn_local_analog_filter.py`, `tests/research_discovery/**`, `tests/contracts/test_research_cycle_contract.py`, `tests/contracts/test_strategy_contracts.py`, `docs/work_packets/WPR77-01-wt-knn-strategy-candidate-integration.md`, `docs/stage_reports/STAGE_R77_WT_KNN_STRATEGY_CANDIDATE_INTEGRATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added opt-in historical-cycle materialized prediction overlays, overlay identity/hash evidence, split-safe HMM/KNN overlay validation, discovery strategy accounting artifacts, executable HMM/KNN local analog signals, focused tests, full contracts, and temp overlay smoke validation. |
 | WPR78-01-perp-context-filter-ablation-matrix | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR78-01-perp-context-filter-ablation-matrix.md`, `docs/stage_reports/STAGE_R78_PERP_CONTEXT_FILTER_ABLATION_MATRIX_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added discovery-side perp/filter ablation matrix evaluation, checked config, feature-combination stability diagnostics, default-filter guardrails, artifact writer, focused tests, and validation evidence. |
+| WPR79-01-discovery-exit-lab | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR79-01-discovery-exit-lab.md`, `docs/stage_reports/STAGE_R79_DISCOVERY_EXIT_LAB_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added discovery-side exit lab evaluation, checked config, trade-density-gated exit family comparisons, artifact writer, focused tests, and validation evidence. |
 
 ## Gate checklist
 
@@ -462,3 +463,8 @@ Reason: Historical research-cycle specs now support explicit materialized predic
 
 Decision: R78 perp context and filter ablation matrix complete; ready to open WPR79 exit lab planning/implementation
 Reason: The discovery package now writes a research-only perp/filter ablation matrix that compares no-perp references, perp feature additions, HMM/KNN filter treatments, perp strategies, and perp-aware exits against configured comparators. Default-filter use remains blocked unless a treatment wins with comparator evidence, trade-count floors, and missingness floors. Discovery feature-column sets now have separate feature-combination stability diagnostics for no-WT, WT3D, non-WT alternatives, and pending evidence without changing the optimizer region-of-stability gate. This wave does not change checked BTCUSDT/ETHUSDT historical-cycle configs, candidate-pack gates, promotion readiness, operator UI, live execution, or sizing.
+
+## Discovery exit lab wave
+
+Decision: R79 discovery exit lab complete; ready to open WPR80 operator discovery UI planning/implementation
+Reason: The discovery package now writes a research-only exit lab matrix and family summary that compare fixed-holding references, barrier exits, funding/OI exits, HMM/KNN-adjacent exits, and trailing/risk-control exits only after fixed-holding entry candidates satisfy configured trade-density floors. Missing HMM/KNN exit evidence remains pending, low-density entries are skipped, and winners remain research-only diagnostics. This wave does not add exit policy math, change checked BTCUSDT/ETHUSDT historical-cycle configs, alter candidate-pack gates, claim promotion readiness, expose UI controls, add live execution, or affect sizing.

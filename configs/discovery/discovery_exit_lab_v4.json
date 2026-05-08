@@ -1,0 +1,96 @@
+{
+  "lab_id": "discovery_exit_lab_v4",
+  "entry_group_columns": [
+    "strategy_id",
+    "feature_set_id",
+    "holding_window",
+    "parameters_json"
+  ],
+  "comparisons": [
+    {
+      "comparison_id": "fixed_holding_reference",
+      "exit_family": "fixed_holding",
+      "treatment_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 10,
+      "min_score_delta": 0.0,
+      "notes": "Reference row for entry trade-density gating."
+    },
+    {
+      "comparison_id": "barrier_exit_vs_fixed_holding",
+      "exit_family": "barrier",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "triple_barrier",
+          "triple_barrier_atr",
+          "volatility_scaled_barrier",
+          "max_mae_stop"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "Barrier exits are compared only after fixed-holding entry density is sufficient."
+    },
+    {
+      "comparison_id": "funding_oi_exit_vs_fixed_holding",
+      "exit_family": "funding_oi",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "funding_aware_exit_v1",
+          "oi_contraction_exit_v1",
+          "funding_adverse_exit"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "Funding/OI exits require sufficient fixed-holding entry density."
+    },
+    {
+      "comparison_id": "hmm_knn_exit_vs_fixed_holding",
+      "exit_family": "hmm_knn",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "regime_flip_exit",
+          "alpha_decay_exit"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "HMM/KNN-adjacent exits remain pending unless evidence rows exist."
+    },
+    {
+      "comparison_id": "trailing_risk_exit_vs_fixed_holding",
+      "exit_family": "trailing_risk",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "trailing_atr_after_profit",
+          "adverse_selection_exit"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "Trailing/risk-control exits require sufficient fixed-holding entry density."
+    }
+  ]
+}

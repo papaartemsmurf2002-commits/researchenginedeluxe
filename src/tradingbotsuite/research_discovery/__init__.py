@@ -11,6 +11,14 @@ from tradingbotsuite.research_discovery.ablation_matrix import (
     build_perp_filter_ablation_matrix,
     write_perp_filter_ablation_artifacts,
 )
+from tradingbotsuite.research_discovery.exit_lab import (
+    DiscoveryExitLabArtifactResult,
+    DiscoveryExitLabResult,
+    DiscoveryExitLabSpec,
+    ExitLabComparisonSpec,
+    build_discovery_exit_lab,
+    write_discovery_exit_lab_artifacts,
+)
 from tradingbotsuite.research_discovery.feature_sets import (
     DiscoveryFeatureColumnSetManifest,
     load_feature_column_set_manifest,
@@ -39,8 +47,12 @@ from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec
 
 __all__ = [
     "DiscoveryFeatureColumnSetManifest",
+    "DiscoveryExitLabArtifactResult",
+    "DiscoveryExitLabResult",
+    "DiscoveryExitLabSpec",
     "DiscoveryStrategyAccountingArtifactResult",
     "DiscoveryStrategyAccountingResult",
+    "ExitLabComparisonSpec",
     "HmmMaterializationArtifactResult",
     "HmmMaterializationResult",
     "HmmMaterializationSpec",
@@ -54,6 +66,7 @@ __all__ = [
     "PerpFilterAblationMatrixResult",
     "PerpFilterAblationMatrixSpec",
     "account_hmm_knn_local_analog_strategy",
+    "build_discovery_exit_lab",
     "build_perp_filter_ablation_matrix",
     "load_feature_column_set_manifest",
     "materialize_split_safe_hmm_regimes",
@@ -61,6 +74,7 @@ __all__ = [
     "run_discovery",
     "write_hmm_materialization_artifacts",
     "write_knn_study_artifacts",
+    "write_discovery_exit_lab_artifacts",
     "write_perp_filter_ablation_artifacts",
     "write_strategy_accounting_artifacts",
 ]
