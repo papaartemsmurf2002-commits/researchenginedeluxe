@@ -276,6 +276,7 @@ def materialize_split_safe_hmm_regimes(
         "split_count": int(len(splits)),
         "split_records": split_records,
         "required_output_columns": list(HMM_POSTERIOR_COLUMNS),
+        "assignment_engine": "vectorized_posterior_assignment_v1",
         "split_safety_rule": "hmm_fit_end_row < source_row_index",
         "split_safety_passed": bool(_split_safety_passed(result)),
         "live_fetch_used": False,
@@ -343,28 +344,35 @@ def _assign_posterior_rows(
     model_id: str,
     spec: HmmMaterializationSpec,
 ) -> None:
+    if len(positions) != len(posterior):
+        raise ValueError("posterior row count must match validation positions")
+    if len(positions) == 0:
+        return
+    row_positions = [int(position) for position in positions]
     top_state = posterior.argmax(axis=1) if len(posterior) else np.array([], dtype=int)
     top_probability = posterior.max(axis=1) if len(posterior) else np.array([], dtype=float)
     safe_posterior = np.clip(posterior, 1e-12, 1.0)
     entropy = -np.sum(safe_posterior * np.log(safe_posterior), axis=1) / math.log(max(spec.n_states, 2))
     recent_flip = _recent_flip_flags(top_state, cooldown=spec.flip_cooldown_bars)
-    for local_index, position in enumerate(positions):
-        for state in range(spec.n_states):
-            result.loc[position, f"regime_p_{state}"] = float(posterior[local_index, state])
-        result.loc[position, "top_regime_label"] = state_labels.get(int(top_state[local_index]), f"state_{top_state[local_index]}")
-        result.loc[position, "max_regime_probability"] = float(top_probability[local_index])
-        result.loc[position, "posterior_entropy"] = float(entropy[local_index])
-        result.loc[position, "recent_regime_flip"] = bool(recent_flip[local_index])
-        result.loc[position, "regime_no_trade"] = bool(
-            top_probability[local_index] < spec.posterior_threshold
-            or entropy[local_index] > spec.entropy_threshold
-            or recent_flip[local_index]
-        )
-        result.loc[position, "hmm_fit_end_row"] = int(fit_end_row)
-        result.loc[position, "source_row_index"] = int(source_index.iloc[position])
-        result.loc[position, "hmm_model_id"] = model_id
-        result.loc[position, "hmm_feature_pack_id"] = spec.hmm_feature_pack_id
-        result.loc[position, "hmm_split_id"] = split_id
+    for state in range(spec.n_states):
+        result.loc[row_positions, f"regime_p_{state}"] = posterior[:, state].astype(float)
+    result.loc[row_positions, "top_regime_label"] = np.array(
+        [state_labels.get(int(state), f"state_{state}") for state in top_state],
+        dtype=object,
+    )
+    result.loc[row_positions, "max_regime_probability"] = top_probability.astype(float)
+    result.loc[row_positions, "posterior_entropy"] = entropy.astype(float)
+    result.loc[row_positions, "recent_regime_flip"] = recent_flip.astype(bool)
+    result.loc[row_positions, "regime_no_trade"] = (
+        (top_probability < spec.posterior_threshold)
+        | (entropy > spec.entropy_threshold)
+        | recent_flip
+    ).astype(bool)
+    result.loc[row_positions, "hmm_fit_end_row"] = int(fit_end_row)
+    result.loc[row_positions, "source_row_index"] = source_index.iloc[row_positions].astype("int64").to_numpy()
+    result.loc[row_positions, "hmm_model_id"] = model_id
+    result.loc[row_positions, "hmm_feature_pack_id"] = spec.hmm_feature_pack_id
+    result.loc[row_positions, "hmm_split_id"] = split_id
 
 
 def _fit_gaussian_regime_model(matrix: np.ndarray, *, spec: HmmMaterializationSpec) -> GaussianMixture:

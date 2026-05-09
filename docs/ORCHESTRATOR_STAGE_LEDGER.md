@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R89 KNN deterministic top-k
+Current stage: Stage R90 HMM vectorized assignment
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR89 KNN deterministic top-k complete
+Stage status: closed - WPR90 HMM vectorized assignment complete
 Last updated: 2026-05-09
 
 ## Stage entry decision
@@ -131,6 +131,7 @@ Last updated: 2026-05-09
 | WPR87-01-knn-vectorized-prediction | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/research_discovery/test_knn_study.py`, `docs/work_packets/WPR87-01-knn-vectorized-prediction.md`, `docs/stage_reports/STAGE_R87_KNN_VECTORIZED_PREDICTION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Split-local KNN validation prediction now transforms validation rows once per split, preserves row outputs and split-safety evidence, and validation is recorded in Stage R87 report. |
 | WPR88-01-discovery-hmm-label-cache | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/runner.py`, `tests/research_discovery/test_discovery_runner.py`, `docs/work_packets/WPR88-01-discovery-hmm-label-cache.md`, `docs/stage_reports/STAGE_R88_DISCOVERY_HMM_LABEL_CACHE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Cached discovery label/split preparation, reused HMM materializations across label horizons without label leakage, added cache-hit telemetry, and validation is recorded in Stage R88 report. |
 | WPR89-01-knn-deterministic-topk | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/research_discovery/test_knn_study.py`, `docs/work_packets/WPR89-01-knn-deterministic-topk.md`, `docs/stage_reports/STAGE_R89_KNN_DETERMINISTIC_TOPK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Replaced full KNN candidate distance sorts with deterministic partition-backed top-k while preserving tie behavior and diagnostics; validation is recorded in Stage R89 report. |
+| WPR90-01-hmm-vectorized-assignment | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/hmm_materialization.py`, `tests/research_discovery/test_hmm_materialization.py`, `docs/work_packets/WPR90-01-hmm-vectorized-assignment.md`, `docs/stage_reports/STAGE_R90_HMM_VECTORIZED_ASSIGNMENT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Replaced per-row HMM posterior/router pandas assignment with vectorized assignment, preserved output semantics, and validation is recorded in Stage R90 report. |
 
 ## Gate checklist
 
@@ -508,3 +509,8 @@ Reason: Real discovery runs now cache horizon-labeled frames and splits, reuse H
 
 Decision: R89 KNN deterministic top-k complete; next target is HMM assignment and discovery IO profiling/optimization.
 Reason: The KNN study now selects nearest neighbors through partition-backed deterministic top-k selection, preserves full stable-sort tie behavior at the kth-distance boundary, and records the selection engine in KNN manifests. Focused KNN tests, full discovery tests, compile, contracts, and a 10-trial deep-shaped probe passed. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.
+
+## HMM vectorized assignment wave
+
+Decision: R90 HMM vectorized assignment complete; discovery CPU optimization wave is complete enough for operator deep-harvest use on the checked latest-month fixture.
+Reason: HMM posterior/router output assignment now uses vectorized column writes, preserves scalar-reference output semantics, and records the assignment engine in HMM manifests. Focused HMM tests, full discovery tests, compile, contracts, and a 10-trial deep-shaped probe passed. The probe improved from the R88/R89 roughly 22.5-second range to 13.245 seconds, projecting about 1.84 hours for 5,000 trials on the local checked fixture slice. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.

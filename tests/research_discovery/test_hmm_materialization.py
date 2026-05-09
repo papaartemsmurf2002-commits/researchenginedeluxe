@@ -11,6 +11,10 @@ from tradingbotsuite.backtesting.splits import build_purged_walk_forward_splits
 from tradingbotsuite.research_discovery.hmm_materialization import (
     HMM_POSTERIOR_COLUMNS,
     HmmMaterializationSpec,
+    _assign_posterior_rows,
+    _empty_result,
+    _recent_flip_flags,
+    _source_row_index,
     materialize_split_safe_hmm_regimes,
     write_hmm_materialization_artifacts,
 )
@@ -107,6 +111,51 @@ def test_hmm_posteriors_are_finite_and_sum_to_one() -> None:
     assert materialized["max_regime_probability"].between(0.0, 1.0).all()
 
 
+def test_hmm_vectorized_assignment_matches_scalar_reference() -> None:
+    frame = _feature_frame(row_count=12)
+    source_index = _source_row_index(frame)
+    spec = _spec(n_states=3, entropy_threshold=0.90, flip_cooldown_bars=1)
+    positions = [1, 3, 4, 7]
+    posterior = np.array(
+        [
+            [0.70, 0.20, 0.10],
+            [0.20, 0.65, 0.15],
+            [0.18, 0.62, 0.20],
+            [0.10, 0.20, 0.70],
+        ],
+        dtype=float,
+    )
+    state_labels = {0: "range_chop", 1: "bull_trend", 2: "bear_trend"}
+    vectorized = _empty_result(frame, source_index=source_index, spec=spec)
+    scalar = _empty_result(frame, source_index=source_index, spec=spec)
+
+    _assign_posterior_rows(
+        vectorized,
+        positions=positions,
+        source_index=source_index,
+        posterior=posterior,
+        state_labels=state_labels,
+        split_id="split-a",
+        fit_end_row=99,
+        model_id="model-a",
+        spec=spec,
+    )
+    _assign_posterior_rows_scalar_reference(
+        scalar,
+        positions=positions,
+        source_index=source_index,
+        posterior=posterior,
+        state_labels=state_labels,
+        split_id="split-a",
+        fit_end_row=99,
+        model_id="model-a",
+        spec=spec,
+    )
+
+    compare_columns = [f"regime_p_{state}" for state in range(spec.n_states)] + list(HMM_POSTERIOR_COLUMNS)
+    pd.testing.assert_frame_equal(vectorized[compare_columns], scalar[compare_columns], check_dtype=False)
+
+
 def test_hmm_materialization_is_train_only_for_earlier_splits() -> None:
     frame = _feature_frame()
     splits = _splits(frame)
@@ -175,3 +224,39 @@ def test_hmm_materialization_spec_config_loads() -> None:
 
     assert spec.feature_columns == FEATURE_COLUMNS
     assert spec.hmm_feature_pack_id == "discovery_hmm_price_trend_vol_v4"
+
+
+def _assign_posterior_rows_scalar_reference(
+    result: pd.DataFrame,
+    *,
+    positions,
+    source_index: pd.Series,
+    posterior: np.ndarray,
+    state_labels: dict[int, str],
+    split_id: str,
+    fit_end_row: int,
+    model_id: str,
+    spec: HmmMaterializationSpec,
+) -> None:
+    top_state = posterior.argmax(axis=1) if len(posterior) else np.array([], dtype=int)
+    top_probability = posterior.max(axis=1) if len(posterior) else np.array([], dtype=float)
+    safe_posterior = np.clip(posterior, 1e-12, 1.0)
+    entropy = -np.sum(safe_posterior * np.log(safe_posterior), axis=1) / np.log(max(spec.n_states, 2))
+    recent_flip = _recent_flip_flags(top_state, cooldown=spec.flip_cooldown_bars)
+    for local_index, position in enumerate(positions):
+        for state in range(spec.n_states):
+            result.loc[position, f"regime_p_{state}"] = float(posterior[local_index, state])
+        result.loc[position, "top_regime_label"] = state_labels.get(int(top_state[local_index]), f"state_{top_state[local_index]}")
+        result.loc[position, "max_regime_probability"] = float(top_probability[local_index])
+        result.loc[position, "posterior_entropy"] = float(entropy[local_index])
+        result.loc[position, "recent_regime_flip"] = bool(recent_flip[local_index])
+        result.loc[position, "regime_no_trade"] = bool(
+            top_probability[local_index] < spec.posterior_threshold
+            or entropy[local_index] > spec.entropy_threshold
+            or recent_flip[local_index]
+        )
+        result.loc[position, "hmm_fit_end_row"] = int(fit_end_row)
+        result.loc[position, "source_row_index"] = int(source_index.iloc[position])
+        result.loc[position, "hmm_model_id"] = model_id
+        result.loc[position, "hmm_feature_pack_id"] = spec.hmm_feature_pack_id
+        result.loc[position, "hmm_split_id"] = split_id
