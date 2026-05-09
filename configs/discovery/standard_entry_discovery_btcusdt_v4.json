@@ -23,6 +23,10 @@
     "snapshot_interval_minutes": 30,
     "rng_seed": 73
   },
+  "execution": {
+    "max_workers": 4,
+    "persist_trial_artifacts": "interesting_only"
+  },
   "search": {
     "hmm_state_counts": [
       3,

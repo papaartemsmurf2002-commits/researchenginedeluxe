@@ -57,6 +57,36 @@ class DiscoveryBudgetSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class DiscoveryExecutionSpec:
+    max_workers: int = 1
+    persist_trial_artifacts: str = "all"
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any] | None) -> "DiscoveryExecutionSpec":
+        payload = payload or {}
+        spec = cls(
+            max_workers=int(payload.get("max_workers", 1)),
+            persist_trial_artifacts=str(payload.get("persist_trial_artifacts", "all")).strip().lower() or "all",
+        )
+        spec.validate()
+        return spec
+
+    def validate(self) -> None:
+        if self.max_workers <= 0:
+            raise ValueError("execution.max_workers must be positive")
+        if self.max_workers > 64:
+            raise ValueError("execution.max_workers must be <= 64")
+        if self.persist_trial_artifacts not in {"all", "interesting_only"}:
+            raise ValueError("execution.persist_trial_artifacts must be one of all, interesting_only")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "max_workers": self.max_workers,
+            "persist_trial_artifacts": self.persist_trial_artifacts,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DiscoveryDataSpec:
     dataset_path: Path | None = None
     dataset_manifest_paths: tuple[Path, ...] = ()
@@ -248,6 +278,7 @@ class DiscoveryRunSpec:
     feature_column_set_ids: tuple[str, ...] = ()
     data: DiscoveryDataSpec = field(default_factory=DiscoveryDataSpec)
     search: DiscoverySearchSpec = field(default_factory=DiscoverySearchSpec)
+    execution: DiscoveryExecutionSpec = field(default_factory=DiscoveryExecutionSpec)
     budget: DiscoveryBudgetSpec = field(default_factory=DiscoveryBudgetSpec)
     trial_templates: tuple[DiscoveryTrialTemplate, ...] = ()
 
@@ -289,6 +320,7 @@ class DiscoveryRunSpec:
             ),
             data=DiscoveryDataSpec.from_payload(payload.get("data"), repo_root=root),
             search=DiscoverySearchSpec.from_payload(payload.get("search")),
+            execution=DiscoveryExecutionSpec.from_payload(payload.get("execution")),
             budget=DiscoveryBudgetSpec.from_payload(payload.get("budget")),
             trial_templates=trial_templates,
         )
@@ -314,6 +346,7 @@ class DiscoveryRunSpec:
             "feature_column_set_ids": list(self.feature_column_set_ids),
             "data": self.data.to_payload(),
             "search": self.search.to_payload(),
+            "execution": self.execution.to_payload(),
             "budget": self.budget.to_payload(),
             "trial_templates": [template.to_payload() for template in self.trial_templates],
         }

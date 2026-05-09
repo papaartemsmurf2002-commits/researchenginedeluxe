@@ -24,6 +24,8 @@ def test_discovery_spec_defaults_and_repo_root_output_resolution(tmp_path: Path)
 
     assert spec.symbol == "BTCUSDT"
     assert spec.discovery_mode == "quick_smoke"
+    assert spec.execution.max_workers == 1
+    assert spec.execution.persist_trial_artifacts == "all"
     assert spec.budget.snapshot_interval_minutes == 30
     assert paths.output_dir == (tmp_path / "research" / "discovery_runs" / "quick-smoke").resolve()
     assert paths.output_dir.is_relative_to(paths.research_output_dir)
@@ -80,6 +82,9 @@ def test_real_discovery_configs_generate_non_placeholder_search_templates() -> N
 
     assert standard.discovery_mode == "entry_discovery_standard"
     assert deep.discovery_mode == "deep_candidate_harvest"
+    assert standard.execution.max_workers == 4
+    assert deep.execution.max_workers == 8
+    assert deep.execution.persist_trial_artifacts == "interesting_only"
     assert len(standard_templates) == standard.budget.max_trials
     assert len(deep_templates) == deep.budget.max_trials
     assert {template.candidate_family for template in standard_templates} == {"hmm_knn_entry_discovery"}

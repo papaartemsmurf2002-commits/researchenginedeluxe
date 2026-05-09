@@ -43,6 +43,7 @@ def discovery_manifest_payload(
         "data": spec.data.to_payload(),
         "data_evidence": dict(data_evidence or {}),
         "search": spec.search.to_payload(),
+        "execution": spec.execution.to_payload(),
         "feature_column_set_evidence": dict(feature_column_set_evidence or {}),
         "state": dict(state),
         "counts": dict(counts),

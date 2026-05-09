@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from hashlib import sha256
@@ -25,6 +27,7 @@ from tradingbotsuite.research_discovery.feature_sets import (
     validate_feature_column_set_manifest,
 )
 from tradingbotsuite.research_discovery.hmm_materialization import (
+    HmmMaterializationResult,
     HmmMaterializationSpec,
     materialize_split_safe_hmm_regimes,
     write_hmm_materialization_artifacts,
@@ -94,6 +97,14 @@ class DiscoveryRunResult:
     blocked_candidates_path: Path
     filter_blockers_path: Path
     snapshot_paths: tuple[Path, ...]
+
+
+class _NullExecutor:
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+        return False
 
 
 def run_discovery(
@@ -172,49 +183,79 @@ def run_discovery(
     state = state.with_snapshot(path=initial_snapshot, updated_at_utc=iso_utc(now()))
     write_run_state(state_path, state)
 
-    for index, template in enumerate(templates, start=1):
-        if template.trial_id in completed_ids:
-            continue
-        if stop_after_trials is not None and executed_this_call >= stop_after_trials:
-            break
-        record = (
-            _real_discovery_trial_record(spec, template, context=real_context, trial_index=index, clock=now, output_dir=output_dir)
-            if _real_trial_template(template)
-            else _placeholder_trial_record(spec, template, trial_index=index, clock=now)
-        )
-        trial_path = output_dir / "trials" / f"{record.trial_id}.json"
-        write_trial_record(trial_path, record)
-        existing_records[record.trial_id] = record
-        state = state.with_completed_trial(record, updated_at_utc=iso_utc(now()))
-        write_run_state(state_path, state)
-        completed_ids.add(record.trial_id)
-        executed_this_call += 1
-        batch_completed += 1
-        snapshot_at = now()
-        if batch_completed >= spec.budget.trial_batch_size or _snapshot_interval_due(
-            last_snapshot_at,
-            snapshot_at,
-            spec.budget.snapshot_interval_minutes,
-        ):
-            _write_ledgers(
-                records=_ordered_records(existing_records.values()),
-                interesting_path=interesting_path,
-                blocked_path=blocked_path,
-                filter_blockers_path=filter_blockers_path,
-            )
-            snapshot = _snapshot(
-                output_dir,
-                spec=spec,
-                state=state,
-                records=existing_records,
-                sequence=state.snapshot_count + 1,
-                created_at=snapshot_at,
-            )
-            snapshot_paths.append(snapshot)
-            state = state.with_snapshot(path=snapshot, updated_at_utc=iso_utc(now()))
-            write_run_state(state_path, state)
-            batch_completed = 0
-            last_snapshot_at = snapshot_at
+    pending_trials = [
+        (index, template)
+        for index, template in enumerate(templates, start=1)
+        if template.trial_id not in completed_ids
+    ]
+    if stop_after_trials is not None:
+        pending_trials = pending_trials[: max(0, int(stop_after_trials))]
+    worker_count = _effective_worker_count(spec.execution.max_workers, pending_trials)
+    with (ThreadPoolExecutor(max_workers=worker_count) if worker_count > 1 else _NullExecutor()) as executor:
+        cursor = 0
+        while cursor < len(pending_trials):
+            chunk = pending_trials[cursor : cursor + worker_count]
+            cursor += len(chunk)
+            if executor is None:
+                records = [
+                    _evaluate_discovery_trial(
+                        spec,
+                        template,
+                        context=real_context,
+                        trial_index=index,
+                        clock=now,
+                        output_dir=output_dir,
+                    )
+                    for index, template in chunk
+                ]
+            else:
+                futures = [
+                    executor.submit(
+                        _evaluate_discovery_trial,
+                        spec,
+                        template,
+                        context=real_context,
+                        trial_index=index,
+                        clock=now,
+                        output_dir=output_dir,
+                    )
+                    for index, template in chunk
+                ]
+                records = [future.result() for future in futures]
+            for record in records:
+                trial_path = output_dir / "trials" / f"{record.trial_id}.json"
+                write_trial_record(trial_path, record)
+                existing_records[record.trial_id] = record
+                state = state.with_completed_trial(record, updated_at_utc=iso_utc(now()))
+                write_run_state(state_path, state)
+                completed_ids.add(record.trial_id)
+                executed_this_call += 1
+                batch_completed += 1
+                snapshot_at = now()
+                if batch_completed >= spec.budget.trial_batch_size or _snapshot_interval_due(
+                    last_snapshot_at,
+                    snapshot_at,
+                    spec.budget.snapshot_interval_minutes,
+                ):
+                    _write_ledgers(
+                        records=_ordered_records(existing_records.values()),
+                        interesting_path=interesting_path,
+                        blocked_path=blocked_path,
+                        filter_blockers_path=filter_blockers_path,
+                    )
+                    snapshot = _snapshot(
+                        output_dir,
+                        spec=spec,
+                        state=state,
+                        records=existing_records,
+                        sequence=state.snapshot_count + 1,
+                        created_at=snapshot_at,
+                    )
+                    snapshot_paths.append(snapshot)
+                    state = state.with_snapshot(path=snapshot, updated_at_utc=iso_utc(now()))
+                    write_run_state(state_path, state)
+                    batch_completed = 0
+                    last_snapshot_at = snapshot_at
 
     if batch_completed:
         _write_ledgers(
@@ -367,12 +408,46 @@ def _placeholder_trial_record(
     )
 
 
+def _effective_worker_count(max_workers: int, pending_trials: list[tuple[int, DiscoveryTrialTemplate]]) -> int:
+    if not pending_trials:
+        return 1
+    return max(1, min(int(max_workers), len(pending_trials)))
+
+
+def _evaluate_discovery_trial(
+    spec: DiscoveryRunSpec,
+    template: DiscoveryTrialTemplate,
+    *,
+    context: "_RealDiscoveryContext | None",
+    trial_index: int,
+    clock: Callable[[], datetime],
+    output_dir: Path,
+) -> DiscoveryTrialRecord:
+    if _real_trial_template(template):
+        return _real_discovery_trial_record(
+            spec,
+            template,
+            context=context,
+            trial_index=trial_index,
+            clock=clock,
+            output_dir=output_dir,
+        )
+    return _placeholder_trial_record(spec, template, trial_index=trial_index, clock=clock)
+
+
+@dataclass(frozen=True, slots=True)
+class _HmmCacheEntry:
+    result: HmmMaterializationResult
+
+
 @dataclass(frozen=True, slots=True)
 class _RealDiscoveryContext:
     dataset: pd.DataFrame | None
     feature_sets: Mapping[str, DiscoveryFeatureColumnSet]
     frames_by_column_set: Mapping[str, pd.DataFrame]
     unavailable_feature_sets: Mapping[str, str]
+    hmm_cache: dict[str, _HmmCacheEntry]
+    hmm_cache_lock: threading.Lock
     interval_ms: int
     data_evidence: Mapping[str, Any]
     unavailable_reason: str = ""
@@ -393,6 +468,8 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
             feature_sets={},
             frames_by_column_set={},
             unavailable_feature_sets={},
+            hmm_cache={},
+            hmm_cache_lock=threading.Lock(),
             interval_ms=900_000,
             data_evidence={"status": "missing", "reason": "real_discovery_data_required"},
             unavailable_reason="real_discovery_data_required",
@@ -408,6 +485,8 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
             feature_sets={},
             frames_by_column_set={},
             unavailable_feature_sets={},
+            hmm_cache={},
+            hmm_cache_lock=threading.Lock(),
             interval_ms=interval_ms,
             data_evidence=data_evidence,
             unavailable_reason="feature_column_sets_path_required",
@@ -432,6 +511,15 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
                     require_continuous=False,
                 )
                 frame = _sort_discovery_dataset(materialized.frame)
+                preflight_reason = _feature_set_preflight_reason(frame, column_set)
+                if preflight_reason:
+                    unavailable_feature_sets[column_set_id] = preflight_reason
+                    materialization_errors[column_set_id] = {
+                        "registered_feature_set_id": column_set.registered_feature_set_id,
+                        "error_type": "FeaturePreflightBlocked",
+                        "error": preflight_reason,
+                    }
+                    continue
                 frames_by_registered[column_set.registered_feature_set_id] = frame
                 frame.to_parquet(feature_root / f"{_safe_path_part(column_set.registered_feature_set_id)}.parquet", index=False)
             except Exception as exc:
@@ -443,12 +531,24 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
                 }
                 continue
         if column_set.registered_feature_set_id in frames_by_registered:
-            frames_by_column_set[column_set_id] = frames_by_registered[column_set.registered_feature_set_id]
+            frame = frames_by_registered[column_set.registered_feature_set_id]
+            preflight_reason = _feature_set_preflight_reason(frame, column_set)
+            if preflight_reason:
+                unavailable_feature_sets[column_set_id] = preflight_reason
+                materialization_errors[column_set_id] = {
+                    "registered_feature_set_id": column_set.registered_feature_set_id,
+                    "error_type": "FeaturePreflightBlocked",
+                    "error": preflight_reason,
+                }
+                continue
+            frames_by_column_set[column_set_id] = frame
     return _RealDiscoveryContext(
         dataset=dataset,
         feature_sets=selected,
         frames_by_column_set=frames_by_column_set,
         unavailable_feature_sets=unavailable_feature_sets,
+        hmm_cache={},
+        hmm_cache_lock=threading.Lock(),
         interval_ms=interval_ms,
         data_evidence={**data_evidence, "feature_materialization_errors": materialization_errors},
     )
@@ -488,17 +588,20 @@ def _real_discovery_trial_record(
             blocker_code=str(context.unavailable_feature_sets.get(column_set_id, "feature_column_set_not_materialized")),
         )
 
-    trial_dir = output_dir / "trial_artifacts" / template.trial_id
+    attempt_id = _next_trial_attempt_id(output_dir, template.trial_id)
+    trial_dir = output_dir / "trial_artifacts" / template.trial_id / attempt_id
     trial_dir.mkdir(parents=True, exist_ok=True)
     try:
         record = _evaluate_hmm_knn_trial(
             spec,
             template,
+            attempt_id=attempt_id,
             trial_index=trial_index,
             started_at=started_at,
             completed_at=iso_utc(clock()),
             column_set=column_set,
             frame=frame,
+            context=context,
             interval_ms=context.interval_ms,
             trial_dir=trial_dir,
         )
@@ -506,7 +609,7 @@ def _real_discovery_trial_record(
         return DiscoveryTrialRecord(
             run_id=spec.run_id,
             trial_id=template.trial_id,
-            attempt_id="attempt-001",
+            attempt_id=attempt_id,
             trial_index=trial_index,
             candidate_id=template.candidate_id,
             candidate_family=template.candidate_family,
@@ -522,20 +625,90 @@ def _real_discovery_trial_record(
                 "feature_column_set_id": column_set_id,
                 "final_score": 0.0,
                 "trade_count": 0,
+                "hmm_artifact_persisted": False,
+                "knn_artifact_persisted": False,
+                "strategy_accounting_persisted": False,
             },
         )
     return replace(record, completed_at_utc=iso_utc(clock()))
+
+
+def _next_trial_attempt_id(output_dir: Path, trial_id: str) -> str:
+    trial_root = output_dir / "trial_artifacts" / trial_id
+    if not trial_root.exists():
+        return "attempt-001"
+    existing = []
+    for path in trial_root.glob("attempt-*"):
+        suffix = path.name.removeprefix("attempt-")
+        if suffix.isdigit():
+            existing.append(int(suffix))
+    return f"attempt-{(max(existing, default=0) + 1):03d}"
+
+
+def _materialize_hmm_with_cache(
+    frame: pd.DataFrame,
+    *,
+    splits: Any,
+    spec: HmmMaterializationSpec,
+    context: _RealDiscoveryContext,
+    cache_key: str,
+) -> HmmMaterializationResult:
+    with context.hmm_cache_lock:
+        cached = context.hmm_cache.get(cache_key)
+    if cached is not None:
+        return cached.result
+
+    result = materialize_split_safe_hmm_regimes(frame, splits=splits, spec=spec)
+    with context.hmm_cache_lock:
+        existing = context.hmm_cache.get(cache_key)
+        if existing is not None:
+            return existing.result
+        context.hmm_cache[cache_key] = _HmmCacheEntry(result=result)
+    return result
+
+
+def _hmm_cache_key(
+    *,
+    column_set: DiscoveryFeatureColumnSet,
+    label_horizon: str,
+    hmm_spec: HmmMaterializationSpec,
+    min_splits: int,
+    purge_embargo_bars: int,
+) -> str:
+    return sha256(
+        json.dumps(
+            {
+                "feature_column_set_id": column_set.feature_column_set_id,
+                "registered_feature_set_id": column_set.registered_feature_set_id,
+                "label_horizon": label_horizon,
+                "hmm_spec": hmm_spec.to_payload(),
+                "min_splits": int(min_splits),
+                "purge_embargo_bars": int(purge_embargo_bars),
+            },
+            sort_keys=True,
+            default=str,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _persist_trial_artifacts(policy: str, *, ledger_kind: str) -> bool:
+    if policy == "interesting_only":
+        return ledger_kind == "interesting"
+    return True
 
 
 def _evaluate_hmm_knn_trial(
     spec: DiscoveryRunSpec,
     template: DiscoveryTrialTemplate,
     *,
+    attempt_id: str,
     trial_index: int,
     started_at: str,
     completed_at: str,
     column_set: DiscoveryFeatureColumnSet,
     frame: pd.DataFrame,
+    context: _RealDiscoveryContext,
     interval_ms: int,
     trial_dir: Path,
 ) -> DiscoveryTrialRecord:
@@ -574,8 +747,19 @@ def _evaluate_hmm_knn_trial(
         covariance_type="diag",
         hmm_feature_pack_id=f"discovery_hmm_{column_set.feature_column_set_id}",
     )
-    hmm = materialize_split_safe_hmm_regimes(labeled, splits=splits, spec=hmm_spec)
-    hmm_artifacts = write_hmm_materialization_artifacts(trial_dir / "hmm", hmm)
+    hmm = _materialize_hmm_with_cache(
+        labeled,
+        splits=splits,
+        spec=hmm_spec,
+        context=context,
+        cache_key=_hmm_cache_key(
+            column_set=column_set,
+            label_horizon=label_horizon,
+            hmm_spec=hmm_spec,
+            min_splits=spec.search.min_splits,
+            purge_embargo_bars=spec.search.purge_embargo_bars,
+        ),
+    )
     k_value = int(trial_payload.get("k", 8))
     min_neighbor_count = max(1, min(k_value, int(trial_payload.get("min_neighbor_count", min(4, k_value)))))
     knn_spec = KnnStudySpec(
@@ -595,40 +779,59 @@ def _evaluate_hmm_knn_trial(
         label_horizon=label_horizon,
     )
     knn = materialize_regime_local_knn_predictions(hmm.frame, splits=splits, spec=knn_spec)
-    knn_artifacts = write_knn_study_artifacts(trial_dir / "knn", knn)
     metrics = _knn_trial_metrics(knn.frame, search=spec.search)
     ledger_kind = "interesting" if metrics["passed"] else "blocked"
     blocker_code = "" if metrics["passed"] else str(metrics["primary_blocker"])
-    accounting_payload: dict[str, Any] = {}
-    try:
-        from tradingbotsuite.research_discovery.strategy_integration import (
-            account_hmm_knn_local_analog_strategy,
-            write_strategy_accounting_artifacts,
-        )
-
-        accounting = account_hmm_knn_local_analog_strategy(
-            knn.frame,
-            symbol=spec.symbol,
-            holding_window=_holding_window_from_label_horizon(label_horizon),
-            strategy_config={
-                "probability_threshold": knn_spec.probability_threshold,
-                "expected_value_threshold": knn_spec.expected_value_threshold,
-                "min_neighbor_count": knn_spec.min_neighbor_count,
-                "min_neighbor_agreement": knn_spec.min_neighbor_agreement,
-                "min_neighbor_distance_quality": knn_spec.min_distance_quality,
-                "min_vote_margin": knn_spec.vote_margin_threshold,
-                "spacing_bars": 1,
-            },
-            executed_trade_count=int(metrics["trade_count"]),
-        )
-        accounting_artifacts = write_strategy_accounting_artifacts(trial_dir / "strategy_accounting", accounting)
-        accounting_payload = {
-            "strategy_accounting_manifest_path": str(accounting_artifacts.manifest_path),
-            "strategy_signal_count": int(accounting.manifest["plugin_signal_count"]),
-            "strategy_executable_signal_count": int(accounting.manifest["backtest_executable_signal_count"]),
+    persist_artifacts = _persist_trial_artifacts(spec.execution.persist_trial_artifacts, ledger_kind=ledger_kind)
+    hmm_artifact_payload: dict[str, Any] = {"hmm_artifact_persisted": False}
+    knn_artifact_payload: dict[str, Any] = {"knn_artifact_persisted": False}
+    if persist_artifacts:
+        hmm_artifacts = write_hmm_materialization_artifacts(trial_dir / "hmm", hmm)
+        knn_artifacts = write_knn_study_artifacts(trial_dir / "knn", knn)
+        hmm_artifact_payload = {
+            "hmm_artifact_persisted": True,
+            "hmm_manifest_path": str(hmm_artifacts.manifest_path),
+            "hmm_regime_posteriors_path": str(hmm_artifacts.regime_posteriors_path),
         }
-    except Exception as exc:
-        accounting_payload = {"strategy_accounting_error": str(exc)}
+        knn_artifact_payload = {
+            "knn_artifact_persisted": True,
+            "knn_manifest_path": str(knn_artifacts.manifest_path),
+            "knn_predictions_path": str(knn_artifacts.predictions_path),
+        }
+    accounting_payload: dict[str, Any] = {}
+    if not persist_artifacts:
+        accounting_payload = {"strategy_accounting_persisted": False}
+    else:
+        try:
+            from tradingbotsuite.research_discovery.strategy_integration import (
+                account_hmm_knn_local_analog_strategy,
+                write_strategy_accounting_artifacts,
+            )
+
+            accounting = account_hmm_knn_local_analog_strategy(
+                knn.frame,
+                symbol=spec.symbol,
+                holding_window=_holding_window_from_label_horizon(label_horizon),
+                strategy_config={
+                    "probability_threshold": knn_spec.probability_threshold,
+                    "expected_value_threshold": knn_spec.expected_value_threshold,
+                    "min_neighbor_count": knn_spec.min_neighbor_count,
+                    "min_neighbor_agreement": knn_spec.min_neighbor_agreement,
+                    "min_neighbor_distance_quality": knn_spec.min_distance_quality,
+                    "min_vote_margin": knn_spec.vote_margin_threshold,
+                    "spacing_bars": 1,
+                },
+                executed_trade_count=int(metrics["trade_count"]),
+            )
+            accounting_artifacts = write_strategy_accounting_artifacts(trial_dir / "strategy_accounting", accounting)
+            accounting_payload = {
+                "strategy_accounting_persisted": True,
+                "strategy_accounting_manifest_path": str(accounting_artifacts.manifest_path),
+                "strategy_signal_count": int(accounting.manifest["plugin_signal_count"]),
+                "strategy_executable_signal_count": int(accounting.manifest["backtest_executable_signal_count"]),
+            }
+        except Exception as exc:
+            accounting_payload = {"strategy_accounting_persisted": False, "strategy_accounting_error": str(exc)}
 
     payload = {
         **trial_payload,
@@ -650,15 +853,14 @@ def _evaluate_hmm_knn_trial(
         "final_score": float(metrics["final_score"]),
         "primary_blocker": str(metrics["primary_blocker"]),
         "blocker_reasons": list(metrics["blocker_reasons"]),
-        "hmm_manifest_path": str(hmm_artifacts.manifest_path),
-        "knn_manifest_path": str(knn_artifacts.manifest_path),
-        "knn_predictions_path": str(knn_artifacts.predictions_path),
+        **hmm_artifact_payload,
+        **knn_artifact_payload,
         **accounting_payload,
     }
     return DiscoveryTrialRecord(
         run_id=spec.run_id,
         trial_id=template.trial_id,
-        attempt_id="attempt-001",
+        attempt_id=attempt_id,
         trial_index=trial_index,
         candidate_id=template.candidate_id,
         candidate_family=template.candidate_family,
@@ -706,6 +908,9 @@ def _blocked_real_trial_record(
             "accepted_prediction_count": 0,
             "evaluated_prediction_count": 0,
             "final_score": 0.0,
+            "hmm_artifact_persisted": False,
+            "knn_artifact_persisted": False,
+            "strategy_accounting_persisted": False,
         },
     )
 
@@ -811,6 +1016,27 @@ def _hmm_columns_for_trial(columns: tuple[str, ...]) -> tuple[str, ...]:
     )
     selected = tuple(column for column in preferred if column in columns)
     return selected or columns[: min(8, len(columns))]
+
+
+def _feature_set_preflight_reason(frame: pd.DataFrame, column_set: DiscoveryFeatureColumnSet) -> str:
+    usable_columns = []
+    for column in column_set.columns:
+        if column not in frame.columns:
+            continue
+        values = pd.to_numeric(frame[column], errors="coerce")
+        finite = values.loc[values.map(math.isfinite)]
+        non_null_ratio = float(len(finite) / max(1, len(values)))
+        if non_null_ratio < 0.05:
+            continue
+        if float(finite.nunique(dropna=True)) <= 1.0:
+            continue
+        usable_columns.append(column)
+    if len(usable_columns) < 2:
+        return "feature_set_preflight_insufficient_finite_variant_columns"
+    hmm_columns = _hmm_columns_for_trial(tuple(usable_columns))
+    if len(hmm_columns) < 2:
+        return "feature_set_preflight_insufficient_hmm_columns"
+    return ""
 
 
 def _knn_trial_metrics(frame: pd.DataFrame, *, search: Any) -> dict[str, Any]:

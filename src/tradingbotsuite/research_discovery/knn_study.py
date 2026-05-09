@@ -135,9 +135,9 @@ class _TrainOnlyScaler:
     @classmethod
     def fit(cls, frame: pd.DataFrame, columns: Sequence[str]) -> "_TrainOnlyScaler":
         matrix = _numeric_matrix(frame, columns)
-        median = np.nanmedian(matrix, axis=0)
-        q75 = np.nanpercentile(matrix, 75, axis=0)
-        q25 = np.nanpercentile(matrix, 25, axis=0)
+        median = _safe_column_nanmedian(matrix)
+        q75 = _safe_column_nanpercentile(matrix, 75)
+        q25 = _safe_column_nanpercentile(matrix, 25)
         scale = q75 - q25
         median = np.where(np.isfinite(median), median, 0.0)
         scale = np.where(np.isfinite(scale) & (scale > 1e-12), scale, 1.0)
@@ -174,6 +174,21 @@ def validate_knn_study_spec(spec: KnnStudySpec) -> None:
             raise ValueError(f"{field_name} must be between 0 and 1")
     if not spec.feature_column_set_id:
         raise ValueError("feature_column_set_id must not be empty")
+
+
+def _safe_column_nanmedian(matrix: np.ndarray) -> np.ndarray:
+    return np.array([_finite_percentile(matrix[:, index], 50) for index in range(matrix.shape[1])], dtype=float)
+
+
+def _safe_column_nanpercentile(matrix: np.ndarray, percentile: float) -> np.ndarray:
+    return np.array([_finite_percentile(matrix[:, index], percentile) for index in range(matrix.shape[1])], dtype=float)
+
+
+def _finite_percentile(values: np.ndarray, percentile: float) -> float:
+    finite = values[np.isfinite(values)]
+    if len(finite) == 0:
+        return float("nan")
+    return float(np.percentile(finite, percentile))
 
 
 def materialize_regime_local_knn_predictions(

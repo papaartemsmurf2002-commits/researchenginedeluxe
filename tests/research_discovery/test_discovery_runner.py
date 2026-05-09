@@ -190,6 +190,7 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
                     ]
                 },
                 "budget": {"max_trials": 2, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 2, "persist_trial_artifacts": "interesting_only"},
                 "search": {
                     "hmm_state_counts": [3, 4],
                     "hmm_posterior_thresholds": [0.55],
@@ -236,6 +237,8 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
     payload = trial_record["payload"]
 
     assert manifest["candidate_acceptance_scope"] == "real_discovery_ledgers_no_pack_gate"
+    assert manifest["execution"]["max_workers"] == 2
+    assert manifest["execution"]["persist_trial_artifacts"] == "interesting_only"
     assert state["status"] == "completed"
     assert state["message"] == "real discovery run completed"
     assert len(ledgers) == 2
@@ -244,5 +247,68 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
     assert payload["placeholder_trial"] is False
     assert payload["trial_kind"] == "hmm_knn_entry_discovery"
     assert payload["trade_count"] > 0
+    assert payload["hmm_artifact_persisted"] is True
+    assert payload["knn_artifact_persisted"] is True
     assert Path(payload["hmm_manifest_path"]).exists()
     assert Path(payload["knn_manifest_path"]).exists()
+
+
+def test_discovery_runner_compacts_blocked_real_trial_artifacts(tmp_path: Path) -> None:
+    spec_path = tmp_path / "specs" / "compact-blocked-discovery.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "compact-blocked-run",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 1, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 1, "persist_trial_artifacts": "interesting_only"},
+                "search": {
+                    "label_horizons": ["4h"],
+                    "k_values": [8],
+                    "min_neighbor_counts": [4],
+                    "distance_metrics": ["euclidean"],
+                    "probability_thresholds": [0.99],
+                    "expected_value_thresholds": [1.0],
+                    "min_neighbor_agreements": [0.99],
+                    "min_distance_qualities": [1.0],
+                    "vote_margin_thresholds": [0.99],
+                    "same_regime_only_values": [True],
+                    "min_splits": 4,
+                    "purge_embargo_bars": 8,
+                    "min_trade_count": 999999,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": 0.0,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+    trial_record = json.loads((result.output_dir / "trials" / "trial-000001.json").read_text(encoding="utf-8"))
+    payload = trial_record["payload"]
+
+    assert trial_record["ledger_kind"] == "blocked"
+    assert payload["hmm_artifact_persisted"] is False
+    assert payload["knn_artifact_persisted"] is False
+    assert payload["strategy_accounting_persisted"] is False
+    assert not (result.output_dir / "trial_artifacts" / "trial-000001" / "hmm").exists()
+    assert not (result.output_dir / "trial_artifacts" / "trial-000001" / "knn").exists()
+    assert not list((result.output_dir / "trial_artifacts" / "trial-000001").rglob("*.parquet"))

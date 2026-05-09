@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R85 real discovery search alignment
+Current stage: Stage R86 discovery runtime optimization
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR85 real standard/deep discovery search alignment complete
+Stage status: closed - WPR86 discovery runtime optimization complete
 Last updated: 2026-05-09
 
 ## Stage entry decision
@@ -127,6 +127,7 @@ Last updated: 2026-05-09
 | WPR83-01-discovery-review-hardening | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/web/operator.py`, `tests/research_discovery/**`, `tests/live/test_preflight.py`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR83-01-discovery-review-hardening.md`, `docs/stage_reports/STAGE_R83_DISCOVERY_REVIEW_HARDENING_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Fixed discovery review findings: KNN label-horizon leakage, selected WT3D comparator enforcement, resume missing-trial checks, bridge ledger/state/trial tamper false positives, artifact overwrite risks, operator artifact path allowlisting, and live rejection for `run-discovery`; validation recorded in Stage R83 report. |
 | WPR84-01-full-research-run-fix | Codex Research Agent | closed | `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR84-01-full-research-run-fix.md`, `docs/stage_reports/STAGE_R84_FULL_RESEARCH_RUN_FIX_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Removed impossible perp-context ablation comparator false blockers, queued V4 discovery from the full-review UI, preserved research-only gates, and recorded validation in Stage R84 report. |
 | WPR85-01-real-discovery-search-alignment | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR85-01-real-discovery-search-alignment.md`, `docs/stage_reports/STAGE_R85_REAL_DISCOVERY_SEARCH_ALIGNMENT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Standard/deep discovery now generate bounded real HMM/KNN trials, operator defaults to standard real discovery, deep harvest is available for long unattended runs, quick smoke remains plumbing-only, completed-run collisions are avoided, and validation is recorded in the Stage R85 report. |
+| WPR86-01-discovery-runtime-optimization | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR86-01-discovery-runtime-optimization.md`, `docs/stage_reports/STAGE_R86_DISCOVERY_RUNTIME_OPTIMIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added bounded threaded trial evaluation, in-run HMM reuse, compact blocked-trial artifacts, feature preflight, clean all-NaN scaler handling, measured runtime improvement, and validation recorded in the Stage R86 report. |
 
 ## Gate checklist
 
