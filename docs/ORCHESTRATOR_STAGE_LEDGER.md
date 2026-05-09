@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R86 discovery runtime optimization
+Current stage: Stage R87 KNN vectorized prediction
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR86 discovery runtime optimization complete
+Stage status: closed - WPR87 KNN vectorized prediction complete
 Last updated: 2026-05-09
 
 ## Stage entry decision
@@ -128,6 +128,7 @@ Last updated: 2026-05-09
 | WPR84-01-full-research-run-fix | Codex Research Agent | closed | `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR84-01-full-research-run-fix.md`, `docs/stage_reports/STAGE_R84_FULL_RESEARCH_RUN_FIX_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Removed impossible perp-context ablation comparator false blockers, queued V4 discovery from the full-review UI, preserved research-only gates, and recorded validation in Stage R84 report. |
 | WPR85-01-real-discovery-search-alignment | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR85-01-real-discovery-search-alignment.md`, `docs/stage_reports/STAGE_R85_REAL_DISCOVERY_SEARCH_ALIGNMENT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Standard/deep discovery now generate bounded real HMM/KNN trials, operator defaults to standard real discovery, deep harvest is available for long unattended runs, quick smoke remains plumbing-only, completed-run collisions are avoided, and validation is recorded in the Stage R85 report. |
 | WPR86-01-discovery-runtime-optimization | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR86-01-discovery-runtime-optimization.md`, `docs/stage_reports/STAGE_R86_DISCOVERY_RUNTIME_OPTIMIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added bounded threaded trial evaluation, in-run HMM reuse, compact blocked-trial artifacts, feature preflight, clean all-NaN scaler handling, measured runtime improvement, and validation recorded in the Stage R86 report. |
+| WPR87-01-knn-vectorized-prediction | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/research_discovery/test_knn_study.py`, `docs/work_packets/WPR87-01-knn-vectorized-prediction.md`, `docs/stage_reports/STAGE_R87_KNN_VECTORIZED_PREDICTION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Split-local KNN validation prediction now transforms validation rows once per split, preserves row outputs and split-safety evidence, and validation is recorded in Stage R87 report. |
 
 ## Gate checklist
 
@@ -490,3 +491,8 @@ Reason: The branch now has research-only quick, standard, and deep discovery ben
 
 Decision: R82 candidate pack bridge complete; V4 discovery implementation can continue with post-bridge planning
 Reason: The branch now has a research-only discovery candidate-pack eligibility bridge that evaluates completed discovery-run candidates against the existing historical-cycle `evaluate_research_candidate_gate` validator, requires intact discovery state, ledgers, and trial-record hashes, blocks discovery-only or blocker-ledger candidates, and writes observe-only eligibility/rejection artifacts with `candidate_pack_written: false`. The new `evaluate-discovery-candidate-pack-eligibility` CLI is registered as a research command and rejected in live preflight. This wave does not write candidate packs, change historical-cycle semantics, weaken candidate-pack gates, claim promotion readiness, add live execution, or affect sizing.
+
+## KNN vectorized prediction wave
+
+Decision: R87 KNN vectorized prediction complete; discovery runtime optimization can continue from measured bottlenecks.
+Reason: The regime-local KNN study now transforms validation rows once per split and predicts from precomputed numpy vectors while preserving the row helper, output columns, neighbor diagnostics, split-safety rule, label-safety rule, and research-only manifest boundary. Focused KNN equivalence coverage, full discovery tests, quick discovery benchmark, compile, and contracts pass. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.

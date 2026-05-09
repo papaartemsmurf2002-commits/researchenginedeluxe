@@ -15,6 +15,11 @@ from tradingbotsuite.research_discovery.hmm_materialization import (
 from tradingbotsuite.research_discovery.knn_study import (
     KNN_PREDICTION_COLUMNS,
     KnnStudySpec,
+    _TrainOnlyScaler,
+    _label_horizon_bars,
+    _predict_precomputed_row,
+    _predict_row,
+    _validation_positions,
     materialize_regime_local_knn_predictions,
     write_knn_study_artifacts,
 )
@@ -135,6 +140,72 @@ def test_knn_study_emits_strategy_prediction_columns_and_split_safe_neighbors() 
     assert result.manifest["observe_only"] is True
     assert result.manifest["promotion_ready"] is False
     assert result.manifest["order_placement_used"] is False
+
+
+def test_vectorized_knn_prediction_matches_row_helper() -> None:
+    frame, splits = _hmm_frame()
+    spec = _knn_spec()
+    ordered = frame.reset_index(drop=True).copy()
+    split = splits[0]
+    validation_positions = _validation_positions(split, row_count=len(ordered))
+    train_positions = list(range(max(0, int(split.train_start_index)), max(-1, int(split.train_end_index)) + 1))
+    train = ordered.iloc[train_positions].copy()
+    validation_source_min = int(
+        pd.to_numeric(ordered.iloc[validation_positions]["source_row_index"], errors="raise")
+        .astype("int64")
+        .min()
+    )
+    label_horizon_bars = _label_horizon_bars(ordered, spec.label_horizon)
+    train_source_series = pd.to_numeric(train["source_row_index"], errors="raise").astype("int64")
+    train = train.loc[train_source_series <= validation_source_min - label_horizon_bars - 1].copy()
+    train = train.dropna(subset=[spec.label_column, spec.pnl_column], how="any")
+    assert len(train) >= spec.min_neighbor_count
+
+    scaler = _TrainOnlyScaler.fit(train, spec.feature_columns)
+    train_matrix = scaler.transform(train)
+    train_source = pd.to_numeric(train["source_row_index"], errors="raise").astype("int64").to_numpy()
+    train_regimes = train["top_regime_label"].astype(str).to_numpy()
+    labels = pd.to_numeric(train[spec.label_column], errors="coerce").fillna(0.0).clip(0.0, 1.0).to_numpy(dtype=float)
+    pnl = pd.to_numeric(train[spec.pnl_column], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+    validation = ordered.iloc[validation_positions].copy()
+    validation_matrix = scaler.transform(validation)
+
+    checked = 0
+    for offset, position in enumerate(validation_positions):
+        row = ordered.iloc[position]
+        row_prediction, row_diagnostics = _predict_row(
+            row,
+            train_matrix=train_matrix,
+            train_source=train_source,
+            train_regimes=train_regimes,
+            labels=labels,
+            pnl=pnl,
+            scaler=scaler,
+            spec=spec,
+            split_id=str(split.split_id),
+        )
+        vector_prediction, vector_diagnostics = _predict_precomputed_row(
+            source_row=int(row["source_row_index"]),
+            fit_end=int(row["hmm_fit_end_row"]),
+            no_trade=bool(row["regime_no_trade"]),
+            query_regime=str(row["top_regime_label"] or ""),
+            query_matrix=validation_matrix[offset],
+            train_matrix=train_matrix,
+            train_source=train_source,
+            train_regimes=train_regimes,
+            labels=labels,
+            pnl=pnl,
+            spec=spec,
+            split_id=str(split.split_id),
+        )
+
+        assert vector_prediction == row_prediction
+        assert vector_diagnostics == row_diagnostics
+        checked += 1
+        if checked >= 12:
+            break
+
+    assert checked == 12
 
 
 def test_knn_neighbors_are_same_regime_when_configured() -> None:

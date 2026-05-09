@@ -245,17 +245,25 @@ def materialize_regime_local_knn_predictions(
         labels = pd.to_numeric(train[spec.label_column], errors="coerce").fillna(0.0).clip(0.0, 1.0).to_numpy(dtype=float)
         pnl = pd.to_numeric(train[spec.pnl_column], errors="coerce").fillna(0.0).to_numpy(dtype=float)
         materialized_count = 0
+        validation = ordered.iloc[validation_positions].copy()
+        validation_matrix = scaler.transform(validation)
+        validation_source_rows = [_int_marker(value) for value in validation["source_row_index"].to_numpy()]
+        validation_fit_ends = [_int_marker(value) for value in validation["hmm_fit_end_row"].to_numpy()]
+        validation_no_trade = validation["regime_no_trade"].map(bool).to_numpy()
+        validation_regimes = validation["top_regime_label"].astype(str).to_numpy()
 
-        for position in validation_positions:
-            row = ordered.iloc[position]
-            prediction, row_diagnostics = _predict_row(
-                row,
+        for offset, position in enumerate(validation_positions):
+            prediction, row_diagnostics = _predict_precomputed_row(
+                source_row=validation_source_rows[offset],
+                fit_end=validation_fit_ends[offset],
+                no_trade=bool(validation_no_trade[offset]),
+                query_regime=str(validation_regimes[offset]),
+                query_matrix=validation_matrix[offset],
                 train_matrix=train_matrix,
                 train_source=train_source,
                 train_regimes=train_regimes,
                 labels=labels,
                 pnl=pnl,
-                scaler=scaler,
                 spec=spec,
                 split_id=str(split.split_id),
             )
@@ -294,6 +302,7 @@ def materialize_regime_local_knn_predictions(
         "split_count": int(len(splits)),
         "split_records": split_records,
         "required_output_columns": list(KNN_PREDICTION_COLUMNS),
+        "prediction_engine": "split_local_vectorized_validation_v1",
         "split_safety_rule": "neighbor_min_source_index <= neighbor_max_source_index <= hmm_fit_end_row < source_row_index",
         "label_safety_rule": "training_label_source_row_index + label_horizon_bars < validation_source_row_index",
         "label_horizon_bars": int(label_horizon_bars),
@@ -345,11 +354,43 @@ def _predict_row(
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     source_row = _int_marker(row.get("source_row_index"))
     fit_end = _int_marker(row.get("hmm_fit_end_row"))
+    query_regime = str(row.get("top_regime_label") or "")
+    query_matrix = scaler.transform(pd.DataFrame([row], columns=row.index))[0]
+    return _predict_precomputed_row(
+        source_row=source_row,
+        fit_end=fit_end,
+        no_trade=bool(row.get("regime_no_trade")),
+        query_regime=query_regime,
+        query_matrix=query_matrix,
+        train_matrix=train_matrix,
+        train_source=train_source,
+        train_regimes=train_regimes,
+        labels=labels,
+        pnl=pnl,
+        spec=spec,
+        split_id=split_id,
+    )
+
+
+def _predict_precomputed_row(
+    *,
+    source_row: int | None,
+    fit_end: int | None,
+    no_trade: bool,
+    query_regime: str,
+    query_matrix: np.ndarray,
+    train_matrix: np.ndarray,
+    train_source: np.ndarray,
+    train_regimes: np.ndarray,
+    labels: np.ndarray,
+    pnl: np.ndarray,
+    spec: KnnStudySpec,
+    split_id: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     if source_row is None or fit_end is None or fit_end < 0 or fit_end >= source_row:
         return _skip_prediction("unsafe_hmm_split_row"), []
-    if bool(row.get("regime_no_trade")):
+    if no_trade:
         return _skip_prediction("hmm_regime_no_trade"), []
-    query_regime = str(row.get("top_regime_label") or "")
     candidate_mask = train_source <= fit_end
     if spec.same_regime_only:
         candidate_mask = candidate_mask & (train_regimes == query_regime)
@@ -357,7 +398,6 @@ def _predict_row(
     if len(candidate_indices) < spec.min_neighbor_count:
         return _skip_prediction("insufficient_regime_neighbors"), []
 
-    query_matrix = scaler.transform(pd.DataFrame([row], columns=row.index))[0]
     distances = _distances(query_matrix, train_matrix[candidate_indices], metric=spec.distance_metric)
     order = np.argsort(distances, kind="mergesort")[: min(spec.k, len(candidate_indices))]
     selected = candidate_indices[order]
