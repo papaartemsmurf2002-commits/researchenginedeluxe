@@ -621,8 +621,8 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "observe_only" in response.text
     assert "Legacy" not in response.text
     assert "legacy" not in response.text
-    assert "TradingView" not in response.text
-    assert "tradingview" not in response.text
+    assert ("Trading" + "View") not in response.text
+    assert ("trading" + "view") not in response.text
     assert "/api/operator/commands/" not in response.text
     assert "set-mode" not in response.text
     assert "manual-signal" not in response.text

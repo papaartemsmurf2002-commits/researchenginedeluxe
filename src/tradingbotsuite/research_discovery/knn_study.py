@@ -407,7 +407,9 @@ def _predict_precomputed_row(
     selected_pnl = pnl[selected]
     p_up = float(selected_labels.mean())
     p_down = float(1.0 - p_up)
-    expected_value = float(selected_pnl.mean())
+    implied_side = "long" if p_up >= p_down else "short"
+    raw_expected_return = float(selected_pnl.mean())
+    expected_value = raw_expected_return if implied_side == "long" else -raw_expected_return
     probability = max(p_up, p_down)
     agreement = probability
     vote_margin = abs(p_up - p_down)

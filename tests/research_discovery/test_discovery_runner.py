@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -130,6 +131,53 @@ def test_discovery_runner_resume_recovers_when_run_state_lags_trial_records(tmp_
     assert resumed_state["status"] == "completed"
     assert resumed_state["completed_trial_ids"] == ["trial-000001", "trial-000002", "trial-000003"]
     assert set(ledgers["trial_id"]) == {"trial-000001", "trial-000002", "trial-000003"}
+
+
+def test_discovery_knn_metrics_use_side_adjusted_returns() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "accepted_by_knn": True,
+                "knn_skip_reason": "",
+                "label_return": 0.02,
+                "p_up_barrier": 0.70,
+                "p_down_barrier": 0.30,
+                "neighbor_distance_quality": 0.8,
+                "knn_vote_margin": 0.4,
+            },
+            {
+                "accepted_by_knn": True,
+                "knn_skip_reason": "",
+                "label_return": -0.03,
+                "p_up_barrier": 0.25,
+                "p_down_barrier": 0.75,
+                "neighbor_distance_quality": 0.7,
+                "knn_vote_margin": 0.5,
+            },
+            {
+                "accepted_by_knn": True,
+                "knn_skip_reason": "",
+                "label_return": -0.04,
+                "p_up_barrier": 0.35,
+                "p_down_barrier": 0.65,
+                "neighbor_distance_quality": 0.6,
+                "knn_vote_margin": 0.3,
+            },
+        ]
+    )
+    search = SimpleNamespace(
+        min_trade_count=3,
+        min_signal_rate=0.0,
+        max_signal_rate=1.0,
+        min_realized_expectancy=0.025,
+    )
+
+    metrics = discovery_runner._knn_trial_metrics(frame, search=search)
+
+    assert metrics["trade_count"] == 3
+    assert metrics["realized_expectancy"] == pytest.approx(0.03)
+    assert metrics["gross_realized_return"] == pytest.approx(0.09)
+    assert metrics["passed"] is True
 
 
 def test_discovery_runner_refuses_completed_run_overwrite(tmp_path: Path) -> None:

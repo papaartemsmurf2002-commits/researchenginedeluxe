@@ -229,6 +229,38 @@ def test_stable_topk_distance_order_matches_full_stable_sort_for_random_distance
         np.testing.assert_array_equal(order, full_order)
 
 
+def test_knn_expected_value_is_side_adjusted_for_short_majority() -> None:
+    spec = _knn_spec(
+        k=4,
+        min_neighbor_count=3,
+        probability_threshold=0.50,
+        expected_value_threshold=0.0,
+        min_neighbor_agreement=0.50,
+        min_distance_quality=0.0,
+        vote_margin_threshold=0.0,
+    )
+    prediction, diagnostics = _predict_precomputed_row(
+        source_row=20,
+        fit_end=9,
+        no_trade=False,
+        query_regime="bear_trend",
+        query_matrix=np.array([0.0] * len(FEATURE_COLUMNS), dtype=float),
+        train_matrix=np.zeros((5, len(FEATURE_COLUMNS)), dtype=float),
+        train_source=np.array([0, 1, 2, 3, 4], dtype=int),
+        train_regimes=np.array(["bear_trend"] * 5, dtype=object),
+        labels=np.array([0.0, 0.0, 0.0, 0.0, 1.0], dtype=float),
+        pnl=np.array([-0.01, -0.02, -0.03, -0.04, 0.10], dtype=float),
+        spec=spec,
+        split_id="split-short",
+    )
+
+    assert prediction["p_down_barrier"] == pytest.approx(1.0)
+    assert prediction["expected_net_return_after_costs"] == pytest.approx(0.025)
+    assert prediction["accepted_by_knn"] is True
+    assert prediction["knn_skip_reason"] == ""
+    assert len(diagnostics) == 4
+
+
 def test_knn_neighbors_are_same_regime_when_configured() -> None:
     frame, splits = _hmm_frame()
     result = materialize_regime_local_knn_predictions(frame, splits=splits, spec=_knn_spec())

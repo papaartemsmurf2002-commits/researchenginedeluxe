@@ -1154,8 +1154,8 @@ def _feature_set_preflight_reason(frame: pd.DataFrame, column_set: DiscoveryFeat
 
 def _knn_trial_metrics(frame: pd.DataFrame, *, search: Any) -> dict[str, Any]:
     evaluated = frame.loc[frame["knn_skip_reason"].astype(str).ne("not_evaluated")].copy()
-    accepted = evaluated.loc[evaluated["accepted_by_knn"].map(_truthy)].copy()
-    returns = pd.to_numeric(accepted.get("label_return", pd.Series(dtype=float)), errors="coerce").dropna()
+    accepted = evaluated.loc[evaluated["accepted_by_knn"].map(_truthy) & evaluated["knn_skip_reason"].map(_skip_reason_clear)].copy()
+    returns = _side_adjusted_label_returns(accepted)
     trade_count = int(len(returns))
     evaluated_count = int(len(evaluated))
     accepted_count = int(len(accepted))
@@ -1192,6 +1192,17 @@ def _knn_trial_metrics(frame: pd.DataFrame, *, search: Any) -> dict[str, Any]:
     }
 
 
+def _side_adjusted_label_returns(frame: pd.DataFrame) -> pd.Series:
+    if frame.empty or "label_return" not in frame:
+        return pd.Series(dtype=float)
+    returns = pd.to_numeric(frame["label_return"], errors="coerce")
+    p_up = pd.to_numeric(frame.get("p_up_barrier", pd.Series(0.5, index=frame.index)), errors="coerce")
+    p_down = pd.to_numeric(frame.get("p_down_barrier", pd.Series(0.5, index=frame.index)), errors="coerce")
+    side_multiplier = pd.Series(1.0, index=frame.index, dtype=float)
+    side_multiplier.loc[p_down > p_up] = -1.0
+    return (returns * side_multiplier).dropna()
+
+
 def _holding_window_from_label_horizon(label_horizon: str) -> str:
     normalized = str(label_horizon).strip().lower()
     if normalized in {"4h", "12h", "24h", "72h"}:
@@ -1207,6 +1218,12 @@ def _truthy(value: Any) -> bool:
     if pd.isna(value):
         return False
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _skip_reason_clear(value: Any) -> bool:
+    if value is None or pd.isna(value):
+        return True
+    return str(value).strip().lower() in {"", "none", "nan", "null"}
 
 
 def _safe_mean(value: Any) -> float:

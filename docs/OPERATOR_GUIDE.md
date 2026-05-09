@@ -72,8 +72,28 @@ Console pages:
   Control also includes runtime-mode switch buttons for `shadow`, `paper`, and `live`. Switching is blocked while a position is open, and `live` still uses the same Hyperliquid preflight checks before it becomes the active adapter path.
   In `live` mode against Hyperliquid testnet, Control also exposes an optional checkbox for short-lived TP/SL validation. When enabled, a confirmed manual entry fill places real testnet trigger orders, reports their clo ids in the result cards, and schedules automatic cancel after `10s` so testnet drift does not leave stale protections behind. Binance-based supervision remains the canonical exit path.
 - `Timeline`: trade events, decision packets, action tickets, command results, jobs, and traces with expandable details
-- `Research`: guided `build-dataset` -> `train-model` -> `calibrate-model` -> `replay-eval` workflow with artifact summaries
+- `Research`: provider preparation, research experiments, historical-cycle review, V4 discovery runs, artifact summaries, charts, HMM/KNN monitoring, shadow diagnostics, and Stage 13 readiness review
 - `Guides`: common warnings plus embedded operator and V2 research docs from the repo
+
+## Research Page
+
+Use the Research page for offline evidence work, not live decisions.
+
+- `Provider Pipeline` runs `prepare-hmm-knn-research-data` with `Intake`,
+  `Dataset`, `Evidence`, or `All` scope.
+- `Research Experiment` queues configured bundles from `configs/experiments/`.
+- `Historical Cycle Review` queues configs from `configs/research/` into
+  isolated operator output directories so checked evidence is not overwritten.
+- `V4 Discovery Run` queues or resumes HMM/KNN discovery specs from
+  `configs/discovery/`; paused/resumed runs keep checkpoints, snapshots, and
+  ledgers in the stable run-id directory.
+- `Jobs`, `Artifacts`, profitability charts, gate charts, discovery-ledger
+  charts, HMM/KNN monitoring, shadow diagnostics, and Stage 13 readiness are
+  read-only review surfaces.
+
+The Research page intentionally does not expose manual signal, smoke-live,
+set-mode, sizing, or canary controls. Research jobs stay blocked in live mode
+and while live position state is unsafe.
 
 ## Manual Signal Workflow
 

@@ -809,10 +809,13 @@ class OperatorConsoleService:
         runtime_docs_root = root / "docs" / "tradingbotsuite_runtime"
 
         def doc_path(name: str) -> Path:
+            current_path = root / "docs" / name
+            if current_path.exists():
+                return current_path
             runtime_path = runtime_docs_root / name
             if runtime_path.exists():
                 return runtime_path
-            return root / "docs" / name
+            return current_path
 
         docs = [
             ("operator-quickstart", "Operator Quickstart", doc_path("OPERATOR_QUICKSTART.md")),

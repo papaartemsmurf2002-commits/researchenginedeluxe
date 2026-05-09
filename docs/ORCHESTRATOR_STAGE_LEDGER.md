@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R91 discovery batched state checkpoints
+Current stage: Stage R92 final branch crosscheck
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR91 discovery batched state checkpoints complete
+Stage status: closed - WPR92 final crosscheck complete
 Last updated: 2026-05-10
 
 ## Stage entry decision
@@ -133,6 +133,7 @@ Last updated: 2026-05-10
 | WPR89-01-knn-deterministic-topk | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/research_discovery/test_knn_study.py`, `docs/work_packets/WPR89-01-knn-deterministic-topk.md`, `docs/stage_reports/STAGE_R89_KNN_DETERMINISTIC_TOPK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Replaced full KNN candidate distance sorts with deterministic partition-backed top-k while preserving tie behavior and diagnostics; validation is recorded in Stage R89 report. |
 | WPR90-01-hmm-vectorized-assignment | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/hmm_materialization.py`, `tests/research_discovery/test_hmm_materialization.py`, `docs/work_packets/WPR90-01-hmm-vectorized-assignment.md`, `docs/stage_reports/STAGE_R90_HMM_VECTORIZED_ASSIGNMENT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Replaced per-row HMM posterior/router pandas assignment with vectorized assignment, preserved output semantics, and validation is recorded in Stage R90 report. |
 | WPR91-01-discovery-batched-state-checkpoints | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/runner.py`, `tests/research_discovery/test_discovery_runner.py`, `docs/work_packets/WPR91-01-discovery-batched-state-checkpoints.md`, `docs/stage_reports/STAGE_R91_DISCOVERY_BATCHED_STATE_CHECKPOINTS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Reduced discovery run-state write amplification by checkpointing state at batch/snapshot boundaries and recovering from durable trial records on resume; validation is recorded in Stage R91 report. |
+| WPR92-01-final-branch-crosscheck | Codex Research Agent | closed | `src/tradingbotsuite/**`, `tests/**`, `configs/**`, `docs/work_packets/WPR92-01-final-branch-crosscheck.md`, `docs/stage_reports/STAGE_R92_FINAL_BRANCH_CROSSCHECK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/**` | Final branch crosscheck fixed KNN short-side expectancy/metrics, removed stale UI docs preference, validated real discovery output, and recorded validation in Stage R92 report. |
 
 ## Gate checklist
 
@@ -520,3 +521,8 @@ Reason: HMM posterior/router output assignment now uses vectorized column writes
 
 Decision: R91 discovery batched state checkpoints complete; discovery IO optimization can continue with append/checkpoint ledgers if needed.
 Reason: Discovery now writes durable trial records per trial but checkpoints run state at setup, resume merge, snapshot, pause, completion, and final boundaries rather than after every trial. Resume rebuilds completed state from trial records when `run_state.json` lags. Focused runner tests, full discovery tests, compile, contracts, and a 10-trial deep-shaped probe passed. The probe completed in 10.967 seconds, projecting about 1.52 hours for 5,000 trials on the local checked fixture slice. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.
+
+## Final branch crosscheck wave
+
+Decision: R92 final branch crosscheck complete; research/v3-experimental-engine is clean for handoff/push.
+Reason: The audit found and fixed one material KNN logic issue: short-majority local analog rows now use side-adjusted expectancy and discovery metrics use side-adjusted realized returns. Operator guide lookup now prefers canonical current docs, the research UI runbook and operator docs match the current Research page, and the removed-source boundary test no longer contains forbidden legacy vendor text. Official NumPy/scikit-learn/pandas docs were checked for deterministic top-k, Gaussian mixture posterior, and vectorized assignment assumptions. Focused HMM/KNN/discovery/UI/contracts validation, a real four-trial discovery probe, the deep discovery benchmark gate, compile, and the full test suite passed. This wave preserves research-only, observe-only, non-promotion boundaries and does not add live execution, candidate-pack promotion, or sizing behavior.

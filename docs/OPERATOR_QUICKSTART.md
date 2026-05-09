@@ -62,7 +62,8 @@ only when you need deeper runtime details.
 ## Research Jobs
 
 - Research jobs are offline and research-only.
-- Use `Research` for data preparation, experiment runs, training, calibration, and replay evaluation.
+- Use `Research` for provider preparation, research experiments, historical-cycle review, V4 discovery runs, artifact review, HMM/KNN monitoring, and Stage 13 readiness diagnostics.
+- Historical-cycle and fresh discovery jobs write isolated operator output directories; paused/resumed discovery jobs keep checkpoint files in the stable run-id directory.
 - Outputs must remain `research_only`, `observe_only`, and `promotion_ready: false` unless a later promotion process changes them.
 - Do not treat research artifacts as live signals.
 - Do not run research jobs in live mode or while live position state is unresolved.

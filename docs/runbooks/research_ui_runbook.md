@@ -1,38 +1,77 @@
 # Research UI Runbook
 
-Stage: Stage 9 - Research UI and operator command layer
+Stage: current research branch operator UI
 
 ## Purpose
 
-The research UI exposes research artifacts, experiment comparisons, diagnostics, and explicit research job actions. It is not a strategy implementation path and does not control live runtime mode.
+The Research page is a browser control room for offline research jobs and
+artifact review. It helps an operator run provider preparation, research
+experiments, historical-cycle reviews, and V4 discovery searches without using
+live order controls.
 
-## Entry Point
+Research outputs remain `research_only`, `observe_only`, and
+`promotion_ready: false` unless a later promotion process changes them.
 
-```python
-from tradingbotsuite.ui.research_app import create_research_app
+## Start
+
+```powershell
+$env:TBS_OPERATOR_UI_ENABLED="true"
+$env:TBS_OPERATOR_UI_SECRET="change-this-local-secret"
+$env:TBS_RUNTIME_MODE="paper"
+python -m tradingbotsuite.main serve
 ```
 
-Mount or serve the returned FastAPI app for research-only review.
+Open `http://127.0.0.1:8000/ui`, log in, then select `Research`.
+
+## Main Controls
+
+- `Provider Pipeline`: prepares or verifies provider/archive inputs. Use
+  `Intake`, `Dataset`, `Evidence`, or `All` depending on the desired scope.
+- `Research Experiment`: runs a configured evidence bundle from
+  `configs/experiments/`.
+- `Historical Cycle Review`: runs a configured full cycle from
+  `configs/research/` into an isolated operator output directory.
+- `V4 Discovery Run`: runs or resumes real HMM/KNN entry-discovery searches
+  from `configs/discovery/`.
+- `Run Full Research Review`: queues the operator-visible review bundle.
+
+The page also renders profitability, candidate mix, gate status, holding-window,
+and discovery-ledger charts from the newest artifacts found under the configured
+research output directory.
+
+## Overwrite Protection
+
+- Historical-cycle jobs write a copied spec and isolated output directory under
+  `data/research/operator_runs/historical_cycles/`.
+- Fresh discovery jobs write under a job-specific output directory.
+- Paused or resumed discovery jobs use the stable run-id directory so snapshots,
+  ledgers, and `run_state.json` can continue from the previous checkpoint.
+- Existing completed discovery runs refuse overwrite. Use a new run id for a new
+  full run.
 
 ## Safety Rules
 
-- UI routes are passive/read-only except explicit `/research/api/jobs/run-research-experiment` submissions.
-- Research jobs are queued and visible at `/research/jobs` and `/research/api/jobs`.
-- Displayed experiment metrics include manifest paths so every value can be traced to an artifact.
-- The UI module must not import live execution adapters or live order placement code.
-- Passive polling must not launch heavy jobs.
+- The Research page does not expose manual signal, smoke-live, set-mode, sizing,
+  or canary controls.
+- Research jobs are blocked in live mode and while live position state is unsafe.
+- UI path validators allow specs only from `configs/data`, `configs/experiments`,
+  `configs/research`, `configs/discovery`, or the configured research output
+  directory as appropriate.
+- Submitted jobs must pass CSRF and same-origin checks.
+- Passive polling and chart refreshes must not launch heavy jobs.
 
-## Pages
+## Evidence To Check
 
-- `/research`
-- `/research/data-quality`
-- `/research/datasets`
-- `/research/features`
-- `/research/backtests`
-- `/research/experiments`
-- `/research/equity`
-- `/research/trades`
-- `/research/regimes`
-- `/research/knn-neighbors`
-- `/research/promotion-candidates`
-- `/research/jobs`
+- Jobs table: status, error text, and result paths.
+- Artifacts panel: latest manifests and summaries.
+- Discovery ledger chart: interesting, blocked, and filter-blocked counts.
+- HMM/KNN monitoring: entropy, no-trade behavior, neighbor quality, drift, and
+  alert summaries.
+- Stage 13 readiness: should remain blocked until required paper, shadow,
+  testnet, rollback, and approval evidence exists.
+
+## Related Docs
+
+- `docs/OPERATOR_QUICKSTART.md`
+- `docs/OPERATOR_GUIDE.md`
+- `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`
