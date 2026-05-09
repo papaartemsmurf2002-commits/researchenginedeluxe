@@ -27,6 +27,7 @@ from tradingbotsuite.research_discovery.feature_sets import (
     validate_feature_column_set_manifest,
 )
 from tradingbotsuite.research_discovery.hmm_materialization import (
+    HMM_POSTERIOR_COLUMNS,
     HmmMaterializationResult,
     HmmMaterializationSpec,
     materialize_split_safe_hmm_regimes,
@@ -441,11 +442,19 @@ class _HmmCacheEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class _LabelSplitCacheEntry:
+    labeled: pd.DataFrame
+    splits: tuple[Any, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _RealDiscoveryContext:
     dataset: pd.DataFrame | None
     feature_sets: Mapping[str, DiscoveryFeatureColumnSet]
     frames_by_column_set: Mapping[str, pd.DataFrame]
     unavailable_feature_sets: Mapping[str, str]
+    label_split_cache: dict[str, _LabelSplitCacheEntry]
+    label_split_cache_lock: threading.Lock
     hmm_cache: dict[str, _HmmCacheEntry]
     hmm_cache_lock: threading.Lock
     interval_ms: int
@@ -468,6 +477,8 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
             feature_sets={},
             frames_by_column_set={},
             unavailable_feature_sets={},
+            label_split_cache={},
+            label_split_cache_lock=threading.Lock(),
             hmm_cache={},
             hmm_cache_lock=threading.Lock(),
             interval_ms=900_000,
@@ -485,6 +496,8 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
             feature_sets={},
             frames_by_column_set={},
             unavailable_feature_sets={},
+            label_split_cache={},
+            label_split_cache_lock=threading.Lock(),
             hmm_cache={},
             hmm_cache_lock=threading.Lock(),
             interval_ms=interval_ms,
@@ -547,6 +560,8 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
         feature_sets=selected,
         frames_by_column_set=frames_by_column_set,
         unavailable_feature_sets=unavailable_feature_sets,
+        label_split_cache={},
+        label_split_cache_lock=threading.Lock(),
         hmm_cache={},
         hmm_cache_lock=threading.Lock(),
         interval_ms=interval_ms,
@@ -652,25 +667,24 @@ def _materialize_hmm_with_cache(
     spec: HmmMaterializationSpec,
     context: _RealDiscoveryContext,
     cache_key: str,
-) -> HmmMaterializationResult:
+) -> tuple[HmmMaterializationResult, bool]:
     with context.hmm_cache_lock:
         cached = context.hmm_cache.get(cache_key)
     if cached is not None:
-        return cached.result
+        return _hmm_result_for_labeled_frame(cached.result, frame), True
 
     result = materialize_split_safe_hmm_regimes(frame, splits=splits, spec=spec)
     with context.hmm_cache_lock:
         existing = context.hmm_cache.get(cache_key)
         if existing is not None:
-            return existing.result
+            return _hmm_result_for_labeled_frame(existing.result, frame), True
         context.hmm_cache[cache_key] = _HmmCacheEntry(result=result)
-    return result
+    return result, False
 
 
 def _hmm_cache_key(
     *,
     column_set: DiscoveryFeatureColumnSet,
-    label_horizon: str,
     hmm_spec: HmmMaterializationSpec,
     min_splits: int,
     purge_embargo_bars: int,
@@ -680,7 +694,6 @@ def _hmm_cache_key(
             {
                 "feature_column_set_id": column_set.feature_column_set_id,
                 "registered_feature_set_id": column_set.registered_feature_set_id,
-                "label_horizon": label_horizon,
                 "hmm_spec": hmm_spec.to_payload(),
                 "min_splits": int(min_splits),
                 "purge_embargo_bars": int(purge_embargo_bars),
@@ -692,10 +705,102 @@ def _hmm_cache_key(
     ).hexdigest()
 
 
+def _hmm_result_for_labeled_frame(cached: HmmMaterializationResult, frame: pd.DataFrame) -> HmmMaterializationResult:
+    current = frame.reset_index(drop=True).copy()
+    cached_frame = cached.frame.reset_index(drop=True)
+    if len(current) != len(cached_frame):
+        raise ValueError("cached HMM frame row count does not match current labeled frame")
+    for column in _hmm_output_columns(cached_frame):
+        current[column] = cached_frame[column].to_numpy(copy=True)
+    manifest = dict(cached.manifest)
+    manifest["cache_reused_for_labeled_frame"] = True
+    return HmmMaterializationResult(frame=current, manifest=manifest)
+
+
+def _hmm_output_columns(frame: pd.DataFrame) -> tuple[str, ...]:
+    return tuple(
+        str(column)
+        for column in frame.columns
+        if str(column).startswith("regime_p_") or str(column) in HMM_POSTERIOR_COLUMNS
+    )
+
+
 def _persist_trial_artifacts(policy: str, *, ledger_kind: str) -> bool:
     if policy == "interesting_only":
         return ledger_kind == "interesting"
     return True
+
+
+def _labeled_splits_with_cache(
+    frame: pd.DataFrame,
+    *,
+    context: _RealDiscoveryContext,
+    column_set_id: str,
+    label_horizon: str,
+    interval_ms: int,
+    min_splits: int,
+    purge_embargo_bars: int,
+) -> tuple[_LabelSplitCacheEntry, bool]:
+    cache_key = _label_split_cache_key(
+        frame,
+        column_set_id=column_set_id,
+        label_horizon=label_horizon,
+        interval_ms=interval_ms,
+        min_splits=min_splits,
+        purge_embargo_bars=purge_embargo_bars,
+    )
+    with context.label_split_cache_lock:
+        cached = context.label_split_cache.get(cache_key)
+    if cached is not None:
+        return cached, True
+
+    labeled = _with_directional_labels(frame, label_horizon=label_horizon, interval_ms=interval_ms)
+    splits = tuple(
+        build_purged_walk_forward_splits(
+            labeled,
+            min_splits=min_splits,
+            purge_embargo_bars=purge_embargo_bars,
+            time_column="bar_time_ms",
+            validation_method="purged_embargoed_walk_forward",
+            split_mode="anchored",
+        )
+    )
+    entry = _LabelSplitCacheEntry(labeled=labeled, splits=splits)
+    with context.label_split_cache_lock:
+        existing = context.label_split_cache.get(cache_key)
+        if existing is not None:
+            return existing, True
+        context.label_split_cache[cache_key] = entry
+    return entry, False
+
+
+def _label_split_cache_key(
+    frame: pd.DataFrame,
+    *,
+    column_set_id: str,
+    label_horizon: str,
+    interval_ms: int,
+    min_splits: int,
+    purge_embargo_bars: int,
+) -> str:
+    time_start = frame["bar_time_ms"].iloc[0] if "bar_time_ms" in frame.columns and len(frame) else ""
+    time_end = frame["bar_time_ms"].iloc[-1] if "bar_time_ms" in frame.columns and len(frame) else ""
+    return sha256(
+        json.dumps(
+            {
+                "column_set_id": column_set_id,
+                "label_horizon": label_horizon,
+                "interval_ms": int(interval_ms),
+                "min_splits": int(min_splits),
+                "purge_embargo_bars": int(purge_embargo_bars),
+                "row_count": int(len(frame)),
+                "time_start": str(time_start),
+                "time_end": str(time_end),
+            },
+            sort_keys=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _evaluate_hmm_knn_trial(
@@ -714,15 +819,17 @@ def _evaluate_hmm_knn_trial(
 ) -> DiscoveryTrialRecord:
     trial_payload = dict(template.payload)
     label_horizon = str(trial_payload.get("label_horizon") or "4h")
-    labeled = _with_directional_labels(frame, label_horizon=label_horizon, interval_ms=interval_ms)
-    splits = build_purged_walk_forward_splits(
-        labeled,
+    label_split_entry, label_split_cache_hit = _labeled_splits_with_cache(
+        frame,
+        context=context,
+        column_set_id=column_set.feature_column_set_id,
+        label_horizon=label_horizon,
+        interval_ms=interval_ms,
         min_splits=spec.search.min_splits,
         purge_embargo_bars=spec.search.purge_embargo_bars,
-        time_column="bar_time_ms",
-        validation_method="purged_embargoed_walk_forward",
-        split_mode="anchored",
     )
+    labeled = label_split_entry.labeled
+    splits = label_split_entry.splits
     available_feature_columns = tuple(column for column in column_set.columns if column in labeled.columns)
     if not available_feature_columns:
         return _blocked_real_trial_record(
@@ -747,14 +854,13 @@ def _evaluate_hmm_knn_trial(
         covariance_type="diag",
         hmm_feature_pack_id=f"discovery_hmm_{column_set.feature_column_set_id}",
     )
-    hmm = _materialize_hmm_with_cache(
+    hmm, hmm_cache_hit = _materialize_hmm_with_cache(
         labeled,
         splits=splits,
         spec=hmm_spec,
         context=context,
         cache_key=_hmm_cache_key(
             column_set=column_set,
-            label_horizon=label_horizon,
             hmm_spec=hmm_spec,
             min_splits=spec.search.min_splits,
             purge_embargo_bars=spec.search.purge_embargo_bars,
@@ -842,6 +948,8 @@ def _evaluate_hmm_knn_trial(
         "hmm_posterior_threshold": float(hmm_spec.posterior_threshold),
         "hmm_entropy_threshold": float(hmm_spec.entropy_threshold),
         "label_horizon": label_horizon,
+        "label_split_cache_hit": bool(label_split_cache_hit),
+        "hmm_cache_hit": bool(hmm_cache_hit),
         "distance_metric": knn_spec.distance_metric,
         "k": int(knn_spec.k),
         "min_neighbor_count": int(knn_spec.min_neighbor_count),

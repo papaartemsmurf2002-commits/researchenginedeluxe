@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R87 KNN vectorized prediction
+Current stage: Stage R88 discovery HMM label cache
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR87 KNN vectorized prediction complete
+Stage status: closed - WPR88 discovery HMM label cache complete
 Last updated: 2026-05-09
 
 ## Stage entry decision
@@ -129,6 +129,7 @@ Last updated: 2026-05-09
 | WPR85-01-real-discovery-search-alignment | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `configs/discovery/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/work_packets/WPR85-01-real-discovery-search-alignment.md`, `docs/stage_reports/STAGE_R85_REAL_DISCOVERY_SEARCH_ALIGNMENT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Standard/deep discovery now generate bounded real HMM/KNN trials, operator defaults to standard real discovery, deep harvest is available for long unattended runs, quick smoke remains plumbing-only, completed-run collisions are avoided, and validation is recorded in the Stage R85 report. |
 | WPR86-01-discovery-runtime-optimization | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR86-01-discovery-runtime-optimization.md`, `docs/stage_reports/STAGE_R86_DISCOVERY_RUNTIME_OPTIMIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added bounded threaded trial evaluation, in-run HMM reuse, compact blocked-trial artifacts, feature preflight, clean all-NaN scaler handling, measured runtime improvement, and validation recorded in the Stage R86 report. |
 | WPR87-01-knn-vectorized-prediction | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/research_discovery/test_knn_study.py`, `docs/work_packets/WPR87-01-knn-vectorized-prediction.md`, `docs/stage_reports/STAGE_R87_KNN_VECTORIZED_PREDICTION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Split-local KNN validation prediction now transforms validation rows once per split, preserves row outputs and split-safety evidence, and validation is recorded in Stage R87 report. |
+| WPR88-01-discovery-hmm-label-cache | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/runner.py`, `tests/research_discovery/test_discovery_runner.py`, `docs/work_packets/WPR88-01-discovery-hmm-label-cache.md`, `docs/stage_reports/STAGE_R88_DISCOVERY_HMM_LABEL_CACHE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Cached discovery label/split preparation, reused HMM materializations across label horizons without label leakage, added cache-hit telemetry, and validation is recorded in Stage R88 report. |
 
 ## Gate checklist
 
@@ -496,3 +497,8 @@ Reason: The branch now has a research-only discovery candidate-pack eligibility 
 
 Decision: R87 KNN vectorized prediction complete; discovery runtime optimization can continue from measured bottlenecks.
 Reason: The regime-local KNN study now transforms validation rows once per split and predicts from precomputed numpy vectors while preserving the row helper, output columns, neighbor diagnostics, split-safety rule, label-safety rule, and research-only manifest boundary. Focused KNN equivalence coverage, full discovery tests, quick discovery benchmark, compile, and contracts pass. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.
+
+## Discovery HMM label cache wave
+
+Decision: R88 discovery HMM label cache complete; next target is grouped KNN top-k optimization.
+Reason: Real discovery runs now cache horizon-labeled frames and splits, reuse HMM regime materializations across label horizons by grafting cached HMM posterior/router columns onto the current horizon-labeled frame, and expose cache-hit telemetry in trial records. Regression coverage proves HMM reuse does not leak labels into KNN trials. Focused runner tests, full discovery tests, compile, contracts, and a 10-trial deep-shaped probe passed. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.

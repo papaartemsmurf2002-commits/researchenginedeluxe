@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
+from tradingbotsuite.research_discovery import runner as discovery_runner
 from tradingbotsuite.research_discovery.runner import run_discovery
 
 
@@ -251,6 +252,102 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
     assert payload["knn_artifact_persisted"] is True
     assert Path(payload["hmm_manifest_path"]).exists()
     assert Path(payload["knn_manifest_path"]).exists()
+
+
+def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path: Path, monkeypatch) -> None:
+    spec_path = tmp_path / "specs" / "horizon-cache-discovery.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def trial_template(index: int, label_horizon: str) -> dict[str, object]:
+        return {
+            "trial_id": f"trial-{index:06d}",
+            "candidate_id": f"horizon-cache-candidate-{index:06d}",
+            "candidate_family": "hmm_knn_entry_discovery",
+            "ledger_kind": "blocked",
+            "blocker_code": "not_evaluated",
+            "payload": {
+                "trial_kind": "hmm_knn_entry_discovery",
+                "feature_column_set_id": "price_trend_vol",
+                "hmm_state_count": 3,
+                "hmm_posterior_threshold": 0.55,
+                "hmm_entropy_threshold": 0.78,
+                "label_horizon": label_horizon,
+                "k": 8,
+                "min_neighbor_count": 2,
+                "distance_metric": "euclidean",
+                "probability_threshold": 0.52,
+                "expected_value_threshold": -0.0002,
+                "min_neighbor_agreement": 0.52,
+                "min_distance_quality": 0.0,
+                "vote_margin_threshold": 0.0,
+                "same_regime_only": True,
+            },
+        }
+
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "horizon-cache-run",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 3, "trial_batch_size": 3, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 1, "persist_trial_artifacts": "interesting_only"},
+                "search": {
+                    "min_splits": 4,
+                    "purge_embargo_bars": 8,
+                    "min_trade_count": 999999,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": 0.0,
+                },
+                "trial_templates": [trial_template(1, "1h"), trial_template(2, "4h"), trial_template(3, "1h")],
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    hmm_calls = []
+    knn_inputs = []
+    original_hmm = discovery_runner.materialize_split_safe_hmm_regimes
+    original_knn = discovery_runner.materialize_regime_local_knn_predictions
+
+    def wrapped_hmm(frame, *, splits, spec):
+        hmm_calls.append(pd.to_numeric(frame["label_return"], errors="coerce").reset_index(drop=True))
+        return original_hmm(frame, splits=splits, spec=spec)
+
+    def wrapped_knn(frame, *, splits, spec):
+        knn_inputs.append((spec.label_horizon, pd.to_numeric(frame["label_return"], errors="coerce").reset_index(drop=True)))
+        return original_knn(frame, splits=splits, spec=spec)
+
+    monkeypatch.setattr(discovery_runner, "materialize_split_safe_hmm_regimes", wrapped_hmm)
+    monkeypatch.setattr(discovery_runner, "materialize_regime_local_knn_predictions", wrapped_knn)
+
+    result = discovery_runner.run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+    trial_payloads = [
+        json.loads((result.output_dir / "trials" / f"trial-{index:06d}.json").read_text(encoding="utf-8"))["payload"]
+        for index in range(1, 4)
+    ]
+
+    assert len(hmm_calls) == 1
+    assert [item[0] for item in knn_inputs] == ["1h", "4h", "1h"]
+    assert [payload["hmm_cache_hit"] for payload in trial_payloads] == [False, True, True]
+    assert [payload["label_split_cache_hit"] for payload in trial_payloads] == [False, False, True]
+    pd.testing.assert_series_equal(knn_inputs[0][1], knn_inputs[2][1])
+    assert not knn_inputs[0][1].equals(knn_inputs[1][1])
 
 
 def test_discovery_runner_compacts_blocked_real_trial_artifacts(tmp_path: Path) -> None:
