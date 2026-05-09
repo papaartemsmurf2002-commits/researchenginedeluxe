@@ -43,6 +43,18 @@ DISCOVERY_LEDGER_COLUMNS = (
     "research_only",
     "observe_only",
     "promotion_ready",
+    "feature_column_set_id",
+    "hmm_state_count",
+    "label_horizon",
+    "distance_metric",
+    "k",
+    "min_neighbor_count",
+    "trade_count",
+    "signal_rate",
+    "realized_expectancy",
+    "accepted_prediction_count",
+    "evaluated_prediction_count",
+    "final_score",
     "record_sha256",
 )
 
@@ -357,7 +369,10 @@ def _ledger_integrity_reasons(
             reasons.append(f"discovery_trial_record_unknown_ledger_kind:{trial_id}:{record.ledger_kind}")
             continue
         payload = record.to_payload()
-        expected_by_name[ledger_name].append({column: payload.get(column, "") for column in DISCOVERY_LEDGER_COLUMNS})
+        trial_payload = payload.get("payload") if isinstance(payload.get("payload"), Mapping) else {}
+        expected_by_name[ledger_name].append(
+            {column: payload.get(column, trial_payload.get(column, "")) for column in DISCOVERY_LEDGER_COLUMNS}
+        )
     for name, frame in {
         "interesting_candidates": interesting,
         "blocked_candidates": blocked,

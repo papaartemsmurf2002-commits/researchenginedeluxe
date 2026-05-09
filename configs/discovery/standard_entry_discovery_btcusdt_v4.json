@@ -1,0 +1,97 @@
+{
+  "spec_version": "discovery-run-spec-v1",
+  "run_id": "standard_entry_discovery_btcusdt_v4",
+  "symbol": "BTCUSDT",
+  "timeframe": "15m",
+  "discovery_mode": "entry_discovery_standard",
+  "research_output_dir": "data/research",
+  "feature_column_sets_path": "configs/discovery/feature_column_sets_v4.json",
+  "feature_column_set_ids": [
+    "price_trend_vol",
+    "compact_wt3d_base",
+    "alternative_non_wt_price_state",
+    "perp_feature_addition_smoke"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+    ]
+  },
+  "budget": {
+    "max_trials": 360,
+    "trial_batch_size": 10,
+    "snapshot_interval_minutes": 30,
+    "rng_seed": 73
+  },
+  "search": {
+    "hmm_state_counts": [
+      3,
+      4,
+      5
+    ],
+    "hmm_posterior_thresholds": [
+      0.55,
+      0.6
+    ],
+    "hmm_entropy_thresholds": [
+      0.72,
+      0.78
+    ],
+    "label_horizons": [
+      "1h",
+      "4h",
+      "12h",
+      "24h"
+    ],
+    "k_values": [
+      5,
+      8,
+      13,
+      21
+    ],
+    "min_neighbor_counts": [
+      2,
+      4
+    ],
+    "distance_metrics": [
+      "euclidean",
+      "manhattan",
+      "cosine"
+    ],
+    "probability_thresholds": [
+      0.52,
+      0.55,
+      0.58,
+      0.62
+    ],
+    "expected_value_thresholds": [
+      -0.0002,
+      0.0,
+      0.0002
+    ],
+    "min_neighbor_agreements": [
+      0.52,
+      0.55,
+      0.6
+    ],
+    "min_distance_qualities": [
+      0.0,
+      0.01
+    ],
+    "vote_margin_thresholds": [
+      0.0,
+      0.03,
+      0.05
+    ],
+    "same_regime_only_values": [
+      true,
+      false
+    ],
+    "min_splits": 4,
+    "purge_embargo_bars": 8,
+    "min_trade_count": 20,
+    "min_signal_rate": 0.001,
+    "max_signal_rate": 0.35,
+    "min_realized_expectancy": -0.0001
+  }
+}

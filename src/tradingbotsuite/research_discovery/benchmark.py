@@ -242,9 +242,43 @@ def _write_discovery_benchmark_spec(
             "snapshot_interval_minutes": int(tier_config["snapshot_interval_minutes"]),
             "rng_seed": 81,
         },
+        "trial_templates": _benchmark_trial_templates(run_id, max_trials=int(tier_config["max_trials"])),
     }
     _write_json(path, payload)
     return path
+
+
+def _benchmark_trial_templates(run_id: str, *, max_trials: int) -> list[dict[str, Any]]:
+    templates: list[dict[str, Any]] = []
+    for index in range(1, max_trials + 1):
+        if index == 1:
+            ledger_kind = "interesting"
+            blocker_code = ""
+            filter_blocker_code = ""
+            score = 0.1
+        elif index % 2 == 0:
+            ledger_kind = "blocked"
+            blocker_code = "benchmark_placeholder_no_signal_engine"
+            filter_blocker_code = ""
+            score = 0.0
+        else:
+            ledger_kind = "filter_blocked"
+            blocker_code = ""
+            filter_blocker_code = "benchmark_placeholder_filter_blocker"
+            score = 0.0
+        templates.append(
+            {
+                "trial_id": f"trial-{index:06d}",
+                "candidate_id": f"{run_id}-benchmark-placeholder-{index:06d}",
+                "ledger_kind": ledger_kind,
+                "candidate_family": "benchmark_placeholder_discovery_candidate",
+                "score": score,
+                "blocker_code": blocker_code,
+                "filter_blocker_code": filter_blocker_code,
+                "payload": {"benchmark_placeholder": True, "trial_index": index},
+            }
+        )
+    return templates
 
 
 def _run_payload(result: DiscoveryRunResult, *, elapsed_seconds: float | None) -> dict[str, Any]:

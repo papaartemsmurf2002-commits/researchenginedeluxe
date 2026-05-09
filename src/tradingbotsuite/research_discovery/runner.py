@@ -1,18 +1,38 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 import pandas as pd
 
+from tradingbotsuite.backtesting.splits import build_purged_walk_forward_splits
 from tradingbotsuite.config import AppConfig
+from tradingbotsuite.data.historical_fixture_pack import (
+    assert_valid_historical_fixture_pack_manifest,
+    resolve_fixture_pack_cycle_dataset_path,
+)
+from tradingbotsuite.features.builders import materialize_registered_feature_set
 from tradingbotsuite.research_discovery.feature_sets import (
+    DiscoveryFeatureColumnSet,
     load_feature_column_set_manifest,
     validate_feature_column_set_manifest,
+)
+from tradingbotsuite.research_discovery.hmm_materialization import (
+    HmmMaterializationSpec,
+    materialize_split_safe_hmm_regimes,
+    write_hmm_materialization_artifacts,
+)
+from tradingbotsuite.research_discovery.knn_study import (
+    KnnStudySpec,
+    materialize_regime_local_knn_predictions,
+    write_knn_study_artifacts,
 )
 from tradingbotsuite.research_discovery.manifests import discovery_manifest_payload
 from tradingbotsuite.research_discovery.snapshots import atomic_write_json, iso_utc, utc_now, write_snapshot
@@ -46,8 +66,22 @@ LEDGER_COLUMNS = (
     "research_only",
     "observe_only",
     "promotion_ready",
+    "feature_column_set_id",
+    "hmm_state_count",
+    "label_horizon",
+    "distance_metric",
+    "k",
+    "min_neighbor_count",
+    "trade_count",
+    "signal_rate",
+    "realized_expectancy",
+    "accepted_prediction_count",
+    "evaluated_prediction_count",
+    "final_score",
     "record_sha256",
 )
+
+LABEL_HORIZON_RE = re.compile(r"^\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>bars?|b|m|min|minute|minutes|h|hour|hours|d|day|days)\s*$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +147,7 @@ def run_discovery(
     write_run_state(state_path, state)
 
     templates = generated_trial_templates(spec)
+    real_context = _prepare_real_discovery_context(spec, output_dir=output_dir) if _real_discovery_requested(spec, templates) else None
     completed_ids = set(state.completed_trial_ids)
     executed_this_call = 0
     snapshot_paths: list[Path] = []
@@ -142,7 +177,11 @@ def run_discovery(
             continue
         if stop_after_trials is not None and executed_this_call >= stop_after_trials:
             break
-        record = _placeholder_trial_record(spec, template, trial_index=index, clock=now)
+        record = (
+            _real_discovery_trial_record(spec, template, context=real_context, trial_index=index, clock=now, output_dir=output_dir)
+            if _real_trial_template(template)
+            else _placeholder_trial_record(spec, template, trial_index=index, clock=now)
+        )
         trial_path = output_dir / "trials" / f"{record.trial_id}.json"
         write_trial_record(trial_path, record)
         existing_records[record.trial_id] = record
@@ -197,11 +236,12 @@ def run_discovery(
         state = state.with_snapshot(path=snapshot, updated_at_utc=iso_utc(now()))
         write_run_state(state_path, state)
 
+    status_scope = "real discovery" if _real_discovery_requested(spec, templates) else "placeholder discovery"
     if len(state.completed_trial_ids) >= len(templates):
-        state = state.with_status("completed", updated_at_utc=iso_utc(now()), message="placeholder discovery run completed")
+        state = state.with_status("completed", updated_at_utc=iso_utc(now()), message=f"{status_scope} run completed")
         write_run_state(state_path, state)
     else:
-        state = state.with_status("in_progress", updated_at_utc=iso_utc(now()), message="placeholder discovery run paused")
+        state = state.with_status("in_progress", updated_at_utc=iso_utc(now()), message=f"{status_scope} run paused")
         write_run_state(state_path, state)
 
     _write_ledgers(
@@ -240,6 +280,7 @@ def run_discovery(
         required_outputs=required_outputs,
         counts=_record_counts(existing_records),
         feature_column_set_evidence=feature_column_set_evidence,
+        data_evidence=real_context.data_evidence if real_context is not None else {},
         runtime_seconds=time.perf_counter() - started,
     )
     atomic_write_json(manifest_path, manifest)
@@ -326,6 +367,534 @@ def _placeholder_trial_record(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _RealDiscoveryContext:
+    dataset: pd.DataFrame | None
+    feature_sets: Mapping[str, DiscoveryFeatureColumnSet]
+    frames_by_column_set: Mapping[str, pd.DataFrame]
+    unavailable_feature_sets: Mapping[str, str]
+    interval_ms: int
+    data_evidence: Mapping[str, Any]
+    unavailable_reason: str = ""
+
+
+def _real_discovery_requested(spec: DiscoveryRunSpec, templates: tuple[DiscoveryTrialTemplate, ...]) -> bool:
+    return any(_real_trial_template(template) for template in templates)
+
+
+def _real_trial_template(template: DiscoveryTrialTemplate) -> bool:
+    return str(dict(template.payload).get("trial_kind") or "") == "hmm_knn_entry_discovery"
+
+
+def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path) -> _RealDiscoveryContext:
+    if not spec.data.dataset_manifest_paths and spec.data.dataset_path is None:
+        return _RealDiscoveryContext(
+            dataset=None,
+            feature_sets={},
+            frames_by_column_set={},
+            unavailable_feature_sets={},
+            interval_ms=900_000,
+            data_evidence={"status": "missing", "reason": "real_discovery_data_required"},
+            unavailable_reason="real_discovery_data_required",
+        )
+
+    dataset, data_evidence = _load_discovery_dataset(spec)
+    dataset = _sort_discovery_dataset(dataset)
+    interval_ms = _infer_interval_ms(dataset)
+    manifest = load_feature_column_set_manifest(spec.feature_column_sets_path) if spec.feature_column_sets_path is not None else None
+    if manifest is None:
+        return _RealDiscoveryContext(
+            dataset=dataset,
+            feature_sets={},
+            frames_by_column_set={},
+            unavailable_feature_sets={},
+            interval_ms=interval_ms,
+            data_evidence=data_evidence,
+            unavailable_reason="feature_column_sets_path_required",
+        )
+    selected_ids = spec.feature_column_set_ids or tuple(item.feature_column_set_id for item in manifest.enabled_sets)
+    validate_feature_column_set_manifest(manifest, selected_ids=selected_ids)
+    by_id = manifest.set_by_id()
+    selected = {item_id: by_id[item_id] for item_id in selected_ids}
+    frames_by_registered: dict[str, pd.DataFrame] = {}
+    frames_by_column_set: dict[str, pd.DataFrame] = {}
+    unavailable_feature_sets: dict[str, str] = {}
+    materialization_errors: dict[str, dict[str, str]] = {}
+    feature_root = output_dir / "feature_matrices"
+    feature_root.mkdir(parents=True, exist_ok=True)
+    for column_set_id, column_set in selected.items():
+        if column_set.registered_feature_set_id not in frames_by_registered:
+            try:
+                materialized = materialize_registered_feature_set(
+                    dataset,
+                    feature_set_id=column_set.registered_feature_set_id,
+                    interval_ms=interval_ms,
+                    require_continuous=False,
+                )
+                frame = _sort_discovery_dataset(materialized.frame)
+                frames_by_registered[column_set.registered_feature_set_id] = frame
+                frame.to_parquet(feature_root / f"{_safe_path_part(column_set.registered_feature_set_id)}.parquet", index=False)
+            except Exception as exc:
+                unavailable_feature_sets[column_set_id] = "feature_set_materialization_failed"
+                materialization_errors[column_set_id] = {
+                    "registered_feature_set_id": column_set.registered_feature_set_id,
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                continue
+        if column_set.registered_feature_set_id in frames_by_registered:
+            frames_by_column_set[column_set_id] = frames_by_registered[column_set.registered_feature_set_id]
+    return _RealDiscoveryContext(
+        dataset=dataset,
+        feature_sets=selected,
+        frames_by_column_set=frames_by_column_set,
+        unavailable_feature_sets=unavailable_feature_sets,
+        interval_ms=interval_ms,
+        data_evidence={**data_evidence, "feature_materialization_errors": materialization_errors},
+    )
+
+
+def _real_discovery_trial_record(
+    spec: DiscoveryRunSpec,
+    template: DiscoveryTrialTemplate,
+    *,
+    context: _RealDiscoveryContext | None,
+    trial_index: int,
+    clock: Callable[[], datetime],
+    output_dir: Path,
+) -> DiscoveryTrialRecord:
+    started_at = iso_utc(clock())
+    if context is None or context.unavailable_reason:
+        return _blocked_real_trial_record(
+            spec,
+            template,
+            trial_index=trial_index,
+            started_at=started_at,
+            completed_at=iso_utc(clock()),
+            blocker_code=(context.unavailable_reason if context is not None else "real_discovery_context_missing"),
+        )
+
+    trial_payload = dict(template.payload)
+    column_set_id = str(trial_payload.get("feature_column_set_id") or "")
+    column_set = context.feature_sets.get(column_set_id)
+    frame = context.frames_by_column_set.get(column_set_id)
+    if column_set is None or frame is None:
+        return _blocked_real_trial_record(
+            spec,
+            template,
+            trial_index=trial_index,
+            started_at=started_at,
+            completed_at=iso_utc(clock()),
+            blocker_code=str(context.unavailable_feature_sets.get(column_set_id, "feature_column_set_not_materialized")),
+        )
+
+    trial_dir = output_dir / "trial_artifacts" / template.trial_id
+    trial_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        record = _evaluate_hmm_knn_trial(
+            spec,
+            template,
+            trial_index=trial_index,
+            started_at=started_at,
+            completed_at=iso_utc(clock()),
+            column_set=column_set,
+            frame=frame,
+            interval_ms=context.interval_ms,
+            trial_dir=trial_dir,
+        )
+    except Exception as exc:
+        return DiscoveryTrialRecord(
+            run_id=spec.run_id,
+            trial_id=template.trial_id,
+            attempt_id="attempt-001",
+            trial_index=trial_index,
+            candidate_id=template.candidate_id,
+            candidate_family=template.candidate_family,
+            ledger_kind="blocked",
+            score=0.0,
+            blocker_code="trial_execution_error",
+            status="failed",
+            started_at_utc=started_at,
+            completed_at_utc=iso_utc(clock()),
+            error_payload={"error": str(exc), "error_type": type(exc).__name__},
+            payload={
+                "trial_kind": "hmm_knn_entry_discovery",
+                "feature_column_set_id": column_set_id,
+                "final_score": 0.0,
+                "trade_count": 0,
+            },
+        )
+    return replace(record, completed_at_utc=iso_utc(clock()))
+
+
+def _evaluate_hmm_knn_trial(
+    spec: DiscoveryRunSpec,
+    template: DiscoveryTrialTemplate,
+    *,
+    trial_index: int,
+    started_at: str,
+    completed_at: str,
+    column_set: DiscoveryFeatureColumnSet,
+    frame: pd.DataFrame,
+    interval_ms: int,
+    trial_dir: Path,
+) -> DiscoveryTrialRecord:
+    trial_payload = dict(template.payload)
+    label_horizon = str(trial_payload.get("label_horizon") or "4h")
+    labeled = _with_directional_labels(frame, label_horizon=label_horizon, interval_ms=interval_ms)
+    splits = build_purged_walk_forward_splits(
+        labeled,
+        min_splits=spec.search.min_splits,
+        purge_embargo_bars=spec.search.purge_embargo_bars,
+        time_column="bar_time_ms",
+        validation_method="purged_embargoed_walk_forward",
+        split_mode="anchored",
+    )
+    available_feature_columns = tuple(column for column in column_set.columns if column in labeled.columns)
+    if not available_feature_columns:
+        return _blocked_real_trial_record(
+            spec,
+            template,
+            trial_index=trial_index,
+            started_at=started_at,
+            completed_at=completed_at,
+            blocker_code="feature_column_set_columns_missing",
+            payload={"feature_column_set_id": column_set.feature_column_set_id, "label_horizon": label_horizon},
+        )
+    hmm_columns = _hmm_columns_for_trial(available_feature_columns)
+    hmm_spec = HmmMaterializationSpec(
+        feature_columns=hmm_columns,
+        n_states=int(trial_payload.get("hmm_state_count", 4)),
+        posterior_threshold=float(trial_payload.get("hmm_posterior_threshold", 0.60)),
+        entropy_threshold=float(trial_payload.get("hmm_entropy_threshold", 0.78)),
+        flip_cooldown_bars=2,
+        min_training_rows=max(32, len(hmm_columns) * 4),
+        random_state=int(spec.budget.rng_seed),
+        max_iter=100,
+        covariance_type="diag",
+        hmm_feature_pack_id=f"discovery_hmm_{column_set.feature_column_set_id}",
+    )
+    hmm = materialize_split_safe_hmm_regimes(labeled, splits=splits, spec=hmm_spec)
+    hmm_artifacts = write_hmm_materialization_artifacts(trial_dir / "hmm", hmm)
+    k_value = int(trial_payload.get("k", 8))
+    min_neighbor_count = max(1, min(k_value, int(trial_payload.get("min_neighbor_count", min(4, k_value)))))
+    knn_spec = KnnStudySpec(
+        feature_columns=available_feature_columns,
+        label_column="label_up",
+        pnl_column="label_return",
+        k=k_value,
+        distance_metric=str(trial_payload.get("distance_metric") or "euclidean"),
+        probability_threshold=float(trial_payload.get("probability_threshold", 0.55)),
+        expected_value_threshold=float(trial_payload.get("expected_value_threshold", 0.0)),
+        min_neighbor_count=min_neighbor_count,
+        min_neighbor_agreement=float(trial_payload.get("min_neighbor_agreement", 0.55)),
+        min_distance_quality=float(trial_payload.get("min_distance_quality", 0.01)),
+        vote_margin_threshold=float(trial_payload.get("vote_margin_threshold", 0.05)),
+        same_regime_only=bool(trial_payload.get("same_regime_only", True)),
+        feature_column_set_id=column_set.feature_column_set_id,
+        label_horizon=label_horizon,
+    )
+    knn = materialize_regime_local_knn_predictions(hmm.frame, splits=splits, spec=knn_spec)
+    knn_artifacts = write_knn_study_artifacts(trial_dir / "knn", knn)
+    metrics = _knn_trial_metrics(knn.frame, search=spec.search)
+    ledger_kind = "interesting" if metrics["passed"] else "blocked"
+    blocker_code = "" if metrics["passed"] else str(metrics["primary_blocker"])
+    accounting_payload: dict[str, Any] = {}
+    try:
+        from tradingbotsuite.research_discovery.strategy_integration import (
+            account_hmm_knn_local_analog_strategy,
+            write_strategy_accounting_artifacts,
+        )
+
+        accounting = account_hmm_knn_local_analog_strategy(
+            knn.frame,
+            symbol=spec.symbol,
+            holding_window=_holding_window_from_label_horizon(label_horizon),
+            strategy_config={
+                "probability_threshold": knn_spec.probability_threshold,
+                "expected_value_threshold": knn_spec.expected_value_threshold,
+                "min_neighbor_count": knn_spec.min_neighbor_count,
+                "min_neighbor_agreement": knn_spec.min_neighbor_agreement,
+                "min_neighbor_distance_quality": knn_spec.min_distance_quality,
+                "min_vote_margin": knn_spec.vote_margin_threshold,
+                "spacing_bars": 1,
+            },
+            executed_trade_count=int(metrics["trade_count"]),
+        )
+        accounting_artifacts = write_strategy_accounting_artifacts(trial_dir / "strategy_accounting", accounting)
+        accounting_payload = {
+            "strategy_accounting_manifest_path": str(accounting_artifacts.manifest_path),
+            "strategy_signal_count": int(accounting.manifest["plugin_signal_count"]),
+            "strategy_executable_signal_count": int(accounting.manifest["backtest_executable_signal_count"]),
+        }
+    except Exception as exc:
+        accounting_payload = {"strategy_accounting_error": str(exc)}
+
+    payload = {
+        **trial_payload,
+        "placeholder_trial": False,
+        "feature_column_set_id": column_set.feature_column_set_id,
+        "registered_feature_set_id": column_set.registered_feature_set_id,
+        "hmm_state_count": int(hmm_spec.n_states),
+        "hmm_posterior_threshold": float(hmm_spec.posterior_threshold),
+        "hmm_entropy_threshold": float(hmm_spec.entropy_threshold),
+        "label_horizon": label_horizon,
+        "distance_metric": knn_spec.distance_metric,
+        "k": int(knn_spec.k),
+        "min_neighbor_count": int(knn_spec.min_neighbor_count),
+        "trade_count": int(metrics["trade_count"]),
+        "signal_rate": float(metrics["signal_rate"]),
+        "realized_expectancy": float(metrics["realized_expectancy"]),
+        "accepted_prediction_count": int(metrics["accepted_prediction_count"]),
+        "evaluated_prediction_count": int(metrics["evaluated_prediction_count"]),
+        "final_score": float(metrics["final_score"]),
+        "primary_blocker": str(metrics["primary_blocker"]),
+        "blocker_reasons": list(metrics["blocker_reasons"]),
+        "hmm_manifest_path": str(hmm_artifacts.manifest_path),
+        "knn_manifest_path": str(knn_artifacts.manifest_path),
+        "knn_predictions_path": str(knn_artifacts.predictions_path),
+        **accounting_payload,
+    }
+    return DiscoveryTrialRecord(
+        run_id=spec.run_id,
+        trial_id=template.trial_id,
+        attempt_id="attempt-001",
+        trial_index=trial_index,
+        candidate_id=template.candidate_id,
+        candidate_family=template.candidate_family,
+        ledger_kind=ledger_kind,
+        score=float(metrics["final_score"]),
+        blocker_code=blocker_code,
+        filter_blocker_code="",
+        status="completed",
+        started_at_utc=started_at,
+        completed_at_utc=completed_at,
+        payload=payload,
+    )
+
+
+def _blocked_real_trial_record(
+    spec: DiscoveryRunSpec,
+    template: DiscoveryTrialTemplate,
+    *,
+    trial_index: int,
+    started_at: str,
+    completed_at: str,
+    blocker_code: str,
+    payload: Mapping[str, Any] | None = None,
+) -> DiscoveryTrialRecord:
+    trial_payload = {**dict(template.payload), **dict(payload or {})}
+    return DiscoveryTrialRecord(
+        run_id=spec.run_id,
+        trial_id=template.trial_id,
+        attempt_id="attempt-001",
+        trial_index=trial_index,
+        candidate_id=template.candidate_id,
+        candidate_family=template.candidate_family or "hmm_knn_entry_discovery",
+        ledger_kind="blocked",
+        score=0.0,
+        blocker_code=blocker_code,
+        status="completed",
+        started_at_utc=started_at,
+        completed_at_utc=completed_at,
+        payload={
+            **trial_payload,
+            "placeholder_trial": False,
+            "trade_count": 0,
+            "signal_rate": 0.0,
+            "realized_expectancy": 0.0,
+            "accepted_prediction_count": 0,
+            "evaluated_prediction_count": 0,
+            "final_score": 0.0,
+        },
+    )
+
+
+def _load_discovery_dataset(spec: DiscoveryRunSpec) -> tuple[pd.DataFrame, dict[str, Any]]:
+    if spec.data.dataset_path is not None:
+        frame = pd.read_parquet(spec.data.dataset_path)
+        return frame, {
+            "source_type": "parquet_dataset",
+            "dataset_path": str(spec.data.dataset_path),
+            "dataset_sha256": _file_sha256(spec.data.dataset_path),
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+    if not spec.data.dataset_manifest_paths:
+        raise ValueError("real_discovery_data_required")
+    manifest_path = Path(spec.data.dataset_manifest_paths[0]).expanduser().resolve()
+    manifest = _read_json_object(manifest_path)
+    validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+    dataset_path = resolve_fixture_pack_cycle_dataset_path(manifest, manifest_path=manifest_path)
+    frame = pd.read_parquet(dataset_path)
+    return frame, {
+        "source_type": "historical_fixture_pack",
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": _file_sha256(manifest_path),
+        "dataset_path": str(dataset_path),
+        "dataset_sha256": _file_sha256(dataset_path),
+        "fixture_id": validation.fixture_id,
+        "row_count": validation.row_count,
+        "validation": validation.to_payload(),
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+    }
+
+
+def _sort_discovery_dataset(frame: pd.DataFrame) -> pd.DataFrame:
+    if "bar_time_ms" in frame.columns:
+        return frame.sort_values("bar_time_ms", kind="mergesort").reset_index(drop=True)
+    if "time_ms" in frame.columns:
+        return frame.sort_values("time_ms", kind="mergesort").reset_index(drop=True)
+    return frame.reset_index(drop=True)
+
+
+def _infer_interval_ms(frame: pd.DataFrame) -> int:
+    if "bar_time_ms" not in frame.columns or len(frame) < 2:
+        return 900_000
+    times = pd.to_numeric(frame["bar_time_ms"], errors="coerce").dropna().sort_values(kind="mergesort")
+    diffs = times.diff().dropna()
+    diffs = diffs[diffs > 0]
+    if diffs.empty:
+        return 900_000
+    return max(1, int(diffs.median()))
+
+
+def _with_directional_labels(frame: pd.DataFrame, *, label_horizon: str, interval_ms: int) -> pd.DataFrame:
+    if "close" not in frame.columns:
+        raise ValueError("discovery_dataset_close_column_required")
+    horizon_bars = _label_horizon_bars(label_horizon, interval_ms=interval_ms)
+    result = frame.copy().reset_index(drop=True)
+    close = pd.to_numeric(result["close"], errors="coerce")
+    future_close = close.shift(-horizon_bars)
+    label_return = (future_close / close) - 1.0
+    result["label_return"] = label_return
+    result["label_up"] = (label_return > 0.0).astype(float)
+    if "source_row_index" not in result.columns:
+        result["source_row_index"] = range(len(result))
+    source = pd.to_numeric(result["source_row_index"], errors="coerce")
+    fallback = pd.Series(range(len(result)), index=result.index)
+    result["source_row_index"] = source.where(source.notna(), fallback).astype("int64")
+    return result
+
+
+def _label_horizon_bars(label_horizon: str, *, interval_ms: int) -> int:
+    match = LABEL_HORIZON_RE.match(str(label_horizon))
+    if not match:
+        raise ValueError(f"invalid_label_horizon:{label_horizon}")
+    value = float(match.group("value"))
+    unit = match.group("unit").lower()
+    if unit in {"bar", "bars", "b"}:
+        return max(1, int(round(value)))
+    if unit in {"m", "min", "minute", "minutes"}:
+        horizon_ms = value * 60_000
+    elif unit in {"h", "hour", "hours"}:
+        horizon_ms = value * 60 * 60_000
+    elif unit in {"d", "day", "days"}:
+        horizon_ms = value * 24 * 60 * 60_000
+    else:
+        raise ValueError(f"invalid_label_horizon_unit:{label_horizon}")
+    return max(1, int(round(horizon_ms / max(1, interval_ms))))
+
+
+def _hmm_columns_for_trial(columns: tuple[str, ...]) -> tuple[str, ...]:
+    preferred = (
+        "log_return_1",
+        "log_return_4",
+        "trend_slope_20",
+        "efficiency_ratio",
+        "directional_slope_atr",
+        "realized_volatility",
+        "atr_percentile",
+    )
+    selected = tuple(column for column in preferred if column in columns)
+    return selected or columns[: min(8, len(columns))]
+
+
+def _knn_trial_metrics(frame: pd.DataFrame, *, search: Any) -> dict[str, Any]:
+    evaluated = frame.loc[frame["knn_skip_reason"].astype(str).ne("not_evaluated")].copy()
+    accepted = evaluated.loc[evaluated["accepted_by_knn"].map(_truthy)].copy()
+    returns = pd.to_numeric(accepted.get("label_return", pd.Series(dtype=float)), errors="coerce").dropna()
+    trade_count = int(len(returns))
+    evaluated_count = int(len(evaluated))
+    accepted_count = int(len(accepted))
+    signal_rate = float(trade_count / max(1, len(frame)))
+    realized_expectancy = float(returns.mean()) if trade_count else 0.0
+    gross_return = float(returns.sum()) if trade_count else 0.0
+    avg_neighbor_quality = _safe_mean(accepted.get("neighbor_distance_quality")) if not accepted.empty else 0.0
+    avg_vote_margin = _safe_mean(accepted.get("knn_vote_margin")) if not accepted.empty else 0.0
+    final_score = realized_expectancy + (0.05 * math.log1p(trade_count)) + (0.01 * avg_neighbor_quality) + (0.01 * avg_vote_margin)
+    reasons: list[str] = []
+    if trade_count < int(search.min_trade_count):
+        reasons.append("trade_count_below_discovery_floor")
+    if signal_rate < float(search.min_signal_rate):
+        reasons.append("signal_rate_below_discovery_floor")
+    if signal_rate > float(search.max_signal_rate):
+        reasons.append("signal_rate_above_discovery_ceiling")
+    if realized_expectancy < float(search.min_realized_expectancy):
+        reasons.append("realized_expectancy_below_discovery_floor")
+    if accepted_count == 0:
+        reasons.append("no_accepted_knn_predictions")
+    return {
+        "trade_count": trade_count,
+        "accepted_prediction_count": accepted_count,
+        "evaluated_prediction_count": evaluated_count,
+        "signal_rate": signal_rate,
+        "realized_expectancy": realized_expectancy,
+        "gross_realized_return": gross_return,
+        "avg_neighbor_distance_quality": avg_neighbor_quality,
+        "avg_vote_margin": avg_vote_margin,
+        "final_score": float(final_score),
+        "passed": not reasons,
+        "primary_blocker": reasons[0] if reasons else "",
+        "blocker_reasons": reasons,
+    }
+
+
+def _holding_window_from_label_horizon(label_horizon: str) -> str:
+    normalized = str(label_horizon).strip().lower()
+    if normalized in {"4h", "12h", "24h", "72h"}:
+        return normalized
+    if normalized in {"1d", "24 hours", "24hour", "24hours"}:
+        return "24h"
+    return "4h"
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if pd.isna(value):
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _safe_mean(value: Any) -> float:
+    series = pd.to_numeric(value, errors="coerce").dropna()
+    return float(series.mean()) if not series.empty else 0.0
+
+
+def _safe_path_part(value: str) -> str:
+    safe = "".join(char.lower() if char.isalnum() else "-" for char in str(value)).strip("-")
+    return safe[:96] or "artifact"
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected JSON object: {path}")
+    return payload
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _load_existing_trial_records(trial_dir: Path, *, run_id: str) -> dict[str, DiscoveryTrialRecord]:
     records: dict[str, DiscoveryTrialRecord] = {}
     if not trial_dir.exists():
@@ -388,7 +957,8 @@ def _record_frame(records: list[DiscoveryTrialRecord]) -> pd.DataFrame:
     rows = []
     for record in records:
         payload = record.to_payload()
-        rows.append({column: payload.get(column, "") for column in LEDGER_COLUMNS})
+        trial_payload = payload.get("payload") if isinstance(payload.get("payload"), Mapping) else {}
+        rows.append({column: payload.get(column, trial_payload.get(column, "")) for column in LEDGER_COLUMNS})
     return pd.DataFrame(rows, columns=list(LEDGER_COLUMNS))
 
 

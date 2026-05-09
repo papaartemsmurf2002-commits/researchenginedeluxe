@@ -57,6 +57,139 @@ class DiscoveryBudgetSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class DiscoveryDataSpec:
+    dataset_path: Path | None = None
+    dataset_manifest_paths: tuple[Path, ...] = ()
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any] | None, *, repo_root: Path) -> "DiscoveryDataSpec":
+        payload = payload or {}
+        return cls(
+            dataset_path=_resolve_optional_path(payload.get("dataset_path"), repo_root=repo_root),
+            dataset_manifest_paths=tuple(
+                _resolve_path(item, repo_root=repo_root)
+                for item in payload.get("dataset_manifest_paths") or ()
+                if str(item).strip()
+            ),
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "dataset_path": str(self.dataset_path) if self.dataset_path is not None else None,
+            "dataset_manifest_paths": [str(path) for path in self.dataset_manifest_paths],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoverySearchSpec:
+    hmm_state_counts: tuple[int, ...] = (4,)
+    hmm_posterior_thresholds: tuple[float, ...] = (0.60,)
+    hmm_entropy_thresholds: tuple[float, ...] = (0.78,)
+    label_horizons: tuple[str, ...] = ("4h",)
+    k_values: tuple[int, ...] = (8,)
+    min_neighbor_counts: tuple[int, ...] = (4,)
+    distance_metrics: tuple[str, ...] = ("euclidean",)
+    probability_thresholds: tuple[float, ...] = (0.55,)
+    expected_value_thresholds: tuple[float, ...] = (0.0,)
+    min_neighbor_agreements: tuple[float, ...] = (0.55,)
+    min_distance_qualities: tuple[float, ...] = (0.01,)
+    vote_margin_thresholds: tuple[float, ...] = (0.05,)
+    same_regime_only_values: tuple[bool, ...] = (True,)
+    min_splits: int = 4
+    purge_embargo_bars: int = 8
+    min_trade_count: int = 5
+    min_signal_rate: float = 0.0005
+    max_signal_rate: float = 0.25
+    min_realized_expectancy: float = 0.0
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any] | None) -> "DiscoverySearchSpec":
+        payload = payload or {}
+        spec = cls(
+            hmm_state_counts=_int_tuple(payload.get("hmm_state_counts"), default=(4,)),
+            hmm_posterior_thresholds=_float_tuple(payload.get("hmm_posterior_thresholds"), default=(0.60,)),
+            hmm_entropy_thresholds=_float_tuple(payload.get("hmm_entropy_thresholds"), default=(0.78,)),
+            label_horizons=_string_tuple(payload.get("label_horizons"), default=("4h",)),
+            k_values=_int_tuple(payload.get("k_values"), default=(8,)),
+            min_neighbor_counts=_int_tuple(payload.get("min_neighbor_counts"), default=(4,)),
+            distance_metrics=_string_tuple(payload.get("distance_metrics"), default=("euclidean",)),
+            probability_thresholds=_float_tuple(payload.get("probability_thresholds"), default=(0.55,)),
+            expected_value_thresholds=_float_tuple(payload.get("expected_value_thresholds"), default=(0.0,)),
+            min_neighbor_agreements=_float_tuple(payload.get("min_neighbor_agreements"), default=(0.55,)),
+            min_distance_qualities=_float_tuple(payload.get("min_distance_qualities"), default=(0.01,)),
+            vote_margin_thresholds=_float_tuple(payload.get("vote_margin_thresholds"), default=(0.05,)),
+            same_regime_only_values=_bool_tuple(payload.get("same_regime_only_values"), default=(True,)),
+            min_splits=int(payload.get("min_splits", 4)),
+            purge_embargo_bars=int(payload.get("purge_embargo_bars", 8)),
+            min_trade_count=int(payload.get("min_trade_count", 5)),
+            min_signal_rate=float(payload.get("min_signal_rate", 0.0005)),
+            max_signal_rate=float(payload.get("max_signal_rate", 0.25)),
+            min_realized_expectancy=float(payload.get("min_realized_expectancy", 0.0)),
+        )
+        spec.validate()
+        return spec
+
+    def validate(self) -> None:
+        if any(value <= 0 for value in self.hmm_state_counts):
+            raise ValueError("search.hmm_state_counts must be positive")
+        for field_name, values in {
+            "hmm_posterior_thresholds": self.hmm_posterior_thresholds,
+            "hmm_entropy_thresholds": self.hmm_entropy_thresholds,
+        }.items():
+            if any(value <= 0.0 or value > 1.0 for value in values):
+                raise ValueError(f"search.{field_name} values must be between 0 and 1")
+        if not self.label_horizons:
+            raise ValueError("search.label_horizons must not be empty")
+        if any(value <= 0 for value in self.k_values):
+            raise ValueError("search.k_values must be positive")
+        if any(value <= 0 for value in self.min_neighbor_counts):
+            raise ValueError("search.min_neighbor_counts must be positive")
+        supported_metrics = {"euclidean", "manhattan", "cosine"}
+        invalid_metrics = sorted(set(self.distance_metrics) - supported_metrics)
+        if invalid_metrics:
+            raise ValueError(f"search.distance_metrics unsupported:{','.join(invalid_metrics)}")
+        for field_name, values in {
+            "probability_thresholds": self.probability_thresholds,
+            "min_neighbor_agreements": self.min_neighbor_agreements,
+            "min_distance_qualities": self.min_distance_qualities,
+            "vote_margin_thresholds": self.vote_margin_thresholds,
+        }.items():
+            if any(value < 0.0 or value > 1.0 for value in values):
+                raise ValueError(f"search.{field_name} values must be between 0 and 1")
+        if self.min_splits < 1:
+            raise ValueError("search.min_splits must be positive")
+        if self.purge_embargo_bars < 0:
+            raise ValueError("search.purge_embargo_bars must be non-negative")
+        if self.min_trade_count < 0:
+            raise ValueError("search.min_trade_count must be non-negative")
+        if self.min_signal_rate < 0.0 or self.max_signal_rate <= 0.0 or self.min_signal_rate > self.max_signal_rate:
+            raise ValueError("search signal-rate bounds are invalid")
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "hmm_state_counts": list(self.hmm_state_counts),
+            "hmm_posterior_thresholds": list(self.hmm_posterior_thresholds),
+            "hmm_entropy_thresholds": list(self.hmm_entropy_thresholds),
+            "label_horizons": list(self.label_horizons),
+            "k_values": list(self.k_values),
+            "min_neighbor_counts": list(self.min_neighbor_counts),
+            "distance_metrics": list(self.distance_metrics),
+            "probability_thresholds": list(self.probability_thresholds),
+            "expected_value_thresholds": list(self.expected_value_thresholds),
+            "min_neighbor_agreements": list(self.min_neighbor_agreements),
+            "min_distance_qualities": list(self.min_distance_qualities),
+            "vote_margin_thresholds": list(self.vote_margin_thresholds),
+            "same_regime_only_values": list(self.same_regime_only_values),
+            "min_splits": self.min_splits,
+            "purge_embargo_bars": self.purge_embargo_bars,
+            "min_trade_count": self.min_trade_count,
+            "min_signal_rate": self.min_signal_rate,
+            "max_signal_rate": self.max_signal_rate,
+            "min_realized_expectancy": self.min_realized_expectancy,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class DiscoveryTrialTemplate:
     trial_id: str
     candidate_id: str
@@ -113,7 +246,9 @@ class DiscoveryRunSpec:
     output_dir: Path | None = None
     feature_column_sets_path: Path | None = None
     feature_column_set_ids: tuple[str, ...] = ()
-    budget: DiscoveryBudgetSpec = DiscoveryBudgetSpec()
+    data: DiscoveryDataSpec = field(default_factory=DiscoveryDataSpec)
+    search: DiscoverySearchSpec = field(default_factory=DiscoverySearchSpec)
+    budget: DiscoveryBudgetSpec = field(default_factory=DiscoveryBudgetSpec)
     trial_templates: tuple[DiscoveryTrialTemplate, ...] = ()
 
     @classmethod
@@ -152,6 +287,8 @@ class DiscoveryRunSpec:
                 for item in payload.get("feature_column_set_ids") or ()
                 if str(item).strip()
             ),
+            data=DiscoveryDataSpec.from_payload(payload.get("data"), repo_root=root),
+            search=DiscoverySearchSpec.from_payload(payload.get("search")),
             budget=DiscoveryBudgetSpec.from_payload(payload.get("budget")),
             trial_templates=trial_templates,
         )
@@ -175,6 +312,8 @@ class DiscoveryRunSpec:
                 str(self.feature_column_sets_path) if self.feature_column_sets_path is not None else None
             ),
             "feature_column_set_ids": list(self.feature_column_set_ids),
+            "data": self.data.to_payload(),
+            "search": self.search.to_payload(),
             "budget": self.budget.to_payload(),
             "trial_templates": [template.to_payload() for template in self.trial_templates],
         }
@@ -213,6 +352,8 @@ def resolve_discovery_paths(
 def generated_trial_templates(spec: DiscoveryRunSpec) -> tuple[DiscoveryTrialTemplate, ...]:
     if spec.trial_templates:
         return spec.trial_templates[: spec.budget.max_trials]
+    if spec.discovery_mode in {"entry_discovery_standard", "hmm_regime_knn_lab", "deep_candidate_harvest"}:
+        return _generated_real_discovery_trial_templates(spec)
     templates: list[DiscoveryTrialTemplate] = []
     for index in range(1, spec.budget.max_trials + 1):
         if index == 1:
@@ -244,6 +385,82 @@ def generated_trial_templates(spec: DiscoveryRunSpec) -> tuple[DiscoveryTrialTem
     return tuple(templates)
 
 
+def _generated_real_discovery_trial_templates(spec: DiscoveryRunSpec) -> tuple[DiscoveryTrialTemplate, ...]:
+    import random
+
+    feature_set_ids = spec.feature_column_set_ids or ("price_trend_vol",)
+    search = spec.search
+    k_neighbor_pairs = tuple(
+        {"k": int(k_value), "min_neighbor_count": int(min_neighbor_count)}
+        for k_value in search.k_values
+        for min_neighbor_count in search.min_neighbor_counts
+        if int(min_neighbor_count) <= int(k_value)
+    )
+    dimensions: tuple[tuple[str, tuple[Any, ...]], ...] = (
+        ("feature_column_set_id", tuple(feature_set_ids)),
+        ("hmm_state_count", tuple(int(value) for value in search.hmm_state_counts)),
+        ("hmm_posterior_threshold", tuple(float(value) for value in search.hmm_posterior_thresholds)),
+        ("hmm_entropy_threshold", tuple(float(value) for value in search.hmm_entropy_thresholds)),
+        ("label_horizon", tuple(search.label_horizons)),
+        ("knn_neighbor_pair", k_neighbor_pairs),
+        ("distance_metric", tuple(search.distance_metrics)),
+        ("probability_threshold", tuple(float(value) for value in search.probability_thresholds)),
+        ("expected_value_threshold", tuple(float(value) for value in search.expected_value_thresholds)),
+        ("min_neighbor_agreement", tuple(float(value) for value in search.min_neighbor_agreements)),
+        ("min_distance_quality", tuple(float(value) for value in search.min_distance_qualities)),
+        ("vote_margin_threshold", tuple(float(value) for value in search.vote_margin_thresholds)),
+        ("same_regime_only", tuple(bool(value) for value in search.same_regime_only_values)),
+    )
+    total_combinations = _dimension_space_size(dimensions)
+    rng = random.Random(int(spec.budget.rng_seed))
+    if total_combinations <= 0:
+        raise ValueError("real discovery search generated no trial combinations")
+    if spec.budget.max_trials >= total_combinations:
+        sampled_indices = list(range(total_combinations))
+        rng.shuffle(sampled_indices)
+    else:
+        sampled_indices = rng.sample(range(total_combinations), spec.budget.max_trials)
+    templates: list[DiscoveryTrialTemplate] = []
+    for index, combination_index in enumerate(sampled_indices, start=1):
+        payload = _payload_from_dimension_index(combination_index, dimensions)
+        payload.update(payload.pop("knn_neighbor_pair"))
+        payload["trial_kind"] = "hmm_knn_entry_discovery"
+        payload["search_space_total_combinations"] = total_combinations
+        digest = _stable_payload_digest({"run_id": spec.run_id, "index": index, **payload})[:16]
+        templates.append(
+            DiscoveryTrialTemplate(
+                trial_id=f"trial-{index:06d}",
+                candidate_id=f"{spec.run_id}-hmm-knn-{digest}",
+                ledger_kind="blocked",
+                candidate_family="hmm_knn_entry_discovery",
+                score=0.0,
+                blocker_code="not_evaluated",
+                filter_blocker_code="",
+                payload=payload,
+            )
+        )
+    return tuple(templates)
+
+
+def _dimension_space_size(dimensions: tuple[tuple[str, tuple[Any, ...]], ...]) -> int:
+    total = 1
+    for _, values in dimensions:
+        total *= len(values)
+    return total
+
+
+def _payload_from_dimension_index(index: int, dimensions: tuple[tuple[str, tuple[Any, ...]], ...]) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    remaining = int(index)
+    for name, values in reversed(dimensions):
+        size = len(values)
+        if size <= 0:
+            raise ValueError("real discovery search generated an empty dimension")
+        payload[name] = values[remaining % size]
+        remaining //= size
+    return payload
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -272,3 +489,37 @@ def _json_safe_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("payload must be a JSON object")
     return json.loads(json.dumps(dict(value), sort_keys=True, default=str, allow_nan=False))
+
+
+def _string_tuple(value: Any, *, default: tuple[str, ...]) -> tuple[str, ...]:
+    values = tuple(str(item).strip() for item in (value or default) if str(item).strip())
+    return values or default
+
+
+def _int_tuple(value: Any, *, default: tuple[int, ...]) -> tuple[int, ...]:
+    values = tuple(int(item) for item in (value or default))
+    return values or default
+
+
+def _float_tuple(value: Any, *, default: tuple[float, ...]) -> tuple[float, ...]:
+    values = tuple(float(item) for item in (value or default))
+    return values or default
+
+
+def _bool_tuple(value: Any, *, default: tuple[bool, ...]) -> tuple[bool, ...]:
+    if value is None:
+        return default
+    values = tuple(_bool_value(item) for item in value)
+    return values or default
+
+
+def _bool_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _stable_payload_digest(payload: Mapping[str, Any]) -> str:
+    from hashlib import sha256
+
+    return sha256(json.dumps(dict(payload), sort_keys=True, default=str, allow_nan=False).encode("utf-8")).hexdigest()

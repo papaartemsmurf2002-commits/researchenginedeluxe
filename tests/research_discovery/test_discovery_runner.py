@@ -166,3 +166,83 @@ def test_discovery_runner_records_feature_column_set_evidence(tmp_path: Path) ->
     assert evidence["wt3d_selected"] is True
     assert evidence["non_wt_selected"] is True
     assert evidence["promotion_ready"] is False
+
+
+def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
+    spec_path = tmp_path / "specs" / "real-discovery.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "real-discovery-run",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol", "compact_wt3d_base"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 2, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "search": {
+                    "hmm_state_counts": [3, 4],
+                    "hmm_posterior_thresholds": [0.55],
+                    "hmm_entropy_thresholds": [0.78],
+                    "label_horizons": ["4h"],
+                    "k_values": [8],
+                    "min_neighbor_counts": [2, 4],
+                    "distance_metrics": ["euclidean"],
+                    "probability_thresholds": [0.52],
+                    "expected_value_thresholds": [-0.0002],
+                    "min_neighbor_agreements": [0.52],
+                    "min_distance_qualities": [0.0],
+                    "vote_margin_thresholds": [0.0],
+                    "same_regime_only_values": [True, False],
+                    "min_splits": 4,
+                    "purge_embargo_bars": 8,
+                    "min_trade_count": 1,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": -1.0,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    result = run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    state = json.loads(result.run_state_path.read_text(encoding="utf-8"))
+    ledger_parts = [
+        frame
+        for frame in (
+            pd.read_parquet(result.interesting_candidates_path),
+            pd.read_parquet(result.blocked_candidates_path),
+            pd.read_parquet(result.filter_blockers_path),
+        )
+        if not frame.empty
+    ]
+    ledgers = pd.concat(ledger_parts, ignore_index=True)
+    trial_record = json.loads((result.output_dir / "trials" / "trial-000001.json").read_text(encoding="utf-8"))
+    payload = trial_record["payload"]
+
+    assert manifest["candidate_acceptance_scope"] == "real_discovery_ledgers_no_pack_gate"
+    assert state["status"] == "completed"
+    assert state["message"] == "real discovery run completed"
+    assert len(ledgers) == 2
+    assert ledgers["trade_count"].astype(int).sum() > 0
+    assert set(ledgers["feature_column_set_id"]).issubset({"price_trend_vol", "compact_wt3d_base"})
+    assert payload["placeholder_trial"] is False
+    assert payload["trial_kind"] == "hmm_knn_entry_discovery"
+    assert payload["trade_count"] > 0
+    assert Path(payload["hmm_manifest_path"]).exists()
+    assert Path(payload["knn_manifest_path"]).exists()

@@ -21,6 +21,7 @@ def discovery_manifest_payload(
     required_outputs: Mapping[str, str],
     counts: Mapping[str, int],
     feature_column_set_evidence: Mapping[str, Any] | None = None,
+    data_evidence: Mapping[str, Any] | None = None,
     runtime_seconds: float,
 ) -> dict[str, Any]:
     return {
@@ -39,12 +40,19 @@ def discovery_manifest_payload(
         "resolved_paths": resolved_paths.to_payload(),
         "output_dir": str(resolved_paths.output_dir),
         "budget": spec.budget.to_payload(),
+        "data": spec.data.to_payload(),
+        "data_evidence": dict(data_evidence or {}),
+        "search": spec.search.to_payload(),
         "feature_column_set_evidence": dict(feature_column_set_evidence or {}),
         "state": dict(state),
         "counts": dict(counts),
         "candidate_pack_written": False,
         "candidate_pack_paths": [],
-        "candidate_acceptance_scope": "discovery_manager_foundation_no_pack_gate",
+        "candidate_acceptance_scope": (
+            "real_discovery_ledgers_no_pack_gate"
+            if spec.discovery_mode in {"entry_discovery_standard", "hmm_regime_knn_lab", "deep_candidate_harvest"}
+            else "discovery_manager_foundation_no_pack_gate"
+        ),
         "live_fetch_used": False,
         "order_placement_used": False,
         "runtime_mode_changed": False,

@@ -1064,7 +1064,12 @@ class OperatorConsoleService:
         research_root = self._research_root()
         safe_job_id = _safe_operator_path_part(job_id)
         safe_run_id = _safe_operator_path_part(spec.run_id)
-        output_dir = (research_root / "operator_runs" / "discovery_runs" / safe_run_id).resolve()
+        if resume or stop_after_trials is not None:
+            output_dir = (research_root / "operator_runs" / "discovery_runs" / safe_run_id).resolve()
+            overwrite_protection = "resume_stable_run_id_output_dir" if resume else "pauseable_stable_run_id_output_dir"
+        else:
+            output_dir = (research_root / "operator_runs" / "discovery_runs" / safe_run_id / safe_job_id).resolve()
+            overwrite_protection = "isolated_job_output_dir"
         if not _is_relative_to(output_dir, research_root):
             raise ValueError("discovery output_dir must stay inside the configured research output directory")
 
@@ -1078,7 +1083,7 @@ class OperatorConsoleService:
         isolated_payload["output_dir"] = str(output_dir)
         isolated_payload["operator_job_id"] = job_id
         isolated_payload["operator_original_spec_path"] = str(resolved_spec_path)
-        isolated_payload["operator_overwrite_protection"] = "isolated_run_id_output_dir"
+        isolated_payload["operator_overwrite_protection"] = overwrite_protection
         isolated_spec_path.write_text(json.dumps(isolated_payload, indent=2, sort_keys=True), encoding="utf-8")
 
         result = run_discovery(
@@ -1091,7 +1096,7 @@ class OperatorConsoleService:
             "output_dir": str(result.output_dir),
             "isolated_spec_path": str(isolated_spec_path),
             "source_spec_path": str(resolved_spec_path),
-            "overwrite_protection": "isolated_run_id_output_dir",
+            "overwrite_protection": overwrite_protection,
             "resume": resume,
             "stop_after_trials": stop_after_trials,
             "discovery_run_manifest_path": str(result.manifest_path),

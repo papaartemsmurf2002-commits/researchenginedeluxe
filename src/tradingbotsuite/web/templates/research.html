@@ -398,15 +398,17 @@
 
       <div class="run-workspace">
         <h3>V4 Discovery Run</h3>
-        <div class="muted">Queue resumable discovery-manager runs. Operator launches rewrite the spec into a stable run directory under the configured research output root.</div>
+        <div class="muted">Queue real entry-discovery searches or quick plumbing checks. New completed runs write to job-specific directories; paused runs keep a stable directory for resume.</div>
         <div class="control-grid">
           <label>Discovery preset
             <select id="discovery-run-preset" onchange="applyDiscoveryPreset()">
+              <option value="configs/discovery/standard_entry_discovery_btcusdt_v4.json">BTCUSDT standard real entry discovery</option>
+              <option value="configs/discovery/deep_candidate_harvest_btcusdt_v4.json">BTCUSDT deep candidate harvest</option>
               <option value="configs/discovery/quick_smoke_btcusdt_v4.json">BTCUSDT quick smoke discovery</option>
             </select>
           </label>
           <label>Editable spec path
-            <input id="discovery-run-spec" type="text" value="configs/discovery/quick_smoke_btcusdt_v4.json">
+            <input id="discovery-run-spec" type="text" value="configs/discovery/standard_entry_discovery_btcusdt_v4.json">
           </label>
           <label>Stop after trials
             <input id="discovery-stop-after-trials" type="number" min="1" step="1" placeholder="all configured">
@@ -624,9 +626,19 @@
   };
 
   const discoveryDetails = {
+    "configs/discovery/standard_entry_discovery_btcusdt_v4.json": [
+      ["What It Tests", "Real HMM-regime plus local KNN entry discovery across feature sets, label horizons, K values, distance metrics, thresholds, and same-regime filters."],
+      ["When To Use", "Use for normal candidate search after provider data and feature fixtures are ready. It should take meaningfully longer than smoke checks and produce real trial artifacts."],
+      ["Where It Writes", "operator_runs/discovery_runs/<run>/<job>, feature_matrices, trial_artifacts, trial records, snapshots, and research_only candidate ledgers."]
+    ],
+    "configs/discovery/deep_candidate_harvest_btcusdt_v4.json": [
+      ["What It Tests", "A larger real search over WT, non-WT, perp-context, horizons, KNN thresholds, and regime-local variants for long unattended candidate harvests."],
+      ["When To Use", "Use when you can leave research running and want broad discovery with half-hour snapshots and resumable state."],
+      ["Where It Writes", "The same research_only discovery artifacts as standard mode, with more trials and larger ledgers under a separate run id."]
+    ],
     "configs/discovery/quick_smoke_btcusdt_v4.json": [
       ["What It Tests", "Discovery manager plumbing: isolated specs, run state, immutable trials, snapshots, and candidate ledgers."],
-      ["When To Use", "Use for WPR80 smoke checks or to verify that discovery output is visible before longer harvest runs."],
+      ["When To Use", "Use only to verify the operator path. It intentionally uses placeholder rows and is not a candidate-search run."],
       ["Where It Writes", "operator_runs/discovery_runs under the configured research output directory with research_only ledgers and snapshots."]
     ]
   };
@@ -870,11 +882,11 @@
 
   async function queueFullResearchReview() {
     selectProviderStage("all");
-    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing full review</strong><br>Provider refresh, experiment bundle, historical cycle, and discovery ledger run are being submitted.</div>';
+    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing full review</strong><br>Provider refresh, experiment bundle, historical cycle, and selected real discovery run are being submitted.</div>';
     await queueProviderPipeline("Full review: provider all");
     await queueResearchExperiment("Full review: experiment");
     await queueHistoricalCycle("Full review: historical cycle");
-    await queueDiscoveryRun("Full review: discovery ledger", true);
+    await queueDiscoveryRun("Full review: real discovery ledger", false);
   }
 
   function formatNumber(value) {

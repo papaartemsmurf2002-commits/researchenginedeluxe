@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
-from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec, resolve_discovery_paths
+from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec, generated_trial_templates, resolve_discovery_paths
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
@@ -69,3 +69,23 @@ def test_discovery_spec_rejects_unsafe_trial_id(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="trial_templates.trial_id"):
         DiscoveryRunSpec.from_path(spec_path)
+
+
+def test_real_discovery_configs_generate_non_placeholder_search_templates() -> None:
+    standard = DiscoveryRunSpec.from_path(Path("configs/discovery/standard_entry_discovery_btcusdt_v4.json"))
+    deep = DiscoveryRunSpec.from_path(Path("configs/discovery/deep_candidate_harvest_btcusdt_v4.json"))
+
+    standard_templates = generated_trial_templates(standard)
+    deep_templates = generated_trial_templates(deep)
+
+    assert standard.discovery_mode == "entry_discovery_standard"
+    assert deep.discovery_mode == "deep_candidate_harvest"
+    assert len(standard_templates) == standard.budget.max_trials
+    assert len(deep_templates) == deep.budget.max_trials
+    assert {template.candidate_family for template in standard_templates} == {"hmm_knn_entry_discovery"}
+    assert {template.payload["trial_kind"] for template in standard_templates[:10]} == {"hmm_knn_entry_discovery"}
+    assert {template.payload["feature_column_set_id"] for template in standard_templates}.issuperset(
+        {"price_trend_vol", "compact_wt3d_base", "alternative_non_wt_price_state"}
+    )
+    assert any(template.payload["hmm_state_count"] != 4 for template in deep_templates)
+    assert any(template.payload["min_neighbor_count"] != 4 for template in deep_templates)

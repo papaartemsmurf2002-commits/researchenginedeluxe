@@ -596,11 +596,13 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "V4 Discovery Run" in response.text
     assert "Run Discovery" in response.text
     assert "Resume Discovery" in response.text
+    assert "BTCUSDT standard real entry discovery" in response.text
+    assert "BTCUSDT deep candidate harvest" in response.text
+    assert "selected real discovery run are being submitted" in response.text
+    assert "Full review: real discovery ledger" in response.text
     assert "Discovery Ledger" in response.text
     assert "discovery_run" in response.text
     assert "Run Full Research Review" in response.text
-    assert "historical cycle, and discovery ledger run are being submitted" in response.text
-    assert "Full review: discovery ledger" in response.text
     assert "Local Action History" in response.text
     assert "isolated job-specific output directories" in response.text
     assert "Profitability Chart" in response.text
@@ -1408,7 +1410,7 @@ def test_operator_discovery_job_writes_research_only_artifacts(app_config, sampl
     assert response.status_code == 200
     assert response.json()["status"] == "queued"
     assert job["status"] == "succeeded"
-    assert job["result"]["overwrite_protection"] == "isolated_run_id_output_dir"
+    assert job["result"]["overwrite_protection"] == "isolated_job_output_dir"
     output_dir = Path(str(job["result"]["output_dir"]))
     output_dir.resolve().relative_to(research_dir.resolve())
     assert Path(str(job["result"]["isolated_spec_path"])).exists()
@@ -1464,11 +1466,13 @@ def test_operator_discovery_job_can_pause_and_resume(app_config, sample_bars, tm
 
     assert first_response.status_code == 200
     assert first_job["status"] == "succeeded"
+    assert first_job["result"]["overwrite_protection"] == "pauseable_stable_run_id_output_dir"
     assert first_state["status"] == "in_progress"
     assert first_state["completed_trial_ids"] == ["trial-000001"]
     assert second_response.status_code == 200
     assert second_job["status"] == "succeeded"
     assert second_job["result"]["resume"] is True
+    assert second_job["result"]["overwrite_protection"] == "resume_stable_run_id_output_dir"
     assert second_job["result"]["output_dir"] == first_job["result"]["output_dir"]
     discovery = next(artifact for artifact in artifacts if artifact["type"] == "discovery_run")
     assert discovery["summary"]["status"] == "completed"
