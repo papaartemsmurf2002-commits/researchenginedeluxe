@@ -870,10 +870,11 @@
 
   async function queueFullResearchReview() {
     selectProviderStage("all");
-    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing full review</strong><br>Provider refresh, experiment bundle, and historical cycle are being submitted.</div>';
+    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing full review</strong><br>Provider refresh, experiment bundle, historical cycle, and discovery ledger run are being submitted.</div>';
     await queueProviderPipeline("Full review: provider all");
     await queueResearchExperiment("Full review: experiment");
     await queueHistoricalCycle("Full review: historical cycle");
+    await queueDiscoveryRun("Full review: discovery ledger", true);
   }
 
   function formatNumber(value) {

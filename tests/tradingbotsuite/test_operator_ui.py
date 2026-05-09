@@ -599,6 +599,8 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Discovery Ledger" in response.text
     assert "discovery_run" in response.text
     assert "Run Full Research Review" in response.text
+    assert "historical cycle, and discovery ledger run are being submitted" in response.text
+    assert "Full review: discovery ledger" in response.text
     assert "Local Action History" in response.text
     assert "isolated job-specific output directories" in response.text
     assert "Profitability Chart" in response.text

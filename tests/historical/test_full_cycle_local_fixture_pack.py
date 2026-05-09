@@ -358,6 +358,10 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
     assert expected_strategies <= set(backtest_index["strategy_id"])
     assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(rankings["exit_policy_id"])
     assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(backtest_index["exit_policy_id"])
+    assert set(rankings["ablation_evidence_status"]) == {"baseline_feature_set_no_optional_claim"}
+    assert set(rankings["feature_ablation_required"]) == {False}
+    assert rankings["feature_ablation_passed"].all()
+    assert "feature_ablation_comparator_missing" not in "|".join(rankings["failure_reasons"].astype(str))
     funding_rows = rankings.loc[rankings["strategy_id"].astype(str) == "funding_crowding_fade_v2"]
     assert not funding_rows.empty
     if int(funding_rows["trade_count"].sum()) == 0:
@@ -469,6 +473,10 @@ def test_checked_in_eth_perp_context_v2_cycle_consumes_provider_context_fixture(
     assert expected_strategies <= set(backtest_index["strategy_id"])
     assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(rankings["exit_policy_id"])
     assert {"fixed_holding_window", "funding_aware_exit_v1", "oi_contraction_exit_v1"} <= set(backtest_index["exit_policy_id"])
+    assert set(rankings["ablation_evidence_status"]) == {"baseline_feature_set_no_optional_claim"}
+    assert set(rankings["feature_ablation_required"]) == {False}
+    assert rankings["feature_ablation_passed"].all()
+    assert "feature_ablation_comparator_missing" not in "|".join(rankings["failure_reasons"].astype(str))
     zero_trade_patterns = {
         "funding_crowding_fade_v2": "low_signal_density|trade_count",
         "oi_flow_breakout_v2": "low_signal_density|trade_count|flow_confirmation",

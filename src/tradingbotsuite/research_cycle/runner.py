@@ -2405,7 +2405,7 @@ def _ablation_feature_key(row: Mapping[str, Any], feature_set_id: str) -> tuple[
 
 
 def _ablation_comparator_feature_set(feature_set_id: str) -> str | None:
-    if feature_set_id == "features_price_trend_vol":
+    if feature_set_id in {"features_price_trend_vol", "features_perp_context_v2", "features_liquidation_context_v1"}:
         return None
     return {
         "features_price_trend_vol_wt3d": "features_price_trend_vol",
