@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R88 discovery HMM label cache
+Current stage: Stage R89 KNN deterministic top-k
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR88 discovery HMM label cache complete
+Stage status: closed - WPR89 KNN deterministic top-k complete
 Last updated: 2026-05-09
 
 ## Stage entry decision
@@ -130,6 +130,7 @@ Last updated: 2026-05-09
 | WPR86-01-discovery-runtime-optimization | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/**`, `configs/discovery/**`, `tests/research_discovery/**`, `docs/work_packets/WPR86-01-discovery-runtime-optimization.md`, `docs/stage_reports/STAGE_R86_DISCOVERY_RUNTIME_OPTIMIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added bounded threaded trial evaluation, in-run HMM reuse, compact blocked-trial artifacts, feature preflight, clean all-NaN scaler handling, measured runtime improvement, and validation recorded in the Stage R86 report. |
 | WPR87-01-knn-vectorized-prediction | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/research_discovery/test_knn_study.py`, `docs/work_packets/WPR87-01-knn-vectorized-prediction.md`, `docs/stage_reports/STAGE_R87_KNN_VECTORIZED_PREDICTION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Split-local KNN validation prediction now transforms validation rows once per split, preserves row outputs and split-safety evidence, and validation is recorded in Stage R87 report. |
 | WPR88-01-discovery-hmm-label-cache | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/runner.py`, `tests/research_discovery/test_discovery_runner.py`, `docs/work_packets/WPR88-01-discovery-hmm-label-cache.md`, `docs/stage_reports/STAGE_R88_DISCOVERY_HMM_LABEL_CACHE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Cached discovery label/split preparation, reused HMM materializations across label horizons without label leakage, added cache-hit telemetry, and validation is recorded in Stage R88 report. |
+| WPR89-01-knn-deterministic-topk | Codex Research Agent | closed | `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/research_discovery/test_knn_study.py`, `docs/work_packets/WPR89-01-knn-deterministic-topk.md`, `docs/stage_reports/STAGE_R89_KNN_DETERMINISTIC_TOPK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Replaced full KNN candidate distance sorts with deterministic partition-backed top-k while preserving tie behavior and diagnostics; validation is recorded in Stage R89 report. |
 
 ## Gate checklist
 
@@ -502,3 +503,8 @@ Reason: The regime-local KNN study now transforms validation rows once per split
 
 Decision: R88 discovery HMM label cache complete; next target is grouped KNN top-k optimization.
 Reason: Real discovery runs now cache horizon-labeled frames and splits, reuse HMM regime materializations across label horizons by grafting cached HMM posterior/router columns onto the current horizon-labeled frame, and expose cache-hit telemetry in trial records. Regression coverage proves HMM reuse does not leak labels into KNN trials. Focused runner tests, full discovery tests, compile, contracts, and a 10-trial deep-shaped probe passed. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.
+
+## KNN deterministic top-k wave
+
+Decision: R89 KNN deterministic top-k complete; next target is HMM assignment and discovery IO profiling/optimization.
+Reason: The KNN study now selects nearest neighbors through partition-backed deterministic top-k selection, preserves full stable-sort tie behavior at the kth-distance boundary, and records the selection engine in KNN manifests. Focused KNN tests, full discovery tests, compile, contracts, and a 10-trial deep-shaped probe passed. This wave does not change candidate-pack gates, historical-cycle semantics, promotion readiness, live execution, or sizing.

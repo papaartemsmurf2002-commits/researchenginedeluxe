@@ -303,6 +303,7 @@ def materialize_regime_local_knn_predictions(
         "split_records": split_records,
         "required_output_columns": list(KNN_PREDICTION_COLUMNS),
         "prediction_engine": "split_local_vectorized_validation_v1",
+        "neighbor_selection_engine": "deterministic_partition_topk_v1",
         "split_safety_rule": "neighbor_min_source_index <= neighbor_max_source_index <= hmm_fit_end_row < source_row_index",
         "label_safety_rule": "training_label_source_row_index + label_horizon_bars < validation_source_row_index",
         "label_horizon_bars": int(label_horizon_bars),
@@ -399,7 +400,7 @@ def _predict_precomputed_row(
         return _skip_prediction("insufficient_regime_neighbors"), []
 
     distances = _distances(query_matrix, train_matrix[candidate_indices], metric=spec.distance_metric)
-    order = np.argsort(distances, kind="mergesort")[: min(spec.k, len(candidate_indices))]
+    order = _stable_topk_distance_order(distances, k=spec.k)
     selected = candidate_indices[order]
     selected_distances = distances[order]
     selected_labels = labels[selected]
@@ -525,6 +526,20 @@ def _distances(query: np.ndarray, matrix: np.ndarray, *, metric: str) -> np.ndar
         denominator = np.linalg.norm(matrix, axis=1) * max(float(np.linalg.norm(query)), 1e-12)
         return 1.0 - (numerator / np.maximum(denominator, 1e-12))
     raise ValueError(f"unsupported distance metric: {metric}")
+
+
+def _stable_topk_distance_order(distances: np.ndarray, *, k: int) -> np.ndarray:
+    limit = min(max(0, int(k)), len(distances))
+    if limit == 0:
+        return np.array([], dtype=int)
+    if limit >= len(distances):
+        return np.argsort(distances, kind="mergesort")
+    kth_distance = float(np.partition(distances, limit - 1)[limit - 1])
+    if not math.isfinite(kth_distance):
+        return np.argsort(distances, kind="mergesort")[:limit]
+    reduced = np.flatnonzero(distances <= kth_distance)
+    reduced_order = np.argsort(distances[reduced], kind="mergesort")
+    return reduced[reduced_order][:limit]
 
 
 def _distance_quality(distances: np.ndarray) -> float:

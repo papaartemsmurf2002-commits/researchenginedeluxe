@@ -19,6 +19,7 @@ from tradingbotsuite.research_discovery.knn_study import (
     _label_horizon_bars,
     _predict_precomputed_row,
     _predict_row,
+    _stable_topk_distance_order,
     _validation_positions,
     materialize_regime_local_knn_predictions,
     write_knn_study_artifacts,
@@ -206,6 +207,26 @@ def test_vectorized_knn_prediction_matches_row_helper() -> None:
             break
 
     assert checked == 12
+
+
+def test_stable_topk_distance_order_matches_full_stable_sort_with_boundary_ties() -> None:
+    distances = np.array([0.4, 0.1, 0.2, 0.2, 0.05, 0.2, 0.8, 0.2], dtype=float)
+
+    order = _stable_topk_distance_order(distances, k=4)
+    full_order = np.argsort(distances, kind="mergesort")[:4]
+
+    np.testing.assert_array_equal(order, full_order)
+    np.testing.assert_array_equal(order, np.array([4, 1, 2, 3]))
+
+
+def test_stable_topk_distance_order_matches_full_stable_sort_for_random_distances() -> None:
+    rng = np.random.default_rng(73)
+    distances = rng.normal(size=512)
+
+    for k in (1, 3, 8, 21, 128, 512, 999):
+        order = _stable_topk_distance_order(distances, k=k)
+        full_order = np.argsort(distances, kind="mergesort")[: min(k, len(distances))]
+        np.testing.assert_array_equal(order, full_order)
 
 
 def test_knn_neighbors_are_same_regime_when_configured() -> None:
