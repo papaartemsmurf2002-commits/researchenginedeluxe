@@ -95,6 +95,43 @@ def test_discovery_runner_resume_matches_uninterrupted_completed_ledgers(tmp_pat
     pd.testing.assert_frame_equal(full_interesting.reset_index(drop=True), resumed_interesting.reset_index(drop=True))
 
 
+def test_discovery_runner_resume_recovers_when_run_state_lags_trial_records(tmp_path: Path) -> None:
+    spec_path = _write_spec(
+        tmp_path / "specs" / "lagging-state.json",
+        run_id="lagging-state-run",
+        max_trials=3,
+        trial_batch_size=3,
+    )
+    partial = run_discovery(
+        spec_path=spec_path,
+        app_config=_app_config(tmp_path),
+        stop_after_trials=2,
+        clock=_clock,
+    )
+    state_path = partial.run_state_path
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["completed_trial_ids"] == ["trial-000001", "trial-000002"]
+
+    state["completed_trial_ids"] = ["trial-000001"]
+    state["completed_trial_hashes"].pop("trial-000002")
+    state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+
+    resumed = run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), resume=True, clock=_clock)
+    resumed_state = json.loads(resumed.run_state_path.read_text(encoding="utf-8"))
+    ledgers = pd.concat(
+        [
+            pd.read_parquet(resumed.interesting_candidates_path),
+            pd.read_parquet(resumed.blocked_candidates_path),
+            pd.read_parquet(resumed.filter_blockers_path),
+        ],
+        ignore_index=True,
+    )
+
+    assert resumed_state["status"] == "completed"
+    assert resumed_state["completed_trial_ids"] == ["trial-000001", "trial-000002", "trial-000003"]
+    assert set(ledgers["trial_id"]) == {"trial-000001", "trial-000002", "trial-000003"}
+
+
 def test_discovery_runner_refuses_completed_run_overwrite(tmp_path: Path) -> None:
     spec_path = _write_spec(tmp_path / "specs" / "quick.json", run_id="complete-run")
     run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)

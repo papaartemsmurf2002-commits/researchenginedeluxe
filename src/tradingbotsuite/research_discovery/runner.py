@@ -228,7 +228,6 @@ def run_discovery(
                 write_trial_record(trial_path, record)
                 existing_records[record.trial_id] = record
                 state = state.with_completed_trial(record, updated_at_utc=iso_utc(now()))
-                write_run_state(state_path, state)
                 completed_ids.add(record.trial_id)
                 executed_this_call += 1
                 batch_completed += 1
@@ -325,6 +324,12 @@ def run_discovery(
         data_evidence=real_context.data_evidence if real_context is not None else {},
         runtime_seconds=time.perf_counter() - started,
     )
+    manifest["state_checkpoint_policy"] = {
+        "policy_version": "discovery-run-state-checkpoint-policy-v1",
+        "durable_trial_record_before_state_checkpoint": True,
+        "run_state_write_scope": "initial_resume_merge_snapshot_pause_completion_final",
+        "resume_recovers_completed_trials_from_trial_records": True,
+    }
     atomic_write_json(manifest_path, manifest)
 
     return DiscoveryRunResult(
