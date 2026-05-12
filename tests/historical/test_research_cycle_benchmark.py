@@ -112,6 +112,10 @@ def test_research_cycle_benchmark_report_contains_research_only_gate_metrics(tmp
     assert comparison["speed_claimed"] is False
     assert comparison["claim_scope"] == "local_synthetic_runtime_observation_not_speedup_or_production_claim"
     assert comparison["default_backend_verified"] == "reference"
+    assert comparison["cpu_thread_comparison_measured"] is True
+    assert comparison["cpu_parallel_workers"] == 15
+    assert comparison["cuda_runtime_evidence"]["research_only"] is True
+    assert comparison["cuda_claim_scope"] == "diagnostic_runtime_observation_not_live_readiness_or_speed_claim"
     assert len(comparison["pairs"]) == report["repeat"]
     pair = comparison["pairs"][0]
     assert pair["candidate_backtest_count_equal"] is True
@@ -120,12 +124,43 @@ def test_research_cycle_benchmark_report_contains_research_only_gate_metrics(tmp
     assert pair["evaluation_scope_counts_equal"] is True
     assert pair["behavioral_artifact_hashes_equal"] is True
     assert pair["reference"]["backend_used_counts"] == {"reference": pair["reference"]["candidate_backtest_count"]}
+    assert pair["reference"]["backend_label"] == "reference_serial_cpu"
+    assert pair["reference"]["compute_policy"]["aggregate_backtest_workers_used"] == 1
+    assert pair["reference_cpu15"]["backend_used_counts"] == {"reference": pair["reference_cpu15"]["candidate_backtest_count"]}
+    assert pair["reference_cpu15"]["backend_label"] == "reference_cpu15"
+    assert pair["reference_cpu15"]["compute_policy"]["aggregate_backtest_workers_used"] == 15
     assert pair["vector"]["backend_used_counts"] == {"vector_fixed_holding": pair["vector"]["candidate_backtest_count"]}
+    assert pair["vector"]["backend_label"] == "vector_fixed_holding_cpu15"
+    assert pair["vector"]["compute_policy"]["aggregate_backtest_workers_used"] == 15
     assert pair["vector"]["vector_scope_counts"] == {"fixed_holding_primary_bar": pair["vector"]["candidate_backtest_count"]}
     assert pair["vector"]["fallback_count"] == 0
+    if comparison["cuda_runtime_available"]:
+        assert comparison["cuda_measured"] is True
+        assert pair["cuda"] is not None
+        assert pair["cuda"]["backend_used_counts"]["cuda_fixed_holding"] == pair["cuda"]["evaluation_scope_counts"]["aggregate"]
+        assert pair["cuda"]["backend_used_counts"]["reference"] > 0
+        assert pair["cuda"]["backend_used_counts_by_scope"]["aggregate"] == {
+            "cuda_fixed_holding": pair["cuda"]["evaluation_scope_counts"]["aggregate"]
+        }
+        assert set(pair["cuda"]["backend_used_counts_by_scope"]) >= {"walk_forward_split", "cost_stress"}
+        assert pair["cuda"]["cuda_scope_counts"] == {"cuda_fixed_holding_primary_bar": pair["cuda"]["evaluation_scope_counts"]["aggregate"]}
+        assert pair["cuda"]["gpu_status_counts"] == {"cuda_fixed_holding_executed": pair["cuda"]["evaluation_scope_counts"]["aggregate"]}
+        assert pair["cuda"]["compute_policy"]["aggregate_backtest_workers_used"] == 1
+        assert pair["cuda_candidate_backtest_count_equal"] is True
+        assert pair["cuda_row_count_processed_equal"] is True
+        assert pair["cuda_candidate_ids_equal"] is True
+        assert pair["cuda_evaluation_scope_counts_equal"] is True
+        assert pair["observed_runtime_ratio_reference_over_cuda"] is not None
+        assert pair["observed_runtime_ratio_vector_over_cuda"] is not None
+    else:
+        assert comparison["cuda_measured"] is False
+        assert comparison["cuda_skip_reason"]
+        assert pair["cuda"] is None
     assert pair["reference"]["backtest_runtime_ms_sum"] > 0.0
+    assert pair["reference_cpu15"]["backtest_runtime_ms_sum"] > 0.0
     assert pair["vector"]["backtest_runtime_ms_sum"] > 0.0
     assert pair["observed_runtime_ratio_reference_over_vector"] > 0.0
+    assert pair["observed_runtime_ratio_reference_serial_over_cpu15"] > 0.0
     benchmark_gate = report["benchmark_gate"]
     assert benchmark_gate["research_only"] is True
     assert benchmark_gate["observe_only"] is True

@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R95 performance candidate-selection engine crosscheck
+Current stage: Stage R96 GPU-accelerated stability-region candidate search
 Current stage owner: Codex Research Agent
-Stage status: closed - WPR95 performance candidate-selection engine crosscheck complete
+Stage status: complete - WPR96-01 closed; ready for next research-only stage
 Last updated: 2026-05-12
 
 ## Stage entry decision
@@ -20,10 +20,10 @@ Last updated: 2026-05-12
   - `tests/tradingbotsuite/test_feature_ablation.py`
   - `tests/tradingbotsuite/test_stage12_research_plan.py`
   - `tests/contracts/test_feature_contracts.py`
+  - `docs/stage_reports/STAGE_R96_GPU_ACCELERATED_STABILITY_REGION_SEARCH_REPORT.md`
 - Known blockers accepted into this stage:
-  - `ISSUE-R95-001` remains open as a P1 performance blocker for missing
-    CUDA/GPU backtest backend evidence. Stage advancement is not blocked by the
-    ledger threshold because fewer than four P1 issues are open.
+  - None. `ISSUE-R95-001` was resolved by WPR96 with optional
+    `cuda_fixed_holding` backend evidence and remains diagnostic-only.
 
 ## Open work packets
 
@@ -158,6 +158,7 @@ Last updated: 2026-05-12
 | WPR94-15-operator-ui-truthfulness-modernization | Codex Research Agent | closed | `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`, `docs/OPERATOR_GUIDE.md`, `docs/OPERATOR_QUICKSTART.md`, `docs/runbooks/research_ui_runbook.md`, `docs/work_packets/WPR94-15-operator-ui-truthfulness-modernization.md`, `docs/stage_reports/STAGE_R94_OPERATOR_UI_TRUTHFULNESS_MODERNIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Modernized the Research tab with Operator Board, maturity labels, routine research actions, chart missing-evidence reasons, stricter planning/promotion wording, docs/runbook updates, and validation evidence. |
 | WPR94-16-final-crosscheck-review-push | Codex Research Agent | closed | See `docs/work_packets/WPR94-16-final-crosscheck-review-push.md` Allowed Paths. | Final branch crosscheck fixed review findings in discovery identity, exit-lab cost-stress gating, multiple-testing concentration evidence, validation-floor status precedence, selected-row filter evidence, and Research tab maturity/empty states. Compile, contracts, research-discovery, operator UI, full suite, static boundary scans, and diff checks passed. |
 | WPR95-01-performance-candidate-selection-engine-crosscheck | Codex Research Agent | closed | `configs/research/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/optimization/**`, `tests/contracts/test_research_cycle_contract.py`, `tests/historical/test_full_cycle_synthetic.py`, `docs/work_packets/WPR95-01-performance-candidate-selection-engine-crosscheck.md`, `docs/stage_reports/STAGE_R95_PERFORMANCE_CANDIDATE_SELECTION_ENGINE_CROSSCHECK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Added exact brute-force-equivalent search accounting, bounded compute policy, CPU aggregate parallelism, performance-plan artifacts, 15-thread research-cycle config defaults, and truthful CUDA-blocked evidence; validation recorded in Stage R95 report. |
+| WPR96-01-cuda-fixed-holding-parity-and-stability-search | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/test_backtest_contracts.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/historical/test_full_cycle_synthetic.py`, `tests/historical/test_research_cycle_benchmark.py`, `tests/optimization/**`, `tests/live/test_preflight.py` | Optional `cuda_fixed_holding` backend, runtime smoke evidence, auto routing/fallback, CPU/reference validation guard, stability search counters, benchmark evidence, and validation recorded in `docs/stage_reports/STAGE_R96_GPU_ACCELERATED_STABILITY_REGION_SEARCH_REPORT.md`. |
 
 ## Gate checklist
 
@@ -651,9 +652,28 @@ selection policy, and compute policy in candidate-space, trial-budget, and cycle
 manifests. Aggregate candidate backtests can run through bounded CPU threads
 while preserving deterministic artifact order. Checked-in full-cycle research
 configs request 15 CPU threads and prefer NVIDIA 50-series CUDA only when a
-validated backend exists. The missing CUDA backend is tracked as open
-`ISSUE-R95-001`, so the branch does not claim GPU acceleration or live-ready
-candidate selection. Compile, focused optimization/contracts/historical tests,
-full contracts, full research-discovery tests, JSON parse, and diff checks
-passed. This wave does not write candidate packs, claim promotion readiness, add
-live execution, alter live config, place orders, or touch sizing behavior.
+validated backend exists. At R95 closeout the missing CUDA backend was tracked
+as `ISSUE-R95-001`; WPR96 later resolved that issue with diagnostic-only CUDA
+evidence. This branch still does not claim live-ready candidate selection.
+Compile, focused optimization/contracts/historical tests, full contracts, full
+research-discovery tests, JSON parse, and diff checks passed. This wave does not
+write candidate packs, claim promotion readiness, add live execution, alter live
+config, place orders, or touch sizing behavior.
+
+## GPU-accelerated stability-region candidate search wave
+
+Decision: WPR96-01 CUDA fixed-holding parity and stability search complete.
+Reason: The branch now has an optional `cuda_fixed_holding` research backend
+limited to fixed-holding primary-bar screening, with lazy CuPy import, CUDA
+runtime smoke checks, support/fallback reason codes, diagnostic manifests,
+`speed_claimed: false`, fake-CuPy parity coverage, and local hardware parity
+when available. Historical research-cycle `auto` routing uses CUDA only when GPU
+is requested and the candidate is eligible; split and cost-stress validation are
+forced back to CPU/reference when CUDA routing is requested. Benchmark evidence
+now compares serial CPU reference, 15-thread CPU reference, CPU vector, and
+optional CUDA runs. Stability-region search counters use observed backend
+metadata and select only accepted regions. `ISSUE-R95-001` is resolved. Compile,
+focused backtesting/optimization/contracts/historical tests, fixture-pack
+validation, and benchmark validation passed. This wave does not write candidate
+packs, claim promotion readiness or GPU speedup, add live execution, alter live
+config, place orders, or touch sizing behavior.

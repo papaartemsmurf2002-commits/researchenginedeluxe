@@ -15,6 +15,7 @@ from tradingbotsuite.backtesting import (
     BacktestEngine,
     BacktestSpec,
     VectorBacktestEngine,
+    cuda_runtime_evidence,
 )
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
@@ -227,6 +228,11 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
         "backtest_engine_version",
         "reference_engine_version",
         "vector_execution_scope",
+        "cuda_execution_scope",
+        "cuda_parity_status",
+        "gpu_execution_status",
+        "gpu_device_name",
+        "gpu_compute_capability",
         "backtest_backend_fallback_reason",
         "backtest_backend_rejection_reason",
         "exit_policy_id",
@@ -268,6 +274,8 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert set(backtest_index["backtest_engine_version"]) == {BACKTEST_ENGINE_VERSION}
     assert set(backtest_index["reference_engine_version"]) == {BACKTEST_ENGINE_VERSION}
     assert set(backtest_index["vector_execution_scope"]) == {""}
+    assert set(backtest_index["cuda_execution_scope"]) == {""}
+    assert set(backtest_index["gpu_execution_status"]) == {""}
     assert set(backtest_index["backtest_backend_fallback_reason"]) == {""}
     assert set(backtest_index["backtest_backend_rejection_reason"]) == {""}
     assert backtest_index.loc[backtest_index["trade_count"] > 0, "trades_path"].map(lambda value: Path(str(value)).exists()).all()
@@ -552,7 +560,7 @@ def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions
     assert manifest["candidate_search_mode"] == "explicit_search_spaces"
     assert manifest["candidate_search_method"] == "grid"
     assert manifest["compute_policy"]["aggregate_backtest_workers_used"] == 2
-    assert manifest["compute_policy"]["gpu_execution_status"] == "blocked_no_cuda_backtest_backend_registered"
+    assert manifest["compute_policy"]["gpu_execution_status"] == "cuda_fixed_holding_backend_not_selected"
     assert candidate_space_manifest["candidate_id_scheme"] == "candidate_config_sha256"
     assert candidate_space_manifest["search_mode"] == "explicit_search_spaces"
     performance_plan = candidate_space_manifest["performance_plan"]
@@ -565,7 +573,8 @@ def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions
     assert performance_plan["compute_policy"]["cpu_threads"] == 2
     assert performance_plan["compute_policy"]["aggregate_backtest_workers_used"] == 2
     assert performance_plan["compute_policy"]["gpu_device_class"] == "nvidia_50_series"
-    assert performance_plan["compute_policy"]["gpu_execution_status"] == "blocked_no_cuda_backtest_backend_registered"
+    assert performance_plan["compute_policy"]["gpu_execution_status"] == "cuda_fixed_holding_backend_not_selected"
+    assert performance_plan["stability_region_acceleration_counters"]["planned_gpu_screened_count"] == 0
     explicit_policy = candidate_space_manifest["default_search_policy"]
     assert explicit_policy["enabled"] is False
     assert explicit_policy["default_search_source"] == "disabled_explicit_search_spaces_supplied"
@@ -576,6 +585,8 @@ def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions
     assert trial_budget_report["sampled_fraction_of_bruteforce"] == 1.0
     assert trial_budget_report["bruteforce_avoidance_ratio"] == 1.0
     assert trial_budget_report["compute_policy"] == performance_plan["compute_policy"]
+    assert trial_budget_report["stability_region_acceleration_counters"]["gpu_screened_count"] == 0
+    assert trial_budget_report["stability_region_acceleration_counters"]["cpu_validated_count"] == 2
     assert trial_budget_report["trials_by_candidate_source"]["optimizer_search_space"] == 4
     assert trial_budget_report["trials_by_candidate_source"]["no_trade_comparator_injected"] == 1
     assert trial_budget_report["trials_by_candidate_source"]["transparent_default_comparator_injected"] == 1
@@ -677,6 +688,122 @@ def test_full_cycle_explicit_vector_backend_writes_backend_evidence(tmp_path: Pa
         assert ranking_row["aggregate_backtest_result_sha256"] == row["result_sha256"]
         assert ranking_row["aggregate_backtest_backend_used"] == row["backtest_backend_used"]
         assert ranking_row["aggregate_backtest_engine_version"] == row["backtest_engine_version"]
+
+
+def test_cycle_auto_backend_prefers_cuda_when_available_and_falls_back_truthfully(tmp_path: Path) -> None:
+    dataset = build_hmm_knn_sweep_dataset(row_count=80, variant="balanced")
+    common = {
+        "run_id": "auto-cuda-routing",
+        "symbol": "BTCUSDT",
+        "output_dir": tmp_path / "backtests",
+        "strategy_id": "baseline_no_trade",
+        "holding_window": "1h",
+        "feature_set_id": "features_price_trend_vol",
+        "strategy_config": {},
+    }
+    auto = HistoricalResearchCycleSpec.from_payload(
+        {
+            "cycle_id": "auto-cuda",
+            "data": {"synthetic_fixture": True},
+            "strategies": ["baseline_no_trade"],
+            "backtest_backend": "auto",
+            "compute": {
+                "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+                "gpu_device_class": "nvidia_50_series",
+            },
+        },
+        spec_path=tmp_path / "auto-cuda.json",
+    )
+
+    execution = _run_cycle_backtest(
+        cycle_spec=auto,
+        reference_engine=BacktestEngine(),
+        vector_engine=VectorBacktestEngine(),
+        backtest_spec=BacktestSpec(**common),
+        dataset=dataset,
+    )
+    runtime = cuda_runtime_evidence()
+
+    assert execution.backend_evidence["backtest_backend_requested"] == "auto"
+    if runtime["available"]:
+        assert execution.backend_evidence["backtest_backend_used"] == "cuda_fixed_holding"
+        assert execution.backend_evidence["cuda_execution_scope"] == "cuda_fixed_holding_primary_bar"
+        assert execution.backend_evidence["backtest_backend_fallback_reason"] == ""
+    else:
+        assert execution.backend_evidence["backtest_backend_used"] == "vector_fixed_holding"
+        assert execution.backend_evidence["backtest_backend_fallback_reason"] == runtime["unavailable_reason"]
+        assert execution.backend_evidence["vector_execution_scope"] == "fixed_holding_primary_bar"
+
+
+def test_cycle_auto_backend_fails_when_cuda_required_but_unavailable(tmp_path: Path) -> None:
+    runtime = cuda_runtime_evidence()
+    if runtime["available"]:
+        pytest.skip("CUDA runtime is available; required GPU path is covered by routing test")
+    dataset = build_hmm_knn_sweep_dataset(row_count=80, variant="balanced")
+    spec = HistoricalResearchCycleSpec.from_payload(
+        {
+            "cycle_id": "required-cuda",
+            "data": {"synthetic_fixture": True},
+            "strategies": ["baseline_no_trade"],
+            "backtest_backend": "auto",
+            "compute": {
+                "gpu_acceleration": "require_nvidia_cuda_backend",
+                "gpu_device_class": "nvidia_50_series",
+            },
+        },
+        spec_path=tmp_path / "required-cuda.json",
+    )
+
+    with pytest.raises(ValueError, match=f"required_unavailable:{runtime['unavailable_reason']}"):
+        _run_cycle_backtest(
+            cycle_spec=spec,
+            reference_engine=BacktestEngine(),
+            vector_engine=VectorBacktestEngine(),
+            backtest_spec=BacktestSpec(
+                run_id="required-cuda",
+                symbol="BTCUSDT",
+                output_dir=tmp_path / "backtests",
+                strategy_id="baseline_no_trade",
+                holding_window="1h",
+                feature_set_id="features_price_trend_vol",
+                strategy_config={},
+            ),
+            dataset=dataset,
+        )
+
+
+def test_cycle_required_cuda_rejects_explicit_cpu_backend(tmp_path: Path) -> None:
+    dataset = build_hmm_knn_sweep_dataset(row_count=80, variant="balanced")
+    spec = HistoricalResearchCycleSpec.from_payload(
+        {
+            "cycle_id": "required-cuda-cpu-backend",
+            "data": {"synthetic_fixture": True},
+            "strategies": ["baseline_no_trade"],
+            "backtest_backend": "reference",
+            "compute": {
+                "gpu_acceleration": "require_nvidia_cuda_backend",
+                "gpu_required": True,
+            },
+        },
+        spec_path=tmp_path / "required-cuda-cpu-backend.json",
+    )
+
+    with pytest.raises(ValueError, match="cuda_required_backend_not_selectable"):
+        _run_cycle_backtest(
+            cycle_spec=spec,
+            reference_engine=BacktestEngine(),
+            vector_engine=VectorBacktestEngine(),
+            backtest_spec=BacktestSpec(
+                run_id="required-cuda-cpu-backend",
+                symbol="BTCUSDT",
+                output_dir=tmp_path / "backtests",
+                strategy_id="baseline_no_trade",
+                holding_window="1h",
+                feature_set_id="features_price_trend_vol",
+                strategy_config={},
+            ),
+            dataset=dataset,
+        )
 
 
 def test_full_cycle_explicit_exit_policy_candidates_write_identity_evidence(tmp_path: Path) -> None:
@@ -811,7 +938,10 @@ def test_cycle_backtest_backend_resolver_fails_or_falls_back_for_unsupported_vec
 
     assert execution.backend_evidence["backtest_backend_requested"] == "auto"
     assert execution.backend_evidence["backtest_backend_used"] == "reference"
-    assert execution.backend_evidence["backtest_backend_fallback_reason"] == "vector_engine_lower_timeframe_not_supported"
+    assert execution.backend_evidence["backtest_backend_fallback_reason"] == (
+        "cuda_engine_scope_unsupported:vector_engine_lower_timeframe_not_supported;"
+        "vector_engine_lower_timeframe_not_supported"
+    )
     assert execution.backend_evidence["backtest_engine_version"] == BACKTEST_ENGINE_VERSION
 
 

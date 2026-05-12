@@ -25,7 +25,7 @@ DEFAULT_STRATEGIES = (
     "regime_adaptive_v1",
     "hmm_knn_diagnostic_v1",
 )
-BACKTEST_BACKENDS = ("reference", "vector_fixed_holding", "auto")
+BACKTEST_BACKENDS = ("reference", "vector_fixed_holding", "cuda_fixed_holding", "auto")
 SUPPORTED_VALIDATION_SPLIT_MODES = (
     "purged_embargoed_walk_forward",
     "anchored_walk_forward",

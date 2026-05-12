@@ -7,6 +7,13 @@ from tradingbotsuite.backtesting.benchmark import (
     write_backtest_benchmark_report,
 )
 from tradingbotsuite.backtesting.costs import CostBreakdown, CostModel
+from tradingbotsuite.backtesting.cuda_engine import (
+    CUDA_BACKTEST_ENGINE_VERSION,
+    CUDA_EXECUTION_SCOPE,
+    CudaFixedHoldingBacktestEngine,
+    cuda_backtest_support_reason,
+    cuda_runtime_evidence,
+)
 from tradingbotsuite.backtesting.engine import (
     BACKTEST_ENGINE_VERSION,
     BacktestEngine,
@@ -29,11 +36,16 @@ __all__ = [
     "BacktestSpec",
     "CostBreakdown",
     "CostModel",
+    "CUDA_BACKTEST_ENGINE_VERSION",
+    "CUDA_EXECUTION_SCOPE",
+    "CudaFixedHoldingBacktestEngine",
     "ExecutionSimulator",
     "PortfolioAllocation",
     "PortfolioSimulator",
     "VECTOR_BACKTEST_ENGINE_VERSION",
     "VectorBacktestEngine",
     "calculate_backtest_metrics",
+    "cuda_backtest_support_reason",
+    "cuda_runtime_evidence",
     "write_backtest_benchmark_report",
 ]

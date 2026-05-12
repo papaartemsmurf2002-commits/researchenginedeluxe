@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 0 | 0 |
-| P1 | 1 | 0 | 4 | 0 |
+| P1 | 0 | 0 | 5 | 0 |
 | P2 | 0 | 0 | 0 | 0 |
 | P3 | 0 | 0 | 0 | 0 |
 
@@ -127,7 +127,7 @@ Stage R58 updated `_optional_numeric` to return no context for non-finite number
 Severity: P1
 Stage discovered: Stage R95 - Performance candidate-selection engine crosscheck
 Owner: Codex Research Agent
-Status: open
+Status: resolved
 Paths affected: `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`
 
 ### Problem
@@ -144,7 +144,14 @@ Add a validated CUDA-capable research backtest or feature-evaluation backend wit
 
 ### Resolution notes
 
-Open. Current mitigation is explicit artifact truthfulness plus CPU aggregate-backtest parallelism via `compute.cpu_threads`.
+Resolved by WPR96. The branch now has an optional `cuda_fixed_holding`
+research backend with lazy CuPy import, runtime smoke evidence, support reason
+codes, CPU fallback behavior, fake-CuPy parity tests, local CUDA parity tests
+when hardware is available, benchmark evidence, and stability-region
+acceleration counters. The backend remains diagnostic and `speed_claimed: false`;
+split/cost-stress validation is forced back to CPU/reference when GPU routing is
+requested. Rich exits, lower-timeframe paths, KNN overlays, candidate-pack
+promotion, live readiness, sizing, and order placement remain out of scope.
 
 ## Issue template
 

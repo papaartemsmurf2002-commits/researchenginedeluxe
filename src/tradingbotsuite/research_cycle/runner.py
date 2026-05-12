@@ -12,9 +12,13 @@ from typing import Any, Mapping
 import pandas as pd
 
 from tradingbotsuite.backtesting import (
+    CUDA_BACKTEST_ENGINE_VERSION,
     VECTOR_BACKTEST_ENGINE_VERSION,
     BacktestEngine,
+    CudaFixedHoldingBacktestEngine,
     VectorBacktestEngine,
+    cuda_backtest_support_reason,
+    cuda_runtime_evidence,
 )
 from tradingbotsuite.backtesting.engine import BacktestResult, BacktestSpec
 from tradingbotsuite.backtesting.vector_engine import vector_backtest_support_reason
@@ -122,21 +126,47 @@ def _run_cycle_backtest(
     vector_engine: VectorBacktestEngine,
     backtest_spec: BacktestSpec,
     dataset: pd.DataFrame,
+    cuda_engine: CudaFixedHoldingBacktestEngine | None = None,
+    allow_cuda: bool = True,
 ) -> CycleBacktestExecution:
+    cuda_engine = cuda_engine or CudaFixedHoldingBacktestEngine()
     requested = cycle_spec.backtest_backend
-    unsupported_reason = vector_backtest_support_reason(backtest_spec)
+    vector_unsupported_reason = vector_backtest_support_reason(backtest_spec)
+    gpu_requested = str(cycle_spec.compute.gpu_acceleration) != "disabled"
+    gpu_required = bool(cycle_spec.compute.gpu_required)
+    if gpu_required and requested not in {"auto", "cuda_fixed_holding"}:
+        raise ValueError("backtest_backend_cuda_fixed_holding_required_unavailable:cuda_required_backend_not_selectable")
+    cuda_unsupported_reason: str | None = None
+    if allow_cuda and (requested == "cuda_fixed_holding" or (requested == "auto" and gpu_requested)):
+        cuda_unsupported_reason = cuda_backtest_support_reason(backtest_spec)
     fallback_reason = ""
     if requested == "reference":
         result = reference_engine.run(backtest_spec, dataset=dataset)
     elif requested == "vector_fixed_holding":
-        if unsupported_reason is not None:
-            raise ValueError(f"backtest_backend_vector_fixed_holding_unsupported:{unsupported_reason}")
+        if vector_unsupported_reason is not None:
+            raise ValueError(f"backtest_backend_vector_fixed_holding_unsupported:{vector_unsupported_reason}")
         result = vector_engine.run(backtest_spec, dataset=dataset)
+    elif requested == "cuda_fixed_holding":
+        if not allow_cuda:
+            fallback_reason = "cuda_fixed_holding_validation_reference_required"
+            result = reference_engine.run(backtest_spec, dataset=dataset)
+        elif cuda_unsupported_reason is not None:
+            raise ValueError(f"backtest_backend_cuda_fixed_holding_unsupported:{cuda_unsupported_reason}")
+        else:
+            result = cuda_engine.run(backtest_spec, dataset=dataset)
     elif requested == "auto":
-        if unsupported_reason is None:
+        if gpu_requested and not allow_cuda:
+            fallback_reason = "cuda_fixed_holding_validation_reference_required"
+            result = reference_engine.run(backtest_spec, dataset=dataset)
+        elif gpu_requested and cuda_unsupported_reason is None:
+            result = cuda_engine.run(backtest_spec, dataset=dataset)
+        elif gpu_requested and gpu_required:
+            raise ValueError(f"backtest_backend_cuda_fixed_holding_required_unavailable:{cuda_unsupported_reason}")
+        elif vector_unsupported_reason is None:
+            fallback_reason = "" if not gpu_requested else str(cuda_unsupported_reason or "")
             result = vector_engine.run(backtest_spec, dataset=dataset)
         else:
-            fallback_reason = unsupported_reason
+            fallback_reason = _join_backend_reasons(cuda_unsupported_reason, vector_unsupported_reason)
             result = reference_engine.run(backtest_spec, dataset=dataset)
     else:
         raise ValueError(f"unsupported backtest_backend: {requested}")
@@ -160,7 +190,14 @@ def _backtest_backend_evidence(
 ) -> dict[str, Any]:
     engine_version = str(manifest.get("engine_version") or "")
     vector_scope = str(manifest.get("vector_execution_scope") or "")
-    used = "vector_fixed_holding" if engine_version == VECTOR_BACKTEST_ENGINE_VERSION or vector_scope else "reference"
+    cuda_scope = str(manifest.get("cuda_execution_scope") or "")
+    if engine_version == CUDA_BACKTEST_ENGINE_VERSION or cuda_scope:
+        used = "cuda_fixed_holding"
+    elif engine_version == VECTOR_BACKTEST_ENGINE_VERSION or vector_scope:
+        used = "vector_fixed_holding"
+    else:
+        used = "reference"
+    runtime_evidence = dict(manifest.get("gpu_runtime_evidence") or {})
     return {
         "backtest_backend_requested": requested,
         "backtest_backend_used": used,
@@ -169,10 +206,53 @@ def _backtest_backend_evidence(
         "backtest_engine_version": engine_version,
         "reference_engine_version": str(manifest.get("reference_engine_version") or (engine_version if used == "reference" else "")),
         "vector_execution_scope": vector_scope,
+        "cuda_execution_scope": cuda_scope,
+        "cuda_parity_status": str(manifest.get("cuda_parity_status") or ""),
+        "gpu_execution_status": str(manifest.get("gpu_execution_status") or ""),
+        "gpu_device_name": str(runtime_evidence.get("gpu_name") or ""),
+        "gpu_compute_capability": str(runtime_evidence.get("compute_capability") or ""),
+        "gpu_driver_version": runtime_evidence.get("driver_version"),
+        "gpu_runtime_version": runtime_evidence.get("runtime_version"),
+        "gpu_memory_total_bytes": runtime_evidence.get("memory_total_bytes"),
+        "cupy_version": str(runtime_evidence.get("cupy_version") or ""),
         "backtest_cache_key_components_engine_version": str(
             (manifest.get("cache_key_components") or {}).get("engine_version") or ""
         ),
     }
+
+
+def _aggregate_backtest_worker_count(spec: HistoricalResearchCycleSpec) -> int:
+    requested = str(spec.backtest_backend)
+    gpu_requested = str(spec.compute.gpu_acceleration) != "disabled"
+    if gpu_requested and requested in {"auto", "cuda_fixed_holding"}:
+        runtime = cuda_runtime_evidence()
+        if bool(runtime.get("available", False)) and _cycle_has_cuda_screening_scope(spec):
+            return 1
+    return max(1, int(spec.compute.cpu_threads))
+
+
+def _join_backend_reasons(*reasons: str | None) -> str:
+    values = [str(reason) for reason in reasons if str(reason or "")]
+    return ";".join(dict.fromkeys(values))
+
+
+def _cycle_has_cuda_screening_scope(spec: HistoricalResearchCycleSpec) -> bool:
+    if spec.optimizer.search_spaces:
+        exit_policy_ids = [
+            str(space.get("exit_policy_id") or "fixed_holding_window")
+            for space in spec.optimizer.search_spaces
+        ]
+    else:
+        exit_policy_ids = [
+            str(policy.get("exit_policy_id") or "fixed_holding_window")
+            for policy in spec.exits.exit_policies
+        ]
+    return any(_is_cuda_fixed_holding_policy(exit_policy_id) for exit_policy_id in exit_policy_ids)
+
+
+def _is_cuda_fixed_holding_policy(exit_policy_id: str) -> bool:
+    value = str(exit_policy_id).lower()
+    return value == "fixed_holding_window" or value.endswith("_time_exit")
 
 
 def _aggregate_candidate_evaluations(
@@ -195,6 +275,7 @@ def _aggregate_candidate_evaluations(
             cycle_spec=spec,
             reference_engine=BacktestEngine(),
             vector_engine=VectorBacktestEngine(),
+            cuda_engine=CudaFixedHoldingBacktestEngine(),
             backtest_spec=BacktestSpec(
                 run_id=_candidate_backtest_run_id(candidate, "agg"),
                 symbol=spec.symbol,
@@ -524,12 +605,13 @@ def run_historical_research_cycle(
     backtest_root = output_dir / "backtests"
     reference_engine = BacktestEngine()
     vector_engine = VectorBacktestEngine()
+    cuda_engine = CudaFixedHoldingBacktestEngine()
     aggregate_records: list[dict[str, Any]] = []
     backtest_index_records: list[dict[str, Any]] = []
     regime_metric_records: list[dict[str, Any]] = []
     side_metric_records: list[dict[str, Any]] = []
     candidate_results_by_id: dict[str, CandidateResult] = {}
-    aggregate_workers = max(1, int(spec.compute.cpu_threads))
+    aggregate_workers = _aggregate_backtest_worker_count(spec)
     performance_plan = build_candidate_selection_performance_plan(
         spec=spec,
         candidates=candidates,
@@ -613,6 +695,7 @@ def run_historical_research_cycle(
                 cycle_spec=spec,
                 reference_engine=reference_engine,
                 vector_engine=vector_engine,
+                cuda_engine=cuda_engine,
                 backtest_spec=BacktestSpec(
                     run_id=_candidate_backtest_run_id(candidate, "split", str(split.split_id)),
                     symbol=spec.symbol,
@@ -631,6 +714,7 @@ def run_historical_research_cycle(
                     strategy_config=_strategy_config(candidate),
                 ),
                 dataset=split_frame,
+                allow_cuda=False,
             )
             split_result = split_execution.result
             metrics = _read_json(split_result.metrics_path)
@@ -662,6 +746,7 @@ def run_historical_research_cycle(
                 cycle_spec=spec,
                 reference_engine=reference_engine,
                 vector_engine=vector_engine,
+                cuda_engine=cuda_engine,
                 backtest_spec=BacktestSpec(
                     run_id=_candidate_backtest_run_id(candidate, "cost", _short_scenario_id(str(scenario["scenario_id"]))),
                     symbol=spec.symbol,
@@ -684,6 +769,7 @@ def run_historical_research_cycle(
                     strategy_config=_strategy_config(candidate),
                 ),
                 dataset=stress_frame,
+                allow_cuda=False,
             )
             stress_result = stress_execution.result
             metrics = _read_json(stress_result.metrics_path)
@@ -2272,6 +2358,11 @@ def _ranking_record(
         "aggregate_backtest_engine_version": str(backend_evidence["backtest_engine_version"]),
         "aggregate_backtest_reference_engine_version": str(backend_evidence["reference_engine_version"]),
         "aggregate_backtest_vector_execution_scope": str(backend_evidence["vector_execution_scope"]),
+        "aggregate_backtest_cuda_execution_scope": str(backend_evidence.get("cuda_execution_scope", "")),
+        "aggregate_backtest_cuda_parity_status": str(backend_evidence.get("cuda_parity_status", "")),
+        "aggregate_backtest_gpu_execution_status": str(backend_evidence.get("gpu_execution_status", "")),
+        "aggregate_backtest_gpu_device_name": str(backend_evidence.get("gpu_device_name", "")),
+        "aggregate_backtest_gpu_compute_capability": str(backend_evidence.get("gpu_compute_capability", "")),
         "aggregate_backtest_cache_key_components_engine_version": str(
             backend_evidence["backtest_cache_key_components_engine_version"]
         ),
@@ -2561,11 +2652,15 @@ def _backtest_backend_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     used_counts: dict[str, int] = {}
     fallback_reasons: dict[str, int] = {}
     vector_scope_counts: dict[str, int] = {}
+    cuda_scope_counts: dict[str, int] = {}
+    gpu_status_counts: dict[str, int] = {}
     for record in records:
         requested = str(record.get("backtest_backend_requested") or "")
         used = str(record.get("backtest_backend_used") or "")
         fallback_reason = str(record.get("backtest_backend_fallback_reason") or "")
         vector_scope = str(record.get("vector_execution_scope") or "")
+        cuda_scope = str(record.get("cuda_execution_scope") or "")
+        gpu_status = str(record.get("gpu_execution_status") or "")
         if requested:
             requested_counts[requested] = requested_counts.get(requested, 0) + 1
         if used:
@@ -2574,6 +2669,10 @@ def _backtest_backend_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
             fallback_reasons[fallback_reason] = fallback_reasons.get(fallback_reason, 0) + 1
         if vector_scope:
             vector_scope_counts[vector_scope] = vector_scope_counts.get(vector_scope, 0) + 1
+        if cuda_scope:
+            cuda_scope_counts[cuda_scope] = cuda_scope_counts.get(cuda_scope, 0) + 1
+        if gpu_status:
+            gpu_status_counts[gpu_status] = gpu_status_counts.get(gpu_status, 0) + 1
     return {
         "summary_version": "research-cycle-backtest-backend-summary-v1",
         "research_only": True,
@@ -2585,6 +2684,8 @@ def _backtest_backend_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "fallback_count": int(sum(fallback_reasons.values())),
         "fallback_reasons": dict(sorted(fallback_reasons.items())),
         "vector_scope_counts": dict(sorted(vector_scope_counts.items())),
+        "cuda_scope_counts": dict(sorted(cuda_scope_counts.items())),
+        "gpu_status_counts": dict(sorted(gpu_status_counts.items())),
     }
 
 
@@ -3489,6 +3590,11 @@ def _trial_budget_report(
     source_counts = _candidate_source_counts(candidates)
     comparator_count = sum(1 for candidate in candidates if bool(candidate.get("comparator_injected", False)))
     shortlisted_count = int(rankings["split_evaluated"].fillna(False).astype(bool).sum()) if "split_evaluated" in rankings else 0
+    stability_acceleration = _stability_region_acceleration_counters(
+        performance_plan=performance_plan,
+        backtest_index_records=backtest_index_records,
+        shortlisted_count=shortlisted_count,
+    )
     return {
         "trial_budget_report_version": TRIAL_BUDGET_REPORT_VERSION,
         "research_only": True,
@@ -3513,6 +3619,7 @@ def _trial_budget_report(
             performance_plan.get("bruteforce_avoidance_ratio", 1.0)
         ),
         "compute_policy": dict(performance_plan.get("compute_policy") or {}),
+        "stability_region_acceleration_counters": stability_acceleration,
         "optimizer_method_sequence": list(spec.optimizer.method_sequence),
         "budget_policy": {
             "max_candidates_per_strategy": int(spec.optimizer.max_candidates_per_strategy),
@@ -3549,6 +3656,62 @@ def _trial_budget_report(
             "Injected comparators are counted because they affect ranking and candidate-family comparisons.",
             "Duplicate generation attempts before candidate-id deduplication are not materialized by the historical runner.",
         ],
+    }
+
+
+def _stability_region_acceleration_counters(
+    *,
+    performance_plan: Mapping[str, Any],
+    backtest_index_records: list[dict[str, Any]],
+    shortlisted_count: int,
+) -> dict[str, Any]:
+    aggregate_records = [
+        record
+        for record in backtest_index_records
+        if str(record.get("evaluation_scope") or "") == "aggregate"
+    ]
+    gpu_screened = sum(str(record.get("backtest_backend_used") or "") == "cuda_fixed_holding" for record in aggregate_records)
+    cpu_screened = len(aggregate_records) - gpu_screened
+    validation_records = [
+        record
+        for record in backtest_index_records
+        if str(record.get("evaluation_scope") or "") in {"walk_forward_split", "cost_stress"}
+        and str(record.get("candidate_id") or "")
+    ]
+    cpu_validated_ids = {
+        str(record.get("candidate_id"))
+        for record in validation_records
+        if str(record.get("backtest_backend_used") or "") != "cuda_fixed_holding"
+    }
+    gpu_validated_ids = {
+        str(record.get("candidate_id"))
+        for record in validation_records
+        if str(record.get("backtest_backend_used") or "") == "cuda_fixed_holding"
+    }
+    validation_backend_counts: dict[str, int] = {}
+    for record in validation_records:
+        backend = str(record.get("backtest_backend_used") or "unknown")
+        validation_backend_counts[backend] = validation_backend_counts.get(backend, 0) + 1
+    brute_force_count = int(performance_plan.get("bruteforce_equivalent_candidate_count", 0))
+    materialized_count = int(performance_plan.get("materialized_search_candidate_count", len(aggregate_records)))
+    return {
+        "counter_version": "stability-region-acceleration-counters-v1",
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "bruteforce_equivalent_count": brute_force_count,
+        "aggregate_screened_count": int(len(aggregate_records)),
+        "gpu_screened_count": int(gpu_screened),
+        "cpu_screened_count": int(cpu_screened),
+        "cpu_validated_count": int(len(cpu_validated_ids)),
+        "gpu_validated_count": int(len(gpu_validated_ids)),
+        "validation_backend_counts": dict(sorted(validation_backend_counts.items())),
+        "region_refined_count": int(shortlisted_count),
+        "estimated_bruteforce_avoidance_ratio": (
+            max(1.0, float(brute_force_count / max(materialized_count, 1)))
+            if brute_force_count > 0
+            else 1.0
+        ),
     }
 
 

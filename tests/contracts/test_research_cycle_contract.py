@@ -248,7 +248,7 @@ def test_materialized_prediction_overlay_rejects_future_neighbor_boundary(tmp_pa
         )
 
 
-@pytest.mark.parametrize("backend", ["reference", "vector_fixed_holding", "auto"])
+@pytest.mark.parametrize("backend", ["reference", "vector_fixed_holding", "cuda_fixed_holding", "auto"])
 def test_historical_research_cycle_spec_accepts_backtest_backend(tmp_path: Path, backend: str) -> None:
     spec_path = _write_json(
         tmp_path / "cycle.json",

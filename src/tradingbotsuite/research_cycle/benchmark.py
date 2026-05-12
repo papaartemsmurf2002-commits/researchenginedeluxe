@@ -12,6 +12,7 @@ from typing import Any
 
 import pandas as pd
 
+from tradingbotsuite.backtesting import cuda_runtime_evidence
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.optimization import CandidateConfig, CandidateResult, OptimizationRun, SearchSpace
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
@@ -330,6 +331,7 @@ def _write_benchmark_spec(
     tier_id: str,
     tier_config: dict[str, Any],
     backtest_backend: str | None = None,
+    compute: dict[str, Any] | None = None,
 ) -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     spec_path = run_dir / "cycle_spec.json"
@@ -358,6 +360,8 @@ def _write_benchmark_spec(
     }
     if backtest_backend is not None:
         payload["backtest_backend"] = backtest_backend
+    if compute is not None:
+        payload["compute"] = dict(compute)
     _write_json(spec_path, payload)
     return spec_path
 
@@ -374,6 +378,8 @@ def _reference_vs_vector_backend_comparison(
     if comparison_root.exists():
         shutil.rmtree(comparison_root)
     pairs: list[dict[str, Any]] = []
+    cuda_evidence = cuda_runtime_evidence()
+    cuda_available = bool(cuda_evidence.get("available", False))
     for repeat_index in range(repeat_count):
         pair_dir = comparison_root / f"pair_{repeat_index:02d}"
         reference = _run_backend_comparison_cycle(
@@ -381,6 +387,25 @@ def _reference_vs_vector_backend_comparison(
             tier_id=tier_id,
             tier_config=tier_config,
             backend="reference",
+            backend_label="reference_serial_cpu",
+            compute={
+                "cpu_threads": 1,
+                "gpu_acceleration": "disabled",
+                "gpu_required": False,
+            },
+            app_config=app_config,
+        )
+        reference_cpu15 = _run_backend_comparison_cycle(
+            pair_dir=pair_dir,
+            tier_id=tier_id,
+            tier_config=tier_config,
+            backend="reference",
+            backend_label="reference_cpu15",
+            compute={
+                "cpu_threads": 15,
+                "gpu_acceleration": "disabled",
+                "gpu_required": False,
+            },
             app_config=app_config,
         )
         vector = _run_backend_comparison_cycle(
@@ -388,16 +413,44 @@ def _reference_vs_vector_backend_comparison(
             tier_id=tier_id,
             tier_config=tier_config,
             backend="vector_fixed_holding",
+            backend_label="vector_fixed_holding_cpu15",
+            compute={
+                "cpu_threads": 15,
+                "gpu_acceleration": "disabled",
+                "gpu_required": False,
+            },
             app_config=app_config,
         )
         artifact_equivalence = _behavioral_artifact_hashes_equal(reference["backtest_index"], vector["backtest_index"])
         reference_runtime = float(reference["backtest_runtime_ms_sum"])
+        reference_cpu15_runtime = float(reference_cpu15["backtest_runtime_ms_sum"])
         vector_runtime = float(vector["backtest_runtime_ms_sum"])
+        cuda: dict[str, Any] | None = None
+        cuda_artifact_equivalence = {"equal": False, "checked": 0}
+        cuda_runtime = 0.0
+        if cuda_available:
+            cuda = _run_backend_comparison_cycle(
+                pair_dir=pair_dir,
+                tier_id=tier_id,
+                tier_config=tier_config,
+                backend="cuda_fixed_holding",
+                backend_label="cuda_fixed_holding_gpu",
+                compute={
+                    "cpu_threads": 15,
+                    "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+                    "gpu_required": True,
+                },
+                app_config=app_config,
+            )
+            cuda_artifact_equivalence = _behavioral_artifact_hashes_equal(reference["backtest_index"], cuda["backtest_index"])
+            cuda_runtime = float(cuda["backtest_runtime_ms_sum"])
         pairs.append(
             {
                 "repeat_index": repeat_index,
                 "reference": _backend_comparison_payload(reference),
+                "reference_cpu15": _backend_comparison_payload(reference_cpu15),
                 "vector": _backend_comparison_payload(vector),
+                "cuda": _backend_comparison_payload(cuda) if cuda is not None else None,
                 "candidate_backtest_count_equal": reference["candidate_backtest_count"] == vector["candidate_backtest_count"],
                 "row_count_processed_equal": reference["row_count_processed"] == vector["row_count_processed"],
                 "candidate_ids_equal": reference["candidate_ids"] == vector["candidate_ids"],
@@ -405,10 +458,41 @@ def _reference_vs_vector_backend_comparison(
                 "behavioral_artifact_hashes_equal": artifact_equivalence["equal"],
                 "behavioral_artifact_hashes_checked": artifact_equivalence["checked"],
                 "observed_runtime_ratio_reference_over_vector": round(reference_runtime / max(vector_runtime, 1e-9), 6),
+                "observed_runtime_ratio_reference_serial_over_cpu15": round(reference_runtime / max(reference_cpu15_runtime, 1e-9), 6),
+                "cuda_candidate_backtest_count_equal": (
+                    cuda is not None and reference["candidate_backtest_count"] == cuda["candidate_backtest_count"]
+                ),
+                "cuda_row_count_processed_equal": (
+                    cuda is not None and reference["row_count_processed"] == cuda["row_count_processed"]
+                ),
+                "cuda_candidate_ids_equal": (
+                    cuda is not None and reference["candidate_ids"] == cuda["candidate_ids"]
+                ),
+                "cuda_evaluation_scope_counts_equal": (
+                    cuda is not None and reference["evaluation_scope_counts"] == cuda["evaluation_scope_counts"]
+                ),
+                "cuda_behavioral_artifact_hashes_equal": bool(cuda_artifact_equivalence["equal"]),
+                "cuda_behavioral_artifact_hashes_checked": int(cuda_artifact_equivalence["checked"]),
+                "observed_runtime_ratio_reference_over_cuda": (
+                    round(reference_runtime / max(cuda_runtime, 1e-9), 6)
+                    if cuda is not None
+                    else None
+                ),
+                "observed_runtime_ratio_vector_over_cuda": (
+                    round(vector_runtime / max(cuda_runtime, 1e-9), 6)
+                    if cuda is not None
+                    else None
+                ),
             }
         )
     reference_runtimes = [float(pair["reference"]["backtest_runtime_ms_sum"]) for pair in pairs]
+    reference_cpu15_runtimes = [float(pair["reference_cpu15"]["backtest_runtime_ms_sum"]) for pair in pairs]
     vector_runtimes = [float(pair["vector"]["backtest_runtime_ms_sum"]) for pair in pairs]
+    cuda_runtimes = [
+        float(pair["cuda"]["backtest_runtime_ms_sum"])
+        for pair in pairs
+        if isinstance(pair.get("cuda"), dict)
+    ]
     ratios = [float(pair["observed_runtime_ratio_reference_over_vector"]) for pair in pairs]
     benchmark_data_scope = _benchmark_data_scope(tier_config)
     return {
@@ -422,10 +506,19 @@ def _reference_vs_vector_backend_comparison(
         "claim_scope": _backend_comparison_claim_scope(benchmark_data_scope),
         "speed_claimed": False,
         "default_backend_verified": "reference",
+        "cpu_thread_comparison_measured": bool(pairs),
+        "cpu_parallel_workers": 15,
+        "cuda_runtime_available": cuda_available,
+        "cuda_runtime_evidence": dict(cuda_evidence),
+        "cuda_measured": bool(cuda_available and cuda_runtimes),
+        "cuda_skip_reason": "" if cuda_available else str(cuda_evidence.get("unavailable_reason") or "cuda_runtime_unavailable"),
+        "cuda_claim_scope": "diagnostic_runtime_observation_not_live_readiness_or_speed_claim",
         "pairs": pairs,
         "summary": {
             "reference_backtest_runtime_ms_sum_median": round(float(median(reference_runtimes)), 6) if reference_runtimes else 0.0,
+            "reference_cpu15_backtest_runtime_ms_sum_median": round(float(median(reference_cpu15_runtimes)), 6) if reference_cpu15_runtimes else 0.0,
             "vector_backtest_runtime_ms_sum_median": round(float(median(vector_runtimes)), 6) if vector_runtimes else 0.0,
+            "cuda_backtest_runtime_ms_sum_median": round(float(median(cuda_runtimes)), 6) if cuda_runtimes else 0.0,
             "observed_runtime_ratio_reference_over_vector_median": round(float(median(ratios)), 6) if ratios else 0.0,
         },
     }
@@ -437,14 +530,17 @@ def _run_backend_comparison_cycle(
     tier_id: str,
     tier_config: dict[str, Any],
     backend: str,
+    backend_label: str | None = None,
+    compute: dict[str, Any] | None = None,
     app_config: AppConfig,
 ) -> dict[str, Any]:
-    run_dir = pair_dir / backend
+    run_dir = pair_dir / str(backend_label or backend)
     spec_path = _write_benchmark_spec(
         run_dir,
-        tier_id=f"{tier_id}-{backend}",
+        tier_id=f"{tier_id}-{backend_label or backend}",
         tier_config=tier_config,
         backtest_backend=backend,
+        compute=compute,
     )
     result = run_historical_research_cycle(
         spec_path=spec_path,
@@ -456,14 +552,18 @@ def _run_backend_comparison_cycle(
     backtest_manifests = [_read_json(Path(str(path))) for path in backtest_index["backtest_manifest_path"]]
     return {
         "backend": backend,
+        "backend_label": str(backend_label or backend),
         "output_dir": str(result.output_dir),
         "spec_path": str(spec_path),
         "research_cycle_manifest_path": str(result.manifest_path),
         "backtest_index": backtest_index,
+        "compute_policy": dict(cycle_manifest.get("compute_policy") or {}),
         "backend_used_counts": dict(cycle_manifest["backtest_backend_summary"]["used_counts"]),
         "fallback_count": int(cycle_manifest["backtest_backend_summary"]["fallback_count"]),
         "fallback_reasons": dict(cycle_manifest["backtest_backend_summary"]["fallback_reasons"]),
         "vector_scope_counts": dict(cycle_manifest["backtest_backend_summary"]["vector_scope_counts"]),
+        "cuda_scope_counts": dict(cycle_manifest["backtest_backend_summary"].get("cuda_scope_counts") or {}),
+        "gpu_status_counts": dict(cycle_manifest["backtest_backend_summary"].get("gpu_status_counts") or {}),
         "candidate_backtest_count": int(len(backtest_index)),
         "row_count_processed": int(sum(int(manifest.get("row_count", 0)) for manifest in backtest_manifests)),
         "candidate_ids": sorted(str(value) for value in backtest_index["candidate_id"].unique()),
@@ -471,6 +571,7 @@ def _run_backend_comparison_cycle(
             str(key): int(value)
             for key, value in backtest_index["evaluation_scope"].value_counts().sort_index().to_dict().items()
         },
+        "backend_used_counts_by_scope": _backend_used_counts_by_scope(backtest_index),
         "backtest_runtime_ms_sum": round(
             sum(float((manifest.get("runtime") or {}).get("elapsed_ms", 0.0)) for manifest in backtest_manifests),
             6,
@@ -479,19 +580,39 @@ def _run_backend_comparison_cycle(
 
 
 def _backend_comparison_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if not payload:
+        return {}
     return {
         "backend": payload["backend"],
+        "backend_label": payload["backend_label"],
         "output_dir": payload["output_dir"],
         "spec_path": payload["spec_path"],
         "research_cycle_manifest_path": payload["research_cycle_manifest_path"],
+        "compute_policy": payload["compute_policy"],
         "backend_used_counts": payload["backend_used_counts"],
         "fallback_count": payload["fallback_count"],
         "fallback_reasons": payload["fallback_reasons"],
         "vector_scope_counts": payload["vector_scope_counts"],
+        "cuda_scope_counts": payload["cuda_scope_counts"],
+        "gpu_status_counts": payload["gpu_status_counts"],
         "candidate_backtest_count": payload["candidate_backtest_count"],
         "row_count_processed": payload["row_count_processed"],
+        "evaluation_scope_counts": payload["evaluation_scope_counts"],
+        "backend_used_counts_by_scope": payload["backend_used_counts_by_scope"],
         "backtest_runtime_ms_sum": payload["backtest_runtime_ms_sum"],
     }
+
+
+def _backend_used_counts_by_scope(index: pd.DataFrame) -> dict[str, dict[str, int]]:
+    counts: dict[str, dict[str, int]] = {}
+    if "evaluation_scope" not in index.columns or "backtest_backend_used" not in index.columns:
+        return counts
+    grouped = index.groupby(["evaluation_scope", "backtest_backend_used"], dropna=False).size()
+    for (scope, backend), value in grouped.to_dict().items():
+        scope_key = str(scope)
+        backend_key = str(backend)
+        counts.setdefault(scope_key, {})[backend_key] = int(value)
+    return {scope: dict(sorted(backends.items())) for scope, backends in sorted(counts.items())}
 
 
 def _behavioral_artifact_hashes_equal(reference_index: pd.DataFrame, vector_index: pd.DataFrame) -> dict[str, Any]:

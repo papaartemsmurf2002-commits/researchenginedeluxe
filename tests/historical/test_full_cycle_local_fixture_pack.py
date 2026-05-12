@@ -671,18 +671,25 @@ def test_full_cycle_triple_barrier_uses_fixture_lower_timeframe_evidence(tmp_pat
     assert set(backtest_index["lower_timeframe_cache_key_component"]) == {lower_evidence["lower_timeframe_dataset_sha256"]}
     assert set(backtest_index["backtest_backend_requested"]) == {"auto"}
     assert set(backtest_index["backtest_backend_used"]) == {"reference"}
-    assert set(backtest_index["backtest_backend_fallback_reason"]) == {"vector_engine_lower_timeframe_not_supported"}
+    expected_fallback_reason = (
+        "cuda_engine_scope_unsupported:vector_engine_lower_timeframe_not_supported;"
+        "vector_engine_lower_timeframe_not_supported"
+    )
+    aggregate_backend_rows = backtest_index.loc[backtest_index["evaluation_scope"] == "aggregate"]
+    validation_backend_rows = backtest_index.loc[backtest_index["evaluation_scope"].isin(["walk_forward_split", "cost_stress"])]
+    assert set(aggregate_backend_rows["backtest_backend_fallback_reason"]) == {expected_fallback_reason}
+    assert set(validation_backend_rows["backtest_backend_fallback_reason"]) == {"cuda_fixed_holding_validation_reference_required"}
     assert manifest["backtest_backend_summary"]["used_counts"] == {"reference": len(backtest_index)}
     assert manifest["backtest_backend_summary"]["fallback_reasons"] == {
-        "vector_engine_lower_timeframe_not_supported": len(backtest_index)
+        expected_fallback_reason: len(aggregate_backend_rows),
+        "cuda_fixed_holding_validation_reference_required": len(validation_backend_rows),
     }
     assert set(rankings["aggregate_backtest_exit_price_source"]) == {"lower_timeframe_ohlc_sequence"}
     assert set(rankings["aggregate_backtest_lower_timeframe_required"]) == {True}
     assert set(rankings["aggregate_backtest_lower_timeframe_sequence_used"]) == {True}
     assert set(rankings["aggregate_backtest_lower_timeframe_dataset_sha256"]) == {lower_evidence["lower_timeframe_dataset_sha256"]}
 
-    aggregate_rows = backtest_index.loc[backtest_index["evaluation_scope"] == "aggregate"]
-    trade_rows = aggregate_rows.loc[aggregate_rows["trade_count"] > 0]
+    trade_rows = aggregate_backend_rows.loc[aggregate_backend_rows["trade_count"] > 0]
     assert not trade_rows.empty
     row = trade_rows.iloc[0]
     backtest_manifest = json.loads(Path(str(row["backtest_manifest_path"])).read_text(encoding="utf-8"))
