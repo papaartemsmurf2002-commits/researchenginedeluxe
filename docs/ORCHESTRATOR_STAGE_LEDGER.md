@@ -2,7 +2,7 @@
 
 Current stage: Stage R97 aggressive CUDA/TensorCore stability search
 Current stage owner: Codex Research Agent
-Stage status: complete - WPR97-04 closed
+Stage status: complete - WPR97-05 closed
 Last updated: 2026-05-12
 
 ## Stage entry decision
@@ -29,6 +29,7 @@ Last updated: 2026-05-12
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR97-05-fastest-exact-default-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | Fastest exact default profile, 15-worker default, default smoke, and validation recorded in `docs/stage_reports/STAGE_R97_FASTEST_EXACT_DEFAULT_POLISH_REPORT.md`. |
 | WPR97-04-throughput-default-and-tensorcore-dependency | Codex Research Agent | closed | `pyproject.toml`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | Throughput default routing, Tensor Core dependency fix, local benchmarks, and validation recorded in `docs/stage_reports/STAGE_R97_THROUGHPUT_DEFAULT_AND_TENSORCORE_DEPENDENCY_REPORT.md`. |
 | WPR97-03-gpu-telemetry-smoke-fix | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | GPU parity telemetry fix, performance estimate, mini full-cycle smoke, and validation recorded in `docs/stage_reports/STAGE_R97_GPU_TELEMETRY_SMOKE_FIX_REPORT.md`. |
 | WPR97-02-default-accelerated-runtime-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/**`, `tests/historical/**`, `tests/optimization/**` | Default accelerated research runtime, CPU/reference fallback evidence, longer CUDA parity, and validation recorded in `docs/stage_reports/STAGE_R97_DEFAULT_ACCELERATED_RUNTIME_POLISH_REPORT.md`. |
@@ -760,3 +761,20 @@ historical full-cycle/local-fixture tests, CUDA/GPU focused tests, and diff
 checks passed. This wave does not write candidate packs, claim promotion
 readiness or GPU speedup, add live execution, alter live config, place orders,
 or touch sizing behavior.
+
+## Fastest exact default polish wave
+
+Decision: WPR97-05 fastest exact default polish complete.
+Reason: The default historical research-cycle compute policy now explicitly
+selects the fastest parity-safe route measured for the current engine:
+`gpu_execution_profile: fastest_exact`, `cpu_threads: 15`, aggregate
+`vector_fixed_holding` where supported, and reference validation under
+`auto_validation_reference_required`. Explicit `cuda_exact_batched`,
+`hybrid_tensorcore_screening`, and CUDA backtest requests remain opt-in
+diagnostic evidence paths. Performance-plan evidence now distinguishes
+fastest-exact vector selection from a failed CUDA probe through
+`gpu_execution_profile_fastest_exact_vector_selected` and
+`cuda_runtime_checked: false`. Focused compile, contract, synthetic full-cycle,
+and default full-cycle smoke checks passed. This wave does not write candidate
+packs, claim promotion readiness or GPU speedup, add live execution, alter live
+config, place orders, or touch sizing behavior.

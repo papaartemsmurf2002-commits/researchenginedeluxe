@@ -109,12 +109,12 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.validation.split_modes == ("purged_embargoed_walk_forward",)
     assert spec.validation.min_cost_stress_survival_rate == 1.0
     assert spec.backtest_backend == "auto"
-    assert spec.compute.cpu_threads == 1
+    assert spec.compute.cpu_threads == 15
     assert spec.compute.gpu_acceleration == "prefer_nvidia_cuda_when_backend_available"
-    assert spec.compute.gpu_execution_profile == "conservative"
+    assert spec.compute.gpu_execution_profile == "fastest_exact"
     assert spec.to_payload()["backtest_backend"] == "auto"
     assert spec.to_payload()["compute"]["gpu_device_class"] == "nvidia_50_series"
-    assert spec.to_payload()["compute"]["gpu_execution_profile"] == "conservative"
+    assert spec.to_payload()["compute"]["gpu_execution_profile"] == "fastest_exact"
     assert spec.to_payload()["validation"]["split_modes"] == ["purged_embargoed_walk_forward"]
     assert spec.to_payload()["validation"]["min_cost_stress_survival_rate"] == 1.0
     assert spec.exits.exit_policies[0]["exit_policy_id"] == "fixed_holding_window"
@@ -446,7 +446,7 @@ def test_historical_research_cycle_spec_accepts_compute_policy(tmp_path: Path) -
     }
 
 
-@pytest.mark.parametrize("profile", ["conservative", "cuda_exact_batched", "hybrid_tensorcore_screening"])
+@pytest.mark.parametrize("profile", ["fastest_exact", "conservative", "cuda_exact_batched", "hybrid_tensorcore_screening"])
 def test_historical_research_cycle_spec_accepts_gpu_execution_profiles(tmp_path: Path, profile: str) -> None:
     spec_path = _write_json(
         tmp_path / "cycle.json",
@@ -494,7 +494,7 @@ def test_historical_research_cycle_rejects_invalid_compute_policy(
         HistoricalResearchCycleSpec.from_path(spec_path)
 
 
-def test_auto_backend_keeps_conservative_cpu_routing_until_gpu_profile_requests_batched_or_hybrid(
+def test_auto_backend_keeps_cpu_routing_until_gpu_profile_requests_batched_or_hybrid(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -516,6 +516,20 @@ def test_auto_backend_keeps_conservative_cpu_routing_until_gpu_profile_requests_
         "exit_policies": ["fixed_holding_window"],
     }
 
+    fastest = HistoricalResearchCycleSpec.from_payload(
+        {
+            **base_payload,
+            "cycle_id": "auto-routing-fastest",
+            "compute": {
+                **base_payload["compute"],
+                "gpu_execution_profile": "fastest_exact",
+            },
+        },
+        spec_path=tmp_path / "fastest.json",
+    )
+    assert fastest.compute.gpu_execution_profile == "fastest_exact"
+    assert _aggregate_backtest_worker_count(fastest) == 7
+
     conservative = HistoricalResearchCycleSpec.from_payload(base_payload, spec_path=tmp_path / "conservative.json")
     assert conservative.compute.gpu_execution_profile == "conservative"
     assert _aggregate_backtest_worker_count(conservative) == 7
@@ -535,7 +549,7 @@ def test_auto_backend_keeps_conservative_cpu_routing_until_gpu_profile_requests_
         assert _aggregate_backtest_worker_count(spec) == 1
 
 
-def test_performance_plan_keeps_auto_conservative_cpu_until_r97_profile_requests_gpu(
+def test_performance_plan_keeps_auto_cpu_until_r97_profile_requests_gpu(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -560,6 +574,25 @@ def test_performance_plan_keeps_auto_conservative_cpu_until_r97_profile_requests
             "exit_price_source": "primary_close",
         }
     ]
+
+    fastest = HistoricalResearchCycleSpec.from_payload(base_payload, spec_path=tmp_path / "fastest.json")
+    fastest_plan = build_candidate_selection_performance_plan(
+        spec=fastest,
+        candidates=candidates,
+        search_mode="metadata_default_search",
+        search_method="metadata_capped_grid",
+        aggregate_backtest_workers_used=15,
+    )
+
+    assert fastest.compute.cpu_threads == 15
+    assert fastest.compute.gpu_execution_profile == "fastest_exact"
+    assert fastest_plan["compute_policy"]["gpu_execution_status"] == "gpu_execution_profile_fastest_exact_vector_selected"
+    assert fastest_plan["compute_policy"]["selected_cuda_backend"] == ""
+    assert fastest_plan["compute_policy"]["aggregate_backtest_workers_used"] == 15
+    assert fastest_plan["compute_policy"]["cuda_runtime_checked"] is False
+    assert "default fastest_exact route uses CPU vector" in fastest_plan["compute_policy"]["gpu_truthfulness"]
+    assert fastest_plan["stability_region_acceleration_counters"]["planned_gpu_screened_count"] == 0
+    assert fastest_plan["stability_region_acceleration_counters"]["planned_cpu_screened_count"] == 1
 
     conservative = HistoricalResearchCycleSpec.from_payload(
         {

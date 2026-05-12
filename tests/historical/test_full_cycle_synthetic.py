@@ -101,6 +101,10 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert manifest["candidate_search_mode"] == "metadata_default_search"
     assert manifest["candidate_search_method"] == "metadata_capped_grid"
     assert manifest["backtest_backend_requested"] == "auto"
+    assert manifest["compute_policy"]["cpu_threads"] == 15
+    assert manifest["compute_policy"]["gpu_execution_profile"] == "fastest_exact"
+    assert manifest["compute_policy"]["aggregate_backtest_workers_used"] == 15
+    assert manifest["compute_policy"]["gpu_execution_status"] == "gpu_execution_profile_fastest_exact_vector_selected"
     assert manifest["aggregate_backtest_count"] == 44
     assert manifest["split_backtest_count"] == 4
     assert manifest["cost_stress_backtest_count"] == 22
@@ -760,6 +764,41 @@ def test_cycle_auto_backend_keeps_conservative_vector_route_when_gpu_preferred(t
     assert execution.backend_evidence["backtest_backend_fallback_reason"] == "gpu_execution_profile_conservative"
     assert execution.backend_evidence["vector_execution_scope"] == "fixed_holding_primary_bar"
     assert execution.backend_evidence["gpu_execution_profile"] == "conservative"
+
+
+def test_cycle_auto_backend_default_uses_fastest_exact_vector_route(tmp_path: Path) -> None:
+    dataset = build_hmm_knn_sweep_dataset(row_count=80, variant="balanced")
+    auto = HistoricalResearchCycleSpec.from_payload(
+        {
+            "cycle_id": "auto-fastest-exact",
+            "data": {"synthetic_fixture": True},
+            "strategies": ["baseline_no_trade"],
+            "backtest_backend": "auto",
+        },
+        spec_path=tmp_path / "auto-fastest-exact.json",
+    )
+
+    execution = _run_cycle_backtest(
+        cycle_spec=auto,
+        reference_engine=BacktestEngine(),
+        vector_engine=VectorBacktestEngine(),
+        backtest_spec=BacktestSpec(
+            run_id="auto-fastest-exact",
+            symbol="BTCUSDT",
+            output_dir=tmp_path / "backtests",
+            strategy_id="baseline_no_trade",
+            holding_window="1h",
+            feature_set_id="features_price_trend_vol",
+            strategy_config={},
+        ),
+        dataset=dataset,
+    )
+
+    assert auto.compute.cpu_threads == 15
+    assert auto.compute.gpu_execution_profile == "fastest_exact"
+    assert execution.backend_evidence["backtest_backend_used"] == "vector_fixed_holding"
+    assert execution.backend_evidence["backtest_backend_fallback_reason"] == "gpu_execution_profile_fastest_exact_vector_selected"
+    assert execution.backend_evidence["gpu_execution_profile"] == "fastest_exact"
 
 
 def test_cycle_auto_backend_uses_batched_cuda_only_when_r97_profile_requests_it(

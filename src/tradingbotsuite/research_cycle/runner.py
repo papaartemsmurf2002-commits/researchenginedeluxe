@@ -100,6 +100,10 @@ TRANSPARENT_BASELINE_STRATEGY_IDS = (
 )
 CUDA_BACKTEST_BACKENDS = {"cuda_fixed_holding", "cuda_batched_fixed_holding"}
 R97_CUDA_EXECUTION_PROFILES = {"cuda_exact_batched", "hybrid_tensorcore_screening"}
+CPU_VECTOR_EXECUTION_PROFILE_REASONS = {
+    "fastest_exact": "gpu_execution_profile_fastest_exact_vector_selected",
+    "conservative": "gpu_execution_profile_conservative",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,7 +205,7 @@ def _run_cycle_backtest(
             fallback_reason = (
                 ""
                 if not gpu_requested
-                else str(cuda_unsupported_reason or "gpu_execution_profile_conservative")
+                else str(cuda_unsupported_reason or _cpu_vector_execution_profile_reason(cycle_spec))
             )
             result = vector_engine.run(backtest_spec, dataset=dataset)
         else:
@@ -292,6 +296,11 @@ def _aggregate_backtest_worker_count(spec: HistoricalResearchCycleSpec) -> int:
 def _join_backend_reasons(*reasons: str | None) -> str:
     values = [str(reason) for reason in reasons if str(reason or "")]
     return ";".join(dict.fromkeys(values))
+
+
+def _cpu_vector_execution_profile_reason(spec: HistoricalResearchCycleSpec) -> str:
+    profile = str(spec.compute.gpu_execution_profile)
+    return CPU_VECTOR_EXECUTION_PROFILE_REASONS.get(profile, f"gpu_execution_profile_{profile}_cpu_vector_selected")
 
 
 def _cycle_has_cuda_screening_scope(spec: HistoricalResearchCycleSpec) -> bool:

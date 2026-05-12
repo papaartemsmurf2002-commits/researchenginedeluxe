@@ -9,6 +9,10 @@ from tradingbotsuite.research.live_readiness import research_boundary_metadata
 
 CANDIDATE_SELECTION_PERFORMANCE_PLAN_VERSION = "candidate-selection-performance-plan-v1"
 R97_CUDA_EXECUTION_PROFILES = {"cuda_exact_batched", "hybrid_tensorcore_screening"}
+CPU_VECTOR_EXECUTION_PROFILE_STATUSES = {
+    "fastest_exact": "gpu_execution_profile_fastest_exact_vector_selected",
+    "conservative": "gpu_execution_profile_conservative",
+}
 
 
 def build_candidate_selection_performance_plan(
@@ -43,12 +47,16 @@ def build_candidate_selection_performance_plan(
         or (requested_backend == "auto" and gpu_requested and r97_batched_profile_requested)
         else "cuda_fixed_holding"
     )
-    cuda_evidence = cuda_runtime_evidence() if gpu_requested and cuda_backend_selectable else {}
+    cuda_runtime_checked = bool(gpu_requested and cuda_backend_selectable)
+    cuda_evidence = cuda_runtime_evidence() if cuda_runtime_checked else {}
     cuda_available = bool(cuda_evidence.get("available", False))
     gpu_execution_status = (
         "disabled_by_spec"
         if not gpu_requested
-        else "gpu_execution_profile_conservative"
+        else CPU_VECTOR_EXECUTION_PROFILE_STATUSES.get(
+            str(compute.get("gpu_execution_profile")),
+            f"gpu_execution_profile_{compute.get('gpu_execution_profile')}_cpu_vector_selected",
+        )
         if requested_backend == "auto" and not r97_batched_profile_requested
         else f"{selected_cuda_backend}_backend_not_selected"
         if not cuda_backend_selectable
@@ -117,12 +125,12 @@ def build_candidate_selection_performance_plan(
             "r97_batched_cuda_requested": bool(r97_batched_profile_requested and gpu_requested),
             "tensorcore_screening_requested": bool(tensorcore_screening_requested),
             "gpu_execution_status": gpu_execution_status,
+            "cuda_runtime_checked": cuda_runtime_checked,
             "cuda_runtime_available": cuda_available,
             "cuda_runtime_evidence": dict(cuda_evidence),
-            "gpu_truthfulness": (
-                "CUDA fixed-holding backend is optional and diagnostic until parity evidence exists for the same spec/backend version."
-                if gpu_requested
-                else "GPU disabled by spec."
+            "gpu_truthfulness": _gpu_truthfulness(
+                gpu_requested=gpu_requested,
+                cuda_backend_selectable=cuda_backend_selectable,
             ),
             "cpu_execution_status": "enabled" if aggregate_backtest_workers_used > 1 else "serial",
         },
@@ -132,6 +140,17 @@ def build_candidate_selection_performance_plan(
             "Close-to-bruteforce behavior is inferred from stability-region coverage and validation evidence, not exhaustive enumeration.",
         ],
     }
+
+
+def _gpu_truthfulness(*, gpu_requested: bool, cuda_backend_selectable: bool) -> str:
+    if not gpu_requested:
+        return "GPU disabled by spec."
+    if not cuda_backend_selectable:
+        return (
+            "GPU was not selected by this compute profile. The default fastest_exact route uses CPU vector "
+            "aggregate screening unless cuda_exact_batched or hybrid_tensorcore_screening is explicitly requested."
+        )
+    return "CUDA fixed-holding backend is optional and diagnostic until parity evidence exists for the same spec/backend version."
 
 
 def _bruteforce_equivalent_count(spec: Any) -> int:

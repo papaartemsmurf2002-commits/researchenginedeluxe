@@ -10,6 +10,10 @@ exact path measured locally: CPU vector aggregate screening plus reference
 validation. Explicit CUDA profiles remain available for parity and diagnostic
 GPU evidence:
 
+Update: WPR97-05 supersedes the profile name and worker default. The same route
+is now expressed as `gpu_execution_profile: fastest_exact` with default
+`cpu_threads: 15`.
+
 - `gpu_execution_profile: cuda_exact_batched`
 - `gpu_execution_profile: hybrid_tensorcore_screening`
 - explicit `backtest_backend: cuda_batched_fixed_holding`

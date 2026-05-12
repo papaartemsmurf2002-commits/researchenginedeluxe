@@ -26,7 +26,7 @@ DEFAULT_STRATEGIES = (
     "hmm_knn_diagnostic_v1",
 )
 BACKTEST_BACKENDS = ("reference", "vector_fixed_holding", "cuda_fixed_holding", "cuda_batched_fixed_holding", "auto")
-GPU_EXECUTION_PROFILES = ("conservative", "cuda_exact_batched", "hybrid_tensorcore_screening")
+GPU_EXECUTION_PROFILES = ("fastest_exact", "conservative", "cuda_exact_batched", "hybrid_tensorcore_screening")
 TENSOR_CORE_POLICIES = ("disabled", "screening_only")
 SUPPORTED_VALIDATION_SPLIT_MODES = (
     "purged_embargoed_walk_forward",
@@ -299,11 +299,11 @@ class CycleOptimizerSpec:
 
 @dataclass(frozen=True, slots=True)
 class CycleComputeSpec:
-    cpu_threads: int = 1
+    cpu_threads: int = 15
     gpu_acceleration: str = "prefer_nvidia_cuda_when_backend_available"
     gpu_device_class: str = "nvidia_50_series"
     gpu_required: bool = False
-    gpu_execution_profile: str = "conservative"
+    gpu_execution_profile: str = "fastest_exact"
     tensor_core_policy: str = "disabled"
     gpu_batch_candidates: int = 512
     gpu_memory_fraction_limit: float = 0.70
@@ -312,7 +312,7 @@ class CycleComputeSpec:
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None) -> "CycleComputeSpec":
         payload = payload or {}
-        cpu_threads = int(payload.get("cpu_threads", 1))
+        cpu_threads = int(payload.get("cpu_threads", 15))
         if cpu_threads < 1 or cpu_threads > 64:
             raise ValueError("compute.cpu_threads must be between 1 and 64")
         gpu_acceleration = str(payload.get("gpu_acceleration", "prefer_nvidia_cuda_when_backend_available")).strip().lower()
@@ -323,7 +323,7 @@ class CycleComputeSpec:
         }
         if gpu_acceleration not in allowed_gpu_modes:
             raise ValueError(f"compute.gpu_acceleration must be one of: {', '.join(sorted(allowed_gpu_modes))}")
-        gpu_execution_profile = str(payload.get("gpu_execution_profile", "conservative")).strip().lower()
+        gpu_execution_profile = str(payload.get("gpu_execution_profile", "fastest_exact")).strip().lower()
         if gpu_execution_profile not in GPU_EXECUTION_PROFILES:
             raise ValueError(f"compute.gpu_execution_profile must be one of: {', '.join(GPU_EXECUTION_PROFILES)}")
         tensor_core_policy = str(payload.get("tensor_core_policy", "disabled")).strip().lower()
@@ -366,7 +366,7 @@ class CycleComputeSpec:
             "gpu_validation_sample_rate": float(self.gpu_validation_sample_rate),
         }
         if include_r97_defaults or r97_payload != {
-            "gpu_execution_profile": "conservative",
+            "gpu_execution_profile": "fastest_exact",
             "tensor_core_policy": "disabled",
             "gpu_batch_candidates": 512,
             "gpu_memory_fraction_limit": 0.70,
