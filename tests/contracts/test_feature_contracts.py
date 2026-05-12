@@ -14,7 +14,14 @@ from tradingbotsuite.features import (
     fit_train_only_preprocessor,
     validate_feature_manifest,
 )
-from tradingbotsuite.features.registry import LIQUIDATION_CONTEXT_COLUMNS, WT3D_COLUMNS, manifest_from_preset
+from tradingbotsuite.features.registry import (
+    AGGTRADE_ORDERFLOW_COLUMNS,
+    CROSS_ASSET_BTC_ETH_V2_COLUMNS,
+    LIQUIDATION_CONTEXT_COLUMNS,
+    PERP_CONTEXT_V3_COLUMNS,
+    WT3D_COLUMNS,
+    manifest_from_preset,
+)
 from tradingbotsuite.research.hmm_knn import WT3D_FEATURE_COLUMNS
 
 PERP_CONTEXT_V2_COLUMNS = (
@@ -77,10 +84,13 @@ def test_feature_registry_contains_stage_four_packs_and_presets() -> None:
         "volatility_v1",
         "perp_context_v1",
         "perp_context_v2",
+        "perp_context_v3",
+        "aggtrade_orderflow_v1",
         "liquidation_context_v1",
         "microstructure_context_v1",
         "wt3d_v1",
         "cross_asset_v1",
+        "cross_asset_btc_eth_v2",
         "calendar_v1",
     } <= set(registry)
     assert tuple(WT3D_FEATURE_COLUMNS) == WT3D_COLUMNS
@@ -90,12 +100,32 @@ def test_feature_registry_contains_stage_four_packs_and_presets() -> None:
     assert registry["perp_context_v2"].input_families == ("funding_rate", "premium_index", "open_interest", "agg_trade")
     assert registry["perp_context_v2"].point_in_time_safe is True
     assert registry["perp_context_v2"].optional is True
+    assert feature_set_presets()["features_perp_context_v3"] == ("perp_context_v3",)
+    assert registry["perp_context_v3"].input_families == ("funding_rate", "premium_index", "open_interest", "agg_trade")
+    assert registry["perp_context_v3"].point_in_time_safe is True
+    assert registry["perp_context_v3"].optional is True
+    assert feature_set_presets()["features_aggtrade_orderflow_v1"] == ("aggtrade_orderflow_v1",)
+    assert registry["aggtrade_orderflow_v1"].input_families == ("agg_trade",)
+    assert registry["aggtrade_orderflow_v1"].point_in_time_safe is True
+    assert registry["aggtrade_orderflow_v1"].optional is True
+    assert "microstructure_context_v1" not in feature_set_presets()["features_price_perp_aggflow_no_wt"]
+    assert feature_set_presets()["features_price_perp_aggflow_no_wt"] == (
+        "price_path_v1",
+        "trend_chop_v1",
+        "volatility_v1",
+        "perp_context_v3",
+        "aggtrade_orderflow_v1",
+        "calendar_v1",
+    )
     assert feature_set_presets()["features_liquidation_context_v1"] == ("liquidation_context_v1",)
     assert registry["liquidation_context_v1"].input_families == ("liquidation",)
     assert registry["liquidation_context_v1"].point_in_time_safe is True
     assert registry["liquidation_context_v1"].optional is True
     assert feature_set_presets()["features_microstructure_filter_only"] == ("microstructure_context_v1",)
     assert feature_set_presets()["features_cross_asset_context"] == ("cross_asset_v1",)
+    assert feature_set_presets()["features_cross_asset_btc_eth_v2"] == ("cross_asset_btc_eth_v2",)
+    assert registry["cross_asset_btc_eth_v2"].point_in_time_safe is True
+    assert registry["cross_asset_btc_eth_v2"].optional is True
 
 
 def test_feature_manifest_hash_is_deterministic_and_valid() -> None:
@@ -141,6 +171,57 @@ def test_perp_context_v2_manifest_contract_contains_required_columns_and_familie
     assert validate_feature_manifest(manifest).valid is True
 
 
+def test_perp_context_v3_manifest_contract_adds_source_truthfulness_columns() -> None:
+    manifest = manifest_from_preset("features_perp_context_v3")
+
+    assert manifest.feature_packs == ("perp_context_v3",)
+    assert manifest.feature_columns == PERP_CONTEXT_V3_COLUMNS
+    assert manifest.input_families == ("funding_rate", "premium_index", "open_interest", "agg_trade")
+    assert "quality_context_durable_provider_archive" in manifest.feature_columns
+    assert "quality_context_candidate_ready_eligible" in manifest.feature_columns
+    assert any("Latest-window" in risk for risk in manifest.leakage_risks)
+    assert any("AggTrade" in risk and "not order-book imbalance" in risk for risk in manifest.leakage_risks)
+    assert not {"liquidation", "depth_snapshot", "book_ticker", "cross_exchange", "cross_asset", "eth"} & set(
+        manifest.input_families
+    )
+    assert validate_feature_manifest(manifest).valid is True
+
+
+def test_aggtrade_orderflow_manifest_contract_excludes_depth_and_true_ofi() -> None:
+    manifest = manifest_from_preset("features_aggtrade_orderflow_v1")
+
+    assert manifest.feature_packs == ("aggtrade_orderflow_v1",)
+    assert manifest.feature_columns == AGGTRADE_ORDERFLOW_COLUMNS
+    assert manifest.input_families == ("agg_trade",)
+    assert not {
+        "top_of_book_imbalance",
+        "queue_imbalance_l5",
+        "spread_bps",
+        "ofi",
+        "true_ofi",
+    } & set(manifest.feature_columns)
+    assert any("trade-flow proxies" in risk for risk in manifest.leakage_risks)
+    assert any("not true OFI" in risk for risk in manifest.leakage_risks)
+    assert validate_feature_manifest(manifest).valid is True
+
+
+def test_price_perp_aggflow_manifest_combines_v3_perp_and_aggtrade_proxy() -> None:
+    manifest = manifest_from_preset("features_price_perp_aggflow_no_wt")
+
+    assert manifest.feature_packs == (
+        "price_path_v1",
+        "trend_chop_v1",
+        "volatility_v1",
+        "perp_context_v3",
+        "aggtrade_orderflow_v1",
+        "calendar_v1",
+    )
+    assert "agg_signed_quote_imbalance" in manifest.feature_columns
+    assert "quality_context_candidate_ready_eligible" in manifest.feature_columns
+    assert "top_of_book_imbalance" not in manifest.feature_columns
+    assert validate_feature_manifest(manifest).valid is True
+
+
 def test_liquidation_context_v1_manifest_contract_contains_required_columns_and_family() -> None:
     manifest = manifest_from_preset("features_liquidation_context_v1")
 
@@ -150,6 +231,21 @@ def test_liquidation_context_v1_manifest_contract_contains_required_columns_and_
     assert not {"funding_rate", "open_interest", "premium_index", "agg_trade", "depth_snapshot", "book_ticker"} & set(
         manifest.input_families
     )
+    assert validate_feature_manifest(manifest).valid is True
+
+
+def test_cross_asset_btc_eth_v2_manifest_contract_blocks_candidate_without_join_proof() -> None:
+    manifest = manifest_from_preset("features_cross_asset_btc_eth_v2")
+
+    assert manifest.feature_packs == ("cross_asset_btc_eth_v2",)
+    assert manifest.feature_columns == CROSS_ASSET_BTC_ETH_V2_COLUMNS
+    assert manifest.input_families == ("kline", "funding_rate", "open_interest")
+    assert "eth_btc_residual_z_96" in manifest.feature_columns
+    assert "quality_cross_asset_future_alignment_risk" in manifest.feature_columns
+    assert "quality_cross_asset_point_in_time_join" in manifest.feature_columns
+    assert "quality_cross_asset_candidate_ready_eligible" in manifest.feature_columns
+    assert any("Cross-symbol" in risk for risk in manifest.leakage_risks)
+    assert any("not zero-filled" in risk for risk in manifest.leakage_risks)
     assert validate_feature_manifest(manifest).valid is True
 
 
@@ -213,6 +309,39 @@ def test_perp_context_v2_missing_optional_context_is_nan_with_quality_flags() ->
     assert result.frame["quality_context_missing_count"].ge(3.0).all()
     assert result.frame["missing_quality_context_missing_count"].eq(0).all()
     assert "perp_last_funding_rate" in result.availability_report.missing_context_columns
+
+
+def test_perp_context_v3_missing_source_or_required_context_blocks_candidate_ready() -> None:
+    result = build_feature_frame(
+        _bars().loc[:, ["bar_time_ms", "open", "high", "low", "close", "premium_basis_rate"]],
+        feature_set_id="features_perp_context_v3",
+        feature_packs=feature_set_presets()["features_perp_context_v3"],
+        interval_ms=900_000,
+    )
+
+    assert result.frame["perp_last_funding_rate"].isna().all()
+    assert result.frame["oi_notional"].isna().all()
+    assert result.frame["perp_premium"].eq(0.0002).all()
+    assert result.frame["quality_context_missing_unknown"].eq(1.0).all()
+    assert result.frame["quality_context_candidate_ready_eligible"].eq(0.0).all()
+    assert result.frame["missing_quality_context_missing_unknown"].eq(0).all()
+
+
+def test_aggtrade_orderflow_missing_context_is_nan_with_quality_flags() -> None:
+    result = build_feature_frame(
+        _bars().loc[:, ["bar_time_ms", "open", "high", "low", "close"]],
+        feature_set_id="features_aggtrade_orderflow_v1",
+        feature_packs=feature_set_presets()["features_aggtrade_orderflow_v1"],
+        interval_ms=900_000,
+    )
+
+    assert result.frame["agg_taker_buy_quote_share"].isna().all()
+    assert result.frame["agg_signed_quote_imbalance"].isna().all()
+    assert result.frame["missing_agg_signed_quote_imbalance"].eq(1).all()
+    assert result.frame["quality_aggtrade_context_missing"].eq(1.0).all()
+    assert result.frame["quality_aggtrade_source_present"].eq(0.0).all()
+    assert result.frame["quality_aggtrade_flow_proxy_not_ofi"].eq(0.0).all()
+    assert "agg_signed_quote_imbalance" in result.availability_report.missing_context_columns
 
 
 def test_liquidation_context_missing_windows_are_nan_with_quality_flags() -> None:

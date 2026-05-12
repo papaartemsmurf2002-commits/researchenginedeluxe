@@ -582,8 +582,28 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
         response = client.get("/ui/research")
 
     assert response.status_code == 200
-    assert "Research Control Room" in response.text
-    assert "Pick The Work You Need" in response.text
+    assert "Research Operations" in response.text
+    assert "Operator Board" in response.text
+    assert "Choose Evidence Task" in response.text
+    assert "Data Readiness" in response.text
+    assert "Current Run" in response.text
+    assert "Progress" in response.text
+    assert "Latest Snapshot" in response.text
+    assert "Blockers" in response.text
+    assert "Leads" in response.text
+    assert "Maturity" in response.text
+    assert "Diagnostic" in response.text
+    assert "Screen-worthy" in response.text
+    assert "Candidate-ready" in response.text
+    assert "Preflight Data Readiness" in response.text
+    assert "Quick Discovery" in response.text
+    assert "Standard Discovery" in response.text
+    assert "Deep Discovery" in response.text
+    assert "Pause After One Trial" in response.text
+    assert "Resume Run" in response.text
+    assert "Open Latest Snapshot" in response.text
+    assert "Review Candidate Eligibility" in response.text
+    assert "Open Artifact List" in response.text
     assert "Run Provider Stage" in response.text
     assert "Intake" in response.text
     assert "Dataset" in response.text
@@ -598,15 +618,35 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Resume Discovery" in response.text
     assert "BTCUSDT standard real entry discovery" in response.text
     assert "BTCUSDT deep candidate harvest" in response.text
+    assert "GMM regime detector plus local KNN entry discovery" in response.text
+    assert "explicit no-regime" in response.text
+    assert "Real HMM-regime plus local KNN entry discovery" not in response.text
     assert "selected real discovery run are being submitted" in response.text
-    assert "Full review: real discovery ledger" in response.text
+    assert "Evidence review: real discovery ledger" in response.text
     assert "Discovery Ledger" in response.text
     assert "discovery_run" in response.text
-    assert "Run Full Research Review" in response.text
+    assert "Queue Evidence Review Bundle" in response.text
     assert "Local Action History" in response.text
     assert "isolated job-specific output directories" in response.text
     assert "Profitability Chart" in response.text
+    assert "Waiting for profitability artifacts." in response.text
     assert "Research Graphs" in response.text
+    assert "No candidate strategy mix yet. Run Historical Cycle Review." in response.text
+    assert "No gate decisions yet. Run Historical Cycle Review and inspect rejection evidence." in response.text
+    assert "No holding-window metrics yet. Run Historical Cycle Review." in response.text
+    assert "No discovery run ledgers yet. Run Quick Discovery for plumbing or Standard Discovery for real search." in response.text
+    assert "Promotion Boundary" in response.text
+    assert "promotion_review_required" in response.text
+    assert "summary.last_snapshot_path" in response.text
+    assert "latestSnapshot.path" in response.text
+    assert 'discoveryLedgerCount(discoverySummary, "blocked_candidates", "blocked_candidates")' in response.text
+    assert 'discoveryLedgerCount(discoverySummary, "filter_blockers", "filter_blockers")' in response.text
+    assert 'discoveryLedgerCount(discoverySummary, "interesting_candidates", "interesting_candidates")' in response.text
+    assert "countPositiveValues(discoverySummary.counts || {}) > 0" not in response.text
+    assert 'pickLatest("data_pipeline_intake")' in response.text
+    assert 'pickLatest("provider_archive_manifest")' in response.text
+    assert "planning panel only" not in response.text
+    assert "Planning panel only" in response.text
     assert "historical_research_cycle" in response.text
     assert "HMM/KNN Monitoring" in response.text
     assert "Shadow Diagnostics" in response.text
@@ -619,6 +659,10 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "/api/operator/research/jobs/run-discovery" in response.text
     assert "hmm_knn_artifact" in response.text
     assert "observe_only" in response.text
+    assert "Live Canary" not in response.text
+    assert "Promotion Ready" not in response.text
+    assert "current branch workflow" not in response.text
+    assert "older persisted" not in response.text
     assert "Legacy" not in response.text
     assert "legacy" not in response.text
     assert ("Trading" + "View") not in response.text
@@ -1428,7 +1472,9 @@ def test_operator_discovery_job_writes_research_only_artifacts(app_config, sampl
     assert discovery["summary"]["interesting_candidates"]["row_count"] == 1
     assert discovery["summary"]["blocked_candidates"]["row_count"] == 1
     assert discovery["summary"]["filter_blockers"]["row_count"] == 1
+    assert discovery["summary"]["last_snapshot_path"]
     assert discovery["summary"]["latest_snapshot"]["available"] is True
+    assert discovery["summary"]["latest_snapshot"]["path"]
 
 
 def test_operator_discovery_job_can_pause_and_resume(app_config, sample_bars, tmp_path, monkeypatch) -> None:

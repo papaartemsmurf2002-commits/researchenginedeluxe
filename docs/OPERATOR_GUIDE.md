@@ -79,17 +79,30 @@ Console pages:
 
 Use the Research page for offline evidence work, not live decisions.
 
+- `Operator Board` shows data readiness, current run, progress, latest
+  snapshot, blockers, leads, artifact count, and the current maturity label.
+  Maturity labels are `Diagnostic`, `Screen-worthy`, and `Candidate-ready`;
+  even candidate-ready means research evidence only until a later promotion
+  process approves it.
+- Routine buttons expose common research-only actions: preflight data readiness,
+  quick/standard/deep discovery, pause after one trial, resume, latest snapshot
+  review, candidate eligibility review, and artifact-list review.
 - `Provider Pipeline` runs `prepare-hmm-knn-research-data` with `Intake`,
   `Dataset`, `Evidence`, or `All` scope.
 - `Research Experiment` queues configured bundles from `configs/experiments/`.
 - `Historical Cycle Review` queues configs from `configs/research/` into
   isolated operator output directories so checked evidence is not overwritten.
-- `V4 Discovery Run` queues or resumes HMM/KNN discovery specs from
+- `V4 Discovery Run` queues or resumes GMM-regime/KNN discovery specs from
   `configs/discovery/`; paused/resumed runs keep checkpoints, snapshots, and
-  ledgers in the stable run-id directory.
+  ledgers in the stable run-id directory. Current V4 discovery supports
+  no-regime baselines and GMM modes, not a true HMM backend.
 - `Jobs`, `Artifacts`, profitability charts, gate charts, discovery-ledger
   charts, HMM/KNN monitoring, shadow diagnostics, and Stage 13 readiness are
-  read-only review surfaces.
+  read-only review surfaces. Empty charts show a missing-evidence reason in
+  page text.
+- Candidate eligibility review means checking exit lab, comparator, no-regime
+  baseline when regime is claimed, validation floors, blocker registry, and gate
+  evidence. The Research page does not write candidate packs or authorize use.
 
 The Research page intentionally does not expose manual signal, smoke-live,
 set-mode, sizing, or canary controls. Research jobs stay blocked in live mode

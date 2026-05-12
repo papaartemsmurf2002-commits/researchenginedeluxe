@@ -20,6 +20,9 @@ from tradingbotsuite.research_discovery.snapshots import atomic_write_json
 HMM_MATERIALIZATION_SPEC_VERSION = "discovery-hmm-materialization-spec-v1"
 HMM_MATERIALIZATION_MANIFEST_VERSION = "discovery-hmm-materialization-manifest-v1"
 HMM_MATERIALIZER_VERSION = "discovery-hmm-materializer-v1"
+GMM_REGIME_DETECTOR_TYPE = "gmm"
+GMM_REGIME_MODEL_BACKEND = "sklearn.mixture.GaussianMixture"
+NO_REGIME_DETECTOR_TYPE = "none"
 HMM_POSTERIOR_COLUMNS = (
     "top_regime_label",
     "max_regime_probability",
@@ -47,6 +50,8 @@ class HmmMaterializationSpec:
     max_iter: int = 100
     covariance_type: str = "diag"
     hmm_feature_pack_id: str = "discovery_hmm_price_state_v1"
+    regime_detector_type: str = GMM_REGIME_DETECTOR_TYPE
+    true_hmm_backend_used: bool = False
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "HmmMaterializationSpec":
@@ -64,6 +69,8 @@ class HmmMaterializationSpec:
             max_iter=int(payload.get("max_iter", 100)),
             covariance_type=str(payload.get("covariance_type", "diag")).strip(),
             hmm_feature_pack_id=str(payload.get("hmm_feature_pack_id", "discovery_hmm_price_state_v1")).strip(),
+            regime_detector_type=str(payload.get("regime_detector_type", GMM_REGIME_DETECTOR_TYPE)).strip().lower(),
+            true_hmm_backend_used=_bool_value(payload.get("true_hmm_backend_used", False)),
         )
         validate_hmm_materialization_spec(spec)
         return spec
@@ -86,6 +93,9 @@ class HmmMaterializationSpec:
             "max_iter": self.max_iter,
             "covariance_type": self.covariance_type,
             "hmm_feature_pack_id": self.hmm_feature_pack_id,
+            "regime_detector_type": self.regime_detector_type,
+            "regime_model_backend": GMM_REGIME_MODEL_BACKEND,
+            "true_hmm_backend_used": self.true_hmm_backend_used,
         }
 
     def spec_sha256(self) -> str:
@@ -159,6 +169,10 @@ def validate_hmm_materialization_spec(spec: HmmMaterializationSpec) -> None:
         raise ValueError("covariance_type must be one of full, tied, diag, spherical")
     if not spec.hmm_feature_pack_id:
         raise ValueError("hmm_feature_pack_id must not be empty")
+    if spec.regime_detector_type != GMM_REGIME_DETECTOR_TYPE:
+        raise ValueError("regime_detector_type must be gmm for GaussianMixture materialization")
+    if spec.true_hmm_backend_used:
+        raise ValueError("true_hmm_backend_used must be false for GaussianMixture materialization")
 
 
 def _safe_column_nanmedian(matrix: np.ndarray) -> np.ndarray:
@@ -253,6 +267,9 @@ def materialize_split_safe_hmm_regimes(
             {
                 "split_id": str(split.split_id),
                 "status": "materialized",
+                "regime_detector_type": GMM_REGIME_DETECTOR_TYPE,
+                "regime_model_backend": GMM_REGIME_MODEL_BACKEND,
+                "true_hmm_backend_used": False,
                 "train_row_count": int(len(train)),
                 "validation_row_count": int(len(safe_positions)),
                 "hmm_fit_end_row": train_source_max,
@@ -269,6 +286,9 @@ def materialize_split_safe_hmm_regimes(
         "observe_only": True,
         "promotion_ready": False,
         **research_boundary_metadata(),
+        "regime_detector_type": GMM_REGIME_DETECTOR_TYPE,
+        "regime_model_backend": GMM_REGIME_MODEL_BACKEND,
+        "true_hmm_backend_used": False,
         "spec": spec.to_payload(),
         "spec_sha256": spec.spec_sha256(),
         "row_count": int(len(result)),
@@ -277,6 +297,112 @@ def materialize_split_safe_hmm_regimes(
         "split_records": split_records,
         "required_output_columns": list(HMM_POSTERIOR_COLUMNS),
         "assignment_engine": "vectorized_posterior_assignment_v1",
+        "split_safety_rule": "hmm_fit_end_row < source_row_index",
+        "split_safety_passed": bool(_split_safety_passed(result)),
+        "live_fetch_used": False,
+        "order_placement_used": False,
+        "runtime_mode_changed": False,
+    }
+    return HmmMaterializationResult(frame=result, manifest=manifest)
+
+
+def materialize_no_regime_baseline(
+    frame: pd.DataFrame,
+    *,
+    splits: Sequence[WalkForwardSplit],
+    feature_pack_id: str = "discovery_no_regime_baseline_v1",
+) -> HmmMaterializationResult:
+    ordered = frame.reset_index(drop=True).copy()
+    source_index = _source_row_index(ordered)
+    result = _empty_no_regime_result(ordered, source_index=source_index, feature_pack_id=feature_pack_id)
+    split_records: list[dict[str, Any]] = []
+
+    for split in splits:
+        validation_positions = _validation_positions(split, row_count=len(ordered))
+        if not validation_positions:
+            continue
+        fit_end_position = int(split.train_end_index)
+        if fit_end_position < int(split.train_start_index) or fit_end_position < 0:
+            split_records.append(_blocked_split_record(split, reason="no_training_rows", validation_count=len(validation_positions)))
+            continue
+        train_source_max = int(source_index.iloc[fit_end_position])
+        safe_positions = [position for position in validation_positions if int(source_index.iloc[position]) > train_source_max]
+        if len(safe_positions) != len(validation_positions):
+            split_records.append(
+                _blocked_split_record(
+                    split,
+                    reason="validation_source_rows_not_after_fit_end",
+                    validation_count=len(validation_positions),
+                    train_row_count=max(0, fit_end_position - int(split.train_start_index) + 1),
+                )
+            )
+            continue
+        model_id = _no_regime_model_id(
+            split=split,
+            train_source_max=train_source_max,
+            feature_pack_id=feature_pack_id,
+        )
+        _assign_no_regime_rows(
+            result,
+            positions=safe_positions,
+            source_index=source_index,
+            split_id=str(split.split_id),
+            fit_end_row=train_source_max,
+            model_id=model_id,
+            feature_pack_id=feature_pack_id,
+        )
+        split_records.append(
+            {
+                "split_id": str(split.split_id),
+                "status": "materialized",
+                "regime_detector_type": NO_REGIME_DETECTOR_TYPE,
+                "regime_model_backend": "none",
+                "true_hmm_backend_used": False,
+                "train_row_count": int(max(0, fit_end_position - int(split.train_start_index) + 1)),
+                "validation_row_count": int(len(safe_positions)),
+                "hmm_fit_end_row": train_source_max,
+                "hmm_model_id": model_id,
+                "state_labels": {"0": "all_market"},
+            }
+        )
+
+    manifest = {
+        "hmm_materialization_manifest_version": HMM_MATERIALIZATION_MANIFEST_VERSION,
+        "materializer_version": "discovery-no-regime-baseline-materializer-v1",
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+        "regime_detector_type": NO_REGIME_DETECTOR_TYPE,
+        "regime_model_backend": "none",
+        "regime_gate_enabled": False,
+        "same_regime_neighbor_pool_enabled": False,
+        "true_hmm_backend_used": False,
+        "spec": {
+            "spec_version": HMM_MATERIALIZATION_SPEC_VERSION,
+            "feature_columns": [],
+            "hmm_feature_pack_id": feature_pack_id,
+            "regime_detector_type": NO_REGIME_DETECTOR_TYPE,
+            "regime_model_backend": "none",
+            "true_hmm_backend_used": False,
+        },
+        "spec_sha256": sha256(
+            json.dumps(
+                {
+                    "feature_pack_id": feature_pack_id,
+                    "regime_detector_type": NO_REGIME_DETECTOR_TYPE,
+                    "split_count": len(splits),
+                },
+                sort_keys=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        ).hexdigest(),
+        "row_count": int(len(result)),
+        "materialized_row_count": int((pd.to_numeric(result["hmm_fit_end_row"], errors="coerce") >= 0).sum()),
+        "split_count": int(len(splits)),
+        "split_records": split_records,
+        "required_output_columns": list(HMM_POSTERIOR_COLUMNS),
+        "assignment_engine": "no_regime_split_marker_v1",
         "split_safety_rule": "hmm_fit_end_row < source_row_index",
         "split_safety_passed": bool(_split_safety_passed(result)),
         "live_fetch_used": False,
@@ -332,6 +458,22 @@ def _empty_result(frame: pd.DataFrame, *, source_index: pd.Series, spec: HmmMate
     return result
 
 
+def _empty_no_regime_result(frame: pd.DataFrame, *, source_index: pd.Series, feature_pack_id: str) -> pd.DataFrame:
+    result = frame.copy()
+    result["regime_p_0"] = np.nan
+    result["top_regime_label"] = "all_market"
+    result["max_regime_probability"] = np.nan
+    result["posterior_entropy"] = np.nan
+    result["recent_regime_flip"] = False
+    result["regime_no_trade"] = False
+    result["hmm_fit_end_row"] = -1
+    result["source_row_index"] = source_index.astype("int64")
+    result["hmm_model_id"] = ""
+    result["hmm_feature_pack_id"] = feature_pack_id
+    result["hmm_split_id"] = ""
+    return result
+
+
 def _assign_posterior_rows(
     result: pd.DataFrame,
     *,
@@ -372,6 +514,32 @@ def _assign_posterior_rows(
     result.loc[row_positions, "source_row_index"] = source_index.iloc[row_positions].astype("int64").to_numpy()
     result.loc[row_positions, "hmm_model_id"] = model_id
     result.loc[row_positions, "hmm_feature_pack_id"] = spec.hmm_feature_pack_id
+    result.loc[row_positions, "hmm_split_id"] = split_id
+
+
+def _assign_no_regime_rows(
+    result: pd.DataFrame,
+    *,
+    positions: Sequence[int],
+    source_index: pd.Series,
+    split_id: str,
+    fit_end_row: int,
+    model_id: str,
+    feature_pack_id: str,
+) -> None:
+    if len(positions) == 0:
+        return
+    row_positions = [int(position) for position in positions]
+    result.loc[row_positions, "regime_p_0"] = 1.0
+    result.loc[row_positions, "top_regime_label"] = "all_market"
+    result.loc[row_positions, "max_regime_probability"] = 1.0
+    result.loc[row_positions, "posterior_entropy"] = 0.0
+    result.loc[row_positions, "recent_regime_flip"] = False
+    result.loc[row_positions, "regime_no_trade"] = False
+    result.loc[row_positions, "hmm_fit_end_row"] = int(fit_end_row)
+    result.loc[row_positions, "source_row_index"] = source_index.iloc[row_positions].astype("int64").to_numpy()
+    result.loc[row_positions, "hmm_model_id"] = model_id
+    result.loc[row_positions, "hmm_feature_pack_id"] = feature_pack_id
     result.loc[row_positions, "hmm_split_id"] = split_id
 
 
@@ -498,6 +666,22 @@ def _model_id(
     return f"gaussian_mixture:{digest[:16]}"
 
 
+def _no_regime_model_id(
+    *,
+    split: WalkForwardSplit,
+    train_source_max: int,
+    feature_pack_id: str,
+) -> str:
+    payload = {
+        "split_id": split.split_id,
+        "train_source_max": int(train_source_max),
+        "feature_pack_id": feature_pack_id,
+        "backend": "none",
+    }
+    digest = sha256(json.dumps(payload, sort_keys=True, allow_nan=False).encode("utf-8")).hexdigest()
+    return f"no_regime:{digest[:16]}"
+
+
 def _split_safety_passed(frame: pd.DataFrame) -> bool:
     materialized = frame[pd.to_numeric(frame["hmm_fit_end_row"], errors="coerce") >= 0]
     if materialized.empty:
@@ -519,6 +703,12 @@ def _assert_new_artifact_paths(*paths: Path) -> None:
     existing = [str(path) for path in paths if path.exists()]
     if existing:
         raise ValueError("refusing to overwrite existing HMM materialization artifacts: " + ",".join(existing))
+
+
+def _bool_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
 def _atomic_write_parquet(frame: pd.DataFrame, path: Path) -> None:

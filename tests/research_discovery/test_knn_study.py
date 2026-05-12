@@ -24,6 +24,11 @@ from tradingbotsuite.research_discovery.knn_study import (
     materialize_regime_local_knn_predictions,
     write_knn_study_artifacts,
 )
+from tradingbotsuite.research_discovery.neighbor_cache import (
+    ExactNeighborCache,
+    exact_neighbor_cache_identity,
+    exact_neighbor_cache_key,
+)
 from tradingbotsuite.research_discovery.strategy_integration import (
     account_hmm_knn_local_analog_strategy,
     write_strategy_accounting_artifacts,
@@ -140,6 +145,11 @@ def test_knn_study_emits_strategy_prediction_columns_and_split_safe_neighbors() 
     assert result.manifest["research_only"] is True
     assert result.manifest["observe_only"] is True
     assert result.manifest["promotion_ready"] is False
+    assert result.manifest["regime_mode"] == "gmm_same_regime_neighbors"
+    assert result.manifest["regime_detector_type"] == "gmm"
+    assert result.manifest["regime_gate_enabled"] is True
+    assert result.manifest["same_regime_neighbor_pool_enabled"] is True
+    assert result.manifest["true_hmm_backend_used"] is False
     assert result.manifest["order_placement_used"] is False
 
 
@@ -229,6 +239,99 @@ def test_stable_topk_distance_order_matches_full_stable_sort_for_random_distance
         np.testing.assert_array_equal(order, full_order)
 
 
+def test_neighbor_cache_identity_ignores_k_and_thresholds_but_tracks_exact_inputs() -> None:
+    base = exact_neighbor_cache_identity(
+        feature_column_set_id="price_trend_vol",
+        feature_columns=FEATURE_COLUMNS,
+        label_horizon="4h",
+        label_horizon_bars=16,
+        split_id="split-1",
+        regime_mode="gmm_same_regime_neighbors",
+        regime_detector_type="gmm",
+        regime_gate_enabled=True,
+        same_regime_neighbor_pool_enabled=True,
+        distance_metric="euclidean",
+        selection_k_limit=34,
+        train_source_min=0,
+        train_source_max=99,
+        validation_source_min=120,
+        validation_source_max=149,
+        safe_train_source_max=99,
+        train_row_count=100,
+        validation_row_count=30,
+        source_identity={"dataset_sha256": "dataset-a", "hmm_manifest_sha256": "hmm-a"},
+    )
+    threshold_variant = dict(base)
+    threshold_variant.update(
+        {
+            "k": 8,
+            "min_neighbor_count": 4,
+            "probability_threshold": 0.6,
+            "expected_value_threshold": 0.001,
+            "vote_margin_threshold": 0.05,
+        }
+    )
+    changed_feature_set = dict(base)
+    changed_feature_set["feature_column_set_id"] = "compact_wt3d_base"
+    changed_distance = dict(base)
+    changed_distance["distance_metric"] = "manhattan"
+    changed_source = dict(base)
+    changed_source["source_identity"] = {"dataset_sha256": "dataset-b", "hmm_manifest_sha256": "hmm-a"}
+
+    assert exact_neighbor_cache_key(base) != exact_neighbor_cache_key(threshold_variant)
+    trimmed_threshold_variant = {key: value for key, value in threshold_variant.items() if key in base}
+    assert exact_neighbor_cache_key(base) == exact_neighbor_cache_key(trimmed_threshold_variant)
+    assert exact_neighbor_cache_key(base) != exact_neighbor_cache_key(changed_feature_set)
+    assert exact_neighbor_cache_key(base) != exact_neighbor_cache_key(changed_distance)
+    assert exact_neighbor_cache_key(base) != exact_neighbor_cache_key(changed_source)
+
+
+def test_neighbor_cache_reuse_preserves_uncached_knn_predictions() -> None:
+    frame, splits = _hmm_frame()
+    cache = ExactNeighborCache()
+    source_identity = {"dataset_sha256": "dataset-a", "hmm_manifest_sha256": "hmm-a"}
+    first_spec = _knn_spec(k=6, min_neighbor_count=3, probability_threshold=0.50)
+    second_spec = _knn_spec(k=4, min_neighbor_count=2, probability_threshold=0.60, vote_margin_threshold=0.02)
+
+    uncached_first = materialize_regime_local_knn_predictions(frame, splits=splits, spec=first_spec)
+    cached_first = materialize_regime_local_knn_predictions(
+        frame,
+        splits=splits,
+        spec=first_spec,
+        neighbor_cache=cache,
+        neighbor_cache_k_limit=8,
+        source_identity=source_identity,
+    )
+    uncached_second = materialize_regime_local_knn_predictions(frame, splits=splits, spec=second_spec)
+    cached_second = materialize_regime_local_knn_predictions(
+        frame,
+        splits=splits,
+        spec=second_spec,
+        neighbor_cache=cache,
+        neighbor_cache_k_limit=8,
+        source_identity=source_identity,
+    )
+
+    pd.testing.assert_frame_equal(
+        uncached_first.frame.loc[:, KNN_PREDICTION_COLUMNS].reset_index(drop=True),
+        cached_first.frame.loc[:, KNN_PREDICTION_COLUMNS].reset_index(drop=True),
+        check_dtype=False,
+    )
+    pd.testing.assert_frame_equal(
+        uncached_second.frame.loc[:, KNN_PREDICTION_COLUMNS].reset_index(drop=True),
+        cached_second.frame.loc[:, KNN_PREDICTION_COLUMNS].reset_index(drop=True),
+        check_dtype=False,
+    )
+    pd.testing.assert_frame_equal(
+        uncached_second.neighbor_diagnostics.reset_index(drop=True),
+        cached_second.neighbor_diagnostics.reset_index(drop=True),
+        check_dtype=False,
+    )
+    assert cached_second.manifest["neighbor_cache_hit_count"] > 0
+    assert cache.summary()["hits"] > 0
+    assert cache.summary()["misses"] > 0
+
+
 def test_knn_expected_value_is_side_adjusted_for_short_majority() -> None:
     spec = _knn_spec(
         k=4,
@@ -268,6 +371,46 @@ def test_knn_neighbors_are_same_regime_when_configured() -> None:
 
     assert not diagnostics.empty
     assert diagnostics["neighbor_regime"].eq(diagnostics["query_regime"]).all()
+    assert result.manifest["regime_detector_type"] == "gmm"
+    assert result.manifest["same_regime_neighbor_pool_enabled"] is True
+
+
+def test_knn_no_regime_mode_ignores_regime_no_trade_values() -> None:
+    frame, splits = _hmm_frame()
+    no_regime_spec = _knn_spec(
+        same_regime_only=False,
+        regime_mode="none",
+        regime_detector_type="none",
+        regime_gate_enabled=False,
+        same_regime_neighbor_pool_enabled=False,
+        true_hmm_backend_used=False,
+    )
+    baseline = materialize_regime_local_knn_predictions(frame, splits=splits, spec=no_regime_spec)
+
+    poisoned = frame.copy()
+    poisoned["regime_no_trade"] = True
+    rerun = materialize_regime_local_knn_predictions(poisoned, splits=splits, spec=no_regime_spec)
+
+    compare_columns = [
+        "p_up_barrier",
+        "p_down_barrier",
+        "neighbor_count",
+        "neighbor_min_source_index",
+        "neighbor_max_source_index",
+        "accepted_by_knn",
+        "knn_skip_reason",
+    ]
+    pd.testing.assert_frame_equal(
+        baseline.frame[compare_columns].reset_index(drop=True),
+        rerun.frame[compare_columns].reset_index(drop=True),
+        check_dtype=False,
+    )
+    assert "hmm_regime_no_trade" not in set(rerun.frame["knn_skip_reason"].astype(str))
+    assert rerun.manifest["regime_mode"] == "none"
+    assert rerun.manifest["regime_detector_type"] == "none"
+    assert rerun.manifest["regime_gate_enabled"] is False
+    assert rerun.manifest["same_regime_neighbor_pool_enabled"] is False
+    assert rerun.manifest["true_hmm_backend_used"] is False
 
 
 def test_knn_study_is_train_only_for_earlier_splits() -> None:
@@ -375,3 +518,8 @@ def test_knn_study_spec_config_loads() -> None:
 
     assert spec.feature_columns == FEATURE_COLUMNS
     assert spec.feature_column_set_id == "price_trend_vol"
+    assert spec.regime_mode == "gmm_same_regime_neighbors"
+    assert spec.regime_detector_type == "gmm"
+    assert spec.regime_gate_enabled is True
+    assert spec.same_regime_neighbor_pool_enabled is True
+    assert spec.true_hmm_backend_used is False

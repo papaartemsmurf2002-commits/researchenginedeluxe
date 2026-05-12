@@ -15,6 +15,7 @@ from tradingbotsuite.research_discovery.hmm_materialization import (
     _empty_result,
     _recent_flip_flags,
     _source_row_index,
+    materialize_no_regime_baseline,
     materialize_split_safe_hmm_regimes,
     write_hmm_materialization_artifacts,
 )
@@ -95,6 +96,9 @@ def test_hmm_materialization_emits_required_columns_and_split_safe_rows() -> Non
     assert result.manifest["research_only"] is True
     assert result.manifest["observe_only"] is True
     assert result.manifest["promotion_ready"] is False
+    assert result.manifest["regime_detector_type"] == "gmm"
+    assert result.manifest["regime_model_backend"] == "sklearn.mixture.GaussianMixture"
+    assert result.manifest["true_hmm_backend_used"] is False
     assert result.manifest["order_placement_used"] is False
     assert result.manifest["runtime_mode_changed"] is False
 
@@ -207,6 +211,8 @@ def test_hmm_materialization_writes_research_only_artifacts(tmp_path: Path) -> N
     assert manifest["required_outputs"]["regime_posteriors"] == str(artifacts.regime_posteriors_path)
     assert not posteriors.empty
     assert not split_summary.empty
+    assert manifest["regime_detector_type"] == "gmm"
+    assert manifest["true_hmm_backend_used"] is False
 
 
 def test_hmm_materialization_artifacts_refuse_overwrite(tmp_path: Path) -> None:
@@ -223,7 +229,31 @@ def test_hmm_materialization_spec_config_loads() -> None:
     spec = HmmMaterializationSpec.from_path(Path("configs/discovery/hmm_materialization_v4.json"))
 
     assert spec.feature_columns == FEATURE_COLUMNS
-    assert spec.hmm_feature_pack_id == "discovery_hmm_price_trend_vol_v4"
+    assert spec.hmm_feature_pack_id == "discovery_gmm_price_trend_vol_v4"
+    assert spec.regime_detector_type == "gmm"
+    assert spec.true_hmm_backend_used is False
+
+
+def test_no_regime_baseline_emits_split_safe_compatibility_columns() -> None:
+    frame = _feature_frame()
+    result = materialize_no_regime_baseline(frame, splits=_splits(frame), feature_pack_id="test_no_regime_pack")
+    materialized = result.frame[result.frame["hmm_fit_end_row"] >= 0]
+
+    assert set(HMM_POSTERIOR_COLUMNS) <= set(result.frame.columns)
+    assert not materialized.empty
+    assert materialized["top_regime_label"].eq("all_market").all()
+    assert materialized["regime_no_trade"].eq(False).all()
+    assert materialized["recent_regime_flip"].eq(False).all()
+    assert materialized["max_regime_probability"].eq(1.0).all()
+    assert materialized["posterior_entropy"].eq(0.0).all()
+    assert materialized["hmm_model_id"].astype(str).str.startswith("no_regime:").all()
+    assert materialized["hmm_feature_pack_id"].eq("test_no_regime_pack").all()
+    assert (materialized["hmm_fit_end_row"] < materialized["source_row_index"]).all()
+    assert result.manifest["regime_detector_type"] == "none"
+    assert result.manifest["regime_gate_enabled"] is False
+    assert result.manifest["same_regime_neighbor_pool_enabled"] is False
+    assert result.manifest["true_hmm_backend_used"] is False
+    assert result.manifest["split_safety_passed"] is True
 
 
 def _assign_posterior_rows_scalar_reference(

@@ -1,0 +1,422 @@
+{
+  "manifest_version": "strategy-family-matrix-existing-plugins-v1",
+  "matrix_id": "strategy_family_matrix_existing_plugins_v1",
+  "work_packet": "WPR94-12-strategy-family-matrix-existing-plugins",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "plugin_implementation_changes": [],
+  "required_comparator_roles": [
+    "no_trade_baseline",
+    "transparent_baseline"
+  ],
+  "regime_comparison_policy": {
+    "regime_detector_type_options": [
+      "none",
+      "gmm"
+    ],
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "true_hmm_backend_used": false,
+    "supported_regime_modes": [
+      {
+        "regime_mode": "no_regime",
+        "regime_detector_type": "none",
+        "role": "required_baseline"
+      },
+      {
+        "regime_mode": "gmm_gate_only",
+        "regime_detector_type": "gmm",
+        "role": "current_gmm_comparator"
+      },
+      {
+        "regime_mode": "gmm_same_regime_neighbor",
+        "regime_detector_type": "gmm",
+        "role": "current_gmm_comparator"
+      },
+      {
+        "regime_mode": "gmm_all_regime_with_gate",
+        "regime_detector_type": "gmm",
+        "role": "current_gmm_comparator"
+      }
+    ]
+  },
+  "global_comparators": {
+    "no_trade": {
+      "strategy_id": "baseline_no_trade",
+      "role": "no_trade_baseline",
+      "reason": "Zero-exposure reference for every family and feature setup."
+    },
+    "transparent": [
+      {
+        "strategy_id": "trend_following_v1",
+        "role": "transparent_baseline"
+      },
+      {
+        "strategy_id": "volatility_breakout_v1",
+        "role": "transparent_baseline"
+      },
+      {
+        "strategy_id": "range_reversion_v1",
+        "role": "transparent_baseline"
+      },
+      {
+        "strategy_id": "funding_basis_v1",
+        "role": "transparent_baseline"
+      },
+      {
+        "strategy_id": "lc_reference_v1",
+        "role": "transparent_baseline"
+      }
+    ]
+  },
+  "families": [
+    {
+      "family_id": "trend_continuation",
+      "display_name": "Trend continuation",
+      "family_role": "transparent_strategy_family",
+      "feature_set_id": "features_price_trend_vol",
+      "holding_windows": [
+        "4h",
+        "12h",
+        "24h"
+      ],
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "diagnostic_only": false,
+      "candidate_pack_eligible": false,
+      "selected_strategy_plugins": [
+        {
+          "strategy_id": "trend_following_v1",
+          "role": "transparent_candidate"
+        },
+        {
+          "strategy_id": "volatility_breakout_v1",
+          "role": "transparent_candidate"
+        }
+      ],
+      "no_trade_comparator": {
+        "strategy_id": "baseline_no_trade",
+        "role": "no_trade_baseline"
+      },
+      "transparent_comparators": [
+        {
+          "strategy_id": "trend_following_v1",
+          "role": "transparent_baseline"
+        },
+        {
+          "strategy_id": "volatility_breakout_v1",
+          "role": "transparent_baseline"
+        }
+      ],
+      "evidence_note": "Transparent price-path references for trend and shock-following behavior."
+    },
+    {
+      "family_id": "range_chop_reversion",
+      "display_name": "Range and chop reversion",
+      "family_role": "transparent_strategy_family",
+      "feature_set_id": "features_price_trend_vol",
+      "holding_windows": [
+        "1h",
+        "4h",
+        "12h",
+        "24h"
+      ],
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "diagnostic_only": false,
+      "candidate_pack_eligible": false,
+      "selected_strategy_plugins": [
+        {
+          "strategy_id": "range_reversion_v1",
+          "role": "transparent_candidate"
+        }
+      ],
+      "no_trade_comparator": {
+        "strategy_id": "baseline_no_trade",
+        "role": "no_trade_baseline"
+      },
+      "transparent_comparators": [
+        {
+          "strategy_id": "range_reversion_v1",
+          "role": "transparent_baseline"
+        }
+      ],
+      "evidence_note": "Chop/stretch mean-reversion reference with explicit no-trade comparison."
+    },
+    {
+      "family_id": "funding_basis",
+      "display_name": "Funding and basis",
+      "family_role": "perp_context_strategy_family",
+      "feature_set_id": "features_perp_context_v2",
+      "holding_windows": [
+        "4h",
+        "12h",
+        "24h",
+        "72h"
+      ],
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "diagnostic_only": false,
+      "candidate_pack_eligible": false,
+      "selected_strategy_plugins": [
+        {
+          "strategy_id": "perp_basis_convergence_v2",
+          "role": "research_candidate"
+        },
+        {
+          "strategy_id": "funding_crowding_fade_v2",
+          "role": "research_candidate"
+        },
+        {
+          "strategy_id": "funding_window_timing_v1",
+          "role": "research_candidate"
+        }
+      ],
+      "no_trade_comparator": {
+        "strategy_id": "baseline_no_trade",
+        "role": "no_trade_baseline"
+      },
+      "transparent_comparators": [
+        {
+          "strategy_id": "funding_basis_v1",
+          "role": "transparent_baseline",
+          "feature_set_id": "features_full_context_no_wt",
+          "holding_windows": [
+            "4h",
+            "12h",
+            "24h",
+            "72h"
+          ]
+        }
+      ],
+      "evidence_note": "Existing perp-context strategies are compared against no-trade and the transparent funding_basis_v1 reference."
+    },
+    {
+      "family_id": "oi_flow",
+      "display_name": "OI flow breakout",
+      "family_role": "perp_context_strategy_family",
+      "feature_set_id": "features_perp_context_v2",
+      "holding_windows": [
+        "4h",
+        "12h",
+        "24h",
+        "72h"
+      ],
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "diagnostic_only": false,
+      "candidate_pack_eligible": false,
+      "selected_strategy_plugins": [
+        {
+          "strategy_id": "oi_flow_breakout_v2",
+          "role": "research_candidate"
+        }
+      ],
+      "no_trade_comparator": {
+        "strategy_id": "baseline_no_trade",
+        "role": "no_trade_baseline"
+      },
+      "transparent_comparators": [
+        {
+          "strategy_id": "volatility_breakout_v1",
+          "role": "transparent_baseline",
+          "feature_set_id": "features_price_trend_vol",
+          "holding_windows": [
+            "4h",
+            "12h",
+            "24h",
+            "72h"
+          ]
+        }
+      ],
+      "evidence_note": "OI expansion and taker-flow proxy evidence must beat no-trade and a transparent volatility breakout reference."
+    },
+    {
+      "family_id": "current_gmm_regime",
+      "display_name": "Current GMM regime routed sleeves",
+      "family_role": "current_regime_strategy_family",
+      "feature_set_id": "features_perp_context_v2",
+      "holding_windows": [
+        "4h",
+        "12h",
+        "24h",
+        "72h"
+      ],
+      "regime_detector_type": "gmm",
+      "regime_modes": [
+        "no_regime",
+        "gmm_gate_only",
+        "gmm_same_regime_neighbor",
+        "gmm_all_regime_with_gate"
+      ],
+      "no_regime_baseline_required": true,
+      "no_regime_comparator": {
+        "regime_mode": "no_regime",
+        "regime_detector_type": "none",
+        "role": "required_baseline",
+        "strategy_id": "hmm_routed_alpha_sleeves_v2"
+      },
+      "current_regime_evidence_only": true,
+      "true_hmm_backend_used": false,
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "diagnostic_only": false,
+      "candidate_pack_eligible": false,
+      "selected_strategy_plugins": [
+        {
+          "strategy_id": "hmm_routed_alpha_sleeves_v2",
+          "role": "research_candidate"
+        }
+      ],
+      "no_trade_comparator": {
+        "strategy_id": "baseline_no_trade",
+        "role": "no_trade_baseline"
+      },
+      "transparent_comparators": [
+        {
+          "strategy_id": "trend_following_v1",
+          "role": "transparent_baseline",
+          "feature_set_id": "features_price_trend_vol",
+          "holding_windows": [
+            "4h",
+            "12h",
+            "24h",
+            "72h"
+          ]
+        },
+        {
+          "strategy_id": "range_reversion_v1",
+          "role": "transparent_baseline",
+          "feature_set_id": "features_price_trend_vol",
+          "holding_windows": [
+            "4h",
+            "12h",
+            "24h"
+          ]
+        }
+      ],
+      "evidence_note": "Uses current GMM/no-regime materialization compatibility columns; this is not true-HMM transition evidence."
+    },
+    {
+      "family_id": "knn_local_analog_overlay",
+      "display_name": "KNN local analog overlay",
+      "family_role": "knn_overlay",
+      "feature_set_id": "features_perp_context_v2",
+      "holding_windows": [
+        "4h",
+        "12h",
+        "24h",
+        "72h"
+      ],
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "diagnostic_only": false,
+      "candidate_pack_eligible": false,
+      "selected_strategy_plugins": [
+        {
+          "strategy_id": "hmm_knn_local_analog_filter_v2",
+          "role": "overlay_research_candidate"
+        }
+      ],
+      "overlay_policy": {
+        "overlay_kind": "knn_local_analog_filter",
+        "standalone_allowed": false,
+        "requires_materialized_prediction_overlay": true,
+        "required_companion_strategy_plugins": [
+          {
+            "strategy_id": "perp_basis_convergence_v2",
+            "role": "companion_research_candidate"
+          },
+          {
+            "strategy_id": "oi_flow_breakout_v2",
+            "role": "companion_research_candidate"
+          },
+          {
+            "strategy_id": "hmm_routed_alpha_sleeves_v2",
+            "role": "companion_research_candidate"
+          }
+        ]
+      },
+      "no_trade_comparator": {
+        "strategy_id": "baseline_no_trade",
+        "role": "no_trade_baseline"
+      },
+      "transparent_comparators": [
+        {
+          "strategy_id": "trend_following_v1",
+          "role": "transparent_baseline",
+          "feature_set_id": "features_price_trend_vol",
+          "holding_windows": [
+            "4h",
+            "12h",
+            "24h",
+            "72h"
+          ]
+        },
+        {
+          "strategy_id": "funding_basis_v1",
+          "role": "transparent_baseline",
+          "feature_set_id": "features_full_context_no_wt",
+          "holding_windows": [
+            "4h",
+            "12h",
+            "24h",
+            "72h"
+          ]
+        }
+      ],
+      "evidence_note": "KNN is an overlay/filter treatment and must be evaluated with non-KNN companion strategy families."
+    },
+    {
+      "family_id": "diagnostic_liquidation",
+      "display_name": "Diagnostic liquidation absorption",
+      "family_role": "diagnostic_context_strategy_family",
+      "feature_set_id": "features_liquidation_context_v1",
+      "holding_windows": [
+        "1h",
+        "4h",
+        "12h",
+        "24h"
+      ],
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "diagnostic_only": true,
+      "candidate_pack_eligible": false,
+      "research_evidence_scope": "diagnostic_only",
+      "selected_strategy_plugins": [
+        {
+          "strategy_id": "liquidation_absorption_classifier_v1",
+          "role": "diagnostic_research_candidate"
+        }
+      ],
+      "no_trade_comparator": {
+        "strategy_id": "baseline_no_trade",
+        "role": "no_trade_baseline"
+      },
+      "transparent_comparators": [
+        {
+          "strategy_id": "lc_reference_v1",
+          "role": "transparent_baseline",
+          "feature_set_id": "features_price_trend_vol",
+          "holding_windows": [
+            "1h",
+            "4h",
+            "12h",
+            "24h"
+          ]
+        }
+      ],
+      "evidence_note": "Liquidation free-sample context remains diagnostic-only and cannot produce promotion-ready evidence."
+    }
+  ]
+}

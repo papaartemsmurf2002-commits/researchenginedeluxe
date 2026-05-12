@@ -17,5 +17,7 @@
   "random_state": 73,
   "max_iter": 100,
   "covariance_type": "diag",
-  "hmm_feature_pack_id": "discovery_hmm_price_trend_vol_v4"
+  "hmm_feature_pack_id": "discovery_gmm_price_trend_vol_v4",
+  "regime_detector_type": "gmm",
+  "true_hmm_backend_used": false
 }

@@ -21,6 +21,7 @@ from tradingbotsuite.data.historical_fixture_pack import (
     resolve_fixture_pack_cycle_dataset_path,
 )
 from tradingbotsuite.features.builders import materialize_registered_feature_set
+from tradingbotsuite.research_discovery.event_accounting import account_independent_events
 from tradingbotsuite.research_discovery.feature_sets import (
     DiscoveryFeatureColumnSet,
     load_feature_column_set_manifest,
@@ -30,6 +31,7 @@ from tradingbotsuite.research_discovery.hmm_materialization import (
     HMM_POSTERIOR_COLUMNS,
     HmmMaterializationResult,
     HmmMaterializationSpec,
+    materialize_no_regime_baseline,
     materialize_split_safe_hmm_regimes,
     write_hmm_materialization_artifacts,
 )
@@ -39,11 +41,13 @@ from tradingbotsuite.research_discovery.knn_study import (
     write_knn_study_artifacts,
 )
 from tradingbotsuite.research_discovery.manifests import discovery_manifest_payload
+from tradingbotsuite.research_discovery.neighbor_cache import ExactNeighborCache
 from tradingbotsuite.research_discovery.snapshots import atomic_write_json, iso_utc, utc_now, write_snapshot
 from tradingbotsuite.research_discovery.spec import (
     DiscoveryRunSpec,
     DiscoveryTrialTemplate,
     generated_trial_templates,
+    regime_mode_settings,
     resolve_discovery_paths,
 )
 from tradingbotsuite.research_discovery.state import (
@@ -53,6 +57,11 @@ from tradingbotsuite.research_discovery.state import (
     read_trial_record,
     write_run_state,
     write_trial_record,
+)
+from tradingbotsuite.research_discovery.telemetry import (
+    build_compute_telemetry,
+    start_telemetry_session,
+    stop_telemetry_session,
 )
 
 
@@ -70,20 +79,46 @@ LEDGER_COLUMNS = (
     "research_only",
     "observe_only",
     "promotion_ready",
+    "discovery_score_policy_version",
     "feature_column_set_id",
     "hmm_state_count",
+    "regime_mode",
+    "regime_detector_type",
+    "regime_gate_enabled",
+    "same_regime_neighbor_pool_enabled",
+    "true_hmm_backend_used",
     "label_horizon",
     "distance_metric",
     "k",
     "min_neighbor_count",
     "trade_count",
+    "accepted_bar_count",
+    "independent_event_count",
+    "suppressed_overlap_count",
+    "overlap_ratio",
+    "event_signal_rate",
+    "side_collapse_ratio",
+    "near_signal_ceiling",
+    "long_independent_event_count",
+    "short_independent_event_count",
+    "event_spacing_bars",
     "signal_rate",
     "realized_expectancy",
+    "independent_event_expectancy",
     "accepted_prediction_count",
     "evaluated_prediction_count",
+    "legacy_density_score",
+    "discovery_screen_score_v2",
+    "signal_rate_ceiling_penalty",
+    "overlap_penalty",
+    "side_collapse_penalty",
     "final_score",
     "record_sha256",
 )
+DISCOVERY_SCORE_POLICY_VERSION = "discovery-screen-score-v2"
+REAL_DISCOVERY_TRIAL_KIND = "regime_knn_entry_discovery"
+LEGACY_REAL_DISCOVERY_TRIAL_KIND = "hmm_knn_entry_discovery"
+REAL_DISCOVERY_TRIAL_KINDS = {REAL_DISCOVERY_TRIAL_KIND, LEGACY_REAL_DISCOVERY_TRIAL_KIND}
 
 LABEL_HORIZON_RE = re.compile(r"^\s*(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>bars?|b|m|min|minute|minutes|h|hour|hours|d|day|days)\s*$")
 
@@ -116,7 +151,11 @@ def run_discovery(
     stop_after_trials: int | None = None,
     clock: Callable[[], datetime] | None = None,
 ) -> DiscoveryRunResult:
-    started = time.perf_counter()
+    telemetry_session = start_telemetry_session()
+    started = telemetry_session.wall_started
+    stage_wall_seconds: dict[str, float] = {}
+    artifact_write_seconds = 0.0
+    stage_started = time.perf_counter()
     now = clock or utc_now
     spec_path = Path(spec_path).expanduser().resolve()
     spec = DiscoveryRunSpec.from_path(spec_path)
@@ -130,10 +169,12 @@ def run_discovery(
     interesting_path = ledger_root / "interesting_candidates.parquet"
     blocked_path = ledger_root / "blocked_candidates.parquet"
     filter_blockers_path = ledger_root / "filter_blockers.parquet"
+    stage_wall_seconds["spec_and_path_resolution"] = time.perf_counter() - stage_started
 
     if output_dir.exists() and not state_path.exists() and any(output_dir.iterdir()):
         raise ValueError(f"discovery output directory is not empty and has no run_state.json: {output_dir}")
 
+    stage_started = time.perf_counter()
     output_dir.mkdir(parents=True, exist_ok=True)
     for directory in (output_dir / "trials", output_dir / "snapshots", ledger_root):
         directory.mkdir(parents=True, exist_ok=True)
@@ -154,12 +195,16 @@ def run_discovery(
         write_run_state(state_path, state)
 
     existing_records = _load_existing_trial_records(output_dir / "trials", run_id=spec.run_id)
+    _assert_real_trial_score_policy_compatible(existing_records)
     _assert_state_trial_records_present(state, existing_records)
     state = _merge_state_records(state, existing_records, updated_at_utc=iso_utc(now()))
     write_run_state(state_path, state)
+    stage_wall_seconds["resume_state_merge"] = time.perf_counter() - stage_started
 
     templates = generated_trial_templates(spec)
+    stage_started = time.perf_counter()
     real_context = _prepare_real_discovery_context(spec, output_dir=output_dir) if _real_discovery_requested(spec, templates) else None
+    stage_wall_seconds["real_context_preparation"] = time.perf_counter() - stage_started
     completed_ids = set(state.completed_trial_ids)
     executed_this_call = 0
     snapshot_paths: list[Path] = []
@@ -192,6 +237,7 @@ def run_discovery(
     if stop_after_trials is not None:
         pending_trials = pending_trials[: max(0, int(stop_after_trials))]
     worker_count = _effective_worker_count(spec.execution.max_workers, pending_trials)
+    trial_stage_started = time.perf_counter()
     with (ThreadPoolExecutor(max_workers=worker_count) if worker_count > 1 else _NullExecutor()) as executor:
         cursor = 0
         while cursor < len(pending_trials):
@@ -256,6 +302,7 @@ def run_discovery(
                     write_run_state(state_path, state)
                     batch_completed = 0
                     last_snapshot_at = snapshot_at
+    stage_wall_seconds["trial_execution"] = time.perf_counter() - trial_stage_started
 
     if batch_completed:
         _write_ledgers(
@@ -330,7 +377,36 @@ def run_discovery(
         "run_state_write_scope": "initial_resume_merge_snapshot_pause_completion_final",
         "resume_recovers_completed_trials_from_trial_records": True,
     }
+    manifest["regime_truthfulness"]["observed_trial_regime_modes"] = sorted(
+        {
+            str(record.payload.get("regime_mode"))
+            for record in existing_records.values()
+            if str(record.payload.get("regime_mode") or "").strip()
+        }
+    )
+    manifest["regime_truthfulness"]["observed_trial_regime_detector_types"] = sorted(
+        {
+            str(record.payload.get("regime_detector_type"))
+            for record in existing_records.values()
+            if str(record.payload.get("regime_detector_type") or "").strip()
+        }
+    )
+    manifest["compute_telemetry"] = build_compute_telemetry(
+        session=telemetry_session,
+        output_dir=output_dir,
+        completed_records=_ordered_records(existing_records.values()),
+        active_workers=worker_count,
+        executed_this_call=executed_this_call,
+        artifact_write_seconds=artifact_write_seconds,
+        feature_cache_summary=(real_context.feature_cache_summary if real_context is not None else {}),
+        neighbor_cache_summary=(real_context.neighbor_cache.summary() if real_context is not None else {}),
+        stage_wall_seconds=stage_wall_seconds,
+    )
+    manifest["runtime"]["compute_telemetry_version"] = manifest["compute_telemetry"]["telemetry_version"]
+    manifest_stage_started = time.perf_counter()
     atomic_write_json(manifest_path, manifest)
+    artifact_write_seconds += time.perf_counter() - manifest_stage_started
+    stop_telemetry_session(telemetry_session)
 
     return DiscoveryRunResult(
         output_dir=output_dir,
@@ -458,10 +534,12 @@ class _RealDiscoveryContext:
     feature_sets: Mapping[str, DiscoveryFeatureColumnSet]
     frames_by_column_set: Mapping[str, pd.DataFrame]
     unavailable_feature_sets: Mapping[str, str]
+    feature_cache_summary: Mapping[str, Any]
     label_split_cache: dict[str, _LabelSplitCacheEntry]
     label_split_cache_lock: threading.Lock
     hmm_cache: dict[str, _HmmCacheEntry]
     hmm_cache_lock: threading.Lock
+    neighbor_cache: ExactNeighborCache
     interval_ms: int
     data_evidence: Mapping[str, Any]
     unavailable_reason: str = ""
@@ -472,7 +550,7 @@ def _real_discovery_requested(spec: DiscoveryRunSpec, templates: tuple[Discovery
 
 
 def _real_trial_template(template: DiscoveryTrialTemplate) -> bool:
-    return str(dict(template.payload).get("trial_kind") or "") == "hmm_knn_entry_discovery"
+    return str(dict(template.payload).get("trial_kind") or "") in REAL_DISCOVERY_TRIAL_KINDS
 
 
 def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path) -> _RealDiscoveryContext:
@@ -482,10 +560,12 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
             feature_sets={},
             frames_by_column_set={},
             unavailable_feature_sets={},
+            feature_cache_summary={},
             label_split_cache={},
             label_split_cache_lock=threading.Lock(),
             hmm_cache={},
             hmm_cache_lock=threading.Lock(),
+            neighbor_cache=ExactNeighborCache(),
             interval_ms=900_000,
             data_evidence={"status": "missing", "reason": "real_discovery_data_required"},
             unavailable_reason="real_discovery_data_required",
@@ -501,10 +581,12 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
             feature_sets={},
             frames_by_column_set={},
             unavailable_feature_sets={},
+            feature_cache_summary={},
             label_split_cache={},
             label_split_cache_lock=threading.Lock(),
             hmm_cache={},
             hmm_cache_lock=threading.Lock(),
+            neighbor_cache=ExactNeighborCache(),
             interval_ms=interval_ms,
             data_evidence=data_evidence,
             unavailable_reason="feature_column_sets_path_required",
@@ -517,6 +599,8 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
     frames_by_column_set: dict[str, pd.DataFrame] = {}
     unavailable_feature_sets: dict[str, str] = {}
     materialization_errors: dict[str, dict[str, str]] = {}
+    registered_feature_set_build_count = 0
+    registered_feature_set_reuse_count = 0
     feature_root = output_dir / "feature_matrices"
     feature_root.mkdir(parents=True, exist_ok=True)
     for column_set_id, column_set in selected.items():
@@ -539,6 +623,7 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
                     }
                     continue
                 frames_by_registered[column_set.registered_feature_set_id] = frame
+                registered_feature_set_build_count += 1
                 frame.to_parquet(feature_root / f"{_safe_path_part(column_set.registered_feature_set_id)}.parquet", index=False)
             except Exception as exc:
                 unavailable_feature_sets[column_set_id] = "feature_set_materialization_failed"
@@ -549,6 +634,7 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
                 }
                 continue
         if column_set.registered_feature_set_id in frames_by_registered:
+            registered_feature_set_reuse_count += 1 if column_set.registered_feature_set_id in frames_by_registered else 0
             frame = frames_by_registered[column_set.registered_feature_set_id]
             preflight_reason = _feature_set_preflight_reason(frame, column_set)
             if preflight_reason:
@@ -560,17 +646,30 @@ def _prepare_real_discovery_context(spec: DiscoveryRunSpec, *, output_dir: Path)
                 }
                 continue
             frames_by_column_set[column_set_id] = frame
+    feature_cache_summary = {
+        "requested_feature_column_set_count": int(len(selected)),
+        "materialized_registered_feature_set_count": int(registered_feature_set_build_count),
+        "registered_feature_set_reuse_count": int(max(0, len(frames_by_column_set) - registered_feature_set_build_count)),
+        "unavailable_feature_set_count": int(len(unavailable_feature_sets)),
+        "feature_matrix_cache_scope": "registered_feature_set_materialization_reuse_within_run",
+    }
     return _RealDiscoveryContext(
         dataset=dataset,
         feature_sets=selected,
         frames_by_column_set=frames_by_column_set,
         unavailable_feature_sets=unavailable_feature_sets,
+        feature_cache_summary=feature_cache_summary,
         label_split_cache={},
         label_split_cache_lock=threading.Lock(),
         hmm_cache={},
         hmm_cache_lock=threading.Lock(),
+        neighbor_cache=ExactNeighborCache(),
         interval_ms=interval_ms,
-        data_evidence={**data_evidence, "feature_materialization_errors": materialization_errors},
+        data_evidence={
+            **data_evidence,
+            "feature_materialization_errors": materialization_errors,
+            "feature_cache_summary": feature_cache_summary,
+        },
     )
 
 
@@ -641,7 +740,8 @@ def _real_discovery_trial_record(
             completed_at_utc=iso_utc(clock()),
             error_payload={"error": str(exc), "error_type": type(exc).__name__},
             payload={
-                "trial_kind": "hmm_knn_entry_discovery",
+                "trial_kind": str(trial_payload.get("trial_kind") or REAL_DISCOVERY_TRIAL_KIND),
+                "discovery_score_policy_version": DISCOVERY_SCORE_POLICY_VERSION,
                 "feature_column_set_id": column_set_id,
                 "final_score": 0.0,
                 "trade_count": 0,
@@ -728,6 +828,34 @@ def _hmm_output_columns(frame: pd.DataFrame) -> tuple[str, ...]:
         for column in frame.columns
         if str(column).startswith("regime_p_") or str(column) in HMM_POSTERIOR_COLUMNS
     )
+
+
+def _knn_source_identity(
+    *,
+    spec: DiscoveryRunSpec,
+    column_set: DiscoveryFeatureColumnSet,
+    context: _RealDiscoveryContext,
+    hmm_manifest: Mapping[str, Any],
+    interval_ms: int,
+) -> dict[str, Any]:
+    data_evidence = dict(context.data_evidence)
+    return {
+        "run_symbol": spec.symbol,
+        "timeframe": spec.timeframe,
+        "interval_ms": int(interval_ms),
+        "feature_column_set": column_set.to_payload(),
+        "dataset_sha256": data_evidence.get("dataset_sha256"),
+        "fixture_manifest_sha256": data_evidence.get("manifest_sha256"),
+        "hmm_manifest_sha256": _stable_json_sha256(_normalized_hmm_cache_identity(hmm_manifest)),
+        "scaler_policy": column_set.scaler_policy,
+        "clamp_policy": column_set.clamp_policy,
+    }
+
+
+def _normalized_hmm_cache_identity(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    payload = dict(manifest)
+    payload.pop("cache_reused_for_labeled_frame", None)
+    return payload
 
 
 def _persist_trial_artifacts(policy: str, *, ledger_kind: str) -> bool:
@@ -823,6 +951,7 @@ def _evaluate_hmm_knn_trial(
     trial_dir: Path,
 ) -> DiscoveryTrialRecord:
     trial_payload = dict(template.payload)
+    regime_settings = _regime_settings_from_trial_payload(trial_payload)
     label_horizon = str(trial_payload.get("label_horizon") or "4h")
     label_split_entry, label_split_cache_hit = _labeled_splits_with_cache(
         frame,
@@ -846,31 +975,43 @@ def _evaluate_hmm_knn_trial(
             blocker_code="feature_column_set_columns_missing",
             payload={"feature_column_set_id": column_set.feature_column_set_id, "label_horizon": label_horizon},
         )
-    hmm_columns = _hmm_columns_for_trial(available_feature_columns)
-    hmm_spec = HmmMaterializationSpec(
-        feature_columns=hmm_columns,
-        n_states=int(trial_payload.get("hmm_state_count", 4)),
-        posterior_threshold=float(trial_payload.get("hmm_posterior_threshold", 0.60)),
-        entropy_threshold=float(trial_payload.get("hmm_entropy_threshold", 0.78)),
-        flip_cooldown_bars=2,
-        min_training_rows=max(32, len(hmm_columns) * 4),
-        random_state=int(spec.budget.rng_seed),
-        max_iter=100,
-        covariance_type="diag",
-        hmm_feature_pack_id=f"discovery_hmm_{column_set.feature_column_set_id}",
-    )
-    hmm, hmm_cache_hit = _materialize_hmm_with_cache(
-        labeled,
-        splits=splits,
-        spec=hmm_spec,
-        context=context,
-        cache_key=_hmm_cache_key(
-            column_set=column_set,
-            hmm_spec=hmm_spec,
-            min_splits=spec.search.min_splits,
-            purge_embargo_bars=spec.search.purge_embargo_bars,
-        ),
-    )
+    if regime_settings.regime_detector_type == "none":
+        hmm_columns: tuple[str, ...] = ()
+        hmm_spec: HmmMaterializationSpec | None = None
+        hmm = materialize_no_regime_baseline(
+            labeled,
+            splits=splits,
+            feature_pack_id=f"discovery_no_regime_{column_set.feature_column_set_id}",
+        )
+        hmm_cache_hit = False
+    else:
+        hmm_columns = _hmm_columns_for_trial(available_feature_columns)
+        hmm_spec = HmmMaterializationSpec(
+            feature_columns=hmm_columns,
+            n_states=int(trial_payload.get("hmm_state_count", 4)),
+            posterior_threshold=float(trial_payload.get("hmm_posterior_threshold", 0.60)),
+            entropy_threshold=float(trial_payload.get("hmm_entropy_threshold", 0.78)),
+            flip_cooldown_bars=2,
+            min_training_rows=max(32, len(hmm_columns) * 4),
+            random_state=int(spec.budget.rng_seed),
+            max_iter=100,
+            covariance_type="diag",
+            hmm_feature_pack_id=f"discovery_gmm_{column_set.feature_column_set_id}",
+            regime_detector_type="gmm",
+            true_hmm_backend_used=False,
+        )
+        hmm, hmm_cache_hit = _materialize_hmm_with_cache(
+            labeled,
+            splits=splits,
+            spec=hmm_spec,
+            context=context,
+            cache_key=_hmm_cache_key(
+                column_set=column_set,
+                hmm_spec=hmm_spec,
+                min_splits=spec.search.min_splits,
+                purge_embargo_bars=spec.search.purge_embargo_bars,
+            ),
+        )
     k_value = int(trial_payload.get("k", 8))
     min_neighbor_count = max(1, min(k_value, int(trial_payload.get("min_neighbor_count", min(4, k_value)))))
     knn_spec = KnnStudySpec(
@@ -885,12 +1026,34 @@ def _evaluate_hmm_knn_trial(
         min_neighbor_agreement=float(trial_payload.get("min_neighbor_agreement", 0.55)),
         min_distance_quality=float(trial_payload.get("min_distance_quality", 0.01)),
         vote_margin_threshold=float(trial_payload.get("vote_margin_threshold", 0.05)),
-        same_regime_only=bool(trial_payload.get("same_regime_only", True)),
+        same_regime_only=regime_settings.same_regime_only,
+        regime_mode=regime_settings.regime_mode,
+        regime_detector_type=regime_settings.regime_detector_type,
+        regime_gate_enabled=regime_settings.regime_gate_enabled,
+        same_regime_neighbor_pool_enabled=regime_settings.same_regime_neighbor_pool_enabled,
+        true_hmm_backend_used=regime_settings.true_hmm_backend_used,
         feature_column_set_id=column_set.feature_column_set_id,
         label_horizon=label_horizon,
     )
-    knn = materialize_regime_local_knn_predictions(hmm.frame, splits=splits, spec=knn_spec)
-    metrics = _knn_trial_metrics(knn.frame, search=spec.search)
+    knn = materialize_regime_local_knn_predictions(
+        hmm.frame,
+        splits=splits,
+        spec=knn_spec,
+        neighbor_cache=context.neighbor_cache,
+        neighbor_cache_k_limit=max(spec.search.k_values or (k_value,)),
+        source_identity=_knn_source_identity(
+            spec=spec,
+            column_set=column_set,
+            context=context,
+            hmm_manifest=hmm.manifest,
+            interval_ms=interval_ms,
+        ),
+    )
+    metrics = _knn_trial_metrics(
+        knn.frame,
+        search=spec.search,
+        label_horizon_bars=int(knn.manifest.get("label_horizon_bars") or 1),
+    )
     ledger_kind = "interesting" if metrics["passed"] else "blocked"
     blocker_code = "" if metrics["passed"] else str(metrics["primary_blocker"])
     persist_artifacts = _persist_trial_artifacts(spec.execution.persist_trial_artifacts, ledger_kind=ledger_kind)
@@ -947,22 +1110,48 @@ def _evaluate_hmm_knn_trial(
     payload = {
         **trial_payload,
         "placeholder_trial": False,
+        "discovery_score_policy_version": DISCOVERY_SCORE_POLICY_VERSION,
         "feature_column_set_id": column_set.feature_column_set_id,
         "registered_feature_set_id": column_set.registered_feature_set_id,
-        "hmm_state_count": int(hmm_spec.n_states),
-        "hmm_posterior_threshold": float(hmm_spec.posterior_threshold),
-        "hmm_entropy_threshold": float(hmm_spec.entropy_threshold),
+        "hmm_state_count": int(hmm_spec.n_states) if hmm_spec is not None else 0,
+        "hmm_posterior_threshold": float(hmm_spec.posterior_threshold) if hmm_spec is not None else None,
+        "hmm_entropy_threshold": float(hmm_spec.entropy_threshold) if hmm_spec is not None else None,
+        "regime_mode": regime_settings.regime_mode,
+        "regime_detector_type": regime_settings.regime_detector_type,
+        "regime_gate_enabled": regime_settings.regime_gate_enabled,
+        "same_regime_neighbor_pool_enabled": regime_settings.same_regime_neighbor_pool_enabled,
+        "same_regime_only": regime_settings.same_regime_only,
+        "true_hmm_backend_used": regime_settings.true_hmm_backend_used,
         "label_horizon": label_horizon,
         "label_split_cache_hit": bool(label_split_cache_hit),
         "hmm_cache_hit": bool(hmm_cache_hit),
+        "neighbor_cache_hit": bool(int(knn.manifest.get("neighbor_cache_hit_count") or 0) > 0),
+        "neighbor_cache_lookup_count": int(knn.manifest.get("neighbor_cache_lookup_count") or 0),
+        "neighbor_cache_hit_count": int(knn.manifest.get("neighbor_cache_hit_count") or 0),
         "distance_metric": knn_spec.distance_metric,
         "k": int(knn_spec.k),
         "min_neighbor_count": int(knn_spec.min_neighbor_count),
         "trade_count": int(metrics["trade_count"]),
+        "accepted_bar_count": int(metrics["accepted_bar_count"]),
+        "independent_event_count": int(metrics["independent_event_count"]),
+        "suppressed_overlap_count": int(metrics["suppressed_overlap_count"]),
+        "overlap_ratio": float(metrics["overlap_ratio"]),
+        "event_signal_rate": float(metrics["event_signal_rate"]),
+        "side_collapse_ratio": float(metrics["side_collapse_ratio"]),
+        "near_signal_ceiling": bool(metrics["near_signal_ceiling"]),
+        "long_independent_event_count": int(metrics["long_independent_event_count"]),
+        "short_independent_event_count": int(metrics["short_independent_event_count"]),
+        "event_spacing_bars": int(metrics["event_spacing_bars"]),
         "signal_rate": float(metrics["signal_rate"]),
         "realized_expectancy": float(metrics["realized_expectancy"]),
+        "independent_event_expectancy": float(metrics["independent_event_expectancy"]),
         "accepted_prediction_count": int(metrics["accepted_prediction_count"]),
         "evaluated_prediction_count": int(metrics["evaluated_prediction_count"]),
+        "legacy_density_score": float(metrics["legacy_density_score"]),
+        "discovery_screen_score_v2": float(metrics["discovery_screen_score_v2"]),
+        "signal_rate_ceiling_penalty": float(metrics["signal_rate_ceiling_penalty"]),
+        "overlap_penalty": float(metrics["overlap_penalty"]),
+        "side_collapse_penalty": float(metrics["side_collapse_penalty"]),
         "final_score": float(metrics["final_score"]),
         "primary_blocker": str(metrics["primary_blocker"]),
         "blocker_reasons": list(metrics["blocker_reasons"]),
@@ -999,13 +1188,17 @@ def _blocked_real_trial_record(
     payload: Mapping[str, Any] | None = None,
 ) -> DiscoveryTrialRecord:
     trial_payload = {**dict(template.payload), **dict(payload or {})}
+    try:
+        mode_payload = _regime_settings_from_trial_payload(trial_payload).to_payload()
+    except ValueError:
+        mode_payload = {}
     return DiscoveryTrialRecord(
         run_id=spec.run_id,
         trial_id=template.trial_id,
         attempt_id="attempt-001",
         trial_index=trial_index,
         candidate_id=template.candidate_id,
-        candidate_family=template.candidate_family or "hmm_knn_entry_discovery",
+        candidate_family=template.candidate_family or REAL_DISCOVERY_TRIAL_KIND,
         ledger_kind="blocked",
         score=0.0,
         blocker_code=blocker_code,
@@ -1014,17 +1207,48 @@ def _blocked_real_trial_record(
         completed_at_utc=completed_at,
         payload={
             **trial_payload,
+            **mode_payload,
             "placeholder_trial": False,
+            "discovery_score_policy_version": DISCOVERY_SCORE_POLICY_VERSION,
             "trade_count": 0,
+            "accepted_bar_count": 0,
+            "independent_event_count": 0,
+            "suppressed_overlap_count": 0,
+            "overlap_ratio": 0.0,
+            "event_signal_rate": 0.0,
+            "side_collapse_ratio": 0.0,
+            "near_signal_ceiling": False,
+            "long_independent_event_count": 0,
+            "short_independent_event_count": 0,
+            "event_spacing_bars": 0,
             "signal_rate": 0.0,
             "realized_expectancy": 0.0,
+            "independent_event_expectancy": 0.0,
             "accepted_prediction_count": 0,
             "evaluated_prediction_count": 0,
+            "legacy_density_score": 0.0,
+            "discovery_screen_score_v2": 0.0,
+            "signal_rate_ceiling_penalty": 0.0,
+            "overlap_penalty": 0.0,
+            "side_collapse_penalty": 0.0,
             "final_score": 0.0,
             "hmm_artifact_persisted": False,
             "knn_artifact_persisted": False,
             "strategy_accounting_persisted": False,
         },
+    )
+
+
+def _regime_settings_from_trial_payload(payload: Mapping[str, Any]) -> Any:
+    return regime_mode_settings(
+        str(
+            payload.get("regime_mode")
+            or (
+                "gmm_same_regime_neighbors"
+                if _truthy(payload.get("same_regime_only", True))
+                else "gmm_all_regime_neighbors_with_gate"
+            )
+        )
     )
 
 
@@ -1152,40 +1376,93 @@ def _feature_set_preflight_reason(frame: pd.DataFrame, column_set: DiscoveryFeat
     return ""
 
 
-def _knn_trial_metrics(frame: pd.DataFrame, *, search: Any) -> dict[str, Any]:
+def _knn_trial_metrics(frame: pd.DataFrame, *, search: Any, label_horizon_bars: int = 1) -> dict[str, Any]:
     evaluated = frame.loc[frame["knn_skip_reason"].astype(str).ne("not_evaluated")].copy()
     accepted = evaluated.loc[evaluated["accepted_by_knn"].map(_truthy) & evaluated["knn_skip_reason"].map(_skip_reason_clear)].copy()
     returns = _side_adjusted_label_returns(accepted)
-    trade_count = int(len(returns))
+    accepted_bar_count = int(len(returns))
     evaluated_count = int(len(evaluated))
     accepted_count = int(len(accepted))
-    signal_rate = float(trade_count / max(1, len(frame)))
-    realized_expectancy = float(returns.mean()) if trade_count else 0.0
-    gross_return = float(returns.sum()) if trade_count else 0.0
-    avg_neighbor_quality = _safe_mean(accepted.get("neighbor_distance_quality")) if not accepted.empty else 0.0
-    avg_vote_margin = _safe_mean(accepted.get("knn_vote_margin")) if not accepted.empty else 0.0
-    final_score = realized_expectancy + (0.05 * math.log1p(trade_count)) + (0.01 * avg_neighbor_quality) + (0.01 * avg_vote_margin)
+    signal_rate = float(accepted_bar_count / max(1, len(frame)))
+    accepted_bar_expectancy = float(returns.mean()) if accepted_bar_count else 0.0
+    accepted_bar_gross_return = float(returns.sum()) if accepted_bar_count else 0.0
+    event_accounting = account_independent_events(
+        accepted,
+        total_row_count=len(frame),
+        label_horizon_bars=label_horizon_bars,
+        max_signal_rate=float(search.max_signal_rate),
+    )
+    trade_count = int(event_accounting.independent_event_count)
+    realized_expectancy = float(event_accounting.independent_event_expectancy)
+    gross_return = float(event_accounting.gross_independent_event_return)
+    accepted_bar_neighbor_quality = _safe_mean(accepted.get("neighbor_distance_quality")) if not accepted.empty else 0.0
+    accepted_bar_vote_margin = _safe_mean(accepted.get("knn_vote_margin")) if not accepted.empty else 0.0
+    avg_neighbor_quality = float(event_accounting.avg_independent_neighbor_quality)
+    avg_vote_margin = float(event_accounting.avg_independent_vote_margin)
+    legacy_density_score = (
+        accepted_bar_expectancy
+        + (0.05 * math.log1p(accepted_bar_count))
+        + (0.01 * accepted_bar_neighbor_quality)
+        + (0.01 * accepted_bar_vote_margin)
+    )
+    ceiling = max(float(search.max_signal_rate), 1e-12)
+    signal_rate_ceiling_penalty = max(0.0, (signal_rate - (0.80 * ceiling)) / ceiling) * 0.05
+    overlap_penalty = float(event_accounting.overlap_ratio) * 0.10
+    side_collapse_penalty = max(0.0, float(event_accounting.side_collapse_ratio) - 0.80) * 0.25
+    discovery_screen_score_v2 = (
+        realized_expectancy
+        + (0.05 * math.log1p(trade_count))
+        + (0.01 * avg_neighbor_quality)
+        + (0.01 * avg_vote_margin)
+        - signal_rate_ceiling_penalty
+        - overlap_penalty
+        - side_collapse_penalty
+    )
     reasons: list[str] = []
     if trade_count < int(search.min_trade_count):
-        reasons.append("trade_count_below_discovery_floor")
+        reasons.append("independent_event_count_below_floor")
     if signal_rate < float(search.min_signal_rate):
         reasons.append("signal_rate_below_discovery_floor")
     if signal_rate > float(search.max_signal_rate):
         reasons.append("signal_rate_above_discovery_ceiling")
+    if event_accounting.near_signal_ceiling:
+        reasons.append("signal_rate_near_ceiling")
+    if event_accounting.overlap_ratio > 0.50 and accepted_bar_count >= int(search.min_trade_count):
+        reasons.append("overlap_ratio_above_ceiling")
+    if event_accounting.side_collapse_ratio >= 0.95 and trade_count >= max(4, int(search.min_trade_count)):
+        reasons.append("side_collapse_ratio_above_ceiling")
     if realized_expectancy < float(search.min_realized_expectancy):
         reasons.append("realized_expectancy_below_discovery_floor")
     if accepted_count == 0:
         reasons.append("no_accepted_knn_predictions")
     return {
         "trade_count": trade_count,
+        "accepted_bar_count": accepted_bar_count,
+        "independent_event_count": event_accounting.independent_event_count,
+        "suppressed_overlap_count": event_accounting.suppressed_overlap_count,
+        "overlap_ratio": event_accounting.overlap_ratio,
+        "event_signal_rate": event_accounting.event_signal_rate,
+        "long_independent_event_count": event_accounting.long_independent_event_count,
+        "short_independent_event_count": event_accounting.short_independent_event_count,
+        "event_spacing_bars": event_accounting.event_spacing_bars,
+        "side_collapse_ratio": event_accounting.side_collapse_ratio,
+        "near_signal_ceiling": event_accounting.near_signal_ceiling,
         "accepted_prediction_count": accepted_count,
         "evaluated_prediction_count": evaluated_count,
         "signal_rate": signal_rate,
         "realized_expectancy": realized_expectancy,
+        "accepted_bar_realized_expectancy": accepted_bar_expectancy,
+        "accepted_bar_gross_realized_return": accepted_bar_gross_return,
+        "independent_event_expectancy": event_accounting.independent_event_expectancy,
         "gross_realized_return": gross_return,
         "avg_neighbor_distance_quality": avg_neighbor_quality,
         "avg_vote_margin": avg_vote_margin,
-        "final_score": float(final_score),
+        "legacy_density_score": float(legacy_density_score),
+        "discovery_screen_score_v2": float(discovery_screen_score_v2),
+        "signal_rate_ceiling_penalty": float(signal_rate_ceiling_penalty),
+        "overlap_penalty": float(overlap_penalty),
+        "side_collapse_penalty": float(side_collapse_penalty),
+        "final_score": float(discovery_screen_score_v2),
         "passed": not reasons,
         "primary_blocker": reasons[0] if reasons else "",
         "blocker_reasons": reasons,
@@ -1227,7 +1504,12 @@ def _skip_reason_clear(value: Any) -> bool:
 
 
 def _safe_mean(value: Any) -> float:
-    series = pd.to_numeric(value, errors="coerce").dropna()
+    if value is None:
+        return 0.0
+    if isinstance(value, pd.Series):
+        series = pd.to_numeric(value, errors="coerce").dropna()
+    else:
+        series = pd.to_numeric(pd.Series([value]), errors="coerce").dropna()
     return float(series.mean()) if not series.empty else 0.0
 
 
@@ -1249,6 +1531,12 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _stable_json_sha256(payload: Mapping[str, Any]) -> str:
+    return sha256(
+        json.dumps(dict(payload), sort_keys=True, default=str, allow_nan=False).encode("utf-8")
+    ).hexdigest()
 
 
 def _load_existing_trial_records(trial_dir: Path, *, run_id: str) -> dict[str, DiscoveryTrialRecord]:
@@ -1292,6 +1580,25 @@ def _assert_state_trial_records_present(
         raise ValueError(f"completed trial hash references missing record: {','.join(missing_hash_records)}")
     if missing_hashes:
         raise ValueError(f"completed trial state hash missing on resume: {','.join(missing_hashes)}")
+
+
+def _assert_real_trial_score_policy_compatible(records: Mapping[str, DiscoveryTrialRecord]) -> None:
+    incompatible = []
+    for trial_id, record in records.items():
+        payload = dict(record.payload or {})
+        is_real_discovery = str(payload.get("trial_kind") or "") in REAL_DISCOVERY_TRIAL_KINDS or (
+            str(record.candidate_family or "") in REAL_DISCOVERY_TRIAL_KINDS
+            and payload.get("placeholder_trial") is False
+        )
+        if not is_real_discovery:
+            continue
+        if str(payload.get("discovery_score_policy_version") or "") != DISCOVERY_SCORE_POLICY_VERSION:
+            incompatible.append(str(trial_id))
+    if incompatible:
+        raise ValueError(
+            "existing real discovery trial records require a new run_id after score policy upgrade: "
+            + ",".join(sorted(incompatible))
+        )
 
 
 def _write_ledgers(

@@ -20,7 +20,13 @@ from tradingbotsuite.features.cache import (
     write_feature_cache_artifact,
 )
 from tradingbotsuite.features.split_transforms import fit_transform_split_train_only
-from tradingbotsuite.features.registry import LIQUIDATION_CONTEXT_COLUMNS, PERP_CONTEXT_V2_COLUMNS
+from tradingbotsuite.features.registry import (
+    AGGTRADE_ORDERFLOW_COLUMNS,
+    CROSS_ASSET_BTC_ETH_V2_COLUMNS,
+    LIQUIDATION_CONTEXT_COLUMNS,
+    PERP_CONTEXT_V2_COLUMNS,
+    PERP_CONTEXT_V3_COLUMNS,
+)
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
 
 
@@ -381,6 +387,276 @@ def test_perp_context_v2_uses_backward_asof_context_for_all_current_families(tmp
     assert features["perp_premium"].iloc[1:4].tolist() == [0.002, 0.002, 0.002]
     assert features["oi_notional"].iloc[1:4].tolist() == [10_000.0, 10_000.0, 10_000.0]
     assert features["flow_buy_sell_ratio"].iloc[1:4].tolist() == [1.5, 1.5, 1.5]
+
+
+def test_perp_context_v3_marks_durable_public_archive_source_candidate_ready(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1000, 2000, 3000, 4000],
+            "symbol": ["BTCUSDT"] * 4,
+            "open": [100.0, 101.0, 102.0, 103.0],
+            "high": [101.0, 102.0, 103.0, 104.0],
+            "low": [99.0, 100.0, 101.0, 102.0],
+            "close": [100.5, 101.5, 102.5, 103.5],
+            "volume": [10.0, 11.0, 12.0, 13.0],
+        }
+    )
+    families = {
+        "funding_rate": pd.DataFrame(
+            {"event_time_ms": [1000], "symbol": ["BTCUSDT"], "funding_rate": [0.001]}
+        ),
+        "premium_index": pd.DataFrame(
+            {"event_time_ms": [1000], "symbol": ["BTCUSDT"], "premium_basis_rate": [0.002]}
+        ),
+        "open_interest": pd.DataFrame(
+            {"event_time_ms": [1000], "symbol": ["BTCUSDT"], "open_interest_value": [10_000.0]}
+        ),
+        "agg_trade": pd.DataFrame(
+            {
+                "event_time_ms": [1000],
+                "symbol": ["BTCUSDT"],
+                "quote_volume": [100.0],
+                "taker_buy_quote_volume": [60.0],
+                "sell_quote_volume": [40.0],
+            }
+        ),
+    }
+    payloads = {}
+    for family, family_frame in families.items():
+        path = tmp_path / f"{family}.parquet"
+        family_frame.to_parquet(path, index=False)
+        payloads[family] = {
+            "path": str(path),
+            "sha256": f"{family}-hash",
+            "row_count": len(family_frame),
+            "columns": list(family_frame.columns),
+            "event_time_field": "event_time_ms",
+            "source_name": "binance_vision",
+            "source_access_mode": "public_archive",
+            "schema_version": "public_archive_fixture_v1",
+            "collector_version": "fixture-collector-v1",
+            "ingestor_version": "fixture-ingestor-v1",
+            "coverage_scope": "public_archive_partition",
+        }
+
+    context = materialize_fixture_family_context(cycle, optional_context_families=payloads)
+    built = build_registered_feature_set(context.frame, feature_set_id="features_perp_context_v3", interval_ms=1000)
+    features = built.result.frame
+    funding_record = context.evidence["family_records"][0]
+
+    assert built.result.manifest.feature_columns == PERP_CONTEXT_V3_COLUMNS
+    assert funding_record["source_name"] == "binance_vision"
+    assert funding_record["schema_version"] == "public_archive_fixture_v1"
+    assert context.frame["quality_context_durable_provider_archive_source"].eq(1.0).all()
+    assert context.frame["quality_agg_trade_flow_proxy_not_ofi_source"].eq(1.0).all()
+    assert features["quality_provider_backed_all_required"].eq(1.0).all()
+    assert features["quality_context_durable_provider_archive"].eq(1.0).all()
+    assert features["quality_context_latest_window_diagnostic"].eq(0.0).all()
+    assert features["quality_context_missing_unknown"].eq(0.0).all()
+    assert features["quality_context_candidate_ready_eligible"].eq(1.0).all()
+    assert features["quality_agg_trade_flow_proxy_not_ofi"].eq(1.0).all()
+
+
+def test_perp_context_v3_marks_latest_window_context_diagnostic_only(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1000, 2000, 3000],
+            "symbol": ["BTCUSDT"] * 3,
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [10.0, 11.0, 12.0],
+        }
+    )
+    families = {
+        "funding_rate": pd.DataFrame(
+            {"event_time_ms": [1000], "symbol": ["BTCUSDT"], "funding_rate": [0.001]}
+        ),
+        "premium_index": pd.DataFrame(
+            {"event_time_ms": [1000], "symbol": ["BTCUSDT"], "premium_basis_rate": [0.002]}
+        ),
+        "open_interest": pd.DataFrame(
+            {"event_time_ms": [1000], "symbol": ["BTCUSDT"], "open_interest_value": [10_000.0]}
+        ),
+    }
+    payloads = {}
+    for family, family_frame in families.items():
+        path = tmp_path / f"{family}.parquet"
+        family_frame.to_parquet(path, index=False)
+        payloads[family] = {
+            "path": str(path),
+            "sha256": f"{family}-hash",
+            "row_count": len(family_frame),
+            "columns": list(family_frame.columns),
+            "event_time_field": "event_time_ms",
+            "source_name": "binance_usdm_rest",
+            "source_access_mode": "rest_latest_window",
+            "latest_window_only": True,
+            "coverage_scope": "latest_window_backfill",
+            "retention_policy": {"claim": "not_multi_year_coverage"},
+        }
+
+    context = materialize_fixture_family_context(cycle, optional_context_families=payloads)
+    built = build_registered_feature_set(context.frame, feature_set_id="features_perp_context_v3", interval_ms=1000)
+    features = built.result.frame
+
+    assert context.frame["quality_context_latest_window_diagnostic_source"].eq(1.0).all()
+    assert features["quality_provider_backed_all_required"].eq(1.0).all()
+    assert features["quality_context_latest_window_diagnostic"].eq(1.0).all()
+    assert features["quality_context_missing_unknown"].eq(0.0).all()
+    assert features["quality_context_candidate_ready_eligible"].eq(0.0).all()
+
+
+def test_aggtrade_orderflow_v1_derives_trade_flow_proxy_columns() -> None:
+    frame = _perp_context_v2_frame(row_count=240)
+    frame["agg_trade_count"] = [20.0 + (index % 5) for index in range(len(frame))]
+    frame["agg_large_trade_count"] = 3.0
+    frame["agg_large_buy_count"] = 2.0
+    frame["agg_large_sell_count"] = 1.0
+    frame["quality_agg_trade_flow_proxy_not_ofi_source"] = 1.0
+
+    built = build_registered_feature_set(frame, feature_set_id="features_aggtrade_orderflow_v1")
+    features = built.result.frame
+
+    assert built.result.manifest.feature_columns == AGGTRADE_ORDERFLOW_COLUMNS
+    assert set(AGGTRADE_ORDERFLOW_COLUMNS) <= set(features.columns)
+    assert features["agg_taker_buy_quote_share"].dropna().iloc[-1] == pytest.approx(0.6)
+    assert features["agg_signed_quote_imbalance"].dropna().iloc[-1] == pytest.approx(0.2)
+    assert features["agg_sqrt_signed_quote_imbalance"].dropna().iloc[-1] == pytest.approx(0.2**0.5)
+    assert features["agg_cvd_slope"].notna().sum() > 0
+    assert features["agg_trade_count_zscore"].notna().sum() > 0
+    assert features["agg_quote_volume_zscore"].notna().sum() > 0
+    assert features["agg_large_trade_side_imbalance"].dropna().iloc[-1] == pytest.approx(1.0 / 3.0)
+    assert features["agg_flow_burst_score"].notna().sum() > 0
+    assert features["agg_sweep_proxy"].notna().sum() > 0
+    assert features["quality_aggtrade_context_missing"].eq(0.0).all()
+    assert features["quality_aggtrade_source_present"].eq(1.0).all()
+    assert features["quality_aggtrade_flow_proxy_not_ofi"].eq(1.0).all()
+    assert "top_of_book_imbalance" not in built.result.manifest.feature_columns
+
+
+def test_aggtrade_orderflow_v1_uses_materialized_agg_trade_without_depth_claim(tmp_path) -> None:
+    cycle = pd.DataFrame(
+        {
+            "bar_time_ms": [1000, 2000, 3000],
+            "symbol": ["BTCUSDT"] * 3,
+            "open": [100.0, 101.0, 102.0],
+            "high": [101.0, 102.0, 103.0],
+            "low": [99.0, 100.0, 101.0],
+            "close": [100.5, 101.5, 102.5],
+            "volume": [10.0, 11.0, 12.0],
+        }
+    )
+    agg_trade = pd.DataFrame(
+        {
+            "event_time_ms": [1000, 2000],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "quote_volume": [100.0, 120.0],
+            "taker_buy_quote_volume": [60.0, 48.0],
+            "sell_quote_volume": [40.0, 72.0],
+            "agg_trade_count": [10.0, 12.0],
+            "top_of_book_imbalance": [0.99, -0.99],
+        }
+    )
+    agg_trade_path = tmp_path / "agg_trade.parquet"
+    agg_trade.to_parquet(agg_trade_path, index=False)
+
+    context = materialize_fixture_family_context(
+        cycle,
+        optional_context_families={
+            "agg_trade": {
+                "path": str(agg_trade_path),
+                "sha256": "agg-hash",
+                "row_count": len(agg_trade),
+                "columns": list(agg_trade.columns),
+                "event_time_field": "event_time_ms",
+                "source_name": "binance_vision",
+                "source_access_mode": "public_archive",
+                "coverage_scope": "public_archive_partition",
+            }
+        },
+    )
+    built = build_registered_feature_set(
+        context.frame,
+        feature_set_id="features_aggtrade_orderflow_v1",
+        interval_ms=1000,
+    )
+    features = built.result.frame
+
+    assert "top_of_book_imbalance" in context.frame.columns
+    assert "top_of_book_imbalance" not in features.columns
+    assert features["agg_taker_buy_quote_share"].tolist() == [0.6, 0.4, 0.4]
+    assert features["agg_signed_quote_imbalance"].tolist() == [0.2, -0.2, -0.2]
+    assert features["quality_aggtrade_flow_proxy_not_ofi"].eq(1.0).all()
+
+
+def test_cross_asset_btc_eth_v2_is_point_in_time_and_future_rows_do_not_leak() -> None:
+    frame = _cross_asset_btc_eth_frame(row_count=140)
+    baseline = build_registered_feature_set(
+        frame,
+        feature_set_id="features_cross_asset_btc_eth_v2",
+        interval_ms=900_000,
+    ).result.frame
+
+    mutated = frame.copy()
+    mutated.loc[120:, "btc_close"] = 1_000_000.0
+    mutated.loc[120:, "eth_close"] = 100_000.0
+    changed = build_registered_feature_set(
+        mutated,
+        feature_set_id="features_cross_asset_btc_eth_v2",
+        interval_ms=900_000,
+    ).result.frame
+
+    stable_columns = [
+        "btc_return_1",
+        "eth_return_1",
+        "eth_beta_to_btc_96",
+        "eth_btc_residual_return_1",
+        "eth_btc_residual_z_96",
+        "ethbtc_trend_96",
+        "btc_eth_corr_96",
+        "funding_spread_z_96",
+        "oi_delta_spread_z_96",
+        "quality_cross_asset_point_in_time_join",
+    ]
+    pd.testing.assert_frame_equal(
+        baseline.loc[:90, stable_columns],
+        changed.loc[:90, stable_columns],
+        check_dtype=False,
+        check_exact=False,
+        rtol=1e-12,
+        atol=1e-12,
+    )
+    assert baseline["quality_cross_asset_future_alignment_risk"].eq(0.0).all()
+    assert baseline["quality_cross_asset_matched_interval"].eq(1.0).all()
+    assert baseline["quality_cross_asset_point_in_time_join"].eq(1.0).all()
+    assert baseline["quality_cross_asset_candidate_ready_eligible"].eq(1.0).all()
+    assert baseline["eth_btc_residual_z_96"].notna().sum() > 0
+
+
+def test_cross_asset_btc_eth_v2_flags_future_alignment_and_missing_context() -> None:
+    frame = _cross_asset_btc_eth_frame(row_count=120)
+    frame.loc[40:45, "eth_source_time_ms"] = frame.loc[40:45, "bar_time_ms"] + 1_800_000
+    frame = frame.drop(columns=["eth_funding_rate", "btc_oi_delta_1h", "eth_oi_delta_1h"])
+
+    built = build_registered_feature_set(
+        frame,
+        feature_set_id="features_cross_asset_btc_eth_v2",
+        interval_ms=900_000,
+    )
+    features = built.result.frame
+
+    assert built.result.manifest.feature_columns == CROSS_ASSET_BTC_ETH_V2_COLUMNS
+    assert features.loc[40:45, "quality_cross_asset_future_alignment_risk"].eq(1.0).all()
+    assert features.loc[40:45, "quality_cross_asset_point_in_time_join"].eq(0.0).all()
+    assert features.loc[40:45, "quality_cross_asset_candidate_ready_eligible"].eq(0.0).all()
+    assert features["funding_spread"].isna().all()
+    assert features["oi_delta_spread_1h"].isna().all()
+    assert features["quality_cross_asset_missing_funding_context"].eq(1.0).all()
+    assert features["quality_cross_asset_missing_oi_context"].eq(1.0).all()
+    assert "funding_spread" in built.result.availability_report.missing_context_columns
+    assert "oi_delta_spread_1h" in built.result.availability_report.missing_context_columns
 
 
 def test_liquidation_context_materialization_uses_window_without_carryforward(tmp_path) -> None:
@@ -778,6 +1054,37 @@ def _perp_context_v2_frame(*, row_count: int) -> pd.DataFrame:
                 "sell_quote_volume": sell_quote,
                 "primary_signed_imbalance_ratio": (taker_buy_quote - sell_quote) / quote_volume,
                 "quality_latest_window_context_only_source": 1.0,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _cross_asset_btc_eth_frame(*, row_count: int) -> pd.DataFrame:
+    rows = []
+    start_ms = 1_712_649_600_000
+    for index in range(row_count):
+        bar_time_ms = start_ms + index * 900_000
+        btc_close = 70_000.0 + index * 20.0 + (index % 7) * 5.0
+        eth_close = 3_500.0 + index * 2.2 + (index % 5) * 1.5
+        rows.append(
+            {
+                "bar_time_ms": bar_time_ms,
+                "symbol": "ETHUSDT",
+                "open": eth_close - 1.0,
+                "high": eth_close + 2.0,
+                "low": eth_close - 2.0,
+                "close": eth_close,
+                "volume": 100.0 + index,
+                "btc_close": btc_close,
+                "eth_close": eth_close,
+                "btc_source_time_ms": bar_time_ms,
+                "eth_source_time_ms": bar_time_ms,
+                "btc_quality_context_durable_provider_archive": 1.0,
+                "eth_quality_context_durable_provider_archive": 1.0,
+                "btc_funding_rate": 0.00005 + index * 0.0000001,
+                "eth_funding_rate": 0.00007 + index * 0.0000002,
+                "btc_oi_delta_1h": 1_000.0 + index,
+                "eth_oi_delta_1h": 900.0 + index * 1.5,
             }
         )
     return pd.DataFrame(rows)

@@ -1,0 +1,32 @@
+{
+  "readiness_config_version": "durable-public-archive-fixture-readiness-v1",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "symbol": "ETHUSDT",
+  "base_interval": "15m",
+  "fixture_manifest_path": "set per run: data/research/fixtures/<ethusdt_public_archive_fixture>/fixture_pack_manifest.json",
+  "required_families": [
+    "bars",
+    "lower_timeframe_bars",
+    "agg_trade"
+  ],
+  "required_primary_source": "binance_vision",
+  "required_context": {
+    "agg_trade": {
+      "source_name": "binance_vision",
+      "feature_claim_scope": "trade_flow_proxy_not_order_book_imbalance_or_ofi"
+    }
+  },
+  "window_selection_required": [
+    "trend_bull",
+    "drawdown_bear",
+    "range_chop",
+    "high_vol_shock"
+  ],
+  "diagnostic_only_sources": [
+    "binance_usdm_rest_latest_window_context",
+    "crypto_lake_free_sample"
+  ],
+  "claim_scope": "readiness_contract_template_no_fixture_data_no_candidate_pack_write"
+}

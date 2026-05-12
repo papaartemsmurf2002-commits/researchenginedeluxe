@@ -56,6 +56,47 @@
     gap: 16px;
     align-items: stretch;
   }
+  .operator-board {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(180px, 1fr));
+    gap: 12px;
+  }
+  .board-tile,
+  .maturity-item {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #111923;
+    padding: 12px;
+  }
+  .board-tile .label,
+  .maturity-item .label {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+  .board-tile .value {
+    margin-top: 5px;
+    font-size: 22px;
+    font-weight: 700;
+  }
+  .board-tile .meta,
+  .maturity-item .meta {
+    margin-top: 6px;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+  .maturity-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .routine-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
   .intent-list {
     display: grid;
     gap: 10px;
@@ -178,6 +219,14 @@
     border: 1px solid var(--border);
     border-radius: 8px;
   }
+  .research-chart.waiting-for-data {
+    border-style: dashed;
+  }
+  .chart-note {
+    margin-top: 8px;
+    min-height: 20px;
+    line-height: 1.35;
+  }
   .flow-steps {
     display: grid;
     grid-template-columns: repeat(5, minmax(140px, 1fr));
@@ -232,7 +281,9 @@
     .stage-picker,
     .viz-grid,
     .flow-steps,
-    .explain-grid {
+    .explain-grid,
+    .operator-board,
+    .maturity-row {
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
   }
@@ -257,26 +308,67 @@
 <div class="research-shell">
   <span id="repo-root-value" data-path="{{ repo_root }}" hidden></span>
   <section class="research-hero">
-    <h1>Research Control Room</h1>
+    <h1>Research Operations</h1>
     <div class="hero-copy">
-      Run offline provider preparation, experiment bundles, and historical-cycle evidence review from one place. This page never places orders, never changes runtime mode, and never turns research output into live signals.
+      Queue offline provider preparation, experiment bundles, discovery runs, and historical-cycle evidence review. This page never places orders, never changes runtime mode, and never turns research output into live signals.
     </div>
     <div class="hero-strip">
       <span class="pill neutral">research_only</span>
       <span class="pill neutral">observe_only</span>
       <span class="pill warn">promotion_ready: false by default</span>
-      <span class="pill ok">current branch workflow</span>
+      <span class="pill ok">offline research branch</span>
+    </div>
+  </section>
+
+  <section class="research-band" id="operator-board-section">
+    <div class="band-heading">
+      <div>
+        <h2>Operator Board</h2>
+        <div class="muted">One-screen research state: data readiness, current run, progress, snapshots, blockers, leads, artifacts, and maturity.</div>
+      </div>
+      <span class="pill neutral">offline evidence only</span>
+    </div>
+    <div id="operator-board" class="operator-board" aria-live="polite">
+      <div class="board-tile"><div class="label">Data Readiness</div><div class="value">Loading</div><div class="meta">Waiting for artifact index.</div></div>
+      <div class="board-tile"><div class="label">Current Run</div><div class="value">Loading</div><div class="meta">Waiting for job index.</div></div>
+      <div class="board-tile"><div class="label">Progress</div><div class="value">Loading</div><div class="meta">Waiting for latest status.</div></div>
+      <div class="board-tile"><div class="label">Latest Snapshot</div><div class="value">Loading</div><div class="meta">Waiting for discovery artifacts.</div></div>
+    </div>
+    <div class="maturity-row" aria-label="Research maturity labels">
+      <div class="maturity-item">
+        <div class="label">Diagnostic</div>
+        <div class="meta">Plumbing, data-quality, or smoke evidence only. Useful for fixing inputs; not a candidate claim.</div>
+      </div>
+      <div class="maturity-item">
+        <div class="label">Screen-worthy</div>
+        <div class="meta">Reviewable lead with visible artifacts, blocker reasons, and enough evidence to inspect manually.</div>
+      </div>
+      <div class="maturity-item">
+        <div class="label">Candidate-ready</div>
+        <div class="meta">Requires exit lab, comparator, no-regime baseline when regime is claimed, validation floors, and gate evidence.</div>
+      </div>
+    </div>
+    <div class="routine-actions" aria-label="Routine research actions">
+      <button onclick="queuePreflightDataReadiness()">Preflight Data Readiness</button>
+      <button class="secondary" onclick="queueDiscoveryPreset('configs/discovery/quick_smoke_btcusdt_v4.json', 'Quick discovery', 1, false)">Quick Discovery</button>
+      <button class="secondary" onclick="queueDiscoveryPreset('configs/discovery/standard_entry_discovery_btcusdt_v4.json', 'Standard discovery', null, false)">Standard Discovery</button>
+      <button class="secondary" onclick="queueDiscoveryPreset('configs/discovery/deep_candidate_harvest_btcusdt_v4.json', 'Deep discovery', null, false)">Deep Discovery</button>
+      <button class="ghost" onclick="pauseDiscoveryAfterOneTrial()">Pause After One Trial</button>
+      <button class="secondary" onclick="queueDiscoveryRun('Resume discovery run', true)">Resume Run</button>
+      <button class="ghost" onclick="openLatestSnapshot()">Open Latest Snapshot</button>
+      <button class="ghost" onclick="reviewCandidateEligibility()">Review Candidate Eligibility</button>
+      <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
     </div>
   </section>
 
   <section class="research-band">
     <div class="band-heading">
       <div>
-        <h2>Pick The Work You Need</h2>
-        <div class="muted">Start from the operator intent. Each path explains what it tests, when to use it, and where the evidence lands.</div>
+        <h2>Choose Evidence Task</h2>
+        <div class="muted">Start from the task. Each path states the check, trigger condition, and output location.</div>
       </div>
       <div class="stack">
-        <button onclick="queueFullResearchReview()">Run Full Research Review</button>
+        <button onclick="queueFullResearchReview()">Queue Evidence Review Bundle</button>
         <div id="job-response" class="empty">No job submitted.</div>
       </div>
     </div>
@@ -439,7 +531,7 @@
     <div class="flow-steps">
       <div class="flow-step"><strong>Provider data</strong><div class="muted">Binance REST, Binance Vision, free Crypto Lake samples, Hyperliquid archives, or local manifests.</div></div>
       <div class="flow-step"><strong>Fixture and features</strong><div class="muted">Validated provenance, completed-bar features, context joins, missingness flags, and cache identity.</div></div>
-      <div class="flow-step"><strong>Strategy tests</strong><div class="muted">Transparent baselines, perp context strategies, HMM/KNN filters, and liquidation diagnostics under one contract.</div></div>
+      <div class="flow-step"><strong>Strategy tests</strong><div class="muted">Transparent baselines, perp context strategies, GMM/KNN local-analog filters, and liquidation diagnostics under one contract.</div></div>
       <div class="flow-step"><strong>Backtests and exits</strong><div class="muted">Split-safe backtests, fixed holds, triple barriers, exit policies, costs, funding, and stress evidence.</div></div>
       <div class="flow-step"><strong>Gates</strong><div class="muted">Ranking, stability, rejection reports, candidate-pack checks, and blocked promotion by default.</div></div>
     </div>
@@ -453,7 +545,7 @@
       </div>
     </div>
     <canvas id="profitability-chart" class="research-chart" height="220"></canvas>
-    <div id="profitability-chart-note" class="muted" style="margin-top:8px;"></div>
+    <div id="profitability-chart-note" class="chart-note muted">Waiting for profitability artifacts.</div>
   </section>
 
   <section class="research-band">
@@ -467,18 +559,22 @@
       <div class="viz-panel">
         <h4>Candidate Mix</h4>
         <canvas id="candidate-mix-chart" class="research-chart" height="180"></canvas>
+        <div id="candidate-mix-chart-note" class="chart-note muted">Waiting for historical-cycle artifacts.</div>
       </div>
       <div class="viz-panel">
         <h4>Gate Status</h4>
         <canvas id="gate-status-chart" class="research-chart" height="180"></canvas>
+        <div id="gate-status-chart-note" class="chart-note muted">Waiting for gate evidence.</div>
       </div>
       <div class="viz-panel">
         <h4>Holding Windows</h4>
         <canvas id="holding-window-chart" class="research-chart" height="180"></canvas>
+        <div id="holding-window-chart-note" class="chart-note muted">Waiting for holding-window metrics.</div>
       </div>
       <div class="viz-panel">
         <h4>Discovery Ledger</h4>
         <canvas id="discovery-ledger-chart" class="research-chart" height="180"></canvas>
+        <div id="discovery-ledger-chart-note" class="chart-note muted">Waiting for discovery ledger counts.</div>
       </div>
     </div>
   </section>
@@ -529,7 +625,7 @@
   <section class="research-band">
     <details class="advanced-diagnostics">
       <summary>Advanced Signal-History Diagnostics</summary>
-      <p class="muted">Use these only when you intentionally need the older persisted-signal model diagnostics. They require saved BTC signal history and remain offline observe-only checks.</p>
+      <p class="muted">Use these only when you intentionally need saved signal-history model diagnostics. They require saved BTC signal history and remain offline observe-only checks.</p>
       <div class="inline-buttons">
         <button onclick="queueJob('/api/operator/research/jobs/build-dataset', {}, 'Build signal dataset')">Build Signal Dataset</button>
         <button class="secondary" onclick="queueTrainLatest()">Train Latest Signal Dataset</button>
@@ -561,6 +657,7 @@
 {% block scripts %}
 <script>
   let latestArtifacts = [];
+  let latestResearchJobs = [];
   const repoRootElement = document.getElementById("repo-root-value");
   const repoRoot = repoRootElement ? repoRootElement.dataset.path : ".";
   const localHistoryKey = "tbs.research.localActionHistory.v1";
@@ -627,7 +724,7 @@
 
   const discoveryDetails = {
     "configs/discovery/standard_entry_discovery_btcusdt_v4.json": [
-      ["What It Tests", "Real HMM-regime plus local KNN entry discovery across feature sets, label horizons, K values, distance metrics, thresholds, and same-regime filters."],
+      ["What It Tests", "Real GMM regime detector plus local KNN entry discovery, with explicit no-regime and GMM-gated modes across feature sets, label horizons, K values, distance metrics, and thresholds."],
       ["When To Use", "Use for normal candidate search after provider data and feature fixtures are ready. It should take meaningfully longer than smoke checks and produce real trial artifacts."],
       ["Where It Writes", "operator_runs/discovery_runs/<run>/<job>, feature_matrices, trial_artifacts, trial records, snapshots, and research_only candidate ledgers."]
     ],
@@ -880,13 +977,61 @@
     }, actionLabel);
   }
 
+  async function queuePreflightDataReadiness() {
+    selectProviderStage("intake");
+    return await queueProviderPipeline("Preflight data readiness");
+  }
+
+  async function queueDiscoveryPreset(preset, actionLabel, stopAfterTrials = null, resume = false) {
+    document.getElementById("discovery-run-preset").value = preset;
+    applyDiscoveryPreset();
+    document.getElementById("discovery-stop-after-trials").value = stopAfterTrials ? String(stopAfterTrials) : "";
+    document.getElementById("discovery-resume").value = resume ? "true" : "false";
+    return await queueDiscoveryRun(actionLabel, resume);
+  }
+
+  async function pauseDiscoveryAfterOneTrial() {
+    const preset = document.getElementById("discovery-run-preset").value;
+    return await queueDiscoveryPreset(preset, "Pause after one trial", 1, false);
+  }
+
+  function focusResearchSection(id) {
+    const target = document.getElementById(id);
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  function openLatestSnapshot() {
+    const discovery = latestDiscoveryRun();
+    const summary = (discovery || {}).summary || {};
+    const snapshotPath = extractSnapshotPath(summary);
+    const body = snapshotPath
+      ? `Latest snapshot evidence: ${window.TBS.escapeHtml(snapshotPath)}`
+      : "No discovery snapshot is indexed yet. Run or resume discovery, then review Artifacts.";
+    document.getElementById("job-response").innerHTML = `<div class="${snapshotPath ? "success-box" : "error-box"}"><strong>Latest snapshot</strong><br>${body}</div>`;
+    focusResearchSection("artifacts-list");
+  }
+
+  function reviewCandidateEligibility() {
+    document.getElementById("historical-cycle-focus").value = "stability";
+    applyHistoricalPreset();
+    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Candidate eligibility review</strong><br>Inspect gate evidence, comparator, exit-lab, validation floors, blockers, and Stage 13 readiness before considering any handoff.</div>';
+    focusResearchSection("stage13-readiness-panel");
+  }
+
+  function openArtifactList() {
+    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Artifact list</strong><br>Showing indexed research artifacts and manifests. Server-side truth remains in Jobs and artifact files.</div>';
+    focusResearchSection("artifacts-list");
+  }
+
   async function queueFullResearchReview() {
     selectProviderStage("all");
-    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing full review</strong><br>Provider refresh, experiment bundle, historical cycle, and selected real discovery run are being submitted.</div>';
-    await queueProviderPipeline("Full review: provider all");
-    await queueResearchExperiment("Full review: experiment");
-    await queueHistoricalCycle("Full review: historical cycle");
-    await queueDiscoveryRun("Full review: real discovery ledger", false);
+    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing evidence review bundle</strong><br>Provider refresh, experiment bundle, historical cycle, and selected real discovery run are being submitted.</div>';
+    await queueProviderPipeline("Evidence review: provider all");
+    await queueResearchExperiment("Evidence review: experiment");
+    await queueHistoricalCycle("Evidence review: historical cycle");
+    await queueDiscoveryRun("Evidence review: real discovery ledger", false);
   }
 
   function formatNumber(value) {
@@ -1028,7 +1173,7 @@
             ["Blocked", window.TBS.toMono(blocked.row_count ?? 0)],
             ["Filter Blocked", window.TBS.toMono(filterBlocked.row_count ?? 0)],
             ["Snapshots", window.TBS.toMono(summary.snapshot_count ?? "n/a")],
-            ["Promotion Ready", window.TBS.escapeHtml(String(summary.promotion_ready))],
+            ["Promotion Boundary", window.TBS.escapeHtml(summary.promotion_ready === true ? "requires later promotion review" : "promotion_ready: false")],
           ])}
           ${ledgerRows.length ? `
             <table style="margin-top:12px;">
@@ -1109,7 +1254,7 @@
       <div class="card alt">
         <div class="split">
           <strong>${window.TBS.escapeHtml(item.type.replaceAll("_", " "))}</strong>
-          ${item.type === "model_artifact" && metrics.promotion_ready ? window.TBS.pill("promotion_ready", "ok") : window.TBS.pill("observe_only", "neutral")}
+          ${item.type === "model_artifact" && metrics.promotion_ready ? window.TBS.pill("promotion_review_required", "warn") : window.TBS.pill("observe_only", "neutral")}
         </div>
         ${window.TBS.renderKv([
           ["Path", window.TBS.toMono(item.path)],
@@ -1118,6 +1263,7 @@
           ["Model", window.TBS.escapeHtml(String(summary.model_version || "n/a"))],
           ["Calibration", window.TBS.escapeHtml(String(summary.calibration_version || "n/a"))],
           ["Signal Expectancy", window.TBS.toMono(summary.v2_expectancy ?? "n/a")],
+          ["Promotion Boundary", window.TBS.escapeHtml(item.type === "model_artifact" && metrics.promotion_ready ? "flag seen; not authorized here" : "observe-only")],
         ])}
         ${topMissing.length ? `<div class="muted" style="margin-top:8px;">Top missing feature rates: ${topMissing.map(([key, value]) => `${window.TBS.escapeHtml(key)}=${Number(value).toFixed(2)}`).join(", ")}</div>` : ""}
         <details class="details">
@@ -1199,10 +1345,11 @@
     const paths = payload.manifest_paths || {};
     return `
       <div class="stat-grid">
-        <div class="stat"><div class="label">Status</div><div class="value">${window.TBS.pill(payload.ready ? "ready" : "blocked", payload.ready ? "ok" : "warn")}</div></div>
+        <div class="stat"><div class="label">Plan Status</div><div class="value">${window.TBS.pill(payload.ready ? "evidence_complete" : "blocked", "warn")}</div></div>
         <div class="stat"><div class="label">Blockers</div><div class="value">${window.TBS.escapeHtml(String(blockers.length))}</div></div>
-        <div class="stat"><div class="label">Live Canary</div><div class="value">${window.TBS.escapeHtml(payload.live_canary_authorized ? "authorized" : "blocked")}</div></div>
+        <div class="stat"><div class="label">Canary Scope</div><div class="value">${window.TBS.escapeHtml(payload.live_canary_authorized ? "template evidence only" : "blocked")}</div></div>
       </div>
+      <div class="muted" style="margin-top:12px;">Planning panel only; no canary, mode switch, order, promotion, or sizing action starts from this page.</div>
       <div class="muted" style="margin-top:12px;">Required: ${window.TBS.escapeHtml(required.join(", ") || "n/a")}</div>
       <div class="muted">Templates: ${window.TBS.escapeHtml(Object.values(paths).join(", ") || payload.report_path || "not written")}</div>
       ${blockers.length ? `<div class="stack" style="margin-top:12px;">${blockers.slice(0, 8).map(reason => `<div class="list-item">${window.TBS.escapeHtml(reason)}</div>`).join("")}</div>` : ""}
@@ -1229,6 +1376,18 @@
     ctx.fillStyle = "#9aa7b4";
     ctx.font = "13px Segoe UI, sans-serif";
     ctx.fillText(message, 16, height / 2);
+  }
+
+  function setChartState(id, noteId, hasData, message) {
+    const canvas = document.getElementById(id);
+    const note = document.getElementById(noteId);
+    if (canvas) {
+      canvas.classList.toggle("waiting-for-data", !hasData);
+      canvas.setAttribute("aria-label", message);
+    }
+    if (note) {
+      note.textContent = message;
+    }
   }
 
   function drawBarChart(id, rows, options = {}) {
@@ -1311,6 +1470,150 @@
     return latestArtifacts.find(item => item.type === "discovery_run") || null;
   }
 
+  function countPositiveValues(counts) {
+    return Object.values(counts || {}).reduce((total, value) => {
+      if (typeof value === "boolean") return total;
+      const numeric = Number(value);
+      return total + (Number.isFinite(numeric) && numeric > 0 ? numeric : 0);
+    }, 0);
+  }
+
+  function positiveNumber(value) {
+    if (typeof value === "boolean") return 0;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+  }
+
+  function discoveryLedgerCount(summary, summaryKey, countKey) {
+    const counts = summary.counts || {};
+    const countValue = positiveNumber(counts[countKey]);
+    if (countValue) return countValue;
+    return positiveNumber((summary[summaryKey] || {}).row_count);
+  }
+
+  function activeResearchJob(jobs) {
+    return jobs.find(job => job.status === "queued" || job.status === "running") || null;
+  }
+
+  function extractSnapshotPath(summary) {
+    const latestSnapshot = summary.latest_snapshot || {};
+    return summary.latest_snapshot_path || summary.last_snapshot_path || summary.snapshot_path || latestSnapshot.path || summary.run_state_path || summary.snapshot_dir || "";
+  }
+
+  function normalizedMaturity(summary) {
+    const raw = String(summary.research_maturity || summary.maturity_label || summary.validation_floor_maturity || summary.candidate_maturity || "").toLowerCase().replaceAll("_", "-");
+    if (raw.includes("candidate-ready")) return "Candidate-ready";
+    if (raw.includes("screen-worthy") || raw.includes("screening")) return "Screen-worthy";
+    if (raw.includes("diagnostic") || raw.includes("blocked")) return "Diagnostic";
+    return "";
+  }
+
+  function researchMaturity(cycle, discovery) {
+    const cycleSummary = (cycle || {}).summary || {};
+    const rankings = cycleSummary.rankings || {};
+    const discoverySummary = (discovery || {}).summary || {};
+    const explicitMaturity = normalizedMaturity(cycleSummary) || normalizedMaturity(discoverySummary);
+    if (explicitMaturity === "Candidate-ready") {
+      return {
+        label: "Candidate-ready",
+        reason: "Explicit validation maturity says candidate-ready; still research_only and observe_only.",
+      };
+    }
+    if (explicitMaturity === "Screen-worthy") {
+      return {
+        label: "Screen-worthy",
+        reason: "Explicit validation maturity says screen-worthy; review blockers before deeper work.",
+      };
+    }
+    if (explicitMaturity === "Diagnostic") {
+      return {
+        label: "Diagnostic",
+        reason: "Explicit validation maturity is diagnostic or blocked.",
+      };
+    }
+    const explicitLeadCount = (rankings.top_candidates || []).length
+      + discoveryLedgerCount(discoverySummary, "interesting_candidates", "interesting_candidates")
+      + positiveNumber(discoverySummary.interesting_count);
+    if (explicitLeadCount > 0) {
+      return {
+        label: "Screen-worthy",
+        reason: "Leads or ledger rows exist, but blockers and validation evidence still need operator review.",
+      };
+    }
+    return {
+      label: "Diagnostic",
+      reason: "Use provider readiness, smoke discovery, jobs, and artifact checks to establish evidence.",
+    };
+  }
+
+  function renderOperatorBoard(jobs, stage13Readiness) {
+    const target = document.getElementById("operator-board");
+    if (!target) return;
+    const cycle = latestCycle();
+    const discovery = latestDiscoveryRun();
+    const latestDataset = pickLatest("dataset");
+    const latestExperiment = pickLatest("research_experiment_run");
+    const latestHmm = pickLatest("hmm_knn_artifact");
+    const active = activeResearchJob(jobs);
+    const latestJob = jobs[0] || null;
+    const cycleSummary = (cycle || {}).summary || {};
+    const discoverySummary = (discovery || {}).summary || {};
+    const rankings = cycleSummary.rankings || {};
+    const gate = cycleSummary.gate_report || {};
+    const stageBlockers = (stage13Readiness || {}).blockers || [];
+    const decisionCounts = rankings.decision_counts || {};
+    const cycleRejectedCount = positiveNumber(decisionCounts.rejected) + positiveNumber(decisionCounts.blocked) + positiveNumber(gate.rejected_count);
+    const blockerCount = cycleRejectedCount
+      + discoveryLedgerCount(discoverySummary, "blocked_candidates", "blocked_candidates")
+      + discoveryLedgerCount(discoverySummary, "filter_blockers", "filter_blockers")
+      + stageBlockers.length;
+    const leadCount = (rankings.top_candidates || []).length
+      + discoveryLedgerCount(discoverySummary, "interesting_candidates", "interesting_candidates")
+      + positiveNumber(discoverySummary.interesting_count);
+    const maturity = researchMaturity(cycle, discovery);
+    const snapshotPath = extractSnapshotPath(discoverySummary);
+    const latestIntake = pickLatest("data_pipeline_intake");
+    const latestQuality = pickLatest("data_quality_report");
+    const latestJournal = pickLatest("market_journal_manifest");
+    const latestProviderArchive = pickLatest("provider_archive_manifest");
+    const dataArtifact = latestDataset || latestIntake || latestQuality || latestProviderArchive || latestJournal || cycle || latestHmm || latestExperiment;
+    const dataValue = dataArtifact ? "Indexed" : "Needs preflight";
+    const dataMeta = latestDataset
+      ? `Dataset rows: ${window.TBS.escapeHtml(String(latestDataset.summary?.row_count ?? "n/a"))}`
+      : (latestIntake ? `Provider intake manifests: ${window.TBS.escapeHtml(String(latestIntake.summary?.provider_count ?? "n/a"))}`
+        : (latestQuality ? `Data quality alerts: ${window.TBS.escapeHtml(String(latestQuality.summary?.alert_count ?? "n/a"))}`
+          : (latestProviderArchive ? `Archive rows: ${window.TBS.escapeHtml(String(latestProviderArchive.summary?.row_count ?? "n/a"))}`
+            : (latestJournal ? `Journal events: ${window.TBS.escapeHtml(String(latestJournal.summary?.event_count ?? "n/a"))}`
+              : (cycle ? `Cycle: ${window.TBS.escapeHtml(cycleSummary.cycle_id || "indexed")}` : "Run Preflight Data Readiness before deeper research.")))));
+    const runValue = active ? active.status : (latestJob ? latestJob.status : "Idle");
+    const runMeta = active
+      ? `${window.TBS.escapeHtml(active.job_type)} / ${window.TBS.escapeHtml(active.job_id)}`
+      : (latestJob ? `${window.TBS.escapeHtml(latestJob.job_type)} / ${window.TBS.escapeHtml(latestJob.job_id)}` : "No research job indexed.");
+    const progressValue = active ? active.job_type : (discoverySummary.status || "No active run");
+    const progressMeta = discoverySummary.run_id
+      ? `Discovery ${window.TBS.escapeHtml(discoverySummary.run_id)} / ${window.TBS.escapeHtml(String(discoverySummary.status || "indexed"))}`
+      : "Progress appears after discovery or cycle artifacts are indexed.";
+    const snapshotValue = snapshotPath ? "Indexed" : "None";
+    const snapshotMeta = snapshotPath || (discoverySummary.run_id ? `Run ${window.TBS.escapeHtml(discoverySummary.run_id)} has no snapshot path in summary.` : "No discovery snapshot artifact found.");
+    const tiles = [
+      ["Data Readiness", dataValue, dataMeta],
+      ["Current Run", runValue, runMeta],
+      ["Progress", progressValue, progressMeta],
+      ["Latest Snapshot", snapshotValue, snapshotMeta],
+      ["Blockers", String(blockerCount), blockerCount ? "Review rejection, discovery-blocker, and readiness panels." : "No blocker count indexed."],
+      ["Leads", String(leadCount), leadCount ? "Review top candidates and discovery ledgers." : "No screen-worthy leads indexed."],
+      ["Artifacts", String(latestArtifacts.length), latestArtifacts.length ? "Artifacts are visible below." : "No research artifacts indexed."],
+      ["Maturity", maturity.label, maturity.reason],
+    ];
+    target.innerHTML = tiles.map(([label, value, meta]) => `
+      <div class="board-tile">
+        <div class="label">${window.TBS.escapeHtml(label)}</div>
+        <div class="value">${window.TBS.escapeHtml(String(value || "n/a"))}</div>
+        <div class="meta">${window.TBS.escapeHtml(String(meta || ""))}</div>
+      </div>
+    `).join("");
+  }
+
   function renderResearchCharts() {
     const cycle = latestCycle();
     const discovery = latestDiscoveryRun();
@@ -1333,15 +1636,27 @@
     if (hmm?.summary?.meta_expectancy !== undefined && hmm?.summary?.meta_expectancy !== null) {
       rows.push({ label: "hmm/knn meta expectancy", value: hmm.summary.meta_expectancy });
     }
-    drawBarChart("profitability-chart", rows.slice(0, 12), { empty: "No profitability artifacts found yet." });
-    document.getElementById("profitability-chart-note").textContent = cycle
+    const profitRows = rows.slice(0, 12);
+    drawBarChart("profitability-chart", profitRows, { empty: "No profitability artifacts found yet." });
+    setChartState("profitability-chart", "profitability-chart-note", Boolean(profitRows.length), cycle
       ? `Latest cycle: ${cycle.summary?.cycle_id || "unknown"} | candidates: ${cycle.summary?.candidate_count ?? "n/a"} | acceptance: ${cycle.summary?.candidate_acceptance_scope || "n/a"}`
-      : "No historical research cycle found. Run a historical-cycle command from the repo root or copy cycle artifacts into the research output directory.";
-    drawHorizontalCountChart("candidate-mix-chart", (((cycle || {}).summary || {}).rankings || {}).strategy_counts || {}, { empty: "No candidate strategy mix yet." });
-    drawHorizontalCountChart("gate-status-chart", (((cycle || {}).summary || {}).rankings || {}).decision_counts || {}, { empty: "No gate decisions yet." });
+      : "No historical research cycle found. Run Historical Cycle Review or copy cycle artifacts into the research output directory.");
+    const strategyCounts = (((cycle || {}).summary || {}).rankings || {}).strategy_counts || {};
+    const decisionCounts = (((cycle || {}).summary || {}).rankings || {}).decision_counts || {};
+    drawHorizontalCountChart("candidate-mix-chart", strategyCounts, { empty: "No candidate strategy mix yet." });
+    setChartState("candidate-mix-chart", "candidate-mix-chart-note", countPositiveValues(strategyCounts) > 0,
+      countPositiveValues(strategyCounts) > 0 ? "Candidate mix from the newest historical research cycle." : "No candidate strategy mix yet. Run Historical Cycle Review.");
+    drawHorizontalCountChart("gate-status-chart", decisionCounts, { empty: "No gate decisions yet." });
+    setChartState("gate-status-chart", "gate-status-chart-note", countPositiveValues(decisionCounts) > 0,
+      countPositiveValues(decisionCounts) > 0 ? "Gate decisions from the newest historical research cycle." : "No gate decisions yet. Run Historical Cycle Review and inspect rejection evidence.");
     const holdingRows = ((((cycle || {}).summary || {}).holding_windows || {}).rows || []).map(row => ({ label: row.holding_window, value: row.best_final_score ?? row.median_costed_expectancy ?? 0 }));
     drawBarChart("holding-window-chart", holdingRows, { empty: "No holding-window metrics yet." });
-    drawHorizontalCountChart("discovery-ledger-chart", ((discovery || {}).summary || {}).counts || {}, { empty: "No discovery run ledgers yet." });
+    setChartState("holding-window-chart", "holding-window-chart-note", Boolean(holdingRows.length),
+      holdingRows.length ? "Holding-window metrics from the newest historical research cycle." : "No holding-window metrics yet. Run Historical Cycle Review.");
+    const discoveryCounts = ((discovery || {}).summary || {}).counts || {};
+    drawHorizontalCountChart("discovery-ledger-chart", discoveryCounts, { empty: "No discovery run ledgers yet." });
+    setChartState("discovery-ledger-chart", "discovery-ledger-chart-note", countPositiveValues(discoveryCounts) > 0,
+      countPositiveValues(discoveryCounts) > 0 ? "Discovery ledger counts from the newest discovery run." : "No discovery run ledgers yet. Run Quick Discovery for plumbing or Standard Discovery for real search.");
   }
 
   function renderActiveJobSummary(jobs) {
@@ -1376,8 +1691,10 @@
     for (const job of (jobsIndex.items || []).slice(0, 8)) {
       jobs.push(await window.TBS.getJson(`/api/operator/research/jobs/${job.job_id}`));
     }
+    latestResearchJobs = jobs;
     document.getElementById("jobs-list").innerHTML = jobs.length ? jobs.map(renderJobRow).join("") : '<tr><td colspan="5">No jobs yet.</td></tr>';
     renderActiveJobSummary(jobs);
+    renderOperatorBoard(jobs, stage13Readiness);
     document.getElementById("artifacts-list").innerHTML = latestArtifacts.length ? latestArtifacts.map(renderArtifactCard).join("") : '<div class="empty">No research artifacts created yet.</div>';
 
     const latestDataset = pickLatest("dataset");

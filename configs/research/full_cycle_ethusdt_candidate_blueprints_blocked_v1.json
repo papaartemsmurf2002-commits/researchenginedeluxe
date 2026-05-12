@@ -1,0 +1,257 @@
+{
+  "cycle_id": "ethusdt-candidate-blueprints-blocked-v1",
+  "symbol": "ETHUSDT",
+  "blueprint_manifest_path": "btc_eth_candidate_blueprints_v1.json",
+  "work_packet": "WPR94-13-btc-eth-candidate-blueprint-configs",
+  "blocked": true,
+  "enabled": false,
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_eligible": false,
+  "candidate_pack_written": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "maturity_label": "blocked",
+  "blocker_codes": [
+    "durable_eth_fixture_readiness_not_recorded",
+    "latest_window_context_non_diagnostic_claim",
+    "durable_multi_window_candidate_evidence_missing"
+  ],
+  "activation_requires": {
+    "durable_fixture_readiness_config_path": "durable_public_archive_fixture_readiness_ethusdt_v1.json",
+    "durable_fixture_readiness_recorded": false,
+    "required_fixture_families": [
+      "bars",
+      "lower_timeframe_bars",
+      "agg_trade"
+    ],
+    "required_primary_source": "binance_vision"
+  },
+  "promotion_artifact_policy": {
+    "writes_promotion_artifacts": false,
+    "research_candidate_pack_scope": "blocked_until_durable_eth_fixture_readiness",
+    "promotion_ready": false,
+    "candidate_pack_eligible": false
+  },
+  "output_dir": "../../data/research/historical_cycles/ethusdt_candidate_blueprints_blocked_v1",
+  "holding_windows": [
+    "4h",
+    "12h",
+    "24h",
+    "72h"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "../../data/research/fixtures/ethusdt_public_archive_required/fixture_pack_manifest.json"
+    ],
+    "local_fixture_dir": null,
+    "synthetic_fixture": false,
+    "synthetic_fallback_allowed": false,
+    "evidence_scope": "blocked_no_durable_eth_fixture",
+    "latest_window_rest_data_diagnostic_only": true,
+    "candidate_pack_eligible": false,
+    "durable_public_archive_required_for_candidate_ready": true,
+    "candidate_blocker_codes": [
+      "durable_eth_fixture_readiness_not_recorded",
+      "latest_window_context_non_diagnostic_claim"
+    ]
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol",
+      "features_full_context_no_wt",
+      "features_perp_context_v2"
+    ],
+    "materialized_prediction_overlays": [],
+    "knn_overlay_readiness": {
+      "active_in_cycle": false,
+      "required_kind": "hmm_knn_local_analog_v2",
+      "blocker_code": "missing_materialized_prediction_overlay",
+      "reason": "KNN remains deferred until ETH has durable fixture readiness and split-safe prediction overlays."
+    },
+    "aggtrade_orderflow_scope": {
+      "active_in_cycle": false,
+      "required_for_oi_flow_ablation": true,
+      "feature_set_id": "features_aggtrade_orderflow_v1",
+      "blocker_code": "durable_eth_aggtrade_fixture_missing",
+      "reason": "ETH aggTrade proxy ablations are blocked until durable ETH archive fixture readiness is recorded."
+    }
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "funding_basis_v1",
+    "volatility_breakout_v1",
+    "range_reversion_v1",
+    "perp_basis_convergence_v2",
+    "oi_flow_breakout_v2",
+    "funding_crowding_fade_v2"
+  ],
+  "candidate_blueprint_mappings": [
+    {
+      "blueprint_id": "perp_basis_convergence_v3",
+      "executable_strategy_plugin_id": "perp_basis_convergence_v2",
+      "feature_set_id": "features_perp_context_v2",
+      "status": "blocked_until_durable_eth_fixture_readiness"
+    },
+    {
+      "blueprint_id": "oi_flow_breakout_v3",
+      "executable_strategy_plugin_id": "oi_flow_breakout_v2",
+      "feature_set_id": "features_perp_context_v2",
+      "status": "blocked_until_durable_eth_fixture_readiness"
+    },
+    {
+      "blueprint_id": "funding_crowding_fade_v3",
+      "executable_strategy_plugin_id": "funding_crowding_fade_v2",
+      "feature_set_id": "features_perp_context_v2",
+      "status": "blocked_until_durable_eth_fixture_readiness"
+    }
+  ],
+  "deferred_strategies": [
+    {
+      "strategy_id": "hmm_knn_local_analog_filter_v2",
+      "deferred_until": "durable_eth_fixture_and_split_safe_materialized_prediction_overlay_available",
+      "standalone_allowed": false,
+      "blocker_code": "missing_materialized_prediction_overlay"
+    }
+  ],
+  "strategy_family_requirements": {
+    "no_trade_comparator_strategy_id": "baseline_no_trade",
+    "transparent_comparator_strategy_ids": [
+      "funding_basis_v1",
+      "volatility_breakout_v1",
+      "range_reversion_v1"
+    ],
+    "blueprint_strategy_ids": [
+      "perp_basis_convergence_v2",
+      "oi_flow_breakout_v2",
+      "funding_crowding_fade_v2"
+    ],
+    "knn_overlay_active_in_cycle": false,
+    "knn_overlay_standalone_allowed": false,
+    "regime_detector_type_options": [
+      "none",
+      "gmm"
+    ],
+    "active_regime_mode": "no_regime",
+    "regime_modes_required_before_regime_claim": [
+      "no_regime",
+      "gmm_gate_only",
+      "gmm_same_regime_neighbor",
+      "gmm_all_regime_with_gate"
+    ],
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "true_hmm_backend_used": false
+  },
+  "required_ablations": {
+    "perp_basis_convergence_v3": [
+      "no_basis_premium_context",
+      "no_funding_context",
+      "no_oi_context",
+      "no_regime",
+      "no_knn",
+      "fixed_hold_only",
+      "basis_premium_normalization_exits"
+    ],
+    "oi_flow_breakout_v3": [
+      "no_oi_context",
+      "no_aggtrade_flow",
+      "no_funding_context",
+      "no_regime",
+      "no_knn",
+      "no_oi_contraction_exit"
+    ],
+    "funding_crowding_fade_v3": [
+      "no_funding_context",
+      "no_crowding_context",
+      "cost_drag_only_control",
+      "crowding_overfit_check",
+      "no_regime",
+      "no_knn",
+      "fixed_hold_only"
+    ]
+  },
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 8,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1,
+    "max_single_split_pnl_share": 0.5,
+    "min_cost_stress_survival_rate": 1.0,
+    "split_modes": [
+      "purged_embargoed_walk_forward",
+      "anchored_walk_forward"
+    ]
+  },
+  "optimizer": {
+    "method_sequence": [
+      "grid",
+      "stability_region_refine"
+    ],
+    "max_candidates_per_strategy": 1,
+    "top_regions_to_refine": 1
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "default_fixed_holding"
+      },
+      {
+        "exit_policy_id": "basis_normalization_exit_v1",
+        "exit_policy_params": {
+          "normalization_threshold_bps": 1.0,
+          "min_entry_basis_abs_bps": 5.0
+        },
+        "exit_policy_source": "configured_research_exit"
+      },
+      {
+        "exit_policy_id": "premium_normalization_exit_v1",
+        "exit_policy_params": {
+          "normalization_threshold_bps": 1.0,
+          "min_entry_premium_abs_bps": 5.0
+        },
+        "exit_policy_source": "configured_research_exit"
+      },
+      {
+        "exit_policy_id": "funding_aware_exit_v1",
+        "exit_policy_params": {
+          "funding_threshold": 0.00005,
+          "pre_funding_window_h": 1.0,
+          "min_expected_cost_bps": 0.5
+        },
+        "exit_policy_source": "configured_research_exit"
+      },
+      {
+        "exit_policy_id": "oi_contraction_exit_v1",
+        "exit_policy_params": {
+          "oi_delta_z_threshold": 1.0,
+          "min_oi_delta_abs": 0.0,
+          "max_unrealized_edge_bps": 5.0
+        },
+        "exit_policy_source": "configured_research_exit"
+      }
+    ],
+    "deferred_exit_policies": [
+      {
+        "exit_policy_id": "gmm_transition_exit_v1",
+        "deferred_until": "durable_eth_fixture_and_gmm_mode_comparison_active",
+        "blocker_code": "durable_eth_fixture_readiness_not_recorded"
+      },
+      {
+        "exit_policy_id": "knn_remaining_edge_exit_v1",
+        "deferred_until": "durable_eth_fixture_and_split_safe_materialized_prediction_overlay_available",
+        "blocker_code": "missing_materialized_prediction_overlay"
+      },
+      {
+        "exit_policy_id": "knn_dynamic_barriers_v1",
+        "deferred_until": "durable_eth_fixture_and_split_safe_materialized_prediction_overlay_available",
+        "blocker_code": "missing_materialized_prediction_overlay"
+      }
+    ]
+  },
+  "backtest_backend": "auto"
+}

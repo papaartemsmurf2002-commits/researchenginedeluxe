@@ -25,19 +25,36 @@ Open `http://127.0.0.1:8000/ui`, log in, then select `Research`.
 
 ## Main Controls
 
+- `Operator Board`: first-pass status for data readiness, current run, progress,
+  latest snapshot, blockers, leads, artifact count, and maturity.
 - `Provider Pipeline`: prepares or verifies provider/archive inputs. Use
   `Intake`, `Dataset`, `Evidence`, or `All` depending on the desired scope.
 - `Research Experiment`: runs a configured evidence bundle from
   `configs/experiments/`.
 - `Historical Cycle Review`: runs a configured full cycle from
   `configs/research/` into an isolated operator output directory.
-- `V4 Discovery Run`: runs or resumes real HMM/KNN entry-discovery searches
-  from `configs/discovery/`.
-- `Run Full Research Review`: queues the operator-visible review bundle.
+- `V4 Discovery Run`: runs or resumes real GMM-regime/KNN entry-discovery
+  searches from `configs/discovery/`, including explicit no-regime baselines.
+- `Queue Evidence Review Bundle`: queues the operator-visible provider,
+  experiment, historical-cycle, and discovery review sequence.
+- Routine buttons queue common research-only actions: `Preflight Data
+  Readiness`, `Quick Discovery`, `Standard Discovery`, `Deep Discovery`, `Pause
+  After One Trial`, `Resume Run`, `Open Latest Snapshot`, `Review Candidate
+  Eligibility`, and `Open Artifact List`.
 
 The page also renders profitability, candidate mix, gate status, holding-window,
 and discovery-ledger charts from the newest artifacts found under the configured
-research output directory.
+research output directory. If chart evidence is missing, the page shows the
+missing-evidence reason in page text instead of relying on an empty shell.
+
+## Maturity Labels
+
+- `Diagnostic`: plumbing, data-quality, or smoke evidence only.
+- `Screen-worthy`: a lead exists and has artifacts worth manual review, but
+  blockers and validation evidence are still being inspected.
+- `Candidate-ready`: requires exit-lab evidence, comparator evidence,
+  no-regime baseline when a regime mode is claimed, validation floors, and gate
+  evidence. This remains research-only and does not authorize live use.
 
 ## Overwrite Protection
 
@@ -62,13 +79,17 @@ research output directory.
 
 ## Evidence To Check
 
+- Operator Board: data readiness, current run, progress, latest snapshot,
+  blockers, leads, artifact count, and maturity label.
 - Jobs table: status, error text, and result paths.
 - Artifacts panel: latest manifests and summaries.
 - Discovery ledger chart: interesting, blocked, and filter-blocked counts.
 - HMM/KNN monitoring: entropy, no-trade behavior, neighbor quality, drift, and
   alert summaries.
-- Stage 13 readiness: should remain blocked until required paper, shadow,
-  testnet, rollback, and approval evidence exists.
+- Candidate eligibility: exit lab, comparator, no-regime baseline when regime is
+  claimed, validation floors, blocker registry, and gate evidence.
+- Stage 13 readiness: planning evidence only. It does not start canaries, switch
+  mode, place orders, promote artifacts, or change sizing.
 
 ## Related Docs
 

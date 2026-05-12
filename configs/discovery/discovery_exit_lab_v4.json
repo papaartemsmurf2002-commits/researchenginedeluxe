@@ -1,9 +1,24 @@
 {
   "lab_id": "discovery_exit_lab_v4",
   "entry_group_columns": [
+    "symbol",
+    "timeframe",
+    "side",
+    "split_id",
+    "validation_split_id",
     "strategy_id",
     "feature_set_id",
+    "feature_column_set_id",
+    "regime_mode",
+    "regime_detector_type",
     "holding_window",
+    "cost_model_id",
+    "cost_stress_id",
+    "cost_stress_status",
+    "label_horizon",
+    "distance_metric",
+    "k",
+    "min_neighbor_count",
     "parameters_json"
   ],
   "comparisons": [
@@ -41,8 +56,25 @@
       "notes": "Barrier exits are compared only after fixed-holding entry density is sufficient."
     },
     {
+      "comparison_id": "basis_premium_normalization_exit_vs_fixed_holding",
+      "exit_family": "basis_premium_normalization",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "basis_normalization_exit_v1",
+          "premium_normalization_exit_v1"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "Basis/premium normalization exits are compared only when rows carry matched entry, split, regime, cost, feature, and KNN context where present."
+    },
+    {
       "comparison_id": "funding_oi_exit_vs_fixed_holding",
-      "exit_family": "funding_oi",
+      "exit_family": "funding_oi_supported",
       "treatment_selector": {
         "exit_policy_id": [
           "funding_aware_exit_v1",
@@ -59,12 +91,12 @@
       "notes": "Funding/OI exits require sufficient fixed-holding entry density."
     },
     {
-      "comparison_id": "hmm_knn_exit_vs_fixed_holding",
-      "exit_family": "hmm_knn",
+      "comparison_id": "gmm_transition_exit_vs_fixed_holding",
+      "exit_family": "gmm_transition",
       "treatment_selector": {
         "exit_policy_id": [
           "regime_flip_exit",
-          "alpha_decay_exit"
+          "gmm_transition_exit_v1"
         ]
       },
       "baseline_selector": {
@@ -73,14 +105,81 @@
       "min_entry_trade_count": 10,
       "min_treatment_trade_count": 5,
       "min_score_delta": 0.0,
-      "notes": "HMM/KNN-adjacent exits remain pending unless evidence rows exist."
+      "notes": "Current regime transition evidence is GMM/no-regime discovery evidence, not true-HMM evidence."
+    },
+    {
+      "comparison_id": "knn_remaining_edge_exit_vs_fixed_holding",
+      "exit_family": "knn_remaining_edge",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "knn_remaining_edge_exit_v1"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "KNN remaining-edge exits are accepted only from matched KNN setup evidence rows."
+    },
+    {
+      "comparison_id": "knn_dynamic_barrier_exit_vs_fixed_holding",
+      "exit_family": "knn_dynamic_barrier",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "knn_dynamic_barriers_v1"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "KNN dynamic-barrier rows remain research-only comparison evidence and must share the KNN setup."
     },
     {
       "comparison_id": "trailing_risk_exit_vs_fixed_holding",
       "exit_family": "trailing_risk",
       "treatment_selector": {
         "exit_policy_id": [
-          "trailing_atr_after_profit",
+          "trailing_atr_after_profit"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "Trailing/risk-control exits require sufficient fixed-holding entry density; depth adverse-selection is tracked separately as deferred."
+    },
+    {
+      "comparison_id": "true_hmm_transition_exit_vs_fixed_holding",
+      "exit_family": "true_hmm_transition",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "true_hmm_transition_exit_v1",
+          "hmm_transition_exit",
+          "hmm_regime_transition_exit_v1"
+        ]
+      },
+      "baseline_selector": {
+        "exit_policy_id": "fixed_holding_window"
+      },
+      "min_entry_trade_count": 10,
+      "min_treatment_trade_count": 5,
+      "min_score_delta": 0.0,
+      "notes": "Deferred: this branch currently has no true HMM backend evidence."
+    },
+    {
+      "comparison_id": "liquidity_adverse_selection_exit_vs_fixed_holding",
+      "exit_family": "liquidity_adverse_selection",
+      "treatment_selector": {
+        "exit_policy_id": [
+          "liquidity_adverse_selection_exit_v1",
+          "depth_adverse_selection_exit_v1",
           "adverse_selection_exit"
         ]
       },
@@ -90,7 +189,7 @@
       "min_entry_trade_count": 10,
       "min_treatment_trade_count": 5,
       "min_score_delta": 0.0,
-      "notes": "Trailing/risk-control exits require sufficient fixed-holding entry density."
+      "notes": "Deferred: candidate-ready liquidity adverse-selection needs durable depth/L2 evidence."
     }
   ]
 }

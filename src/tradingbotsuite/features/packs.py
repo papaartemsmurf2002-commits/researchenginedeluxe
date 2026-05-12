@@ -12,12 +12,15 @@ from tradingbotsuite.features.alignment import (
     prepare_completed_bar_feature_input,
 )
 from tradingbotsuite.features.registry import (
+    AGGTRADE_ORDERFLOW_COLUMNS,
     CALENDAR_COLUMNS,
+    CROSS_ASSET_BTC_ETH_V2_COLUMNS,
     CROSS_ASSET_COLUMNS,
     LIQUIDATION_CONTEXT_COLUMNS,
     MICROSTRUCTURE_COLUMNS,
     PERP_CONTEXT_COLUMNS,
     PERP_CONTEXT_V2_COLUMNS,
+    PERP_CONTEXT_V3_COLUMNS,
     PRICE_PATH_COLUMNS,
     TREND_CHOP_COLUMNS,
     VOLATILITY_COLUMNS,
@@ -95,6 +98,10 @@ def _build_pack(frame: pd.DataFrame, *, pack_id: str, price_column: str | None, 
         return _context_features(frame, PERP_CONTEXT_COLUMNS)
     if pack_id == "perp_context_v2":
         return _perp_context_v2_features(frame, interval_ms=interval_ms)
+    if pack_id == "perp_context_v3":
+        return _perp_context_v3_features(frame, interval_ms=interval_ms)
+    if pack_id == "aggtrade_orderflow_v1":
+        return _aggtrade_orderflow_features(frame, interval_ms=interval_ms)
     if pack_id == "liquidation_context_v1":
         return _liquidation_context_features(frame, interval_ms=interval_ms)
     if pack_id == "microstructure_context_v1":
@@ -103,6 +110,8 @@ def _build_pack(frame: pd.DataFrame, *, pack_id: str, price_column: str | None, 
         return _wt3d_features(frame, price_column=price_column)
     if pack_id == "cross_asset_v1":
         return _cross_asset_features(frame)
+    if pack_id == "cross_asset_btc_eth_v2":
+        return _cross_asset_btc_eth_v2_features(frame, interval_ms=interval_ms)
     if pack_id == "calendar_v1":
         return _calendar_features(frame)
     raise ValueError(f"unknown_feature_pack:{pack_id}")
@@ -254,6 +263,166 @@ def _perp_context_v2_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.Da
     return result.loc[:, PERP_CONTEXT_V2_COLUMNS]
 
 
+def _perp_context_v3_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.DataFrame:
+    result = _perp_context_v2_features(frame, interval_ms=interval_ms).copy()
+    durable = _source_flag_any(
+        frame,
+        (
+            "quality_context_durable_provider_archive_source",
+            "context_durable_provider_archive",
+            "durable_provider_archive",
+        ),
+    )
+    self_archived = _source_flag_any(
+        frame,
+        (
+            "quality_context_self_archived_source",
+            "context_self_archived",
+            "self_archived",
+        ),
+    )
+    latest_window = _source_flag_any(
+        frame,
+        (
+            "quality_context_latest_window_diagnostic_source",
+            "quality_latest_window_context_only_source",
+            "latest_window_only",
+        ),
+    )
+    latest_window = pd.concat(
+        [
+            latest_window,
+            pd.to_numeric(result["quality_latest_window_context_only"], errors="coerce").fillna(0.0),
+        ],
+        axis=1,
+    ).max(axis=1).clip(lower=0.0, upper=1.0)
+
+    explicit_missing_unknown = _source_flag_any(
+        frame,
+        (
+            "quality_context_missing_unknown_source",
+            "context_missing_unknown",
+            "missing_unknown",
+        ),
+    )
+    source_known = (durable.gt(0.0) | self_archived.gt(0.0) | latest_window.gt(0.0)).astype(float)
+    missing_required = pd.to_numeric(result["quality_context_missing_count"], errors="coerce").fillna(0.0).gt(0.0)
+    missing_unknown = (
+        missing_required
+        | explicit_missing_unknown.gt(0.0)
+        | source_known.eq(0.0)
+    ).astype(float)
+
+    flow_proxy = pd.concat(
+        [
+            _source_flag_any(
+                frame,
+                (
+                    "quality_agg_trade_flow_proxy_not_ofi_source",
+                    "agg_trade_flow_proxy_not_ofi",
+                ),
+            ),
+            result["flow_buy_sell_ratio"].notna().astype(float),
+            result["flow_signed_taker_notional"].notna().astype(float),
+        ],
+        axis=1,
+    ).max(axis=1).clip(lower=0.0, upper=1.0)
+
+    provider_backed = pd.to_numeric(result["quality_provider_backed_all_required"], errors="coerce").fillna(0.0)
+    source_candidate_eligible = durable.gt(0.0) | self_archived.gt(0.0)
+    candidate_ready = (
+        provider_backed.eq(1.0)
+        & source_candidate_eligible
+        & latest_window.eq(0.0)
+        & missing_unknown.eq(0.0)
+    ).astype(float)
+
+    result["quality_context_durable_provider_archive"] = durable
+    result["quality_context_self_archived"] = self_archived
+    result["quality_context_latest_window_diagnostic"] = latest_window
+    result["quality_context_missing_unknown"] = missing_unknown
+    result["quality_context_candidate_ready_eligible"] = candidate_ready
+    result["quality_agg_trade_flow_proxy_not_ofi"] = flow_proxy
+    return result.loc[:, PERP_CONTEXT_V3_COLUMNS]
+
+
+def _aggtrade_orderflow_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.DataFrame:
+    result = pd.DataFrame(index=frame.index)
+    bars_1h = _bars_for_duration(interval_ms=interval_ms, duration_ms=3_600_000)
+    bars_7d = _bars_for_duration(interval_ms=interval_ms, duration_ms=7 * 24 * 3_600_000)
+
+    quote_volume = _first_available_numeric(frame, ("quote_volume", "agg_quote_volume", "notional", "quote_quantity"))
+    taker_buy_quote = _first_available_numeric(
+        frame,
+        ("taker_buy_quote_volume", "buy_quote_volume", "agg_taker_buy_quote_volume"),
+    )
+    sell_quote = _first_available_numeric(frame, ("sell_quote_volume", "sell_quantity", "agg_sell_quote_volume"))
+    signed_ratio = _first_available_numeric(frame, ("primary_signed_imbalance_ratio", "signed_imbalance_ratio", "signed_ratio"))
+    trade_count = _first_available_numeric(frame, ("agg_trade_count", "trade_count", "count"))
+    large_trade_count = _first_available_numeric(frame, ("agg_large_trade_count", "large_trade_count"))
+    large_buy_count = _first_available_numeric(frame, ("agg_large_buy_count", "large_buy_count"))
+    large_sell_count = _first_available_numeric(frame, ("agg_large_sell_count", "large_sell_count"))
+
+    buy_share = _agg_taker_buy_share(frame, taker_buy_quote, sell_quote, quote_volume, signed_ratio)
+    signed_imbalance = _agg_signed_imbalance(frame, taker_buy_quote, sell_quote, quote_volume, signed_ratio)
+    signed_notional = _flow_signed_notional(frame, signed_imbalance, quote_volume, taker_buy_quote, sell_quote)
+    cvd = signed_notional.cumsum()
+    trade_count_zscore = _rolling_zscore(trade_count, bars_7d) if trade_count is not None else _nan_series(frame)
+    quote_volume_zscore = _rolling_zscore(quote_volume, bars_7d) if quote_volume is not None else _nan_series(frame)
+    burst_base = pd.concat([trade_count_zscore, quote_volume_zscore], axis=1).max(axis=1).clip(lower=0.0)
+    flow_burst = burst_base * signed_imbalance.abs()
+    source_present = (
+        buy_share.notna()
+        | signed_imbalance.notna()
+        | (trade_count.notna() if trade_count is not None else pd.Series(False, index=frame.index))
+        | (quote_volume.notna() if quote_volume is not None else pd.Series(False, index=frame.index))
+    )
+    latest_window = _source_flag_any(
+        frame,
+        (
+            "quality_context_latest_window_diagnostic_source",
+            "quality_latest_window_context_only_source",
+            "latest_window_only",
+        ),
+    )
+    flow_proxy = pd.concat(
+        [
+            _source_flag_any(
+                frame,
+                (
+                    "quality_agg_trade_flow_proxy_not_ofi_source",
+                    "agg_trade_flow_proxy_not_ofi",
+                ),
+            ),
+            source_present.astype(float),
+        ],
+        axis=1,
+    ).max(axis=1).clip(lower=0.0, upper=1.0)
+
+    result["agg_taker_buy_quote_share"] = buy_share
+    result["agg_signed_quote_imbalance"] = signed_imbalance
+    result["agg_sqrt_signed_quote_imbalance"] = np.sign(signed_imbalance) * np.sqrt(
+        signed_imbalance.abs().clip(lower=0.0, upper=1.0)
+    )
+    result["agg_cvd_slope"] = _rolling_slope(cvd, bars_1h)
+    result["agg_trade_count_zscore"] = trade_count_zscore
+    result["agg_quote_volume_zscore"] = quote_volume_zscore
+    result["agg_large_trade_count"] = large_trade_count if large_trade_count is not None else _nan_series(frame)
+    result["agg_large_trade_side_imbalance"] = _agg_large_trade_side_imbalance(
+        frame,
+        large_buy_count=large_buy_count,
+        large_sell_count=large_sell_count,
+        fallback_signed_imbalance=signed_imbalance if large_trade_count is not None else None,
+    )
+    result["agg_flow_burst_score"] = flow_burst.where(source_present)
+    result["agg_sweep_proxy"] = result["agg_sqrt_signed_quote_imbalance"] * burst_base
+    result["quality_aggtrade_context_missing"] = (~source_present).astype(float)
+    result["quality_aggtrade_source_present"] = source_present.astype(float)
+    result["quality_aggtrade_latest_window_diagnostic"] = latest_window
+    result["quality_aggtrade_flow_proxy_not_ofi"] = flow_proxy
+    return result.loc[:, AGGTRADE_ORDERFLOW_COLUMNS]
+
+
 def _liquidation_context_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.DataFrame:
     result = pd.DataFrame(index=frame.index)
     row_count = len(frame)
@@ -364,6 +533,108 @@ def _cross_asset_features(frame: pd.DataFrame) -> pd.DataFrame:
     return result.loc[:, CROSS_ASSET_COLUMNS]
 
 
+def _cross_asset_btc_eth_v2_features(frame: pd.DataFrame, *, interval_ms: int) -> pd.DataFrame:
+    result = pd.DataFrame(index=frame.index)
+    bars_1h = _bars_for_duration(interval_ms=interval_ms, duration_ms=3_600_000)
+    window_96 = 96
+
+    btc_close = _first_available_numeric(
+        frame,
+        ("btc_close", "btcusdt_close", "BTCUSDT_close", "btc_signal_bar_close"),
+    )
+    eth_close = _first_available_numeric(
+        frame,
+        ("eth_close", "ethusdt_close", "ETHUSDT_close", "eth_signal_bar_close"),
+    )
+    btc_return = _log_return_or_nan(frame, btc_close)
+    eth_return = _log_return_or_nan(frame, eth_close)
+    beta = _rolling_beta(eth_return, btc_return, window_96)
+    residual = eth_return - (beta * btc_return)
+    ethbtc_ratio = _safe_ratio(eth_close, btc_close) if eth_close is not None and btc_close is not None else _nan_series(frame)
+    ethbtc_log_ratio = np.log(ethbtc_ratio.where(ethbtc_ratio > 0.0))
+
+    btc_funding = _first_available_numeric(
+        frame,
+        ("btc_funding_rate", "btc_perp_last_funding_rate", "btc_last_funding_rate"),
+    )
+    eth_funding = _first_available_numeric(
+        frame,
+        ("eth_funding_rate", "eth_perp_last_funding_rate", "eth_last_funding_rate"),
+    )
+    funding_spread = (
+        eth_funding - btc_funding
+        if eth_funding is not None and btc_funding is not None
+        else _nan_series(frame)
+    )
+
+    btc_oi_delta = _first_available_numeric(frame, ("btc_oi_delta_1h", "btc_open_interest_delta_1h"))
+    eth_oi_delta = _first_available_numeric(frame, ("eth_oi_delta_1h", "eth_open_interest_delta_1h"))
+    if btc_oi_delta is None:
+        btc_oi = _first_available_numeric(frame, ("btc_oi_notional", "btc_open_interest_value", "btc_open_interest"))
+        btc_oi_delta = btc_oi.diff(bars_1h) if btc_oi is not None else None
+    if eth_oi_delta is None:
+        eth_oi = _first_available_numeric(frame, ("eth_oi_notional", "eth_open_interest_value", "eth_open_interest"))
+        eth_oi_delta = eth_oi.diff(bars_1h) if eth_oi is not None else None
+    oi_delta_spread = (
+        eth_oi_delta - btc_oi_delta
+        if eth_oi_delta is not None and btc_oi_delta is not None
+        else _nan_series(frame)
+    )
+
+    btc_time = _cross_asset_source_time(frame, "btc")
+    eth_time = _cross_asset_source_time(frame, "eth")
+    future_alignment = _cross_asset_future_alignment_risk(frame, btc_time, eth_time)
+    matched_interval = _cross_asset_matched_interval(
+        frame,
+        btc_time,
+        eth_time,
+        future_alignment,
+        interval_ms=interval_ms,
+    )
+    btc_durable = _cross_asset_durable_flag(frame, "btc")
+    eth_durable = _cross_asset_durable_flag(frame, "eth")
+    missing_btc = btc_close.isna() if btc_close is not None else pd.Series(True, index=frame.index)
+    missing_eth = eth_close.isna() if eth_close is not None else pd.Series(True, index=frame.index)
+    missing_funding = funding_spread.isna()
+    missing_oi = oi_delta_spread.isna()
+    missing_durable = btc_durable.eq(0.0) | eth_durable.eq(0.0)
+    point_in_time_join = (
+        matched_interval.eq(1.0)
+        & future_alignment.eq(0.0)
+        & (~missing_btc)
+        & (~missing_eth)
+    ).astype(float)
+    candidate_ready = (
+        point_in_time_join.eq(1.0)
+        & btc_durable.eq(1.0)
+        & eth_durable.eq(1.0)
+    ).astype(float)
+
+    result["btc_return_1"] = btc_return
+    result["eth_return_1"] = eth_return
+    result["eth_beta_to_btc_96"] = beta
+    result["eth_btc_residual_return_1"] = residual
+    result["eth_btc_residual_z_96"] = _rolling_zscore(residual, window_96)
+    result["ethbtc_trend_96"] = _rolling_slope(ethbtc_log_ratio, window_96)
+    result["ethbtc_state"] = np.sign(result["ethbtc_trend_96"]).replace(0.0, np.nan)
+    result["btc_eth_corr_96"] = btc_return.rolling(window_96, min_periods=min(20, window_96)).corr(eth_return)
+    result["funding_spread"] = funding_spread
+    result["funding_spread_z_96"] = _rolling_zscore(funding_spread, window_96)
+    result["oi_delta_spread_1h"] = oi_delta_spread
+    result["oi_delta_spread_z_96"] = _rolling_zscore(oi_delta_spread, window_96)
+    result["quality_cross_asset_missing_btc_context"] = missing_btc.astype(float)
+    result["quality_cross_asset_missing_eth_context"] = missing_eth.astype(float)
+    result["quality_cross_asset_missing_context"] = (missing_btc | missing_eth).astype(float)
+    result["quality_cross_asset_missing_durable_context"] = missing_durable.astype(float)
+    result["quality_cross_asset_missing_funding_context"] = missing_funding.astype(float)
+    result["quality_cross_asset_missing_oi_context"] = missing_oi.astype(float)
+    result["quality_cross_asset_future_alignment_risk"] = future_alignment
+    result["quality_cross_asset_matched_interval"] = matched_interval
+    result["quality_cross_asset_point_in_time_join"] = point_in_time_join
+    result["quality_cross_asset_candidate_ready_eligible"] = candidate_ready
+    return result.loc[:, CROSS_ASSET_BTC_ETH_V2_COLUMNS]
+
+
 def _calendar_features(frame: pd.DataFrame) -> pd.DataFrame:
     feature_time = pd.to_datetime(frame["feature_time_ms"], unit="ms", utc=True)
     hour = feature_time.dt.hour + (feature_time.dt.minute / 60.0)
@@ -394,9 +665,11 @@ def _availability_report(frame: pd.DataFrame, manifest: FeatureManifest) -> Feat
         in set(
             PERP_CONTEXT_COLUMNS
             + PERP_CONTEXT_V2_COLUMNS
+            + AGGTRADE_ORDERFLOW_COLUMNS
             + LIQUIDATION_CONTEXT_COLUMNS
             + MICROSTRUCTURE_COLUMNS
             + CROSS_ASSET_COLUMNS
+            + CROSS_ASSET_BTC_ETH_V2_COLUMNS
         )
     )
     return FeatureAvailabilityReport(
@@ -472,6 +745,85 @@ def _optional_numeric(frame: pd.DataFrame, column: str) -> pd.Series | None:
     return pd.to_numeric(frame[column], errors="coerce").replace([np.inf, -np.inf], np.nan)
 
 
+def _log_return_or_nan(frame: pd.DataFrame, series: pd.Series | None) -> pd.Series:
+    if series is None:
+        return _nan_series(frame)
+    return np.log(series.where(series > 0.0)).diff()
+
+
+def _safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    return numerator / denominator.replace(0.0, np.nan)
+
+
+def _rolling_beta(dependent: pd.Series, independent: pd.Series, window: int) -> pd.Series:
+    min_periods = min(20, window)
+    covariance = dependent.rolling(window, min_periods=min_periods).cov(independent)
+    variance = independent.rolling(window, min_periods=min_periods).var(ddof=0)
+    return covariance / variance.replace(0.0, np.nan)
+
+
+def _cross_asset_source_time(frame: pd.DataFrame, prefix: str) -> pd.Series | None:
+    columns = (
+        f"{prefix}_source_time_ms",
+        f"{prefix}_feature_time_ms",
+        f"{prefix}_bar_time_ms",
+        f"{prefix}usdt_bar_time_ms",
+        f"{prefix.upper()}USDT_bar_time_ms",
+    )
+    return _first_available_numeric(frame, columns)
+
+
+def _cross_asset_feature_time(frame: pd.DataFrame) -> pd.Series:
+    feature_time = _optional_numeric(frame, "feature_time_ms")
+    if feature_time is not None:
+        return feature_time
+    bar_time = _optional_numeric(frame, "bar_time_ms")
+    if bar_time is not None:
+        return bar_time
+    return pd.Series(np.arange(len(frame), dtype=float), index=frame.index)
+
+
+def _cross_asset_future_alignment_risk(
+    frame: pd.DataFrame,
+    btc_time: pd.Series | None,
+    eth_time: pd.Series | None,
+) -> pd.Series:
+    feature_time = _cross_asset_feature_time(frame)
+    risk = pd.Series(False, index=frame.index)
+    if btc_time is not None:
+        risk = risk | btc_time.gt(feature_time)
+    if eth_time is not None:
+        risk = risk | eth_time.gt(feature_time)
+    return risk.astype(float)
+
+
+def _cross_asset_matched_interval(
+    frame: pd.DataFrame,
+    btc_time: pd.Series | None,
+    eth_time: pd.Series | None,
+    future_alignment: pd.Series,
+    *,
+    interval_ms: int,
+) -> pd.Series:
+    if btc_time is None or eth_time is None:
+        return pd.Series(np.zeros(len(frame), dtype=float), index=frame.index)
+    max_lag_ms = max(float(interval_ms), 1.0)
+    matched = (btc_time - eth_time).abs().le(max_lag_ms) & future_alignment.eq(0.0)
+    return matched.astype(float)
+
+
+def _cross_asset_durable_flag(frame: pd.DataFrame, prefix: str) -> pd.Series:
+    return _source_flag_any(
+        frame,
+        (
+            f"{prefix}_quality_context_durable_provider_archive",
+            f"{prefix}_quality_context_durable_provider_archive_source",
+            f"{prefix}_durable_provider_archive",
+            f"{prefix}_public_archive",
+        ),
+    )
+
+
 def _first_available_numeric(frame: pd.DataFrame, columns: Sequence[str]) -> pd.Series | None:
     for column in columns:
         series = _optional_numeric(frame, column)
@@ -487,6 +839,17 @@ def _source_present(frame: pd.DataFrame, columns: Sequence[str]) -> pd.Series:
         if series is not None:
             present = present | series.notna()
     return present
+
+
+def _source_flag_any(frame: pd.DataFrame, columns: Sequence[str]) -> pd.Series:
+    flags = []
+    for column in columns:
+        series = _optional_numeric(frame, column)
+        if series is not None:
+            flags.append(pd.to_numeric(series, errors="coerce").fillna(0.0).clip(lower=0.0, upper=1.0))
+    if not flags:
+        return pd.Series(np.zeros(len(frame), dtype=float), index=frame.index)
+    return pd.concat(flags, axis=1).max(axis=1).clip(lower=0.0, upper=1.0)
 
 
 def _hours_since_last_funding(frame: pd.DataFrame, funding_context_available: bool) -> pd.Series:
@@ -547,6 +910,58 @@ def _flow_signed_notional(
         return taker_buy_quote - sell_quote
     if taker_buy_quote is not None and quote_volume is not None:
         return (2.0 * taker_buy_quote) - quote_volume
+    return _nan_series(frame)
+
+
+def _agg_taker_buy_share(
+    frame: pd.DataFrame,
+    taker_buy_quote: pd.Series | None,
+    sell_quote: pd.Series | None,
+    quote_volume: pd.Series | None,
+    signed_ratio: pd.Series | None,
+) -> pd.Series:
+    if taker_buy_quote is not None and quote_volume is not None:
+        return (taker_buy_quote / quote_volume.replace(0.0, np.nan)).clip(lower=0.0, upper=1.0)
+    if taker_buy_quote is not None and sell_quote is not None:
+        denominator = (taker_buy_quote + sell_quote).replace(0.0, np.nan)
+        return (taker_buy_quote / denominator).clip(lower=0.0, upper=1.0)
+    if signed_ratio is not None:
+        return ((signed_ratio.clip(lower=-1.0, upper=1.0) + 1.0) / 2.0).clip(lower=0.0, upper=1.0)
+    return _nan_series(frame)
+
+
+def _agg_signed_imbalance(
+    frame: pd.DataFrame,
+    taker_buy_quote: pd.Series | None,
+    sell_quote: pd.Series | None,
+    quote_volume: pd.Series | None,
+    signed_ratio: pd.Series | None,
+) -> pd.Series:
+    if signed_ratio is not None:
+        return signed_ratio.clip(lower=-1.0, upper=1.0)
+    if taker_buy_quote is not None and sell_quote is not None:
+        denominator = (taker_buy_quote + sell_quote).replace(0.0, np.nan)
+        return ((taker_buy_quote - sell_quote) / denominator).clip(lower=-1.0, upper=1.0)
+    if taker_buy_quote is not None and quote_volume is not None:
+        return (((2.0 * taker_buy_quote) / quote_volume.replace(0.0, np.nan)) - 1.0).clip(
+            lower=-1.0,
+            upper=1.0,
+        )
+    return _nan_series(frame)
+
+
+def _agg_large_trade_side_imbalance(
+    frame: pd.DataFrame,
+    *,
+    large_buy_count: pd.Series | None,
+    large_sell_count: pd.Series | None,
+    fallback_signed_imbalance: pd.Series | None,
+) -> pd.Series:
+    if large_buy_count is not None and large_sell_count is not None:
+        denominator = (large_buy_count + large_sell_count).replace(0.0, np.nan)
+        return ((large_buy_count - large_sell_count) / denominator).clip(lower=-1.0, upper=1.0)
+    if fallback_signed_imbalance is not None:
+        return fallback_signed_imbalance
     return _nan_series(frame)
 
 

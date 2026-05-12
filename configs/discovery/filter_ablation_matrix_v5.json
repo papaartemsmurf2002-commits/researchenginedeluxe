@@ -1,0 +1,232 @@
+{
+  "matrix_id": "filter_ablation_matrix_v5",
+  "decision_policy_version": "matched_filter_ablation_v2",
+  "group_columns": [
+    "entry_family",
+    "feature_set_id",
+    "feature_column_set_id",
+    "label_horizon",
+    "regime_mode",
+    "distance_metric",
+    "k",
+    "min_neighbor_count",
+    "holding_window",
+    "exit_policy_id",
+    "exit_policy_params_json",
+    "split_id",
+    "cost_model_id"
+  ],
+  "required_group_columns": [
+    "entry_family",
+    "feature_set_id",
+    "label_horizon",
+    "regime_mode",
+    "distance_metric",
+    "k",
+    "min_neighbor_count",
+    "exit_policy_id",
+    "split_id",
+    "cost_model_id"
+  ],
+  "feature_column_sets_path": "feature_column_sets_v4.json",
+  "min_feature_combination_score_delta": 0.0,
+  "min_feature_combination_trade_count": 1,
+  "comparisons": [
+    {
+      "comparison_id": "matched_hvp_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "hvp_realized_vol_percentile",
+      "treatment_selector": {
+        "filter_family": "hvp_realized_vol_percentile",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "hvp_realized_vol_percentile"
+      ],
+      "min_sample_retention_ratio": 0.35,
+      "min_split_consistency": 0.0,
+      "min_cost_stress_survival": 0.0,
+      "filter_default_candidate": true,
+      "notes": "HVP/realized-vol filters must beat an exact matched no-filter row before default use."
+    },
+    {
+      "comparison_id": "matched_atr_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "atr_percentile",
+      "treatment_selector": {
+        "filter_family": "atr_percentile",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "atr_percentile"
+      ],
+      "filter_default_candidate": true,
+      "notes": "ATR percentile filters must beat an exact matched no-filter row before default use."
+    },
+    {
+      "comparison_id": "matched_er_chop_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "er_chop",
+      "treatment_selector": {
+        "filter_family": "er_chop",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "efficiency_ratio",
+        "chop_score"
+      ],
+      "filter_default_candidate": true,
+      "notes": "ER/chop filters must beat an exact matched no-filter row before default use."
+    },
+    {
+      "comparison_id": "matched_volatility_shock_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "volatility_shock",
+      "treatment_selector": {
+        "filter_family": "volatility_shock",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "volatility_shock_score"
+      ],
+      "filter_default_candidate": true,
+      "notes": "Volatility shock filters must beat an exact matched no-filter row before default use."
+    },
+    {
+      "comparison_id": "matched_funding_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "funding",
+      "treatment_selector": {
+        "filter_family": "funding",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "funding_rate",
+        "funding_zscore"
+      ],
+      "filter_default_candidate": true,
+      "notes": "Funding filters must beat an exact matched no-filter row before default use."
+    },
+    {
+      "comparison_id": "matched_basis_premium_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "basis_premium",
+      "treatment_selector": {
+        "filter_family": "basis_premium",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "basis_premium",
+        "basis_premium_zscore"
+      ],
+      "filter_default_candidate": true,
+      "notes": "Basis/premium filters must beat an exact matched no-filter row before default use."
+    },
+    {
+      "comparison_id": "matched_oi_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "oi",
+      "treatment_selector": {
+        "filter_family": "oi",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "open_interest_change",
+        "open_interest_zscore"
+      ],
+      "filter_default_candidate": true,
+      "notes": "OI filters must beat an exact matched no-filter row before default use."
+    },
+    {
+      "comparison_id": "matched_aggtrade_flow_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "aggtrade_flow",
+      "treatment_selector": {
+        "filter_family": "aggtrade_flow",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "agg_signed_quote_imbalance"
+      ],
+      "filter_default_candidate": true,
+      "notes": "AggTrade flow is a trade-flow proxy, not order-book imbalance or true OFI."
+    },
+    {
+      "comparison_id": "matched_liquidation_filter_vs_no_filter",
+      "axis": "perp_filter",
+      "filter_family": "liquidation",
+      "treatment_selector": {
+        "filter_family": "liquidation",
+        "filter_enabled": true
+      },
+      "comparator_selector": {
+        "filter_family": "none",
+        "filter_enabled": false
+      },
+      "min_score_delta": 0.0,
+      "min_trade_count": 1,
+      "max_missingness_rate": 0.25,
+      "required_finite_columns": [
+        "liquidation_absorption_score"
+      ],
+      "filter_default_candidate": true,
+      "notes": "Liquidation filters are not testable unless finite provider-backed context exists."
+    }
+  ]
+}

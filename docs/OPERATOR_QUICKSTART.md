@@ -62,7 +62,11 @@ only when you need deeper runtime details.
 ## Research Jobs
 
 - Research jobs are offline and research-only.
-- Use `Research` for provider preparation, research experiments, historical-cycle review, V4 discovery runs, artifact review, HMM/KNN monitoring, and Stage 13 readiness diagnostics.
+- Use `Research` for provider preparation, research experiments, historical-cycle review, V4 discovery runs, artifact review, HMM/KNN monitoring, and Stage 13 readiness diagnostics. Current V4 discovery uses no-regime baselines and GMM regime modes, not a true HMM backend.
+- The `Operator Board` summarizes data readiness, current run, progress, latest snapshot, blockers, leads, artifact count, and maturity.
+- Maturity labels mean `Diagnostic`, `Screen-worthy`, or `Candidate-ready`; candidate-ready still requires later promotion approval before any handoff.
+- Routine buttons cover preflight data readiness, quick/standard/deep discovery, pause after one trial, resume, snapshot review, candidate eligibility review, and artifact-list review.
+- Empty research charts show missing-evidence reasons in page text.
 - Historical-cycle and fresh discovery jobs write isolated operator output directories; paused/resumed discovery jobs keep checkpoint files in the stable run-id directory.
 - Outputs must remain `research_only`, `observe_only`, and `promotion_ready: false` unless a later promotion process changes them.
 - Do not treat research artifacts as live signals.

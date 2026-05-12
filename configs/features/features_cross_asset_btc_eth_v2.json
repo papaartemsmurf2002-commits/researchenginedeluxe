@@ -1,0 +1,71 @@
+{
+  "manifest_version": "feature-manifest-v1",
+  "feature_set_id": "features_cross_asset_btc_eth_v2",
+  "feature_set_version": "v1",
+  "feature_packs": [
+    "cross_asset_btc_eth_v2"
+  ],
+  "input_families": [
+    "kline",
+    "funding_rate",
+    "open_interest"
+  ],
+  "feature_columns": [
+    "btc_return_1",
+    "eth_return_1",
+    "eth_beta_to_btc_96",
+    "eth_btc_residual_return_1",
+    "eth_btc_residual_z_96",
+    "ethbtc_trend_96",
+    "ethbtc_state",
+    "btc_eth_corr_96",
+    "funding_spread",
+    "funding_spread_z_96",
+    "oi_delta_spread_1h",
+    "oi_delta_spread_z_96",
+    "quality_cross_asset_missing_btc_context",
+    "quality_cross_asset_missing_eth_context",
+    "quality_cross_asset_missing_context",
+    "quality_cross_asset_missing_durable_context",
+    "quality_cross_asset_missing_funding_context",
+    "quality_cross_asset_missing_oi_context",
+    "quality_cross_asset_future_alignment_risk",
+    "quality_cross_asset_matched_interval",
+    "quality_cross_asset_point_in_time_join",
+    "quality_cross_asset_candidate_ready_eligible"
+  ],
+  "availability_columns": [
+    "missing_btc_return_1",
+    "missing_eth_return_1",
+    "missing_eth_beta_to_btc_96",
+    "missing_eth_btc_residual_return_1",
+    "missing_eth_btc_residual_z_96",
+    "missing_ethbtc_trend_96",
+    "missing_ethbtc_state",
+    "missing_btc_eth_corr_96",
+    "missing_funding_spread",
+    "missing_funding_spread_z_96",
+    "missing_oi_delta_spread_1h",
+    "missing_oi_delta_spread_z_96",
+    "missing_quality_cross_asset_missing_btc_context",
+    "missing_quality_cross_asset_missing_eth_context",
+    "missing_quality_cross_asset_missing_context",
+    "missing_quality_cross_asset_missing_durable_context",
+    "missing_quality_cross_asset_missing_funding_context",
+    "missing_quality_cross_asset_missing_oi_context",
+    "missing_quality_cross_asset_future_alignment_risk",
+    "missing_quality_cross_asset_matched_interval",
+    "missing_quality_cross_asset_point_in_time_join",
+    "missing_quality_cross_asset_candidate_ready_eligible"
+  ],
+  "point_in_time_safe": true,
+  "max_feature_age_ms": null,
+  "fit_scope": "stateless",
+  "imputation_policy": "explicit_missingness_plus_train_only_neutral",
+  "leakage_risks": [
+    "Cross-symbol BTC/ETH joins require source timestamps at or before the current completed bar.",
+    "Missing durable BTC or ETH context blocks candidate readiness and must remain explicit, not zero-filled."
+  ],
+  "tests": [],
+  "manifest_sha256": "746327c06ab413c9d58b9a7f21791463be20b8cfd176282bb38a43923a188cb9"
+}

@@ -341,6 +341,46 @@ def test_backtest_manifest_records_non_fixed_exit_policy_identity(tmp_path: Path
     assert manifest["execution_assumptions"]["exit_price_source"] == "primary_close"
 
 
+@pytest.mark.parametrize(
+    "exit_policy_id",
+    [
+        "basis_normalization_exit_v1",
+        "premium_normalization_exit_v1",
+        "gmm_transition_exit_v1",
+        "knn_remaining_edge_exit_v1",
+        "knn_dynamic_barriers_v1",
+    ],
+)
+def test_backtest_manifest_records_remaining_edge_exit_policy_identity(
+    tmp_path: Path,
+    exit_policy_id: str,
+) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
+
+    result = BacktestEngine().run(
+        BacktestSpec(
+            run_id=exit_policy_id,
+            symbol="BTCUSDT",
+            output_dir=tmp_path / "backtests",
+            dataset_path=dataset.parquet_path,
+            dataset_sha256=dataset.parquet_sha256,
+            strategy_id="baseline_no_trade",
+            holding_window="1h",
+            feature_set_id="features_price_trend_vol",
+            exit_policy_id=exit_policy_id,
+        )
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["exit_policy_id"] == exit_policy_id
+    assert manifest["execution_assumptions"]["exit_policy_id"] == exit_policy_id
+    assert manifest["execution_assumptions"]["exit_price_source"] == "primary_close"
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+
+
 def test_cache_key_changes_for_exit_policy_and_policy_parameters(tmp_path: Path) -> None:
     dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
     common = {

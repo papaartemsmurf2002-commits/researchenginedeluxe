@@ -8,6 +8,21 @@ import pandas as pd
 
 
 EXIT_POLICY_ENGINE_VERSION = "research-exit-policy-v1"
+_KNN_EXIT_CONTEXT_COLUMNS = (
+    "p_up_barrier",
+    "p_down_barrier",
+    "expected_net_return_after_costs",
+    "neighbor_agreement",
+    "neighbor_distance_quality",
+    "neighbor_count",
+    "neighbor_min_source_index",
+    "neighbor_max_source_index",
+    "knn_vote_margin",
+    "accepted_by_knn",
+    "knn_skip_reason",
+    "hmm_fit_end_row",
+    "source_row_index",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +324,164 @@ def primary_bar_research_exit(
             exit_policy_id=policy,
             exit_reason=exit_reason,
         )
+    if policy == "basis_normalization_exit_v1":
+        return _basis_normalization_exit_v1(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            normalization_threshold_bps=_optional_non_negative_float(
+                _param_float(params, "normalization_threshold_bps", None),
+                default=1.0,
+                policy=policy,
+                field="normalization_threshold_bps",
+            ),
+            min_entry_basis_abs_bps=_optional_non_negative_float(
+                _param_float(params, "min_entry_basis_abs_bps", None),
+                default=0.0,
+                policy=policy,
+                field="min_entry_basis_abs_bps",
+            ),
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
+    if policy == "premium_normalization_exit_v1":
+        return _premium_normalization_exit_v1(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            normalization_threshold_bps=_optional_non_negative_float(
+                _param_float(params, "normalization_threshold_bps", None),
+                default=1.0,
+                policy=policy,
+                field="normalization_threshold_bps",
+            ),
+            min_entry_premium_abs_bps=_optional_non_negative_float(
+                _param_float(params, "min_entry_premium_abs_bps", None),
+                default=0.0,
+                policy=policy,
+                field="min_entry_premium_abs_bps",
+            ),
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
+    if policy == "gmm_transition_exit_v1":
+        return _gmm_transition_exit_v1(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
+    if policy == "knn_remaining_edge_exit_v1":
+        return _knn_remaining_edge_exit_v1(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            min_remaining_edge_bps=_optional_non_negative_float(
+                _param_float(params, "min_remaining_edge_bps", None),
+                default=0.0,
+                policy=policy,
+                field="min_remaining_edge_bps",
+            ),
+            min_neighbor_count=_optional_positive_int(
+                _param_float(params, "min_neighbor_count", None),
+                default=1,
+                policy=policy,
+                field="min_neighbor_count",
+            ),
+            min_neighbor_agreement=_optional_unit_float(
+                _param_float(params, "min_neighbor_agreement", None),
+                default=0.0,
+                policy=policy,
+                field="min_neighbor_agreement",
+            ),
+            min_neighbor_distance_quality=_optional_unit_float(
+                _param_float(params, "min_neighbor_distance_quality", None),
+                default=0.0,
+                policy=policy,
+                field="min_neighbor_distance_quality",
+            ),
+            min_vote_margin=_optional_unit_float(
+                _param_float(params, "min_vote_margin", None),
+                default=0.0,
+                policy=policy,
+                field="min_vote_margin",
+            ),
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
+    if policy == "knn_dynamic_barriers_v1":
+        return _knn_dynamic_barriers_v1(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            target_return=_optional_positive_return(
+                _param_float(params, "target_return", target_return),
+                default=0.01,
+            ),
+            stop_return=_optional_positive_return(
+                _param_float(params, "stop_return", stop_return),
+                default=0.01,
+            ),
+            min_target_return=_optional_positive_return(
+                _param_float(params, "min_target_return", None),
+                default=0.002,
+            ),
+            max_target_return=_optional_positive_return(
+                _param_float(params, "max_target_return", None),
+                default=0.05,
+            ),
+            min_stop_return=_optional_positive_return(
+                _param_float(params, "min_stop_return", None),
+                default=0.002,
+            ),
+            max_stop_return=_optional_positive_return(
+                _param_float(params, "max_stop_return", None),
+                default=0.05,
+            ),
+            target_edge_multiplier=_optional_non_negative_float(
+                _param_float(params, "target_edge_multiplier", None),
+                default=1.0,
+                policy=policy,
+                field="target_edge_multiplier",
+            ),
+            min_neighbor_count=_optional_positive_int(
+                _param_float(params, "min_neighbor_count", None),
+                default=1,
+                policy=policy,
+                field="min_neighbor_count",
+            ),
+            min_neighbor_agreement=_optional_unit_float(
+                _param_float(params, "min_neighbor_agreement", None),
+                default=0.0,
+                policy=policy,
+                field="min_neighbor_agreement",
+            ),
+            min_neighbor_distance_quality=_optional_unit_float(
+                _param_float(params, "min_neighbor_distance_quality", None),
+                default=0.0,
+                policy=policy,
+                field="min_neighbor_distance_quality",
+            ),
+            min_vote_margin=_optional_unit_float(
+                _param_float(params, "min_vote_margin", None),
+                default=0.0,
+                policy=policy,
+                field="min_vote_margin",
+            ),
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
     if policy == "alpha_decay_exit":
         return _alpha_decay_exit(
             entry_time_ms=entry_time_ms,
@@ -579,6 +752,270 @@ def _oi_contraction_exit_v1(
     return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
 
 
+def _basis_normalization_exit_v1(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    normalization_threshold_bps: float,
+    min_entry_basis_abs_bps: float,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    basis_bps = _basis_bps_series(path, exit_policy_id=exit_policy_id)
+    side_multiplier = _side_multiplier(side)
+    entry_basis = _optional_numeric(basis_bps.iloc[0])
+    if entry_basis is None or not _premium_context_quality_allows(path.iloc[0], path):
+        return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+    entry_edge_bps = -side_multiplier * entry_basis
+    if entry_edge_bps < min_entry_basis_abs_bps:
+        return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+    for index, row in path.iloc[1:].iterrows():
+        if not _premium_context_quality_allows(row, path):
+            continue
+        current_basis = _optional_numeric(basis_bps.loc[index])
+        if current_basis is None:
+            continue
+        remaining_edge_bps = -side_multiplier * current_basis
+        if remaining_edge_bps <= normalization_threshold_bps:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="basis_normalization_exit_v1",
+                barrier_hit_type="basis_normalization",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=False,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
+def _premium_normalization_exit_v1(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    normalization_threshold_bps: float,
+    min_entry_premium_abs_bps: float,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    premium_bps = _premium_bps_series(path, exit_policy_id=exit_policy_id)
+    side_multiplier = _side_multiplier(side)
+    entry_premium = _optional_numeric(premium_bps.iloc[0])
+    if entry_premium is None or not _premium_context_quality_allows(path.iloc[0], path):
+        return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+    entry_edge_bps = -side_multiplier * entry_premium
+    if entry_edge_bps < min_entry_premium_abs_bps:
+        return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+    for index, row in path.iloc[1:].iterrows():
+        if not _premium_context_quality_allows(row, path):
+            continue
+        current_premium = _optional_numeric(premium_bps.loc[index])
+        if current_premium is None:
+            continue
+        remaining_edge_bps = -side_multiplier * current_premium
+        if remaining_edge_bps <= normalization_threshold_bps:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="premium_normalization_exit_v1",
+                barrier_hit_type="premium_normalization",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=False,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
+def _gmm_transition_exit_v1(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    regime_column = _first_present_column(path, ("top_regime_label", "regime"))
+    if regime_column is None:
+        raise ValueError("gmm_transition_exit_v1 requires top_regime_label or regime")
+    _require_columns(path, ("hmm_fit_end_row", "source_row_index"), exit_policy_id)
+    if not _gmm_detector_allows(path.iloc[0], path, required=True):
+        raise ValueError("gmm_transition_exit_v1 requires gmm regime_detector_type")
+    if not _split_safe_regime_row(path.iloc[0]):
+        raise ValueError("gmm_transition_exit_v1 requires split-safe GMM regime context")
+    entry_regime = _string_value(path.iloc[0].get(regime_column))
+    if not entry_regime:
+        raise ValueError("gmm_transition_exit_v1 requires non-empty entry GMM regime")
+
+    for _, row in path.iloc[1:].iterrows():
+        if not _gmm_detector_allows(row, path, required=False):
+            continue
+        if not _split_safe_regime_row(row):
+            continue
+        regime = _string_value(row.get(regime_column))
+        if not regime:
+            continue
+        recent_flip = _optional_bool_flag(row.get("recent_regime_flip")) if "recent_regime_flip" in path.columns else False
+        regime_no_trade = _optional_bool_flag(row.get("regime_no_trade")) if "regime_no_trade" in path.columns else False
+        if regime != entry_regime or recent_flip is True or regime_no_trade is True:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="gmm_transition_exit_v1",
+                barrier_hit_type="gmm_regime_transition",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=False,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
+def _knn_remaining_edge_exit_v1(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    min_remaining_edge_bps: float,
+    min_neighbor_count: int,
+    min_neighbor_agreement: float,
+    min_neighbor_distance_quality: float,
+    min_vote_margin: float,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    _require_columns(path, _KNN_EXIT_CONTEXT_COLUMNS, exit_policy_id)
+    side_value = side.lower()
+    for _, row in path.iloc[1:].iterrows():
+        context = _knn_prediction_context(
+            row,
+            min_neighbor_count=min_neighbor_count,
+            min_neighbor_agreement=min_neighbor_agreement,
+            min_neighbor_distance_quality=min_neighbor_distance_quality,
+            min_vote_margin=min_vote_margin,
+            require_accepted=False,
+        )
+        if context is None:
+            continue
+        if (
+            context["accepted"] is not True
+            or context["skip_clear"] is not True
+            or context["predicted_side"] != side_value
+            or context["expected_edge_bps"] <= min_remaining_edge_bps
+        ):
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="knn_remaining_edge_exit_v1",
+                barrier_hit_type="knn_remaining_edge",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=False,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
+def _knn_dynamic_barriers_v1(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    target_return: float,
+    stop_return: float,
+    min_target_return: float,
+    max_target_return: float,
+    min_stop_return: float,
+    max_stop_return: float,
+    target_edge_multiplier: float,
+    min_neighbor_count: int,
+    min_neighbor_agreement: float,
+    min_neighbor_distance_quality: float,
+    min_vote_margin: float,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    _require_columns(path, _KNN_EXIT_CONTEXT_COLUMNS, exit_policy_id)
+    if max_target_return < min_target_return:
+        raise ValueError("knn_dynamic_barriers_v1 requires max_target_return >= min_target_return")
+    if max_stop_return < min_stop_return:
+        raise ValueError("knn_dynamic_barriers_v1 requires max_stop_return >= min_stop_return")
+    side_multiplier = _side_multiplier(side)
+    for _, row in path.iloc[1:].iterrows():
+        context = _knn_prediction_context(
+            row,
+            min_neighbor_count=min_neighbor_count,
+            min_neighbor_agreement=min_neighbor_agreement,
+            min_neighbor_distance_quality=min_neighbor_distance_quality,
+            min_vote_margin=min_vote_margin,
+            require_accepted=True,
+        )
+        close = _optional_numeric(row.get("close"))
+        if context is None or close is None:
+            continue
+        dynamic_target, dynamic_stop = _knn_dynamic_barrier_returns(
+            context,
+            target_return=target_return,
+            stop_return=stop_return,
+            min_target_return=min_target_return,
+            max_target_return=max_target_return,
+            min_stop_return=min_stop_return,
+            max_stop_return=max_stop_return,
+            target_edge_multiplier=target_edge_multiplier,
+        )
+        realized = ((close / float(entry_price)) - 1.0) * side_multiplier
+        if realized >= dynamic_target:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="knn_dynamic_barriers_v1_target",
+                barrier_hit_type="target",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=True,
+            )
+        if realized <= -dynamic_stop:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="knn_dynamic_barriers_v1_stop",
+                barrier_hit_type="stop",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=True,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
 def _alpha_decay_exit(
     *,
     entry_time_ms: int,
@@ -815,6 +1252,23 @@ def _optional_non_negative_float(value: float | None, *, default: float, policy:
     return float(value)
 
 
+def _optional_positive_int(value: float | None, *, default: int, policy: str, field: str) -> int:
+    if value is None:
+        return int(default)
+    integer = int(value)
+    if float(integer) != float(value) or integer <= 0:
+        raise ValueError(f"{policy} requires positive integer {field}")
+    return integer
+
+
+def _optional_unit_float(value: float | None, *, default: float, policy: str, field: str) -> float:
+    if value is None:
+        return float(default)
+    if value < 0.0 or value > 1.0:
+        raise ValueError(f"{policy} requires {field} between 0 and 1")
+    return float(value)
+
+
 def _trail_return(path: pd.DataFrame, value: float | None) -> float:
     if value is not None:
         return _optional_positive_return(value, default=0.005)
@@ -825,6 +1279,168 @@ def _trail_return(path: pd.DataFrame, value: float | None) -> float:
     if volatility.empty:
         raise ValueError("trailing_atr_after_profit requires finite volatility context")
     return float(max(0.002, min(0.05, float(volatility.iloc[0]))))
+
+
+def _basis_bps_series(path: pd.DataFrame, *, exit_policy_id: str) -> pd.Series:
+    bps_column = _first_present_column(path, ("basis_bps",))
+    if bps_column is not None:
+        return pd.to_numeric(path[bps_column], errors="coerce")
+    rate_column = _first_present_column(
+        path,
+        ("perp_mark_index_basis", "basis_rate", "premium_basis_rate"),
+    )
+    if rate_column is None:
+        raise ValueError(
+            f"{exit_policy_id} requires columns: basis_bps, perp_mark_index_basis, or premium_basis_rate"
+        )
+    return pd.to_numeric(path[rate_column], errors="coerce") * 10_000.0
+
+
+def _premium_bps_series(path: pd.DataFrame, *, exit_policy_id: str) -> pd.Series:
+    bps_column = _first_present_column(path, ("premium_bps",))
+    if bps_column is not None:
+        return pd.to_numeric(path[bps_column], errors="coerce")
+    rate_column = _first_present_column(
+        path,
+        ("perp_premium", "premium_basis_rate", "premium_close", "premium_index"),
+    )
+    if rate_column is None:
+        raise ValueError(
+            f"{exit_policy_id} requires columns: perp_premium, premium_basis_rate, premium_close, or premium_index"
+        )
+    return pd.to_numeric(path[rate_column], errors="coerce") * 10_000.0
+
+
+def _premium_context_quality_allows(row: pd.Series, path: pd.DataFrame) -> bool:
+    missing_markers = (
+        "quality_has_premium_gap",
+        "missing_perp_mark_index_basis",
+        "missing_perp_premium",
+        "missing_basis_bps",
+        "missing_premium_basis_rate",
+    )
+    for column in missing_markers:
+        if column not in path.columns:
+            continue
+        marker = _optional_numeric(row.get(column))
+        if marker is None or marker > 0.0:
+            return False
+    if "quality_provider_backed_all_required" in path.columns:
+        provider_backed = _optional_numeric(row.get("quality_provider_backed_all_required"))
+        if provider_backed is None or provider_backed <= 0.0:
+            return False
+    return True
+
+
+def _gmm_detector_allows(row: pd.Series, path: pd.DataFrame, *, required: bool) -> bool:
+    if "regime_detector_type" not in path.columns:
+        return True
+    detector = _string_value(row.get("regime_detector_type"))
+    return detector == "gmm"
+
+
+def _split_safe_regime_row(row: pd.Series) -> bool:
+    fit_end = _integer_marker(row.get("hmm_fit_end_row"))
+    source_row = _integer_marker(row.get("source_row_index"))
+    return fit_end is not None and source_row is not None and fit_end >= 0 and source_row >= 0 and fit_end < source_row
+
+
+def _knn_prediction_context(
+    row: pd.Series,
+    *,
+    min_neighbor_count: int,
+    min_neighbor_agreement: float,
+    min_neighbor_distance_quality: float,
+    min_vote_margin: float,
+    require_accepted: bool,
+) -> dict[str, float | str | bool] | None:
+    if not _split_safe_neighbor_row(row):
+        return None
+    p_up = _bounded_unit_value(row.get("p_up_barrier"))
+    p_down = _bounded_unit_value(row.get("p_down_barrier"))
+    expected_value = _optional_numeric(row.get("expected_net_return_after_costs"))
+    agreement = _bounded_unit_value(row.get("neighbor_agreement"))
+    distance_quality = _bounded_unit_value(row.get("neighbor_distance_quality"))
+    neighbor_count = _integer_marker(row.get("neighbor_count"))
+    vote_margin = _bounded_unit_value(row.get("knn_vote_margin"))
+    accepted = _optional_bool_flag(row.get("accepted_by_knn"))
+    skip_clear = _knn_skip_reason_clear(row.get("knn_skip_reason"))
+    if None in {p_up, p_down, expected_value, agreement, distance_quality, neighbor_count, vote_margin, accepted}:
+        return None
+    if int(neighbor_count) < min_neighbor_count:
+        return None
+    if float(agreement) < min_neighbor_agreement:
+        return None
+    if float(distance_quality) < min_neighbor_distance_quality:
+        return None
+    if float(vote_margin) < min_vote_margin:
+        return None
+    if require_accepted and (accepted is not True or skip_clear is not True):
+        return None
+    predicted_side = "long" if float(p_up) >= float(p_down) else "short"
+    return {
+        "accepted": bool(accepted),
+        "skip_clear": bool(skip_clear),
+        "predicted_side": predicted_side,
+        "probability": max(float(p_up), float(p_down)),
+        "expected_edge_bps": float(expected_value) * 10_000.0,
+        "expected_value": float(expected_value),
+        "agreement": float(agreement),
+        "distance_quality": float(distance_quality),
+        "vote_margin": float(vote_margin),
+    }
+
+
+def _split_safe_neighbor_row(row: pd.Series) -> bool:
+    min_source = _integer_marker(row.get("neighbor_min_source_index"))
+    max_source = _integer_marker(row.get("neighbor_max_source_index"))
+    fit_end = _integer_marker(row.get("hmm_fit_end_row"))
+    source_row = _integer_marker(row.get("source_row_index"))
+    if None in {min_source, max_source, fit_end, source_row}:
+        return False
+    return (
+        int(min_source) >= 0
+        and int(max_source) >= 0
+        and int(fit_end) >= 0
+        and int(source_row) >= 0
+        and int(min_source) <= int(max_source) <= int(fit_end) < int(source_row)
+    )
+
+
+def _knn_skip_reason_clear(value: Any) -> bool:
+    if value is None or pd.isna(value):
+        return True
+    normalized = str(value).strip().lower()
+    return normalized in {"", "none", "nan", "null"}
+
+
+def _knn_dynamic_barrier_returns(
+    context: dict[str, float | str | bool],
+    *,
+    target_return: float,
+    stop_return: float,
+    min_target_return: float,
+    max_target_return: float,
+    min_stop_return: float,
+    max_stop_return: float,
+    target_edge_multiplier: float,
+) -> tuple[float, float]:
+    expected_value = float(context["expected_value"])
+    edge_target = max(0.0, expected_value) * float(target_edge_multiplier)
+    target = _clamp(max(float(target_return), edge_target), min_target_return, max_target_return)
+    confidence = max(
+        float(context["probability"]),
+        float(context["agreement"]),
+        float(context["distance_quality"]),
+        float(context["vote_margin"]),
+    )
+    stop_scale = max(0.5, min(1.5, 1.5 - confidence))
+    stop = _clamp(float(stop_return) * stop_scale, min_stop_return, max_stop_return)
+    return target, stop
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return float(max(float(minimum), min(float(maximum), float(value))))
 
 
 def _param_float(params: dict[str, Any], key: str, fallback: float | None) -> float | None:
@@ -868,10 +1484,50 @@ def _funding_rate_series(path: pd.DataFrame, *, exit_policy_id: str) -> pd.Serie
 def _optional_numeric(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None
-    numeric = float(value)
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
     if not math.isfinite(numeric):
         return None
     return numeric
+
+
+def _bounded_unit_value(value: object) -> float | None:
+    numeric = _optional_numeric(value)
+    if numeric is None or numeric < 0.0 or numeric > 1.0:
+        return None
+    return numeric
+
+
+def _integer_marker(value: object) -> int | None:
+    numeric = _optional_numeric(value)
+    if numeric is None:
+        return None
+    integer = int(numeric)
+    if float(integer) != numeric:
+        return None
+    return integer
+
+
+def _optional_bool_flag(value: object) -> bool | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y"}:
+            return True
+        if normalized in {"0", "false", "no", "n"}:
+            return False
+        return None
+    numeric = _optional_numeric(value)
+    if numeric == 0.0:
+        return False
+    if numeric == 1.0:
+        return True
+    return None
 
 
 def _require_columns(frame: pd.DataFrame, columns: tuple[str, ...], policy: str) -> None:

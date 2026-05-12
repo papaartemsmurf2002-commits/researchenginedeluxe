@@ -1,0 +1,80 @@
+{
+  "research_config_version": "cross-asset-btc-eth-residual-research-v1",
+  "work_packet": "WPR94-14-cross-asset-btc-eth-residual-research",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_written": false,
+  "candidate_pack_eligible": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "feature_set_id": "features_cross_asset_btc_eth_v2",
+  "feature_pack_id": "cross_asset_btc_eth_v2",
+  "candidate_blueprint_id": "eth_btc_beta_residual_v2",
+  "candidate_priority": "P2",
+  "maturity_label": "blocked",
+  "blocked": true,
+  "blocker_codes": [
+    "durable_eth_fixture_readiness_not_recorded",
+    "cross_symbol_point_in_time_join_not_proven",
+    "transparent_comparator_missing",
+    "weak_btc_eth_correlation_window_not_evaluated"
+  ],
+  "activation_requires": {
+    "durable_btc_fixture_readiness_recorded": true,
+    "durable_eth_fixture_readiness_recorded": false,
+    "cross_symbol_point_in_time_join_proven": false,
+    "no_future_alignment_risk": false,
+    "rolling_correlation_floor_evaluated": false,
+    "transparent_comparator_complete": false,
+    "no_trade_comparator_complete": false
+  },
+  "source_scope_policy": {
+    "latest_window_rest_data_diagnostic_only": true,
+    "missing_cross_symbol_context_policy": "unknown_with_quality_flags_not_zero_fill",
+    "funding_spread_missing_policy": "unknown_with_quality_flags_not_zero_fill",
+    "oi_delta_spread_missing_policy": "unknown_with_quality_flags_not_zero_fill"
+  },
+  "required_features": [
+    "btc_return_1",
+    "eth_return_1",
+    "eth_beta_to_btc_96",
+    "eth_btc_residual_return_1",
+    "eth_btc_residual_z_96",
+    "ethbtc_trend_96",
+    "ethbtc_state",
+    "btc_eth_corr_96",
+    "funding_spread_z_96",
+    "oi_delta_spread_z_96",
+    "quality_cross_asset_missing_context",
+    "quality_cross_asset_missing_funding_context",
+    "quality_cross_asset_missing_oi_context",
+    "quality_cross_asset_future_alignment_risk",
+    "quality_cross_asset_point_in_time_join"
+  ],
+  "comparators_required": [
+    {
+      "strategy_id": "baseline_no_trade",
+      "role": "no_trade_baseline"
+    },
+    {
+      "strategy_id": "funding_basis_v1",
+      "role": "transparent_strategy_comparator"
+    },
+    {
+      "strategy_id": "range_reversion_v1",
+      "role": "transparent_price_path_comparator"
+    }
+  ],
+  "candidate_bridge_requirements": [
+    "durable_non_latest_window_btc_eth_fixture_evidence",
+    "cross_symbol_point_in_time_join_proof",
+    "transparent_comparator_complete",
+    "no_trade_comparator_complete",
+    "no_regime_baseline_complete_when_regime_claimed",
+    "exit_lab_complete",
+    "multiple_testing_and_stability_complete",
+    "validation_floors_candidate_ready"
+  ]
+}

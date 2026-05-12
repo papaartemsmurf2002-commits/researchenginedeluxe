@@ -1,0 +1,179 @@
+{
+  "cycle_id": "btcusdt-strategy-family-matrix-existing-plugins-v1",
+  "symbol": "BTCUSDT",
+  "matrix_manifest_path": "strategy_family_matrix_existing_plugins_v1.json",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "promotion_artifact_policy": {
+    "writes_promotion_artifacts": false,
+    "research_candidate_pack_scope": "disabled_latest_window_diagnostic_only",
+    "promotion_ready": false
+  },
+  "output_dir": "../../data/research/historical_cycles/btcusdt_strategy_family_matrix_existing_plugins_v1",
+  "holding_windows": [
+    "4h",
+    "12h",
+    "24h",
+    "72h"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "../../data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+    ],
+    "local_fixture_dir": null,
+    "synthetic_fixture": false,
+    "evidence_scope": "latest_window_diagnostic_only",
+    "candidate_pack_eligible": false,
+    "latest_window_rest_data_diagnostic_only": true,
+    "candidate_blocker_codes": [
+      "latest_window_rest_diagnostic_only",
+      "durable_archive_fixture_missing"
+    ]
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol",
+      "features_full_context_no_wt",
+      "features_perp_context_v2"
+    ],
+    "materialized_prediction_overlays": [],
+    "knn_overlay_readiness": {
+      "active_in_cycle": false,
+      "required_kind": "hmm_knn_local_analog_v2",
+      "blocker_code": "missing_materialized_prediction_overlay",
+      "reason": "KNN remains a local analog/filter layer and is not active until split-safe prediction overlays are materialized."
+    }
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "trend_following_v1",
+    "volatility_breakout_v1",
+    "range_reversion_v1",
+    "funding_basis_v1",
+    "perp_basis_convergence_v2",
+    "funding_crowding_fade_v2",
+    "funding_window_timing_v1",
+    "oi_flow_breakout_v2",
+    "hmm_routed_alpha_sleeves_v2"
+  ],
+  "deferred_strategies": [
+    {
+      "strategy_id": "hmm_knn_local_analog_filter_v2",
+      "deferred_until": "materialized_prediction_overlay_available",
+      "standalone_allowed": false,
+      "reason": "KNN overlay cannot run as standalone alpha or without split-safe local analog predictions."
+    }
+  ],
+  "strategy_family_requirements": {
+    "no_trade_comparator_strategy_id": "baseline_no_trade",
+    "transparent_comparator_strategy_ids": [
+      "trend_following_v1",
+      "volatility_breakout_v1",
+      "range_reversion_v1",
+      "funding_basis_v1"
+    ],
+    "knn_overlay_strategy_id": "hmm_knn_local_analog_filter_v2",
+    "knn_overlay_active_in_cycle": false,
+    "knn_overlay_blocker_code": "missing_materialized_prediction_overlay",
+    "knn_overlay_standalone_allowed": false,
+    "knn_overlay_companion_strategy_ids": [
+      "perp_basis_convergence_v2",
+      "funding_crowding_fade_v2",
+      "oi_flow_breakout_v2",
+      "hmm_routed_alpha_sleeves_v2"
+    ],
+    "regime_detector_type_options": [
+      "none",
+      "gmm"
+    ],
+    "regime_modes_required": [
+      "no_regime",
+      "gmm_gate_only",
+      "gmm_same_regime_neighbor",
+      "gmm_all_regime_with_gate"
+    ],
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "regime_detector_type": "gmm",
+    "true_hmm_backend_used": false,
+    "diagnostic_liquidation_family_in_matrix_only": true
+  },
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 8,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1,
+    "max_single_split_pnl_share": 0.5,
+    "min_cost_stress_survival_rate": 1.0,
+    "split_modes": [
+      "purged_embargoed_walk_forward"
+    ]
+  },
+  "optimizer": {
+    "method_sequence": [
+      "grid",
+      "stability_region_refine"
+    ],
+    "max_candidates_per_strategy": 1,
+    "top_regions_to_refine": 1
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "default_fixed_holding"
+      },
+      {
+        "exit_policy_id": "basis_normalization_exit_v1",
+        "exit_policy_params": {
+          "normalization_threshold_bps": 1.0,
+          "min_entry_basis_abs_bps": 5.0
+        },
+        "exit_policy_source": "configured_research_exit"
+      },
+      {
+        "exit_policy_id": "premium_normalization_exit_v1",
+        "exit_policy_params": {
+          "normalization_threshold_bps": 1.0,
+          "min_entry_premium_abs_bps": 5.0
+        },
+        "exit_policy_source": "configured_research_exit"
+      },
+      {
+        "exit_policy_id": "gmm_transition_exit_v1",
+        "exit_policy_params": {},
+        "exit_policy_source": "configured_current_gmm_research_exit"
+      }
+    ],
+    "deferred_exit_policies": [
+      {
+        "exit_policy_id": "knn_remaining_edge_exit_v1",
+        "exit_policy_params": {
+          "min_remaining_edge_bps": 2.0,
+          "min_neighbor_count": 5
+        },
+        "exit_policy_source": "configured_knn_overlay_research_exit",
+        "deferred_until": "materialized_prediction_overlay_available",
+        "blocker_code": "missing_materialized_prediction_overlay"
+      },
+      {
+        "exit_policy_id": "knn_dynamic_barriers_v1",
+        "exit_policy_params": {
+          "target_return": 0.012,
+          "stop_return": 0.008,
+          "min_target_return": 0.002,
+          "max_target_return": 0.05
+        },
+        "exit_policy_source": "configured_knn_overlay_research_exit",
+        "deferred_until": "materialized_prediction_overlay_available",
+        "blocker_code": "missing_materialized_prediction_overlay"
+      }
+    ]
+  },
+  "backtest_backend": "auto"
+}

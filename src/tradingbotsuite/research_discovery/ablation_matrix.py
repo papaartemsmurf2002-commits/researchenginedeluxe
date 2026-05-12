@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
@@ -30,6 +31,24 @@ DEFAULT_GROUP_COLUMNS = (
     "holding_window",
     "exit_policy_params_json",
 )
+MATCHED_FILTER_DECISION_POLICY_V2 = "matched_filter_ablation_v2"
+DEFAULT_MATCHED_GROUP_COLUMNS = (
+    "symbol",
+    "timeframe",
+    "entry_family",
+    "feature_set_id",
+    "feature_column_set_id",
+    "label_horizon",
+    "regime_mode",
+    "distance_metric",
+    "k",
+    "min_neighbor_count",
+    "holding_window",
+    "exit_policy_id",
+    "exit_policy_params_json",
+    "split_id",
+    "cost_model_id",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +62,11 @@ class AblationComparisonSpec:
     max_missingness_rate: float = 1.0
     requires_comparator: bool = True
     filter_default_candidate: bool = False
+    filter_family: str = ""
+    required_finite_columns: tuple[str, ...] = ()
+    min_sample_retention_ratio: float = 0.50
+    min_split_consistency: float = 0.0
+    min_cost_stress_survival: float = 0.0
     notes: str = ""
 
     @classmethod
@@ -71,6 +95,11 @@ class AblationComparisonSpec:
             max_missingness_rate=float(payload.get("max_missingness_rate", 1.0)),
             requires_comparator=bool(payload.get("requires_comparator", True)),
             filter_default_candidate=bool(payload.get("filter_default_candidate", False)),
+            filter_family=str(payload.get("filter_family") or ""),
+            required_finite_columns=tuple(str(item) for item in payload.get("required_finite_columns", ())),
+            min_sample_retention_ratio=float(payload.get("min_sample_retention_ratio", 0.50)),
+            min_split_consistency=float(payload.get("min_split_consistency", 0.0)),
+            min_cost_stress_survival=float(payload.get("min_cost_stress_survival", 0.0)),
             notes=str(payload.get("notes", "")),
         )
 
@@ -85,6 +114,11 @@ class AblationComparisonSpec:
             "max_missingness_rate": float(self.max_missingness_rate),
             "requires_comparator": bool(self.requires_comparator),
             "filter_default_candidate": bool(self.filter_default_candidate),
+            "filter_family": self.filter_family,
+            "required_finite_columns": list(self.required_finite_columns),
+            "min_sample_retention_ratio": float(self.min_sample_retention_ratio),
+            "min_split_consistency": float(self.min_split_consistency),
+            "min_cost_stress_survival": float(self.min_cost_stress_survival),
             "notes": self.notes,
         }
 
@@ -93,6 +127,8 @@ class AblationComparisonSpec:
 class PerpFilterAblationMatrixSpec:
     matrix_id: str = "perp_filter_ablation_matrix_v4"
     group_columns: tuple[str, ...] = DEFAULT_GROUP_COLUMNS
+    required_group_columns: tuple[str, ...] = ()
+    decision_policy_version: str = "legacy_perp_filter_ablation_v1"
     comparisons: tuple[AblationComparisonSpec, ...] = ()
     feature_column_sets_path: Path | None = None
     min_feature_combination_score_delta: float = 0.0
@@ -112,6 +148,8 @@ class PerpFilterAblationMatrixSpec:
         return cls(
             matrix_id=str(payload.get("matrix_id") or "perp_filter_ablation_matrix_v4"),
             group_columns=tuple(str(item) for item in payload.get("group_columns", DEFAULT_GROUP_COLUMNS)),
+            required_group_columns=tuple(str(item) for item in payload.get("required_group_columns", ())),
+            decision_policy_version=str(payload.get("decision_policy_version") or "legacy_perp_filter_ablation_v1"),
             comparisons=comparisons,
             feature_column_sets_path=Path(str(raw_feature_sets_path)).expanduser() if raw_feature_sets_path else None,
             min_feature_combination_score_delta=float(payload.get("min_feature_combination_score_delta", 0.0)),
@@ -129,6 +167,8 @@ class PerpFilterAblationMatrixSpec:
             return cls(
                 matrix_id=spec.matrix_id,
                 group_columns=spec.group_columns,
+                required_group_columns=spec.required_group_columns,
+                decision_policy_version=spec.decision_policy_version,
                 comparisons=spec.comparisons,
                 feature_column_sets_path=feature_sets_path,
                 min_feature_combination_score_delta=spec.min_feature_combination_score_delta,
@@ -141,6 +181,8 @@ class PerpFilterAblationMatrixSpec:
             "matrix_id": self.matrix_id,
             "matrix_version": PERP_FILTER_ABLATION_MATRIX_VERSION,
             "group_columns": list(self.group_columns),
+            "required_group_columns": list(self.required_group_columns),
+            "decision_policy_version": self.decision_policy_version,
             "feature_column_sets_path": str(self.feature_column_sets_path) if self.feature_column_sets_path is not None else None,
             "min_feature_combination_score_delta": float(self.min_feature_combination_score_delta),
             "min_feature_combination_trade_count": int(self.min_feature_combination_trade_count),
@@ -200,6 +242,13 @@ def build_perp_filter_ablation_matrix(
             "no_filter_default_without_winning_ablation": True,
             "default_allowed_column": "filter_default_allowed",
             "pending_evidence_blocks_default": True,
+            "matched_filter_v2_requires_edge_improving": spec.decision_policy_version == MATCHED_FILTER_DECISION_POLICY_V2,
+        },
+        "matched_filter_policy": {
+            "decision_policy_version": spec.decision_policy_version,
+            "matched_group_columns": list(spec.group_columns),
+            "required_group_columns": list(spec.required_group_columns),
+            "missing_finite_filter_columns_are_not_testable": True,
         },
         "feature_combination_guard": {
             "wt3d_requires_non_wt_comparator": True,
@@ -249,6 +298,7 @@ def write_perp_filter_ablation_artifacts(
 
 def _comparison_matrix(rankings: pd.DataFrame, *, spec: PerpFilterAblationMatrixSpec) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
+    missing_group_columns = [column for column in spec.required_group_columns if column not in rankings.columns]
     groups = _ranking_groups(rankings, spec.group_columns)
     if not groups:
         groups = [({}, rankings)]
@@ -258,7 +308,17 @@ def _comparison_matrix(rankings: pd.DataFrame, *, spec: PerpFilterAblationMatrix
             comparator_rows = _matching_rows(group, comparison.comparator_selector) if comparison.comparator_selector else pd.DataFrame()
             treatment = _best_row(treatment_rows)
             comparator = _best_row(comparator_rows)
-            rows.append(_comparison_row(comparison, group_values=group_values, treatment=treatment, comparator=comparator))
+            rows.append(
+                _comparison_row(
+                    comparison,
+                    group_values=group_values,
+                    treatment=treatment,
+                    comparator=comparator,
+                    treatment_rows=treatment_rows,
+                    decision_policy_version=spec.decision_policy_version,
+                    missing_group_columns=missing_group_columns,
+                )
+            )
     return pd.DataFrame(rows, columns=_matrix_columns())
 
 
@@ -268,40 +328,77 @@ def _comparison_row(
     group_values: Mapping[str, Any],
     treatment: Mapping[str, Any] | None,
     comparator: Mapping[str, Any] | None,
+    treatment_rows: pd.DataFrame,
+    decision_policy_version: str,
+    missing_group_columns: list[str],
 ) -> dict[str, Any]:
     reasons: list[str] = []
     status = "pending_evidence"
     treatment_score = _score(treatment)
     comparator_score = _score(comparator)
     treatment_trade_count = _int_value(treatment, "trade_count")
+    comparator_trade_count = _int_value(comparator, "trade_count")
     treatment_missingness = _float_value(treatment, "feature_missingness_rate")
+    score_delta = treatment_score - comparator_score if treatment is not None and comparator is not None else None
+    selected_treatment = pd.DataFrame([treatment]) if treatment is not None else treatment_rows
+    finite_reasons = _required_finite_filter_reasons(selected_treatment, comparison.required_finite_columns)
+    sample_retention_ratio = (
+        float(treatment_trade_count / comparator_trade_count)
+        if treatment is not None and comparator is not None and comparator_trade_count > 0
+        else None
+    )
     if treatment is None:
         reasons.append("treatment_evidence_missing")
     if comparison.requires_comparator and comparator is None:
         reasons.append("comparator_evidence_missing")
+        if decision_policy_version == MATCHED_FILTER_DECISION_POLICY_V2 and treatment is not None:
+            reasons.append("matched_no_filter_comparator_missing")
+    if missing_group_columns:
+        reasons.append("matched_group_columns_missing:" + ",".join(missing_group_columns))
+    reasons.extend(finite_reasons)
     if treatment is not None and treatment_trade_count < comparison.min_trade_count:
         reasons.append("treatment_trade_count_below_floor")
     if treatment is not None and treatment_missingness > comparison.max_missingness_rate:
         reasons.append("treatment_missingness_above_floor")
-    if treatment is not None and (not comparison.requires_comparator or comparator is not None):
-        if not comparison.requires_comparator and comparator is None:
-            status = "baseline_reference"
-        elif treatment_score - comparator_score >= comparison.min_score_delta:
-            status = "passed"
-        else:
-            status = "failed"
-            reasons.append("treatment_did_not_beat_comparator")
-    if reasons and status in {"passed", "baseline_reference"}:
-        status = "failed" if "treatment_evidence_missing" not in reasons and "comparator_evidence_missing" not in reasons else "pending_evidence"
-    elif reasons and status == "pending_evidence":
-        status = "pending_evidence"
-    filter_default_allowed = bool(comparison.filter_default_candidate and status == "passed" and not reasons)
+    if decision_policy_version == MATCHED_FILTER_DECISION_POLICY_V2:
+        status = _matched_filter_decision(
+            comparison,
+            treatment=treatment,
+            comparator=comparator,
+            reasons=reasons,
+            score_delta=score_delta,
+            sample_retention_ratio=sample_retention_ratio,
+        )
+    else:
+        if treatment is not None and (not comparison.requires_comparator or comparator is not None):
+            if not comparison.requires_comparator and comparator is None:
+                status = "baseline_reference"
+            elif treatment_score - comparator_score >= comparison.min_score_delta:
+                status = "passed"
+            else:
+                status = "failed"
+                reasons.append("treatment_did_not_beat_comparator")
+        if reasons and status in {"passed", "baseline_reference"}:
+            status = "failed" if "treatment_evidence_missing" not in reasons and "comparator_evidence_missing" not in reasons else "pending_evidence"
+        elif reasons and status == "pending_evidence":
+            status = "pending_evidence"
+    filter_default_allowed = bool(
+        comparison.filter_default_candidate
+        and not reasons
+        and decision_policy_version == MATCHED_FILTER_DECISION_POLICY_V2
+        and status == "edge_improving"
+    )
     return {
         "comparison_id": comparison.comparison_id,
         "axis": comparison.axis,
+        "filter_family": comparison.filter_family,
         **{f"group_{key}": value for key, value in group_values.items()},
         "decision": status,
         "failure_reasons": ";".join(reasons),
+        "decision_policy_version": decision_policy_version,
+        "matched_group_columns": ",".join(str(column) for column in DEFAULT_MATCHED_GROUP_COLUMNS),
+        "required_finite_columns": ",".join(comparison.required_finite_columns),
+        "finite_filter_columns_present": not finite_reasons,
         "treatment_candidate_id": _text_value(treatment, "candidate_id"),
         "treatment_strategy_id": _text_value(treatment, "strategy_id"),
         "treatment_feature_set_id": _text_value(treatment, "feature_set_id"),
@@ -314,10 +411,18 @@ def _comparison_row(
         "comparator_feature_set_id": _text_value(comparator, "feature_set_id"),
         "comparator_exit_policy_id": _text_value(comparator, "exit_policy_id"),
         "comparator_final_score": comparator_score,
-        "score_delta": treatment_score - comparator_score if treatment is not None and comparator is not None else None,
+        "comparator_trade_count": comparator_trade_count,
+        "score_delta": score_delta,
+        "sample_retention_ratio": sample_retention_ratio,
+        "split_consistency": _float_value(treatment, "split_consistency"),
+        "cost_stress_survival": _float_value(treatment, "cost_stress_survival"),
+        "side_specific": _side_specific(treatment),
         "min_score_delta": float(comparison.min_score_delta),
         "min_trade_count": int(comparison.min_trade_count),
         "max_missingness_rate": float(comparison.max_missingness_rate),
+        "min_sample_retention_ratio": float(comparison.min_sample_retention_ratio),
+        "min_split_consistency": float(comparison.min_split_consistency),
+        "min_cost_stress_survival": float(comparison.min_cost_stress_survival),
         "filter_default_candidate": bool(comparison.filter_default_candidate),
         "filter_default_allowed": filter_default_allowed,
         "research_only": True,
@@ -433,6 +538,82 @@ def _score(row: Mapping[str, Any] | None) -> float:
     return 0.0
 
 
+def _matched_filter_decision(
+    comparison: AblationComparisonSpec,
+    *,
+    treatment: Mapping[str, Any] | None,
+    comparator: Mapping[str, Any] | None,
+    reasons: list[str],
+    score_delta: float | None,
+    sample_retention_ratio: float | None,
+) -> str:
+    if reasons:
+        return "not_testable"
+    if treatment is None or (comparison.requires_comparator and comparator is None):
+        return "not_testable"
+    if _float_value(treatment, "split_consistency") < comparison.min_split_consistency:
+        reasons.append("filter_split_consistency_below_floor")
+        return "unstable"
+    if _float_value(treatment, "cost_stress_survival") < comparison.min_cost_stress_survival:
+        reasons.append("filter_cost_stress_survival_below_floor")
+        return "unstable"
+    if _side_specific(treatment):
+        return "side_specific"
+    delta = float(score_delta or 0.0)
+    if delta > float(comparison.min_score_delta):
+        return "edge_improving"
+    if delta < 0.0:
+        reasons.append("filter_harmed_edge_vs_matched_comparator")
+        return "harmful"
+    if sample_retention_ratio is not None and sample_retention_ratio < 1.0:
+        reasons.append("filter_reduced_sample_without_edge_improvement")
+        return "sample_reducing_only"
+    reasons.append("filter_did_not_improve_edge")
+    return "harmful"
+
+
+def _required_finite_filter_reasons(frame: pd.DataFrame, columns: tuple[str, ...]) -> list[str]:
+    reasons: list[str] = []
+    if frame.empty:
+        return reasons
+    for column in columns:
+        if column not in frame.columns:
+            reasons.append(f"finite_filter_column_missing:{column}")
+            continue
+        values = pd.to_numeric(frame[column], errors="coerce").dropna()
+        if values.empty:
+            reasons.append(f"finite_filter_column_not_testable:{column}")
+            continue
+        finite = values.map(lambda value: pd.notna(value) and abs(float(value)) != float("inf"))
+        if not bool(finite.any()):
+            reasons.append(f"finite_filter_column_not_testable:{column}")
+    for column in columns:
+        backed_column = f"{column}_provider_backed"
+        if backed_column in frame.columns and not bool(frame[backed_column].map(_truthy).any()):
+            reasons.append(f"filter_column_not_provider_backed:{column}")
+    return reasons
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None or pd.isna(value):
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _side_specific(row: Mapping[str, Any] | None) -> bool:
+    if row is None:
+        return False
+    value = row.get("side_specific")
+    if isinstance(value, bool):
+        return value
+    if value is not None and not pd.isna(value):
+        return str(value).strip().lower() in {"1", "true", "yes", "y"}
+    side_pass_ratio = _float_value(row, "side_pass_ratio")
+    return 0.0 < side_pass_ratio < 1.0
+
+
 def _float_value(row: Mapping[str, Any] | None, key: str) -> float:
     if row is None:
         return 0.0
@@ -440,9 +621,10 @@ def _float_value(row: Mapping[str, Any] | None, key: str) -> float:
         value = row.get(key, 0.0)
         if pd.isna(value):
             return 0.0
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         return 0.0
+    return parsed if math.isfinite(parsed) else 0.0
 
 
 def _int_value(row: Mapping[str, Any] | None, key: str) -> int:
@@ -479,11 +661,26 @@ def _matrix_columns() -> list[str]:
     return [
         "comparison_id",
         "axis",
+        "filter_family",
+        "group_entry_family",
+        "group_feature_set_id",
+        "group_feature_column_set_id",
+        "group_label_horizon",
+        "group_regime_mode",
+        "group_distance_metric",
+        "group_k",
+        "group_min_neighbor_count",
         "group_holding_window",
         "group_exit_policy_id",
         "group_exit_policy_params_json",
+        "group_split_id",
+        "group_cost_model_id",
         "decision",
         "failure_reasons",
+        "decision_policy_version",
+        "matched_group_columns",
+        "required_finite_columns",
+        "finite_filter_columns_present",
         "treatment_candidate_id",
         "treatment_strategy_id",
         "treatment_feature_set_id",
@@ -496,10 +693,18 @@ def _matrix_columns() -> list[str]:
         "comparator_feature_set_id",
         "comparator_exit_policy_id",
         "comparator_final_score",
+        "comparator_trade_count",
         "score_delta",
+        "sample_retention_ratio",
+        "split_consistency",
+        "cost_stress_survival",
+        "side_specific",
         "min_score_delta",
         "min_trade_count",
         "max_missingness_rate",
+        "min_sample_retention_ratio",
+        "min_split_consistency",
+        "min_cost_stress_survival",
         "filter_default_candidate",
         "filter_default_allowed",
         "research_only",

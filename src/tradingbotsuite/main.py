@@ -234,6 +234,9 @@ def parse_args() -> argparse.Namespace:
     )
     discovery_pack_bridge.add_argument("--discovery-manifest", required=True)
     discovery_pack_bridge.add_argument("--cycle-manifest", default=None)
+    discovery_pack_bridge.add_argument("--exit-lab-manifest", default=None)
+    discovery_pack_bridge.add_argument("--multiple-testing-manifest", default=None)
+    discovery_pack_bridge.add_argument("--validation-floors-manifest", default=None)
     discovery_pack_bridge.add_argument("--output-dir", default=None)
     discovery_pack_bridge.add_argument(
         "--candidate-id-map-json",
@@ -592,6 +595,21 @@ def _run_discovery_candidate_pack_bridge_command(args: argparse.Namespace) -> di
     result = evaluate_discovery_candidate_pack_eligibility(
         discovery_manifest_path=_resolve_cli_path(args.discovery_manifest),
         cycle_manifest_path=_resolve_cli_path(args.cycle_manifest) if args.cycle_manifest is not None else None,
+        exit_lab_manifest_path=(
+            _resolve_cli_path(getattr(args, "exit_lab_manifest", None))
+            if getattr(args, "exit_lab_manifest", None) is not None
+            else None
+        ),
+        multiple_testing_manifest_path=(
+            _resolve_cli_path(getattr(args, "multiple_testing_manifest", None))
+            if getattr(args, "multiple_testing_manifest", None) is not None
+            else None
+        ),
+        validation_floors_manifest_path=(
+            _resolve_cli_path(getattr(args, "validation_floors_manifest", None))
+            if getattr(args, "validation_floors_manifest", None) is not None
+            else None
+        ),
         candidate_id_map={str(key): str(value) for key, value in candidate_id_map.items()},
     )
     output_dir = (

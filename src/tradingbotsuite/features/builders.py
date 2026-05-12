@@ -103,6 +103,10 @@ FIXTURE_CONTEXT_COLUMN_ALIASES = {
         "quote_volume": ("quote_volume", "notional", "quote_quantity"),
         "taker_buy_quote_volume": ("taker_buy_quote_volume", "buy_quote_volume"),
         "sell_quote_volume": ("sell_quote_volume", "sell_quantity"),
+        "agg_trade_count": ("agg_trade_count", "trade_count", "count"),
+        "agg_large_trade_count": ("agg_large_trade_count", "large_trade_count"),
+        "agg_large_buy_count": ("agg_large_buy_count", "large_buy_count"),
+        "agg_large_sell_count": ("agg_large_sell_count", "large_sell_count"),
         "primary_signed_imbalance_ratio": (
             "primary_signed_imbalance_ratio",
             "signed_imbalance_ratio",
@@ -170,6 +174,7 @@ def materialize_fixture_family_context(
                     existing_latest_window.clip(lower=0.0),
                     1.0,
                 )
+            _apply_context_source_flags(result, record)
 
     hash_payload = {
         "materialization_version": FIXTURE_FAMILY_CONTEXT_MATERIALIZATION_VERSION,
@@ -703,6 +708,76 @@ def _derived_agg_trade_signed_ratio(frame: pd.DataFrame) -> pd.Series | None:
     return None
 
 
+def _apply_context_source_flags(frame: pd.DataFrame, record: Mapping[str, Any]) -> None:
+    flags = _context_source_flags(record)
+    for column, enabled in flags.items():
+        existing = pd.to_numeric(
+            frame.get(column, pd.Series(np.zeros(len(frame), dtype=float), index=frame.index)),
+            errors="coerce",
+        ).fillna(0.0)
+        frame[column] = np.maximum(existing.clip(lower=0.0), float(enabled))
+
+
+def _context_source_flags(record: Mapping[str, Any]) -> dict[str, bool]:
+    latest_window = _record_is_latest_window_diagnostic(record)
+    durable_provider_archive = (not latest_window) and _record_is_durable_provider_archive(record)
+    self_archived = (not latest_window) and _record_is_self_archived(record)
+    known_source = latest_window or durable_provider_archive or self_archived
+    return {
+        "quality_context_durable_provider_archive_source": durable_provider_archive,
+        "quality_context_self_archived_source": self_archived,
+        "quality_context_latest_window_diagnostic_source": latest_window,
+        "quality_context_missing_unknown_source": not known_source,
+        "quality_agg_trade_flow_proxy_not_ofi_source": str(record.get("family") or "") == "agg_trade",
+    }
+
+
+def _record_is_latest_window_diagnostic(record: Mapping[str, Any]) -> bool:
+    if bool(record.get("latest_window_only", False)):
+        return True
+    coverage_scope = _normalised_record_value(record, "coverage_scope")
+    source_name = _normalised_record_value(record, "source_name")
+    retention_policy = record.get("retention_policy")
+    retention_text = ""
+    if isinstance(retention_policy, Mapping):
+        retention_text = " ".join(str(value).lower() for value in retention_policy.values())
+    return (
+        "latest_window" in coverage_scope
+        or "direct_endpoint_latest_window" in retention_text
+        or "not_multi_year_coverage" in retention_text
+        or source_name in {"binance_usdm_rest", "binance_futures_rest_latest"}
+    )
+
+
+def _record_is_durable_provider_archive(record: Mapping[str, Any]) -> bool:
+    coverage_scope = _normalised_record_value(record, "coverage_scope")
+    source_name = _normalised_record_value(record, "source_name")
+    source_access_mode = _normalised_record_value(record, "source_access_mode")
+    return (
+        coverage_scope in {"public_archive_partition", "durable_public_archive", "provider_archive_partition"}
+        or "public_archive" in coverage_scope
+        or source_name in {"binance_vision", "binance_public_data", "binance_public_archive"}
+        or source_access_mode in {"public_archive", "provider_archive", "public_provider_archive"}
+    )
+
+
+def _record_is_self_archived(record: Mapping[str, Any]) -> bool:
+    coverage_scope = _normalised_record_value(record, "coverage_scope")
+    source_name = _normalised_record_value(record, "source_name")
+    source_access_mode = _normalised_record_value(record, "source_access_mode")
+    return (
+        coverage_scope in {"local_vendor_export", "local_archive", "self_archived", "self_archived_partition"}
+        or "self_archived" in coverage_scope
+        or source_name in {"crypto_lake", "local_parquet_archive", "self_archive"}
+        or source_access_mode in {"local_export", "self_archived", "local_archive"}
+    )
+
+
+def _normalised_record_value(record: Mapping[str, Any], key: str) -> str:
+    value = record.get(key)
+    return "" if value is None else str(value).strip().lower()
+
+
 def _first_numeric_series(frame: pd.DataFrame, aliases: tuple[str, ...]) -> pd.Series | None:
     for column in aliases:
         if column in frame.columns:
@@ -728,6 +803,17 @@ def _family_materialization_record(
         "family": family,
         "path": str(family_payload.get("path") or ""),
         "sha256": family_payload.get("sha256"),
+        "source_name": family_payload.get("source_name")
+        or family_payload.get("provider")
+        or family_payload.get("source"),
+        "source_type": family_payload.get("source_type"),
+        "source_access_mode": family_payload.get("source_access_mode"),
+        "schema_version": family_payload.get("schema_version"),
+        "collector_version": family_payload.get("collector_version"),
+        "ingestor_version": family_payload.get("ingestor_version"),
+        "source_data_family": family_payload.get("source_data_family")
+        or family_payload.get("data_family", family),
+        "feature_claim_scope": family_payload.get("feature_claim_scope"),
         "row_count": int(family_payload.get("row_count") or source_row_count),
         "actual_row_count": int(source_row_count),
         "columns": list(family_payload.get("columns") or input_columns),

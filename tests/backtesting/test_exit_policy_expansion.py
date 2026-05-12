@@ -26,12 +26,33 @@ def _path() -> pd.DataFrame:
             "primary_signed_imbalance_ratio": [0.2, 0.1, -0.2, -0.3, -0.3, -0.3],
             "top_of_book_imbalance": [0.1, 0.05, -0.15, -0.2, -0.2, -0.2],
             "realized_volatility": [0.01] * 6,
+            "perp_mark_index_basis": [-0.0008, -0.0006, -0.00005, 0.0, 0.0001, 0.0001],
+            "perp_premium": [-0.0009, -0.0007, -0.00005, 0.0, 0.0001, 0.0001],
             "cal_time_to_next_funding_h": [4.0, 0.75, 0.5, 0.25, 4.0, 3.75],
             "oi_notional": [1_000_000.0, 1_010_000.0, 985_000.0, 970_000.0, 960_000.0, 955_000.0],
             "oi_delta_1h": [0.0, 10_000.0, -25_000.0, -15_000.0, -10_000.0, -5_000.0],
             "oi_delta_z_7d": [0.0, 0.5, -1.25, -1.1, -0.8, -0.4],
             "quality_has_oi_gap": [0.0] * 6,
+            "quality_has_premium_gap": [0.0] * 6,
             "quality_provider_backed_all_required": [1.0] * 6,
+            "regime_detector_type": ["gmm"] * 6,
+            "max_regime_probability": [0.82, 0.81, 0.78, 0.76, 0.74, 0.72],
+            "posterior_entropy": [0.20, 0.22, 0.31, 0.33, 0.35, 0.37],
+            "recent_regime_flip": [False, False, True, False, False, False],
+            "regime_no_trade": [False] * 6,
+            "hmm_fit_end_row": [5] * 6,
+            "source_row_index": [10, 11, 12, 13, 14, 15],
+            "p_up_barrier": [0.68, 0.66, 0.54, 0.52, 0.50, 0.48],
+            "p_down_barrier": [0.32, 0.34, 0.46, 0.48, 0.50, 0.52],
+            "expected_net_return_after_costs": [0.006, 0.004, 0.0001, 0.0001, 0.0, -0.0002],
+            "neighbor_agreement": [0.68, 0.66, 0.54, 0.52, 0.50, 0.52],
+            "neighbor_distance_quality": [0.35, 0.34, 0.33, 0.32, 0.31, 0.30],
+            "neighbor_count": [12] * 6,
+            "neighbor_min_source_index": [0] * 6,
+            "neighbor_max_source_index": [4] * 6,
+            "knn_vote_margin": [0.36, 0.32, 0.08, 0.04, 0.0, 0.04],
+            "accepted_by_knn": [True] * 6,
+            "knn_skip_reason": [""] * 6,
         }
     )
 
@@ -100,6 +121,23 @@ def test_volatility_scaled_barrier_short_uses_inverse_thresholds() -> None:
             "oi_contraction",
             False,
         ),
+        ("basis_normalization_exit_v1", {}, "basis_normalization_exit_v1", "basis_normalization", False),
+        ("premium_normalization_exit_v1", {}, "premium_normalization_exit_v1", "premium_normalization", False),
+        ("gmm_transition_exit_v1", {}, "gmm_transition_exit_v1", "gmm_regime_transition", False),
+        (
+            "knn_remaining_edge_exit_v1",
+            {"policy_params": {"min_remaining_edge_bps": 3.0}},
+            "knn_remaining_edge_exit_v1",
+            "knn_remaining_edge",
+            False,
+        ),
+        (
+            "knn_dynamic_barriers_v1",
+            {"policy_params": {"target_return": 0.03, "stop_return": 0.02}},
+            "knn_dynamic_barriers_v1_target",
+            "target",
+            True,
+        ),
         ("alpha_decay_exit", {"target_return": 0.1}, "alpha_decay_exit", "alpha_decay", False),
         ("adverse_selection_exit", {"target_return": 20.0, "stop_return": 0.1}, "adverse_selection_exit", "adverse_selection", False),
         ("trailing_atr_after_profit", {"target_return": 0.02, "stop_return": 0.015}, "trailing_atr_after_profit", "trailing_stop", True),
@@ -134,6 +172,12 @@ def test_primary_bar_research_exit_policies_are_deterministic(
         ("funding_aware_exit_v1", ["cal_time_to_next_funding_h"], {"target_return": 0.00005}, "funding_aware_exit_v1 requires"),
         ("oi_contraction_exit_v1", ["oi_delta_1h"], {}, "oi_contraction_exit_v1 requires columns"),
         ("oi_contraction_exit_v1", ["quality_has_oi_gap"], {}, "oi_contraction_exit_v1 requires columns"),
+        ("basis_normalization_exit_v1", ["perp_mark_index_basis"], {}, "basis_normalization_exit_v1 requires columns"),
+        ("premium_normalization_exit_v1", ["perp_premium"], {}, "premium_normalization_exit_v1 requires columns"),
+        ("gmm_transition_exit_v1", ["top_regime_label"], {}, "gmm_transition_exit_v1 requires"),
+        ("gmm_transition_exit_v1", ["hmm_fit_end_row"], {}, "gmm_transition_exit_v1 requires columns"),
+        ("knn_remaining_edge_exit_v1", ["p_up_barrier"], {}, "knn_remaining_edge_exit_v1 requires columns"),
+        ("knn_dynamic_barriers_v1", ["neighbor_count"], {}, "knn_dynamic_barriers_v1 requires columns"),
         ("alpha_decay_exit", ["directional_slope_atr"], {"target_return": 0.1}, "alpha_decay_exit requires columns"),
         ("adverse_selection_exit", ["primary_signed_imbalance_ratio", "top_of_book_imbalance"], {"target_return": 20.0, "stop_return": 0.1}, "adverse_selection_exit requires"),
         ("trailing_atr_after_profit", ["realized_volatility"], {"target_return": 0.02}, "trailing_atr_after_profit requires"),
@@ -245,6 +289,55 @@ def test_oi_contraction_exit_supports_short_side_momentum_decay() -> None:
     assert result.exit_reason == "oi_contraction_exit_v1"
     assert result.barrier_hit_type == "oi_contraction"
     assert result.exit_time_ms == int(frame.iloc[2]["bar_time_ms"])
+
+
+def test_basis_and_premium_normalization_skip_rows_with_context_quality_gap() -> None:
+    frame = _path().copy()
+    frame.loc[1:, "quality_has_premium_gap"] = 1.0
+
+    basis = _run("basis_normalization_exit_v1", path=frame)
+    premium = _run("premium_normalization_exit_v1", path=frame)
+
+    assert basis.barrier_hit_type == "time"
+    assert basis.exit_reason == "holding_window"
+    assert premium.barrier_hit_type == "time"
+    assert premium.exit_reason == "holding_window"
+
+
+def test_gmm_transition_exit_rejects_non_gmm_detector_context() -> None:
+    frame = _path().copy()
+    frame["regime_detector_type"] = "none"
+
+    with pytest.raises(ValueError, match="gmm_transition_exit_v1 requires gmm regime_detector_type"):
+        _run("gmm_transition_exit_v1", path=frame)
+
+
+def test_knn_remaining_edge_exit_skips_unsafe_neighbor_context() -> None:
+    frame = _path().copy()
+    frame["neighbor_max_source_index"] = 8
+
+    result = _run("knn_remaining_edge_exit_v1", path=frame, policy_params={"min_remaining_edge_bps": 3.0})
+
+    assert result.barrier_hit_type == "time"
+    assert result.exit_reason == "holding_window"
+
+
+def test_knn_dynamic_barriers_supports_short_primary_close_stop() -> None:
+    frame = _path().copy()
+    frame["close"] = [100.0, 101.0, 103.0, 104.0, 104.0, 104.0]
+    frame["p_up_barrier"] = [0.32, 0.34, 0.36, 0.38, 0.40, 0.42]
+    frame["p_down_barrier"] = [0.68, 0.66, 0.64, 0.62, 0.60, 0.58]
+
+    result = _run(
+        "knn_dynamic_barriers_v1",
+        side="short",
+        path=frame,
+        policy_params={"target_return": 0.03, "stop_return": 0.02},
+    )
+
+    assert result.exit_reason == "knn_dynamic_barriers_v1_stop"
+    assert result.barrier_hit_type == "stop"
+    assert result.approximate is True
 
 
 def test_fixed_holding_and_lower_timeframe_triple_barrier_outputs_are_preserved() -> None:

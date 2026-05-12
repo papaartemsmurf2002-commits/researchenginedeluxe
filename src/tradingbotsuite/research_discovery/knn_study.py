@@ -14,7 +14,14 @@ import pandas as pd
 
 from tradingbotsuite.backtesting.splits import WalkForwardSplit
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
+from tradingbotsuite.research_discovery.neighbor_cache import (
+    ExactNeighborCache,
+    ExactNeighborCacheRecord,
+    exact_neighbor_cache_identity,
+    exact_neighbor_cache_key,
+)
 from tradingbotsuite.research_discovery.snapshots import atomic_write_json
+from tradingbotsuite.research_discovery.spec import SUPPORTED_REGIME_MODES, regime_mode_settings
 
 
 KNN_STUDY_SPEC_VERSION = "discovery-knn-study-spec-v1"
@@ -57,6 +64,11 @@ class KnnStudySpec:
     min_distance_quality: float = 0.01
     vote_margin_threshold: float = 0.05
     same_regime_only: bool = True
+    regime_mode: str = "gmm_same_regime_neighbors"
+    regime_detector_type: str = "gmm"
+    regime_gate_enabled: bool = True
+    same_regime_neighbor_pool_enabled: bool = True
+    true_hmm_backend_used: bool = False
     feature_column_set_id: str = "price_trend_vol"
     label_horizon: str = "4h"
 
@@ -64,6 +76,12 @@ class KnnStudySpec:
     def from_payload(cls, payload: Mapping[str, Any]) -> "KnnStudySpec":
         if not isinstance(payload, Mapping):
             raise ValueError("KNN study spec must be a JSON object")
+        legacy_same_regime_only = _bool_value(payload.get("same_regime_only", True))
+        regime_mode = str(
+            payload.get("regime_mode")
+            or ("gmm_same_regime_neighbors" if legacy_same_regime_only else "gmm_all_regime_neighbors_with_gate")
+        ).strip().lower()
+        settings = regime_mode_settings(regime_mode)
         spec = cls(
             feature_columns=tuple(str(item).strip() for item in payload.get("feature_columns") or () if str(item).strip()),
             label_column=str(payload.get("label_column", "label_up")).strip(),
@@ -76,7 +94,14 @@ class KnnStudySpec:
             min_neighbor_agreement=float(payload.get("min_neighbor_agreement", 0.55)),
             min_distance_quality=float(payload.get("min_distance_quality", 0.01)),
             vote_margin_threshold=float(payload.get("vote_margin_threshold", 0.05)),
-            same_regime_only=bool(payload.get("same_regime_only", True)),
+            same_regime_only=_bool_value(payload.get("same_regime_only", settings.same_regime_only)),
+            regime_mode=settings.regime_mode,
+            regime_detector_type=str(payload.get("regime_detector_type", settings.regime_detector_type)).strip().lower(),
+            regime_gate_enabled=_bool_value(payload.get("regime_gate_enabled", settings.regime_gate_enabled)),
+            same_regime_neighbor_pool_enabled=_bool_value(
+                payload.get("same_regime_neighbor_pool_enabled", settings.same_regime_neighbor_pool_enabled)
+            ),
+            true_hmm_backend_used=_bool_value(payload.get("true_hmm_backend_used", settings.true_hmm_backend_used)),
             feature_column_set_id=str(payload.get("feature_column_set_id", "price_trend_vol")).strip(),
             label_horizon=str(payload.get("label_horizon", "4h")).strip(),
         )
@@ -103,6 +128,11 @@ class KnnStudySpec:
             "min_distance_quality": self.min_distance_quality,
             "vote_margin_threshold": self.vote_margin_threshold,
             "same_regime_only": self.same_regime_only,
+            "regime_mode": self.regime_mode,
+            "regime_detector_type": self.regime_detector_type,
+            "regime_gate_enabled": self.regime_gate_enabled,
+            "same_regime_neighbor_pool_enabled": self.same_regime_neighbor_pool_enabled,
+            "true_hmm_backend_used": self.true_hmm_backend_used,
             "feature_column_set_id": self.feature_column_set_id,
             "label_horizon": self.label_horizon,
         }
@@ -174,6 +204,19 @@ def validate_knn_study_spec(spec: KnnStudySpec) -> None:
             raise ValueError(f"{field_name} must be between 0 and 1")
     if not spec.feature_column_set_id:
         raise ValueError("feature_column_set_id must not be empty")
+    if spec.regime_mode not in SUPPORTED_REGIME_MODES:
+        raise ValueError(f"regime_mode must be one of: {', '.join(SUPPORTED_REGIME_MODES)}")
+    settings = regime_mode_settings(spec.regime_mode)
+    if spec.regime_detector_type != settings.regime_detector_type:
+        raise ValueError("regime_detector_type must match regime_mode")
+    if spec.regime_gate_enabled != settings.regime_gate_enabled:
+        raise ValueError("regime_gate_enabled must match regime_mode")
+    if spec.same_regime_neighbor_pool_enabled != settings.same_regime_neighbor_pool_enabled:
+        raise ValueError("same_regime_neighbor_pool_enabled must match regime_mode")
+    if spec.same_regime_only != spec.same_regime_neighbor_pool_enabled:
+        raise ValueError("same_regime_only must match same_regime_neighbor_pool_enabled")
+    if spec.true_hmm_backend_used:
+        raise ValueError("true_hmm_backend_used must be false for discovery KNN studies")
 
 
 def _safe_column_nanmedian(matrix: np.ndarray) -> np.ndarray:
@@ -196,6 +239,9 @@ def materialize_regime_local_knn_predictions(
     *,
     splits: Sequence[WalkForwardSplit],
     spec: KnnStudySpec,
+    neighbor_cache: ExactNeighborCache | None = None,
+    neighbor_cache_k_limit: int | None = None,
+    source_identity: Mapping[str, Any] | None = None,
 ) -> KnnStudyResult:
     validate_knn_study_spec(spec)
     missing = [column for column in (*spec.feature_columns, spec.label_column, spec.pnl_column, *REQUIRED_HMM_COLUMNS) if column not in frame.columns]
@@ -251,15 +297,77 @@ def materialize_regime_local_knn_predictions(
         validation_fit_ends = [_int_marker(value) for value in validation["hmm_fit_end_row"].to_numpy()]
         validation_no_trade = validation["regime_no_trade"].map(bool).to_numpy()
         validation_regimes = validation["top_regime_label"].astype(str).to_numpy()
+        selection_k_limit = max(int(spec.k), int(neighbor_cache_k_limit or spec.k))
+        neighbor_cache_key = ""
+        neighbor_cache_hit = False
+        if neighbor_cache is not None:
+            identity = exact_neighbor_cache_identity(
+                feature_column_set_id=spec.feature_column_set_id,
+                feature_columns=spec.feature_columns,
+                label_horizon=spec.label_horizon,
+                label_horizon_bars=label_horizon_bars,
+                split_id=str(split.split_id),
+                regime_mode=spec.regime_mode,
+                regime_detector_type=spec.regime_detector_type,
+                regime_gate_enabled=spec.regime_gate_enabled,
+                same_regime_neighbor_pool_enabled=spec.same_regime_neighbor_pool_enabled,
+                distance_metric=spec.distance_metric,
+                selection_k_limit=selection_k_limit,
+                train_source_min=_array_min_int(train_source),
+                train_source_max=_array_max_int(train_source),
+                validation_source_min=_list_min_int(validation_source_rows),
+                validation_source_max=_list_max_int(validation_source_rows),
+                safe_train_source_max=int(safe_train_source_max),
+                train_row_count=len(train),
+                validation_row_count=len(validation_positions),
+                source_identity=source_identity,
+            )
+            neighbor_cache_key = exact_neighbor_cache_key(identity)
+            cached_neighbors = neighbor_cache.get(neighbor_cache_key)
+            if cached_neighbors is None:
+                cached_neighbors = ExactNeighborCacheRecord(
+                    cache_key=neighbor_cache_key,
+                    identity=identity,
+                    row_records=tuple(
+                        _select_precomputed_neighbors(
+                            source_row=validation_source_rows[offset],
+                            fit_end=validation_fit_ends[offset],
+                            no_trade=bool(validation_no_trade[offset]),
+                            query_regime=str(validation_regimes[offset]),
+                            query_matrix=validation_matrix[offset],
+                            train_matrix=train_matrix,
+                            train_source=train_source,
+                            train_regimes=train_regimes,
+                            spec=spec,
+                            selection_k_limit=selection_k_limit,
+                        )
+                        for offset in range(len(validation_positions))
+                    ),
+                )
+                cached_neighbors = neighbor_cache.put(cached_neighbors)
+            else:
+                neighbor_cache_hit = True
+            row_neighbor_records = tuple(cached_neighbors.row_records)
+        else:
+            row_neighbor_records = tuple(
+                _select_precomputed_neighbors(
+                    source_row=validation_source_rows[offset],
+                    fit_end=validation_fit_ends[offset],
+                    no_trade=bool(validation_no_trade[offset]),
+                    query_regime=str(validation_regimes[offset]),
+                    query_matrix=validation_matrix[offset],
+                    train_matrix=train_matrix,
+                    train_source=train_source,
+                    train_regimes=train_regimes,
+                    spec=spec,
+                    selection_k_limit=selection_k_limit,
+                )
+                for offset in range(len(validation_positions))
+            )
 
         for offset, position in enumerate(validation_positions):
-            prediction, row_diagnostics = _predict_precomputed_row(
-                source_row=validation_source_rows[offset],
-                fit_end=validation_fit_ends[offset],
-                no_trade=bool(validation_no_trade[offset]),
-                query_regime=str(validation_regimes[offset]),
-                query_matrix=validation_matrix[offset],
-                train_matrix=train_matrix,
+            prediction, row_diagnostics = _predict_from_selected_neighbors(
+                row_neighbor_records[offset],
                 train_source=train_source,
                 train_regimes=train_regimes,
                 labels=labels,
@@ -282,6 +390,10 @@ def materialize_regime_local_knn_predictions(
                 "label_horizon_bars": int(label_horizon_bars),
                 "label_horizon_dropped_count": int(label_horizon_dropped),
                 "safe_train_source_max": int(safe_train_source_max),
+                "neighbor_cache_enabled": neighbor_cache is not None,
+                "neighbor_cache_hit": bool(neighbor_cache_hit),
+                "neighbor_cache_key": neighbor_cache_key,
+                "neighbor_cache_selection_k_limit": int(selection_k_limit),
             }
         )
 
@@ -302,8 +414,22 @@ def materialize_regime_local_knn_predictions(
         "split_count": int(len(splits)),
         "split_records": split_records,
         "required_output_columns": list(KNN_PREDICTION_COLUMNS),
+        "regime_mode": spec.regime_mode,
+        "regime_detector_type": spec.regime_detector_type,
+        "regime_gate_enabled": spec.regime_gate_enabled,
+        "same_regime_neighbor_pool_enabled": spec.same_regime_neighbor_pool_enabled,
+        "true_hmm_backend_used": spec.true_hmm_backend_used,
         "prediction_engine": "split_local_vectorized_validation_v1",
         "neighbor_selection_engine": "deterministic_partition_topk_v1",
+        "neighbor_cache_policy": {
+            "enabled": neighbor_cache is not None,
+            "identity_scope": "feature_set_split_horizon_regime_distance_source",
+            "thresholds_excluded_from_identity": True,
+            "selection_k_limit": int(max(int(spec.k), int(neighbor_cache_k_limit or spec.k))),
+            "exact_knn_parity_required": True,
+        },
+        "neighbor_cache_hit_count": int(sum(1 for record in split_records if record.get("neighbor_cache_hit") is True)),
+        "neighbor_cache_lookup_count": int(sum(1 for record in split_records if record.get("neighbor_cache_enabled") is True)),
         "split_safety_rule": "neighbor_min_source_index <= neighbor_max_source_index <= hmm_fit_end_row < source_row_index",
         "label_safety_rule": "training_label_source_row_index + label_horizon_bars < validation_source_row_index",
         "label_horizon_bars": int(label_horizon_bars),
@@ -388,21 +514,98 @@ def _predict_precomputed_row(
     spec: KnnStudySpec,
     split_id: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    selected = _select_precomputed_neighbors(
+        source_row=source_row,
+        fit_end=fit_end,
+        no_trade=no_trade,
+        query_regime=query_regime,
+        query_matrix=query_matrix,
+        train_matrix=train_matrix,
+        train_source=train_source,
+        train_regimes=train_regimes,
+        spec=spec,
+        selection_k_limit=spec.k,
+    )
+    return _predict_from_selected_neighbors(
+        selected,
+        train_source=train_source,
+        train_regimes=train_regimes,
+        labels=labels,
+        pnl=pnl,
+        spec=spec,
+        split_id=split_id,
+    )
+
+
+def _select_precomputed_neighbors(
+    *,
+    source_row: int | None,
+    fit_end: int | None,
+    no_trade: bool,
+    query_regime: str,
+    query_matrix: np.ndarray,
+    train_matrix: np.ndarray,
+    train_source: np.ndarray,
+    train_regimes: np.ndarray,
+    spec: KnnStudySpec,
+    selection_k_limit: int,
+) -> dict[str, Any]:
     if source_row is None or fit_end is None or fit_end < 0 or fit_end >= source_row:
-        return _skip_prediction("unsafe_hmm_split_row"), []
-    if no_trade:
-        return _skip_prediction("hmm_regime_no_trade"), []
+        return _neighbor_skip_record(source_row=source_row, query_regime=query_regime, reason="unsafe_hmm_split_row")
+    if spec.regime_gate_enabled and no_trade:
+        return _neighbor_skip_record(source_row=source_row, query_regime=query_regime, reason="hmm_regime_no_trade")
     candidate_mask = train_source <= fit_end
-    if spec.same_regime_only:
+    if spec.same_regime_neighbor_pool_enabled:
         candidate_mask = candidate_mask & (train_regimes == query_regime)
     candidate_indices = np.where(candidate_mask)[0]
-    if len(candidate_indices) < spec.min_neighbor_count:
-        return _skip_prediction("insufficient_regime_neighbors"), []
+    if len(candidate_indices) == 0:
+        reason = "insufficient_regime_neighbors" if spec.same_regime_neighbor_pool_enabled else "insufficient_neighbors"
+        return _neighbor_skip_record(source_row=source_row, query_regime=query_regime, reason=reason)
 
     distances = _distances(query_matrix, train_matrix[candidate_indices], metric=spec.distance_metric)
-    order = _stable_topk_distance_order(distances, k=spec.k)
+    order = _stable_topk_distance_order(distances, k=selection_k_limit)
     selected = candidate_indices[order]
     selected_distances = distances[order]
+    return {
+        "source_row": int(source_row),
+        "query_regime": str(query_regime),
+        "skip_reason": "",
+        "selected_indices": [int(index) for index in selected],
+        "selected_distances": [float(distance) for distance in selected_distances],
+    }
+
+
+def _neighbor_skip_record(*, source_row: int | None, query_regime: str, reason: str) -> dict[str, Any]:
+    return {
+        "source_row": source_row,
+        "query_regime": str(query_regime),
+        "skip_reason": str(reason),
+        "selected_indices": [],
+        "selected_distances": [],
+    }
+
+
+def _predict_from_selected_neighbors(
+    selected_record: Mapping[str, Any],
+    *,
+    train_source: np.ndarray,
+    train_regimes: np.ndarray,
+    labels: np.ndarray,
+    pnl: np.ndarray,
+    spec: KnnStudySpec,
+    split_id: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    skip_reason = str(selected_record.get("skip_reason") or "")
+    if skip_reason:
+        return _skip_prediction(skip_reason), []
+    selected = np.array([int(index) for index in selected_record.get("selected_indices", ())], dtype=int)[: spec.k]
+    selected_distances = np.array(
+        [float(distance) for distance in selected_record.get("selected_distances", ())],
+        dtype=float,
+    )[: spec.k]
+    if len(selected) < spec.min_neighbor_count:
+        reason = "insufficient_regime_neighbors" if spec.same_regime_neighbor_pool_enabled else "insufficient_neighbors"
+        return _skip_prediction(reason), []
     selected_labels = labels[selected]
     selected_pnl = pnl[selected]
     p_up = float(selected_labels.mean())
@@ -447,12 +650,12 @@ def _predict_precomputed_row(
     diagnostics = [
         {
             "split_id": split_id,
-            "source_row_index": int(source_row),
+            "source_row_index": int(selected_record["source_row"]),
             "neighbor_source_index": int(train_source[index]),
             "neighbor_rank": int(rank + 1),
             "neighbor_distance": float(selected_distances[rank]),
             "neighbor_regime": str(train_regimes[index]),
-            "query_regime": query_regime,
+            "query_regime": str(selected_record.get("query_regime") or ""),
             "label_value": float(labels[index]),
             "pnl_value": float(pnl[index]),
             "feature_column_set_id": spec.feature_column_set_id,
@@ -616,6 +819,30 @@ def _int_marker(value: Any) -> int | None:
     if not math.isfinite(parsed) or not parsed.is_integer():
         return None
     return int(parsed)
+
+
+def _array_min_int(values: np.ndarray) -> int | None:
+    return int(np.min(values)) if len(values) else None
+
+
+def _array_max_int(values: np.ndarray) -> int | None:
+    return int(np.max(values)) if len(values) else None
+
+
+def _list_min_int(values: Sequence[int | None]) -> int | None:
+    finite = [int(value) for value in values if value is not None]
+    return min(finite) if finite else None
+
+
+def _list_max_int(values: Sequence[int | None]) -> int | None:
+    finite = [int(value) for value in values if value is not None]
+    return max(finite) if finite else None
+
+
+def _bool_value(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y"}
 
 
 def _blocked_split_record(

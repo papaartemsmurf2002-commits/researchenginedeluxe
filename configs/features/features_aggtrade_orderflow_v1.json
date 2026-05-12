@@ -1,0 +1,53 @@
+{
+  "availability_columns": [
+    "missing_agg_taker_buy_quote_share",
+    "missing_agg_signed_quote_imbalance",
+    "missing_agg_sqrt_signed_quote_imbalance",
+    "missing_agg_cvd_slope",
+    "missing_agg_trade_count_zscore",
+    "missing_agg_quote_volume_zscore",
+    "missing_agg_large_trade_count",
+    "missing_agg_large_trade_side_imbalance",
+    "missing_agg_flow_burst_score",
+    "missing_agg_sweep_proxy",
+    "missing_quality_aggtrade_context_missing",
+    "missing_quality_aggtrade_source_present",
+    "missing_quality_aggtrade_latest_window_diagnostic",
+    "missing_quality_aggtrade_flow_proxy_not_ofi"
+  ],
+  "feature_columns": [
+    "agg_taker_buy_quote_share",
+    "agg_signed_quote_imbalance",
+    "agg_sqrt_signed_quote_imbalance",
+    "agg_cvd_slope",
+    "agg_trade_count_zscore",
+    "agg_quote_volume_zscore",
+    "agg_large_trade_count",
+    "agg_large_trade_side_imbalance",
+    "agg_flow_burst_score",
+    "agg_sweep_proxy",
+    "quality_aggtrade_context_missing",
+    "quality_aggtrade_source_present",
+    "quality_aggtrade_latest_window_diagnostic",
+    "quality_aggtrade_flow_proxy_not_ofi"
+  ],
+  "feature_packs": [
+    "aggtrade_orderflow_v1"
+  ],
+  "feature_set_id": "features_aggtrade_orderflow_v1",
+  "feature_set_version": "v1",
+  "fit_scope": "stateless",
+  "imputation_policy": "explicit_missingness_plus_train_only_neutral",
+  "input_families": [
+    "agg_trade"
+  ],
+  "leakage_risks": [
+    "AggTrade orderflow features are trade-flow proxies, not true OFI or order-book imbalance.",
+    "Latest-window or unknown aggTrade context is diagnostic until source readiness proves durability."
+  ],
+  "manifest_sha256": "8e27aab0f520a7f321aece114fbca78521b7de2a559f6fee82b0635338d2a03e",
+  "manifest_version": "feature-manifest-v1",
+  "max_feature_age_ms": null,
+  "point_in_time_safe": true,
+  "tests": []
+}

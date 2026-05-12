@@ -21,5 +21,10 @@
   "min_neighbor_agreement": 0.55,
   "min_distance_quality": 0.01,
   "vote_margin_threshold": 0.05,
-  "same_regime_only": true
+  "same_regime_only": true,
+  "regime_mode": "gmm_same_regime_neighbors",
+  "regime_detector_type": "gmm",
+  "regime_gate_enabled": true,
+  "same_regime_neighbor_pool_enabled": true,
+  "true_hmm_backend_used": false
 }

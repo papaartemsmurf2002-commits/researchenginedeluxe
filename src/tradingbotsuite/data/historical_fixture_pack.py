@@ -151,6 +151,40 @@ class HistoricalFixturePackValidation:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class PublicArchiveFixtureReadiness:
+    ready: bool
+    status: str
+    reasons: tuple[str, ...]
+    fixture_id: str | None
+    symbol: str | None
+    base_interval: str | None
+    required_families: tuple[str, ...]
+    durable_context_families: tuple[str, ...]
+    diagnostic_context_families: tuple[str, ...]
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "ready": self.ready,
+            "status": self.status,
+            "reasons": list(self.reasons),
+            "fixture_id": self.fixture_id,
+            "symbol": self.symbol,
+            "base_interval": self.base_interval,
+            "required_families": list(self.required_families),
+            "durable_context_families": list(self.durable_context_families),
+            "diagnostic_context_families": list(self.diagnostic_context_families),
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+
+
+PUBLIC_ARCHIVE_READY_SYMBOLS = ("BTCUSDT", "ETHUSDT")
+PUBLIC_ARCHIVE_REQUIRED_FAMILIES = ("bars", "lower_timeframe_bars", "agg_trade")
+PUBLIC_ARCHIVE_REQUIRED_WINDOW_LABELS = ("trend_bull", "drawdown_bear", "range_chop", "high_vol_shock")
+
+
 def build_provider_kline_fixture_pack(
     *,
     source_manifest_path: Path,
@@ -535,11 +569,198 @@ def assert_valid_historical_fixture_pack_manifest(
     return validation
 
 
+def validate_public_archive_fixture_readiness(
+    manifest: Mapping[str, Any],
+    *,
+    manifest_path: Path | None = None,
+) -> PublicArchiveFixtureReadiness:
+    """Evaluate whether a small fixture pack can claim durable BTC/ETH archive readiness.
+
+    This readiness layer is stricter than normal fixture validation. REST
+    latest-window context can remain a valid research fixture, but it cannot
+    satisfy this public-archive readiness gate.
+    """
+
+    reasons: list[str] = []
+    validation = validate_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+    if not validation.valid:
+        reasons.extend(f"fixture_manifest_invalid:{reason}" for reason in validation.errors)
+    symbol = _optional_text(manifest.get("symbol"))
+    base_interval = _optional_text(manifest.get("base_interval"))
+    if symbol not in PUBLIC_ARCHIVE_READY_SYMBOLS:
+        reasons.append(f"symbol_not_supported_for_public_archive_readiness:{symbol}")
+    if base_interval != "15m":
+        reasons.append(f"base_interval_must_be_15m:{base_interval}")
+    if manifest.get("research_only") is not True:
+        reasons.append("research_only_required")
+    if manifest.get("observe_only") is not True:
+        reasons.append("observe_only_required")
+    if manifest.get("promotion_ready") is not False:
+        reasons.append("promotion_ready_must_be_false")
+
+    families = manifest.get("families") if isinstance(manifest.get("families"), Mapping) else {}
+    missing_required = [family for family in PUBLIC_ARCHIVE_REQUIRED_FAMILIES if family not in families]
+    reasons.extend(f"public_archive_required_family_missing:{family}" for family in missing_required)
+    bars_entry = families.get("bars") if isinstance(families.get("bars"), Mapping) else {}
+    if str(bars_entry.get("data_family") or "") != "kline":
+        reasons.append("bars_family_must_be_kline")
+    if str(bars_entry.get("interval") or base_interval or "") != "15m":
+        reasons.append("bars_interval_must_be_15m")
+
+    source = manifest.get("source") if isinstance(manifest.get("source"), Mapping) else {}
+    source_name = _optional_text(source.get("source_name"))
+    if source_name != "binance_vision":
+        reasons.append(f"primary_bars_public_archive_source_required:{source_name}")
+    reasons.extend(_public_archive_source_reasons(source, context="source"))
+    reasons.extend(_archive_quality_evidence_reasons(bars_entry, family="bars"))
+
+    lower_entry = families.get("lower_timeframe_bars") if isinstance(families.get("lower_timeframe_bars"), Mapping) else {}
+    if lower_entry:
+        if _optional_text(lower_entry.get("interval")) not in {"1m", "3m", "5m"}:
+            reasons.append(f"lower_timeframe_interval_not_suitable_for_exit_sequence:{lower_entry.get('interval')}")
+        reasons.extend(_archive_quality_evidence_reasons(lower_entry, family="lower_timeframe_bars"))
+
+    durable_context_families: list[str] = []
+    diagnostic_context_families: list[str] = []
+    for family in CONTEXT_FAMILIES:
+        entry = families.get(family)
+        if not isinstance(entry, Mapping):
+            continue
+        entry_source = _optional_text(entry.get("source_name")) or source_name
+        coverage_scope = _optional_text(entry.get("coverage_scope"))
+        latest_window_only = entry.get("latest_window_only") is True
+        free_sample = entry.get("source_access_mode") == "free_sample" or entry.get("free_sample_data") is True
+        zero_filled = [str(item) for item in entry.get("zero_filled_fields") or []]
+        if zero_filled:
+            reasons.append(f"context_family_zero_filled_fields_forbidden:{family}:{','.join(sorted(zero_filled))}")
+        if latest_window_only or entry_source == "binance_usdm_rest":
+            diagnostic_context_families.append(family)
+            reasons.append(f"latest_window_context_diagnostic_only:{family}")
+        elif free_sample or entry.get("diagnostic_only") is True:
+            diagnostic_context_families.append(family)
+            reasons.append(f"diagnostic_context_source_not_candidate_ready:{family}")
+        elif coverage_scope in {"public_archive_partition", "local_vendor_export"}:
+            durable_context_families.append(family)
+        else:
+            diagnostic_context_families.append(family)
+            reasons.append(f"context_family_durable_coverage_required:{family}:{coverage_scope}")
+        if family == "agg_trade":
+            if entry_source != "binance_vision":
+                reasons.append(f"agg_trade_public_archive_source_required:{entry_source}")
+            if _optional_text(entry.get("feature_claim_scope")) not in {
+                "trade_flow_proxy_not_order_book_imbalance_or_ofi",
+                "agg_trade_trade_flow_proxy",
+            }:
+                reasons.append("agg_trade_trade_flow_proxy_claim_required")
+            reasons.extend(_archive_quality_evidence_reasons(entry, family="agg_trade"))
+
+    omitted = manifest.get("omitted_optional_families")
+    if not isinstance(omitted, Mapping):
+        reasons.append("omitted_optional_families_required")
+    else:
+        for family in OPTIONAL_FAMILIES - set(families):
+            if family not in omitted:
+                reasons.append(f"omitted_optional_family_reason_required:{family}")
+
+    limitations = manifest.get("research_evidence_limitations")
+    if not isinstance(limitations, list) or not limitations:
+        reasons.append("research_evidence_limitations_required")
+    elif "not_promotion_ready" not in {str(item) for item in limitations}:
+        reasons.append("research_evidence_limitations_not_promotion_ready_required")
+
+    reasons.extend(_window_selection_reasons(manifest))
+    ready = not reasons
+    return PublicArchiveFixtureReadiness(
+        ready=ready,
+        status="durable_public_archive_ready" if ready else "diagnostic_or_incomplete",
+        reasons=tuple(dict.fromkeys(reasons)),
+        fixture_id=str(manifest.get("fixture_id")) if manifest.get("fixture_id") is not None else None,
+        symbol=symbol,
+        base_interval=base_interval,
+        required_families=PUBLIC_ARCHIVE_REQUIRED_FAMILIES,
+        durable_context_families=tuple(sorted(set(durable_context_families))),
+        diagnostic_context_families=tuple(sorted(set(diagnostic_context_families))),
+    )
+
+
+def assert_public_archive_fixture_ready(
+    manifest: Mapping[str, Any],
+    *,
+    manifest_path: Path | None = None,
+) -> PublicArchiveFixtureReadiness:
+    readiness = validate_public_archive_fixture_readiness(manifest, manifest_path=manifest_path)
+    if not readiness.ready:
+        raise ValueError(f"fixture pack is not durable public archive ready: {', '.join(readiness.reasons)}")
+    return readiness
+
+
 def resolve_fixture_pack_cycle_dataset_path(manifest: Mapping[str, Any], *, manifest_path: Path) -> Path:
     validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
     if validation.cycle_dataset_path is None:
         raise ValueError("historical fixture pack validation did not resolve a cycle dataset path")
     return validation.cycle_dataset_path
+
+
+def _public_archive_source_reasons(source: Mapping[str, Any], *, context: str) -> list[str]:
+    reasons: list[str] = []
+    if source.get("latest_window_only") is True:
+        reasons.append(f"{context}_latest_window_only_not_public_archive_ready")
+    coverage_scope = _optional_text(source.get("coverage_scope"))
+    if coverage_scope not in {None, "public_archive_partition"}:
+        reasons.append(f"{context}_public_archive_coverage_scope_required:{coverage_scope}")
+    source_sha = _optional_text(source.get("source_sha256") or source.get("content_hash"))
+    if source_sha is None:
+        reasons.append(f"{context}_source_sha256_required")
+    if _optional_text(source.get("source_name")) == "binance_vision":
+        checksum_verified = (
+            source.get("checksum_verified") is True
+            or _optional_text(source.get("checksum_status")) == "verified"
+            or source.get("source_checksum_verified") is True
+        )
+        checksum_present = any(
+            _optional_text(source.get(field)) is not None
+            for field in ("checksum_sha256", "checksum_path", "checksum_url", "source_checksum_sha256")
+        )
+        if not checksum_verified and not checksum_present:
+            reasons.append(f"{context}_binance_vision_checksum_evidence_required")
+        if source.get("checksum_verified") is False or _optional_text(source.get("checksum_status")) == "failed":
+            reasons.append(f"{context}_binance_vision_checksum_must_verify")
+    return reasons
+
+
+def _archive_quality_evidence_reasons(entry: Mapping[str, Any], *, family: str) -> list[str]:
+    reasons: list[str] = []
+    if entry and "row_count" not in entry:
+        reasons.append(f"{family}_row_count_required")
+    if entry and not _optional_text(entry.get("sha256") or entry.get("content_hash")):
+        reasons.append(f"{family}_sha256_required")
+    if family in {"bars", "lower_timeframe_bars"} and "gap_check_status" not in entry:
+        reasons.append(f"{family}_gap_check_evidence_required")
+    if family in {"bars", "agg_trade"} and "duplicate_count" not in entry:
+        reasons.append(f"{family}_duplicate_check_evidence_required")
+    return reasons
+
+
+def _window_selection_reasons(manifest: Mapping[str, Any]) -> list[str]:
+    selection = manifest.get("window_selection")
+    if not isinstance(selection, Mapping):
+        readiness = manifest.get("durable_public_archive_readiness")
+        if isinstance(readiness, Mapping):
+            selection = readiness.get("window_selection")
+    if not isinstance(selection, Mapping):
+        return ["window_selection_required"]
+    regime_windows = selection.get("regime_windows") if isinstance(selection.get("regime_windows"), Mapping) else selection
+    missing = []
+    for label in PUBLIC_ARCHIVE_REQUIRED_WINDOW_LABELS:
+        window = regime_windows.get(label) if isinstance(regime_windows, Mapping) else None
+        if not isinstance(window, Mapping):
+            missing.append(label)
+            continue
+        if window.get("start_time_ms") is None or window.get("end_time_ms") is None:
+            missing.append(label)
+    if missing:
+        return [f"window_selection_regime_windows_required:{','.join(missing)}"]
+    return []
 
 
 def _resolve_entry_path(entry: Mapping[str, Any], *, base_dir: Path) -> Path | None:

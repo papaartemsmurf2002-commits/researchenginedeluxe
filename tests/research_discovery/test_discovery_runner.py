@@ -11,6 +11,7 @@ import pytest
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.research_discovery import runner as discovery_runner
 from tradingbotsuite.research_discovery.runner import run_discovery
+from tradingbotsuite.research_discovery.state import payload_sha256
 
 
 def _write_spec(
@@ -61,6 +62,15 @@ def test_discovery_runner_writes_manifest_state_ledgers_and_snapshots(tmp_path: 
     assert manifest["promotion_ready"] is False
     assert manifest["order_placement_used"] is False
     assert manifest["candidate_pack_written"] is False
+    telemetry = manifest["compute_telemetry"]
+    assert telemetry["telemetry_version"] == "discovery-compute-telemetry-v1"
+    assert telemetry["wall_time_seconds"] >= 0.0
+    assert telemetry["process_cpu_seconds"] >= 0.0
+    assert telemetry["active_workers"] == 1
+    assert telemetry["trials_per_minute"] >= 0.0
+    assert telemetry["artifact_bytes_written"] > 0
+    assert "spec_and_path_resolution" in telemetry["wall_time_seconds_by_stage"]
+    assert {"feature_materialization", "label_split", "gmm_regime", "neighbor"} <= set(telemetry["cache_hit_rates"])
     assert state["status"] == "completed"
     assert state["completed_trial_ids"] == ["trial-000001", "trial-000002", "trial-000003"]
     assert len(interesting) == 1
@@ -133,10 +143,72 @@ def test_discovery_runner_resume_recovers_when_run_state_lags_trial_records(tmp_
     assert set(ledgers["trial_id"]) == {"trial-000001", "trial-000002", "trial-000003"}
 
 
+def test_discovery_runner_rejects_resume_with_old_real_score_policy(tmp_path: Path) -> None:
+    spec_path = tmp_path / "specs" / "score-policy.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "score-policy-run",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 2, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 1, "persist_trial_artifacts": "interesting_only"},
+                "search": {
+                    "hmm_state_counts": [3],
+                    "hmm_posterior_thresholds": [0.55],
+                    "hmm_entropy_thresholds": [0.78],
+                    "label_horizons": ["4h"],
+                    "k_values": [8],
+                    "min_neighbor_counts": [2, 4],
+                    "distance_metrics": ["euclidean"],
+                    "probability_thresholds": [0.52],
+                    "expected_value_thresholds": [-0.0002],
+                    "min_neighbor_agreements": [0.52],
+                    "min_distance_qualities": [0.0],
+                    "vote_margin_thresholds": [0.0],
+                    "same_regime_only_values": [False],
+                    "min_splits": 4,
+                    "purge_embargo_bars": 8,
+                    "min_trade_count": 1,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": -1.0,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    partial = run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), stop_after_trials=1, clock=_clock)
+    trial_path = partial.output_dir / "trials" / "trial-000001.json"
+    trial_payload = json.loads(trial_path.read_text(encoding="utf-8"))
+    trial_payload["payload"].pop("discovery_score_policy_version")
+    trial_payload["record_sha256"] = payload_sha256(trial_payload)
+    trial_path.write_text(json.dumps(trial_payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="score policy upgrade"):
+        run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), resume=True, clock=_clock)
+
+
 def test_discovery_knn_metrics_use_side_adjusted_returns() -> None:
     frame = pd.DataFrame(
         [
             {
+                "source_row_index": 0,
                 "accepted_by_knn": True,
                 "knn_skip_reason": "",
                 "label_return": 0.02,
@@ -146,6 +218,7 @@ def test_discovery_knn_metrics_use_side_adjusted_returns() -> None:
                 "knn_vote_margin": 0.4,
             },
             {
+                "source_row_index": 1,
                 "accepted_by_knn": True,
                 "knn_skip_reason": "",
                 "label_return": -0.03,
@@ -155,6 +228,7 @@ def test_discovery_knn_metrics_use_side_adjusted_returns() -> None:
                 "knn_vote_margin": 0.5,
             },
             {
+                "source_row_index": 2,
                 "accepted_by_knn": True,
                 "knn_skip_reason": "",
                 "label_return": -0.04,
@@ -168,7 +242,7 @@ def test_discovery_knn_metrics_use_side_adjusted_returns() -> None:
     search = SimpleNamespace(
         min_trade_count=3,
         min_signal_rate=0.0,
-        max_signal_rate=1.0,
+        max_signal_rate=2.0,
         min_realized_expectancy=0.025,
     )
 
@@ -276,7 +350,7 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
                     ]
                 },
                 "budget": {"max_trials": 2, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
-                "execution": {"max_workers": 2, "persist_trial_artifacts": "interesting_only"},
+                "execution": {"max_workers": 2, "persist_trial_artifacts": "all"},
                 "search": {
                     "hmm_state_counts": [3, 4],
                     "hmm_posterior_thresholds": [0.55],
@@ -324,19 +398,145 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
 
     assert manifest["candidate_acceptance_scope"] == "real_discovery_ledgers_no_pack_gate"
     assert manifest["execution"]["max_workers"] == 2
-    assert manifest["execution"]["persist_trial_artifacts"] == "interesting_only"
+    assert manifest["execution"]["persist_trial_artifacts"] == "all"
     assert state["status"] == "completed"
     assert state["message"] == "real discovery run completed"
     assert len(ledgers) == 2
     assert ledgers["trade_count"].astype(int).sum() > 0
     assert set(ledgers["feature_column_set_id"]).issubset({"price_trend_vol", "compact_wt3d_base"})
     assert payload["placeholder_trial"] is False
-    assert payload["trial_kind"] == "hmm_knn_entry_discovery"
+    assert payload["trial_kind"] == "regime_knn_entry_discovery"
+    assert payload["regime_mode"] in {
+        "none",
+        "gmm_gate_only",
+        "gmm_same_regime_neighbors",
+        "gmm_all_regime_neighbors_with_gate",
+    }
+    assert payload["regime_detector_type"] in {"none", "gmm"}
+    assert payload["true_hmm_backend_used"] is False
+    assert {
+        "regime_mode",
+        "regime_detector_type",
+        "regime_gate_enabled",
+        "same_regime_neighbor_pool_enabled",
+        "true_hmm_backend_used",
+        "discovery_score_policy_version",
+        "accepted_bar_count",
+        "independent_event_count",
+        "suppressed_overlap_count",
+        "overlap_ratio",
+        "event_signal_rate",
+        "side_collapse_ratio",
+        "event_spacing_bars",
+        "legacy_density_score",
+        "discovery_screen_score_v2",
+    } <= set(ledgers.columns)
     assert payload["trade_count"] > 0
+    assert payload["trade_count"] == payload["independent_event_count"]
+    assert payload["accepted_bar_count"] >= payload["independent_event_count"]
+    assert payload["final_score"] == payload["discovery_screen_score_v2"]
     assert payload["hmm_artifact_persisted"] is True
     assert payload["knn_artifact_persisted"] is True
     assert Path(payload["hmm_manifest_path"]).exists()
     assert Path(payload["knn_manifest_path"]).exists()
+    assert manifest["regime_truthfulness"]["true_hmm_backend_used"] is False
+    assert manifest["regime_truthfulness"]["current_gmm_backend"] == "sklearn.mixture.GaussianMixture"
+    assert manifest["event_accounting_policy"]["active_score_field"] == "discovery_screen_score_v2"
+    assert manifest["event_accounting_policy"]["overlapping_bar_signals_count_as_independent_trades"] is False
+
+
+def test_discovery_runner_no_regime_trial_skips_gmm_materializer(tmp_path: Path, monkeypatch) -> None:
+    spec_path = tmp_path / "specs" / "no-regime-discovery.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "no-regime-run",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 1, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 1, "persist_trial_artifacts": "all"},
+                "search": {
+                    "min_splits": 4,
+                    "purge_embargo_bars": 8,
+                    "min_trade_count": 999999,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": 0.0,
+                },
+                "trial_templates": [
+                    {
+                        "trial_id": "trial-000001",
+                        "candidate_id": "no-regime-candidate",
+                        "candidate_family": "regime_knn_entry_discovery",
+                        "ledger_kind": "blocked",
+                        "blocker_code": "not_evaluated",
+                        "payload": {
+                            "trial_kind": "regime_knn_entry_discovery",
+                            "feature_column_set_id": "price_trend_vol",
+                            "regime_mode": "none",
+                            "label_horizon": "4h",
+                            "k": 8,
+                            "min_neighbor_count": 2,
+                            "distance_metric": "euclidean",
+                            "probability_threshold": 0.52,
+                            "expected_value_threshold": -0.0002,
+                            "min_neighbor_agreement": 0.52,
+                            "min_distance_quality": 0.0,
+                            "vote_margin_threshold": 0.0,
+                            "same_regime_only": False,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_gmm(*args, **kwargs):
+        raise AssertionError("no-regime mode must not call the GMM materializer")
+
+    monkeypatch.setattr(discovery_runner, "materialize_split_safe_hmm_regimes", fail_gmm)
+
+    result = discovery_runner.run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    trial_record = json.loads((result.output_dir / "trials" / "trial-000001.json").read_text(encoding="utf-8"))
+    payload = trial_record["payload"]
+    regime_manifest = json.loads(Path(payload["hmm_manifest_path"]).read_text(encoding="utf-8"))
+    knn_manifest = json.loads(Path(payload["knn_manifest_path"]).read_text(encoding="utf-8"))
+
+    assert trial_record["status"] == "completed"
+    assert payload["regime_mode"] == "none"
+    assert payload["regime_detector_type"] == "none"
+    assert payload["regime_gate_enabled"] is False
+    assert payload["same_regime_neighbor_pool_enabled"] is False
+    assert payload["same_regime_only"] is False
+    assert payload["true_hmm_backend_used"] is False
+    assert payload["hmm_state_count"] == 0
+    assert payload["hmm_posterior_threshold"] is None
+    assert payload["hmm_entropy_threshold"] is None
+    assert payload["hmm_cache_hit"] is False
+    assert regime_manifest["regime_detector_type"] == "none"
+    assert regime_manifest["regime_gate_enabled"] is False
+    assert knn_manifest["regime_mode"] == "none"
+    assert knn_manifest["regime_gate_enabled"] is False
+    assert manifest["regime_truthfulness"]["observed_trial_regime_modes"] == ["none"]
+    assert manifest["regime_truthfulness"]["observed_trial_regime_detector_types"] == ["none"]
+    assert manifest["regime_truthfulness"]["true_hmm_backend_used"] is False
 
 
 def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path: Path, monkeypatch) -> None:
@@ -347,11 +547,11 @@ def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path
         return {
             "trial_id": f"trial-{index:06d}",
             "candidate_id": f"horizon-cache-candidate-{index:06d}",
-            "candidate_family": "hmm_knn_entry_discovery",
+            "candidate_family": "regime_knn_entry_discovery",
             "ledger_kind": "blocked",
             "blocker_code": "not_evaluated",
             "payload": {
-                "trial_kind": "hmm_knn_entry_discovery",
+                "trial_kind": "regime_knn_entry_discovery",
                 "feature_column_set_id": "price_trend_vol",
                 "hmm_state_count": 3,
                 "hmm_posterior_threshold": 0.55,
@@ -414,9 +614,9 @@ def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path
         hmm_calls.append(pd.to_numeric(frame["label_return"], errors="coerce").reset_index(drop=True))
         return original_hmm(frame, splits=splits, spec=spec)
 
-    def wrapped_knn(frame, *, splits, spec):
+    def wrapped_knn(frame, *, splits, spec, **kwargs):
         knn_inputs.append((spec.label_horizon, pd.to_numeric(frame["label_return"], errors="coerce").reset_index(drop=True)))
-        return original_knn(frame, splits=splits, spec=spec)
+        return original_knn(frame, splits=splits, spec=spec, **kwargs)
 
     monkeypatch.setattr(discovery_runner, "materialize_split_safe_hmm_regimes", wrapped_hmm)
     monkeypatch.setattr(discovery_runner, "materialize_regime_local_knn_predictions", wrapped_knn)
@@ -431,6 +631,8 @@ def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path
     assert [item[0] for item in knn_inputs] == ["1h", "4h", "1h"]
     assert [payload["hmm_cache_hit"] for payload in trial_payloads] == [False, True, True]
     assert [payload["label_split_cache_hit"] for payload in trial_payloads] == [False, False, True]
+    assert [payload["neighbor_cache_hit"] for payload in trial_payloads] == [False, False, True]
+    assert all(payload["neighbor_cache_lookup_count"] > 0 for payload in trial_payloads)
     pd.testing.assert_series_equal(knn_inputs[0][1], knn_inputs[2][1])
     assert not knn_inputs[0][1].equals(knn_inputs[1][1])
 

@@ -1,5 +1,6 @@
 {
   "matrix_id": "perp_filter_ablation_matrix_v4",
+  "decision_policy_version": "legacy_perp_filter_ablation_v1",
   "group_columns": [
     "holding_window",
     "exit_policy_params_json"
@@ -31,7 +32,7 @@
       "min_score_delta": 0.0,
       "min_trade_count": 1,
       "max_missingness_rate": 0.25,
-      "filter_default_candidate": true,
+      "filter_default_candidate": false,
       "notes": "Perp features must beat no-perp after costs before default use."
     },
     {
@@ -51,7 +52,7 @@
       "min_score_delta": 0.0,
       "min_trade_count": 1,
       "max_missingness_rate": 0.25,
-      "filter_default_candidate": true,
+      "filter_default_candidate": false,
       "notes": "KNN/HMM filter must beat transparent perp strategies before default use."
     },
     {
@@ -71,7 +72,7 @@
       "min_score_delta": 0.0,
       "min_trade_count": 1,
       "max_missingness_rate": 0.25,
-      "filter_default_candidate": true,
+      "filter_default_candidate": false,
       "notes": "Perp strategy candidates must beat no-trade comparators."
     },
     {
@@ -89,7 +90,7 @@
       "min_score_delta": 0.0,
       "min_trade_count": 1,
       "max_missingness_rate": 0.25,
-      "filter_default_candidate": true,
+      "filter_default_candidate": false,
       "notes": "Perp-aware exits must beat fixed holding in the same group before default use."
     }
   ]

@@ -12,9 +12,18 @@ import pandas as pd
 
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
 from tradingbotsuite.research_artifacts.candidate_pack import evaluate_research_candidate_gate
+from tradingbotsuite.research_discovery.exit_lab import (
+    DISCOVERY_EXIT_LAB_MANIFEST_VERSION,
+    discovery_entry_lead_evidence_sha256,
+)
 from tradingbotsuite.research_discovery.manifests import DISCOVERY_RUN_MANIFEST_VERSION
+from tradingbotsuite.research_discovery.multiple_testing import DISCOVERY_MULTIPLE_TESTING_MANIFEST_VERSION
 from tradingbotsuite.research_discovery.snapshots import atomic_write_json
 from tradingbotsuite.research_discovery.state import read_trial_record
+from tradingbotsuite.research_discovery.validation_floors import (
+    DISCOVERY_VALIDATION_FLOORS_MANIFEST_VERSION,
+    MATURITY_CANDIDATE_READY,
+)
 
 
 DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION = "discovery-candidate-pack-bridge-v1"
@@ -43,17 +52,39 @@ DISCOVERY_LEDGER_COLUMNS = (
     "research_only",
     "observe_only",
     "promotion_ready",
+    "discovery_score_policy_version",
     "feature_column_set_id",
     "hmm_state_count",
+    "regime_mode",
+    "regime_detector_type",
+    "regime_gate_enabled",
+    "same_regime_neighbor_pool_enabled",
+    "true_hmm_backend_used",
     "label_horizon",
     "distance_metric",
     "k",
     "min_neighbor_count",
     "trade_count",
+    "accepted_bar_count",
+    "independent_event_count",
+    "suppressed_overlap_count",
+    "overlap_ratio",
+    "event_signal_rate",
+    "side_collapse_ratio",
+    "near_signal_ceiling",
+    "long_independent_event_count",
+    "short_independent_event_count",
+    "event_spacing_bars",
     "signal_rate",
     "realized_expectancy",
+    "independent_event_expectancy",
     "accepted_prediction_count",
     "evaluated_prediction_count",
+    "legacy_density_score",
+    "discovery_screen_score_v2",
+    "signal_rate_ceiling_penalty",
+    "overlap_penalty",
+    "side_collapse_penalty",
     "final_score",
     "record_sha256",
 )
@@ -80,13 +111,32 @@ def evaluate_discovery_candidate_pack_eligibility(
     *,
     discovery_manifest_path: Path,
     cycle_manifest_path: Path | None = None,
+    exit_lab_manifest_path: Path | None = None,
+    multiple_testing_manifest_path: Path | None = None,
+    validation_floors_manifest_path: Path | None = None,
     candidate_id_map: Mapping[str, str] | None = None,
 ) -> DiscoveryCandidatePackBridgeResult:
     discovery_manifest_path = Path(discovery_manifest_path).expanduser().resolve()
     cycle_manifest_resolved = Path(cycle_manifest_path).expanduser().resolve() if cycle_manifest_path is not None else None
+    exit_lab_manifest_resolved = Path(exit_lab_manifest_path).expanduser().resolve() if exit_lab_manifest_path is not None else None
+    multiple_testing_manifest_resolved = (
+        Path(multiple_testing_manifest_path).expanduser().resolve() if multiple_testing_manifest_path is not None else None
+    )
+    validation_floors_manifest_resolved = (
+        Path(validation_floors_manifest_path).expanduser().resolve() if validation_floors_manifest_path is not None else None
+    )
     candidate_map = {str(key): str(value) for key, value in dict(candidate_id_map or {}).items()}
     manifest = _read_json(discovery_manifest_path)
     global_reasons = _discovery_manifest_reasons(manifest, discovery_manifest_path)
+    exit_lab_manifest, exit_lab_candidate_gates, exit_lab_reasons = _exit_lab_evidence(exit_lab_manifest_resolved)
+    multiple_testing_manifest, multiple_testing_gates, multiple_testing_reasons = _multiple_testing_evidence(
+        multiple_testing_manifest_resolved,
+        discovery_manifest_path=discovery_manifest_path,
+    )
+    validation_floors_manifest, validation_floor_gates, validation_floor_reasons = _validation_floor_evidence(
+        validation_floors_manifest_resolved,
+        discovery_manifest_path=discovery_manifest_path,
+    )
     required_outputs = manifest.get("required_outputs") if isinstance(manifest.get("required_outputs"), Mapping) else {}
     state_payload = _read_required_json(required_outputs.get("run_state"), global_reasons, "run_state")
     if state_payload is not None:
@@ -119,6 +169,25 @@ def evaluate_discovery_candidate_pack_eligibility(
                 reasons.append("candidate_present_in_blocked_candidates")
             if discovery_candidate_id in filter_blocked_ids:
                 reasons.append("candidate_present_in_filter_blockers")
+            exit_lab_gate = _exit_lab_gate_row(
+                exit_lab_candidate_gates,
+                discovery_candidate_id=discovery_candidate_id,
+                research_candidate_id=research_candidate_id,
+            )
+            reasons.extend(exit_lab_reasons)
+            reasons.extend(_exit_lab_gate_reasons(record, exit_lab_gate))
+            multiple_testing_gate = _multiple_testing_gate_row(
+                multiple_testing_gates,
+                discovery_candidate_id=discovery_candidate_id,
+            )
+            reasons.extend(multiple_testing_reasons)
+            reasons.extend(_multiple_testing_gate_reasons(record, multiple_testing_gate))
+            validation_floor_gate = _validation_floor_gate_row(
+                validation_floor_gates,
+                discovery_candidate_id=discovery_candidate_id,
+            )
+            reasons.extend(validation_floor_reasons)
+            reasons.extend(_validation_floor_gate_reasons(record, validation_floor_gate))
             gate_status = "not_evaluated"
             gate_reasons: tuple[str, ...] = ()
             if cycle_manifest_resolved is None:
@@ -144,6 +213,43 @@ def evaluate_discovery_candidate_pack_eligibility(
                     "bridge_reasons": "|".join(reasons),
                     "research_candidate_gate_status": gate_status,
                     "research_candidate_gate_reasons": "|".join(gate_reasons),
+                    "exit_lab_status": _gate_text(exit_lab_gate, "exit_lab_status"),
+                    "exit_lab_gate_status": _gate_text(exit_lab_gate, "exit_lab_gate_status"),
+                    "exit_lab_reasons": _gate_text(exit_lab_gate, "exit_lab_reasons"),
+                    "exit_lab_best_family": _gate_text(exit_lab_gate, "exit_lab_best_family"),
+                    "exit_lab_best_comparison_id": _gate_text(exit_lab_gate, "best_comparison_id"),
+                    "exit_lab_best_exit_policy_id": _gate_text(exit_lab_gate, "treatment_exit_policy_id"),
+                    "exit_vs_fixed_final_score_delta": _gate_text(exit_lab_gate, "fixed_holding_score_delta"),
+                    "exit_lab_cost_stress_status": _gate_text(exit_lab_gate, "cost_stress_status"),
+                    "entry_lead_evidence_sha256": _gate_text(exit_lab_gate, "entry_lead_evidence_sha256"),
+                    "exit_lab_no_improvement_reasons": _gate_text(exit_lab_gate, "no_improvement_reason"),
+                    "multiple_testing_status": _gate_text(multiple_testing_gate, "multiple_testing_status"),
+                    "multiple_testing_reasons": _gate_text(multiple_testing_gate, "multiple_testing_reasons"),
+                    "multiple_testing_effective_trial_count": _gate_text(multiple_testing_gate, "effective_trial_count"),
+                    "multiple_testing_sampled_fraction": _gate_text(multiple_testing_gate, "sampled_fraction"),
+                    "multiple_testing_stability_neighborhood_size": _gate_text(
+                        multiple_testing_gate,
+                        "stability_neighborhood_size",
+                    ),
+                    "multiple_testing_latest_window_only_penalty": _gate_text(
+                        multiple_testing_gate,
+                        "latest_window_only_penalty",
+                    ),
+                    "validation_floor_status": _gate_text(validation_floor_gate, "validation_floor_status"),
+                    "research_maturity": _gate_text(validation_floor_gate, "research_maturity"),
+                    "validation_floor_reasons": _gate_text(validation_floor_gate, "validation_floor_reasons"),
+                    "validation_floor_independent_event_count": _gate_text(
+                        validation_floor_gate,
+                        "independent_event_count",
+                    ),
+                    "validation_floor_overlap_ratio": _gate_text(validation_floor_gate, "overlap_ratio"),
+                    "validation_floor_split_pass_ratio": _gate_text(validation_floor_gate, "split_pass_ratio"),
+                    "validation_floor_side_concentration": _gate_text(validation_floor_gate, "side_concentration"),
+                    "validation_floor_cost_stress_survival": _gate_text(validation_floor_gate, "cost_stress_survival"),
+                    "validation_floor_stability_neighborhood_size": _gate_text(
+                        validation_floor_gate,
+                        "stability_neighborhood_size",
+                    ),
                     "discovery_run_id": str(manifest.get("run_id") or ""),
                     "cycle_manifest_path": str(cycle_manifest_resolved) if cycle_manifest_resolved is not None else "",
                     "candidate_pack_written": False,
@@ -170,6 +276,59 @@ def evaluate_discovery_candidate_pack_eligibility(
             _file_sha256(cycle_manifest_resolved)
             if cycle_manifest_resolved is not None and cycle_manifest_resolved.exists()
             else None
+        ),
+        "source_exit_lab_manifest_path": str(exit_lab_manifest_resolved) if exit_lab_manifest_resolved is not None else None,
+        "source_exit_lab_manifest_sha256": (
+            _file_sha256(exit_lab_manifest_resolved)
+            if exit_lab_manifest_resolved is not None and exit_lab_manifest_resolved.exists()
+            else None
+        ),
+        "exit_lab_gate_required": True,
+        "exit_lab_candidate_gates_sha256": (
+            str(exit_lab_manifest.get("discovery_exit_lab_candidate_gates_sha256") or "")
+            if exit_lab_manifest is not None
+            else ""
+        ),
+        "exit_lab_summary": _exit_lab_summary(exit_lab_candidate_gates, exit_lab_reasons),
+        "source_multiple_testing_manifest_path": (
+            str(multiple_testing_manifest_resolved) if multiple_testing_manifest_resolved is not None else None
+        ),
+        "source_multiple_testing_manifest_sha256": (
+            _file_sha256(multiple_testing_manifest_resolved)
+            if multiple_testing_manifest_resolved is not None and multiple_testing_manifest_resolved.exists()
+            else None
+        ),
+        "multiple_testing_gate_required": True,
+        "multiple_testing_candidate_gates_sha256": (
+            str(multiple_testing_manifest.get("discovery_multiple_testing_candidate_gates_sha256") or "")
+            if multiple_testing_manifest is not None
+            else ""
+        ),
+        "multiple_testing_summary": _multiple_testing_summary(multiple_testing_gates, multiple_testing_reasons),
+        "source_validation_floors_manifest_path": (
+            str(validation_floors_manifest_resolved) if validation_floors_manifest_resolved is not None else None
+        ),
+        "source_validation_floors_manifest_sha256": (
+            _file_sha256(validation_floors_manifest_resolved)
+            if validation_floors_manifest_resolved is not None and validation_floors_manifest_resolved.exists()
+            else None
+        ),
+        "validation_floor_gate_required": True,
+        "validation_floor_candidate_gates_sha256": (
+            str(validation_floors_manifest.get("discovery_validation_floor_candidate_gates_sha256") or "")
+            if validation_floors_manifest is not None
+            else ""
+        ),
+        "validation_floor_summary": _validation_floor_summary(validation_floor_gates, validation_floor_reasons),
+        "validation_blocker_registry_sha256": (
+            str(validation_floors_manifest.get("blocker_registry_sha256") or "")
+            if validation_floors_manifest is not None
+            else ""
+        ),
+        "experiment_budget_ledger": (
+            dict(validation_floors_manifest.get("experiment_budget_ledger") or {})
+            if validation_floors_manifest is not None
+            else {}
         ),
         "candidate_id_map": candidate_map,
         "summary": summary,
@@ -253,6 +412,12 @@ def validate_discovery_candidate_pack_bridge_manifest(manifest: Mapping[str, Any
         reasons.append("candidate_pack_written_must_be_false")
     if list(manifest.get("candidate_pack_paths") or []) != []:
         reasons.append("candidate_pack_paths_must_be_empty")
+    if manifest.get("exit_lab_gate_required") is not True:
+        reasons.append("exit_lab_gate_required_must_be_true")
+    if manifest.get("multiple_testing_gate_required") is not True:
+        reasons.append("multiple_testing_gate_required_must_be_true")
+    if manifest.get("validation_floor_gate_required") is not True:
+        reasons.append("validation_floor_gate_required_must_be_true")
     if any(field in manifest for field in LIVE_ADJACENT_VERSION_FIELDS):
         reasons.append("live_or_promotion_manifest_version_forbidden")
     return reasons
@@ -441,6 +606,375 @@ def _read_required_frame(raw_path: Any, reasons: list[str], name: str) -> pd.Dat
         return None
 
 
+def _exit_lab_evidence(path: Path | None) -> tuple[dict[str, Any] | None, pd.DataFrame | None, list[str]]:
+    reasons: list[str] = []
+    if path is None:
+        return None, None, ["exit_lab_manifest_required"]
+    if not path.exists():
+        return None, None, ["exit_lab_manifest_missing"]
+    try:
+        manifest = _read_json(path)
+    except ValueError:
+        return None, None, ["exit_lab_manifest_invalid_json"]
+    reasons.extend(_research_boundary_reasons(manifest, "exit_lab_manifest"))
+    if manifest.get("exit_lab_manifest_version") != DISCOVERY_EXIT_LAB_MANIFEST_VERSION:
+        reasons.append("exit_lab_manifest_version_required")
+    required_outputs = manifest.get("required_outputs") if isinstance(manifest.get("required_outputs"), Mapping) else {}
+    raw_path = required_outputs.get("discovery_exit_lab_candidate_gates")
+    if not raw_path:
+        reasons.append("exit_lab_candidate_gates_required")
+        return manifest, None, reasons
+    gate_path = Path(str(raw_path))
+    if not gate_path.exists():
+        reasons.append("exit_lab_candidate_gates_missing")
+        return manifest, None, reasons
+    expected_sha = str(manifest.get("discovery_exit_lab_candidate_gates_sha256") or "")
+    if expected_sha and expected_sha != _file_sha256(gate_path):
+        reasons.append("exit_lab_candidate_gates_sha256_mismatch")
+    try:
+        gates = pd.read_parquet(gate_path)
+    except Exception:
+        reasons.append("exit_lab_candidate_gates_invalid_parquet")
+        return manifest, None, reasons
+    reasons.extend(_exit_lab_candidate_gate_reasons(gates))
+    return manifest, gates, reasons
+
+
+def _multiple_testing_evidence(
+    path: Path | None,
+    *,
+    discovery_manifest_path: Path,
+) -> tuple[dict[str, Any] | None, pd.DataFrame | None, list[str]]:
+    reasons: list[str] = []
+    if path is None:
+        return None, None, ["multiple_testing_manifest_required"]
+    if not path.exists():
+        return None, None, ["multiple_testing_manifest_missing"]
+    try:
+        manifest = _read_json(path)
+    except ValueError:
+        return None, None, ["multiple_testing_manifest_invalid_json"]
+    reasons.extend(_research_boundary_reasons(manifest, "multiple_testing_manifest"))
+    if manifest.get("multiple_testing_manifest_version") != DISCOVERY_MULTIPLE_TESTING_MANIFEST_VERSION:
+        reasons.append("multiple_testing_manifest_version_required")
+    expected_source_sha = str(manifest.get("source_discovery_manifest_sha256") or "")
+    actual_source_sha = _file_sha256(discovery_manifest_path) if discovery_manifest_path.exists() else ""
+    if expected_source_sha and expected_source_sha != actual_source_sha:
+        reasons.append("multiple_testing_source_discovery_manifest_sha256_mismatch")
+    required_outputs = manifest.get("required_outputs") if isinstance(manifest.get("required_outputs"), Mapping) else {}
+    raw_path = required_outputs.get("discovery_multiple_testing_candidate_gates")
+    if not raw_path:
+        reasons.append("multiple_testing_candidate_gates_required")
+        return manifest, None, reasons
+    gate_path = Path(str(raw_path))
+    if not gate_path.exists():
+        reasons.append("multiple_testing_candidate_gates_missing")
+        return manifest, None, reasons
+    expected_sha = str(manifest.get("discovery_multiple_testing_candidate_gates_sha256") or "")
+    if expected_sha and expected_sha != _file_sha256(gate_path):
+        reasons.append("multiple_testing_candidate_gates_sha256_mismatch")
+    try:
+        gates = pd.read_parquet(gate_path)
+    except Exception:
+        reasons.append("multiple_testing_candidate_gates_invalid_parquet")
+        return manifest, None, reasons
+    reasons.extend(_multiple_testing_candidate_gate_reasons(gates))
+    return manifest, gates, reasons
+
+
+def _validation_floor_evidence(
+    path: Path | None,
+    *,
+    discovery_manifest_path: Path,
+) -> tuple[dict[str, Any] | None, pd.DataFrame | None, list[str]]:
+    reasons: list[str] = []
+    if path is None:
+        return None, None, ["validation_floor_manifest_required"]
+    if not path.exists():
+        return None, None, ["validation_floor_manifest_missing"]
+    try:
+        manifest = _read_json(path)
+    except ValueError:
+        return None, None, ["validation_floor_manifest_invalid_json"]
+    reasons.extend(_research_boundary_reasons(manifest, "validation_floor_manifest"))
+    if manifest.get("validation_floors_manifest_version") != DISCOVERY_VALIDATION_FLOORS_MANIFEST_VERSION:
+        reasons.append("validation_floor_manifest_version_required")
+    expected_source_sha = str(manifest.get("source_discovery_manifest_sha256") or "")
+    actual_source_sha = _file_sha256(discovery_manifest_path) if discovery_manifest_path.exists() else ""
+    if expected_source_sha and expected_source_sha != actual_source_sha:
+        reasons.append("validation_floor_source_discovery_manifest_sha256_mismatch")
+    required_outputs = manifest.get("required_outputs") if isinstance(manifest.get("required_outputs"), Mapping) else {}
+    raw_path = required_outputs.get("discovery_validation_floor_candidate_gates")
+    if not raw_path:
+        reasons.append("validation_floor_candidate_gates_required")
+        return manifest, None, reasons
+    gate_path = Path(str(raw_path))
+    if not gate_path.exists():
+        reasons.append("validation_floor_candidate_gates_missing")
+        return manifest, None, reasons
+    expected_sha = str(manifest.get("discovery_validation_floor_candidate_gates_sha256") or "")
+    if expected_sha and expected_sha != _file_sha256(gate_path):
+        reasons.append("validation_floor_candidate_gates_sha256_mismatch")
+    try:
+        gates = pd.read_parquet(gate_path)
+    except Exception:
+        reasons.append("validation_floor_candidate_gates_invalid_parquet")
+        return manifest, None, reasons
+    reasons.extend(_validation_floor_candidate_gate_reasons(gates))
+    return manifest, gates, reasons
+
+
+def _multiple_testing_candidate_gate_reasons(frame: pd.DataFrame) -> list[str]:
+    required = {
+        "candidate_id",
+        "record_sha256",
+        "multiple_testing_status",
+        "multiple_testing_reasons",
+        "research_only",
+        "observe_only",
+        "promotion_ready",
+    }
+    if not required.issubset(set(frame.columns)):
+        return ["multiple_testing_candidate_gates_schema_mismatch"]
+    reasons: list[str] = []
+    for column, expected, reason in (
+        ("research_only", True, "multiple_testing_candidate_gates_research_only_required"),
+        ("observe_only", True, "multiple_testing_candidate_gates_observe_only_required"),
+        ("promotion_ready", False, "multiple_testing_candidate_gates_promotion_ready_must_be_false"),
+    ):
+        if not frame[column].map(lambda value: bool(value) is expected).all():
+            reasons.append(reason)
+    return reasons
+
+
+def _validation_floor_candidate_gate_reasons(frame: pd.DataFrame) -> list[str]:
+    required = {
+        "candidate_id",
+        "record_sha256",
+        "validation_floor_status",
+        "research_maturity",
+        "validation_floor_reasons",
+        "research_only",
+        "observe_only",
+        "promotion_ready",
+    }
+    if not required.issubset(set(frame.columns)):
+        return ["validation_floor_candidate_gates_schema_mismatch"]
+    reasons: list[str] = []
+    for column, expected, reason in (
+        ("research_only", True, "validation_floor_candidate_gates_research_only_required"),
+        ("observe_only", True, "validation_floor_candidate_gates_observe_only_required"),
+        ("promotion_ready", False, "validation_floor_candidate_gates_promotion_ready_must_be_false"),
+    ):
+        if not frame[column].map(lambda value: bool(value) is expected).all():
+            reasons.append(reason)
+    return reasons
+
+
+def _exit_lab_candidate_gate_reasons(frame: pd.DataFrame) -> list[str]:
+    reasons: list[str] = []
+    required = {
+        "entry_candidate_id",
+        "candidate_id",
+        "entry_lead_evidence_sha256",
+        "exit_lab_status",
+        "exit_lab_gate_status",
+        "exit_lab_best_family",
+        "research_only",
+        "observe_only",
+        "promotion_ready",
+    }
+    if not required.issubset(set(frame.columns)):
+        return ["exit_lab_candidate_gates_schema_mismatch"]
+    for column, expected, reason in (
+        ("research_only", True, "exit_lab_candidate_gates_research_only_required"),
+        ("observe_only", True, "exit_lab_candidate_gates_observe_only_required"),
+        ("promotion_ready", False, "exit_lab_candidate_gates_promotion_ready_must_be_false"),
+    ):
+        if not frame[column].map(lambda value: bool(value) is expected).all():
+            reasons.append(reason)
+    return reasons
+
+
+def _exit_lab_gate_row(
+    gates: pd.DataFrame | None,
+    *,
+    discovery_candidate_id: str,
+    research_candidate_id: str,
+) -> Mapping[str, Any] | None:
+    if gates is None or gates.empty:
+        return None
+    matches = pd.DataFrame()
+    if "entry_candidate_id" in gates.columns:
+        matches = gates.loc[gates["entry_candidate_id"].astype(str).eq(discovery_candidate_id)].copy()
+    if matches.empty and "candidate_id" in gates.columns:
+        matches = gates.loc[gates["candidate_id"].astype(str).eq(research_candidate_id)].copy()
+    if matches.empty:
+        return None
+    sort_columns = [column for column in ("exit_lab_gate_status", "fixed_holding_score_delta") if column in matches.columns]
+    if sort_columns:
+        ascending = [False if column == "exit_lab_gate_status" else False for column in sort_columns]
+        matches = matches.sort_values(sort_columns, ascending=ascending, kind="mergesort")
+    return matches.iloc[0].to_dict()
+
+
+def _exit_lab_gate_reasons(record: Mapping[str, Any], gate: Mapping[str, Any] | None) -> list[str]:
+    if gate is None:
+        return ["exit_lab_candidate_gate_row_required"]
+    reasons: list[str] = []
+    expected_hash = discovery_entry_lead_evidence_sha256(record)
+    gate_hash = _gate_text(gate, "entry_lead_evidence_sha256") or _gate_text(gate, "entry_lead_record_sha256")
+    if gate_hash != expected_hash:
+        reasons.append("exit_lab_entry_lead_hash_mismatch")
+    status = _gate_text(gate, "exit_lab_status")
+    if status != "complete":
+        reasons.append("exit_lab_gate:exit_lab_status_not_complete")
+    gate_status = _gate_text(gate, "exit_lab_gate_status")
+    best_family = _gate_text(gate, "exit_lab_best_family")
+    gate_reasons = [reason for reason in _gate_text(gate, "exit_lab_reasons").split("|") if reason]
+    if best_family in {"fixed_holding", "fixed_holding_only"}:
+        reasons.append("exit_lab_gate:exit_lab_fixed_holding_only")
+    if "exit_lab_no_improving_exit_over_fixed_holding" in gate_reasons or _gate_text(gate, "no_improvement_reason"):
+        reasons.append("exit_lab_gate:exit_lab_no_improving_exit_over_fixed_holding")
+    if gate_status != "passed":
+        reasons.extend(f"exit_lab_gate:{reason}" for reason in gate_reasons)
+        if not gate_reasons:
+            reasons.append("exit_lab_gate:exit_lab_status_not_passed")
+    return list(dict.fromkeys(reasons))
+
+
+def _multiple_testing_gate_row(
+    gates: pd.DataFrame | None,
+    *,
+    discovery_candidate_id: str,
+) -> Mapping[str, Any] | None:
+    if gates is None or gates.empty or "candidate_id" not in gates.columns:
+        return None
+    matches = gates.loc[gates["candidate_id"].astype(str).eq(discovery_candidate_id)].copy()
+    if matches.empty:
+        return None
+    return matches.iloc[0].to_dict()
+
+
+def _validation_floor_gate_row(
+    gates: pd.DataFrame | None,
+    *,
+    discovery_candidate_id: str,
+) -> Mapping[str, Any] | None:
+    if gates is None or gates.empty or "candidate_id" not in gates.columns:
+        return None
+    matches = gates.loc[gates["candidate_id"].astype(str).eq(discovery_candidate_id)].copy()
+    if matches.empty:
+        return None
+    return matches.iloc[0].to_dict()
+
+
+def _multiple_testing_gate_reasons(record: Mapping[str, Any], gate: Mapping[str, Any] | None) -> list[str]:
+    if gate is None:
+        return ["multiple_testing_candidate_gate_row_required"]
+    reasons: list[str] = []
+    expected_record_sha = str(record.get("record_sha256") or "")
+    gate_record_sha = _gate_text(gate, "record_sha256")
+    if expected_record_sha and gate_record_sha != expected_record_sha:
+        reasons.append("multiple_testing_gate:record_sha256_mismatch")
+    status = _gate_text(gate, "multiple_testing_status")
+    gate_reasons = [reason for reason in _gate_text(gate, "multiple_testing_reasons").split("|") if reason]
+    if status != "passed":
+        if gate_reasons:
+            reasons.extend(f"multiple_testing_gate:{reason}" for reason in gate_reasons)
+        else:
+            reasons.append("multiple_testing_gate:multiple_testing_status_not_passed")
+    return list(dict.fromkeys(reasons))
+
+
+def _validation_floor_gate_reasons(record: Mapping[str, Any], gate: Mapping[str, Any] | None) -> list[str]:
+    if gate is None:
+        return ["validation_floor_candidate_gate_row_required"]
+    reasons: list[str] = []
+    expected_record_sha = str(record.get("record_sha256") or "")
+    gate_record_sha = _gate_text(gate, "record_sha256")
+    if expected_record_sha and gate_record_sha != expected_record_sha:
+        reasons.append("validation_floor_gate:record_sha256_mismatch")
+    status = _gate_text(gate, "validation_floor_status")
+    maturity = _gate_text(gate, "research_maturity")
+    gate_reasons = [reason for reason in _gate_text(gate, "validation_floor_reasons").split("|") if reason]
+    if maturity != MATURITY_CANDIDATE_READY:
+        reasons.append("validation_floor_gate:candidate_ready_validation_required")
+    if status != "passed":
+        if gate_reasons:
+            reasons.extend(f"validation_floor_gate:{reason}" for reason in gate_reasons)
+        else:
+            reasons.append("validation_floor_gate:validation_floor_status_not_passed")
+    return list(dict.fromkeys(reasons))
+
+
+def _gate_text(gate: Mapping[str, Any] | None, key: str) -> str:
+    if gate is None:
+        return ""
+    value = gate.get(key, "")
+    if value is None or pd.isna(value):
+        return ""
+    return str(value)
+
+
+def _exit_lab_summary(gates: pd.DataFrame | None, reasons: list[str]) -> dict[str, Any]:
+    if gates is None or gates.empty:
+        return {
+            "candidate_count": 0,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "reason_count": int(len(dict.fromkeys(reasons))),
+        }
+    passed = int(gates["exit_lab_gate_status"].astype(str).eq("passed").sum()) if "exit_lab_gate_status" in gates else 0
+    return {
+        "candidate_count": int(len(gates)),
+        "passed_count": passed,
+        "blocked_count": int(len(gates) - passed),
+        "reason_count": int(len(dict.fromkeys(reasons))),
+    }
+
+
+def _multiple_testing_summary(gates: pd.DataFrame | None, reasons: list[str]) -> dict[str, Any]:
+    if gates is None or gates.empty:
+        return {
+            "candidate_count": 0,
+            "passed_count": 0,
+            "blocked_count": 0,
+            "reason_count": int(len(dict.fromkeys(reasons))),
+        }
+    passed = int(gates["multiple_testing_status"].astype(str).eq("passed").sum()) if "multiple_testing_status" in gates else 0
+    return {
+        "candidate_count": int(len(gates)),
+        "passed_count": passed,
+        "blocked_count": int(len(gates) - passed),
+        "reason_count": int(len(dict.fromkeys(reasons))),
+    }
+
+
+def _validation_floor_summary(gates: pd.DataFrame | None, reasons: list[str]) -> dict[str, Any]:
+    if gates is None or gates.empty:
+        return {
+            "candidate_count": 0,
+            "candidate_ready_count": 0,
+            "screen_worthy_count": 0,
+            "diagnostic_count": 0,
+            "blocked_count": 0,
+            "reason_count": int(len(dict.fromkeys(reasons))),
+        }
+    maturity = gates["research_maturity"].astype(str) if "research_maturity" in gates.columns else pd.Series(dtype=str)
+    ready = int(maturity.eq(MATURITY_CANDIDATE_READY).sum())
+    screen = int(maturity.eq("screen-worthy").sum())
+    diagnostic = int(maturity.eq("diagnostic").sum())
+    return {
+        "candidate_count": int(len(gates)),
+        "candidate_ready_count": ready,
+        "screen_worthy_count": screen,
+        "diagnostic_count": diagnostic,
+        "blocked_count": int(len(gates) - ready),
+        "reason_count": int(len(dict.fromkeys(reasons))),
+    }
+
+
 def _research_boundary_reasons(payload: Mapping[str, Any], prefix: str) -> list[str]:
     reasons: list[str] = []
     if any(field in payload for field in LIVE_ADJACENT_VERSION_FIELDS):
@@ -542,6 +1076,31 @@ def _eligibility_columns() -> list[str]:
         "bridge_reasons",
         "research_candidate_gate_status",
         "research_candidate_gate_reasons",
+        "exit_lab_status",
+        "exit_lab_gate_status",
+        "exit_lab_reasons",
+        "exit_lab_best_family",
+        "exit_lab_best_comparison_id",
+        "exit_lab_best_exit_policy_id",
+        "exit_vs_fixed_final_score_delta",
+        "exit_lab_cost_stress_status",
+        "entry_lead_evidence_sha256",
+        "exit_lab_no_improvement_reasons",
+        "multiple_testing_status",
+        "multiple_testing_reasons",
+        "multiple_testing_effective_trial_count",
+        "multiple_testing_sampled_fraction",
+        "multiple_testing_stability_neighborhood_size",
+        "multiple_testing_latest_window_only_penalty",
+        "validation_floor_status",
+        "research_maturity",
+        "validation_floor_reasons",
+        "validation_floor_independent_event_count",
+        "validation_floor_overlap_ratio",
+        "validation_floor_split_pass_ratio",
+        "validation_floor_side_concentration",
+        "validation_floor_cost_stress_survival",
+        "validation_floor_stability_neighborhood_size",
         "discovery_run_id",
         "cycle_manifest_path",
         "candidate_pack_written",

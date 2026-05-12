@@ -444,6 +444,67 @@ def test_historical_research_cycle_spec_accepts_exit_policy_candidates(tmp_path:
     assert payload["exits"]["exit_policies"][3]["exit_policy_params"]["max_unrealized_edge_bps"] == 5.0
 
 
+def test_historical_research_cycle_spec_accepts_remaining_edge_exit_policies(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "remaining-edge-exit-policy-cycle",
+            "data": {"synthetic_fixture": True},
+            "exit_policies": [
+                {
+                    "exit_policy_id": "basis_normalization_exit_v1",
+                    "exit_policy_params": {
+                        "normalization_threshold_bps": 1.0,
+                        "min_entry_basis_abs_bps": 5.0,
+                    },
+                },
+                {
+                    "exit_policy_id": "premium_normalization_exit_v1",
+                    "exit_policy_params": {
+                        "normalization_threshold_bps": 1.0,
+                        "min_entry_premium_abs_bps": 5.0,
+                    },
+                },
+                {
+                    "exit_policy_id": "gmm_transition_exit_v1",
+                    "exit_policy_params": {},
+                },
+                {
+                    "exit_policy_id": "knn_remaining_edge_exit_v1",
+                    "exit_policy_params": {
+                        "min_remaining_edge_bps": 2.0,
+                        "min_neighbor_count": 5,
+                    },
+                },
+                {
+                    "exit_policy_id": "knn_dynamic_barriers_v1",
+                    "exit_policy_params": {
+                        "target_return": 0.012,
+                        "stop_return": 0.008,
+                        "min_target_return": 0.002,
+                        "max_target_return": 0.05,
+                    },
+                },
+            ],
+        },
+    )
+
+    spec = HistoricalResearchCycleSpec.from_path(spec_path)
+    payload = spec.to_payload()
+
+    assert [policy["exit_policy_id"] for policy in spec.exits.exit_policies] == [
+        "basis_normalization_exit_v1",
+        "premium_normalization_exit_v1",
+        "gmm_transition_exit_v1",
+        "knn_remaining_edge_exit_v1",
+        "knn_dynamic_barriers_v1",
+    ]
+    assert payload["exits"]["exit_policies"][0]["exit_policy_params"]["min_entry_basis_abs_bps"] == 5.0
+    assert payload["exits"]["exit_policies"][1]["exit_policy_params"]["min_entry_premium_abs_bps"] == 5.0
+    assert payload["exits"]["exit_policies"][3]["exit_policy_params"]["min_neighbor_count"] == 5
+    assert payload["exits"]["exit_policies"][4]["exit_policy_params"]["target_return"] == 0.012
+
+
 def test_historical_research_cycle_spec_accepts_lower_timeframe_triple_barrier_exit(tmp_path: Path) -> None:
     lower_path = tmp_path / "lower_timeframe_bars.parquet"
     spec_path = _write_json(

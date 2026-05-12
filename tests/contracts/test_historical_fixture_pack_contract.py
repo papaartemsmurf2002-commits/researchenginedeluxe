@@ -10,8 +10,10 @@ import pytest
 
 from tradingbotsuite.data.historical_fixture_pack import (
     HISTORICAL_FIXTURE_PACK_MANIFEST_VERSION,
+    assert_public_archive_fixture_ready,
     assert_valid_historical_fixture_pack_manifest,
     build_provider_kline_fixture_pack,
+    validate_public_archive_fixture_readiness,
     validate_historical_fixture_pack_manifest,
 )
 from tradingbotsuite.main import _run_build_historical_fixture_pack_command
@@ -86,6 +88,100 @@ def _write_fixture_pack(tmp_path: Path, **manifest_updates: object) -> Path:
     return manifest_path
 
 
+def _write_public_archive_ready_fixture(tmp_path: Path, *, symbol: str) -> Path:
+    manifest_path = _write_fixture_pack(
+        tmp_path,
+        fixture_id=f"{symbol.lower()}-public-archive-ready-v1",
+        symbol=symbol,
+        source={
+            "source_type": "public_archive",
+            "source_name": "binance_vision",
+            "source_raw": "binance_vision_klines",
+            "data_family": "kline",
+            "event_time_field": "open_time_ms",
+            "coverage_scope": "public_archive_partition",
+            "latest_window_only": False,
+            "source_sha256": "sha256:public-archive-source",
+            "checksum_status": "verified",
+            "checksum_url": "https://data.binance.vision/data/futures/um/monthly/klines/BTCUSDT/15m/example.zip.CHECKSUM",
+            "non_promotable_reasons": ["receive_time_unavailable", "compact_fixture_pack_not_oos_acceptance_evidence"],
+        },
+        omitted_optional_families={
+            "funding_rate": "not_supplied_to_public_archive_readiness_fixture",
+            "premium_index": "not_supplied_to_public_archive_readiness_fixture",
+            "open_interest": "not_supplied_to_public_archive_readiness_fixture",
+            "liquidation": "not_supplied_to_public_archive_readiness_fixture",
+        },
+        research_evidence_limitations=[
+            "compact_fixture_for_contract_and_full_cycle_execution_only",
+            "not_sufficient_for_oos_acceptance",
+            "not_sufficient_for_performance_claims",
+            "not_promotion_ready",
+        ],
+        window_selection={
+            "regime_windows": {
+                "trend_bull": {"start_time_ms": 1_712_649_600_000, "end_time_ms": 1_712_739_600_000},
+                "drawdown_bear": {"start_time_ms": 1_712_739_600_000, "end_time_ms": 1_712_829_600_000},
+                "range_chop": {"start_time_ms": 1_712_829_600_000, "end_time_ms": 1_712_919_600_000},
+                "high_vol_shock": {"start_time_ms": 1_712_919_600_000, "end_time_ms": 1_713_009_600_000},
+            }
+        },
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["families"]["bars"]["gap_check_status"] = "checked_fixed_interval"
+    manifest["families"]["bars"]["gap_count"] = 0
+    manifest["families"]["bars"]["duplicate_count"] = 0
+    lower = _lower_timeframe_bars()
+    lower["symbol"] = symbol
+    lower_path = manifest_path.parent / "lower_timeframe_bars.parquet"
+    lower.to_parquet(lower_path, index=False)
+    manifest["families"]["lower_timeframe_bars"] = {
+        "path": lower_path.name,
+        "data_family": "lower_timeframe_bars",
+        "interval": "1m",
+        "event_time_field": "bar_time_ms",
+        "required": False,
+        "sha256": f"sha256:{_file_sha256(lower_path)}",
+        "row_count": len(lower),
+        "columns": list(lower.columns),
+        "gap_check_status": "checked_fixed_interval",
+        "gap_count": 0,
+    }
+    agg_trade = pd.DataFrame(
+        {
+            "event_time_ms": [1_712_649_600_000, 1_712_649_601_000],
+            "symbol": [symbol, symbol],
+            "aggregate_trade_id": [1, 2],
+            "quantity": [0.5, 0.7],
+            "quote_volume": [50.0, 72.0],
+            "taker_buy_quote_volume": [30.0, 20.0],
+        }
+    )
+    agg_path = manifest_path.parent / "agg_trade.parquet"
+    agg_trade.to_parquet(agg_path, index=False)
+    manifest["families"]["agg_trade"] = {
+        "path": agg_path.name,
+        "data_family": "agg_trade",
+        "context_family_role": "perp_context",
+        "coverage_scope": "public_archive_partition",
+        "latest_window_only": False,
+        "source_name": "binance_vision",
+        "feature_claim_scope": "trade_flow_proxy_not_order_book_imbalance_or_ofi",
+        "retention_policy": {
+            "scope": "public_archive_partition",
+            "claim": "coverage_limited_to_downloaded_archive_partition",
+        },
+        "required": False,
+        "sha256": f"sha256:{_file_sha256(agg_path)}",
+        "row_count": len(agg_trade),
+        "columns": list(agg_trade.columns),
+        "duplicate_count": 0,
+        "gap_check_status": "not_applicable_variable_cadence",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    return manifest_path
+
+
 def test_historical_fixture_pack_accepts_minimal_btc_pack(tmp_path: Path) -> None:
     manifest_path = _write_fixture_pack(tmp_path)
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -98,6 +194,74 @@ def test_historical_fixture_pack_accepts_minimal_btc_pack(tmp_path: Path) -> Non
     assert validation.row_count == 96
     assert validation.cycle_dataset_path == manifest_path.parent / "cycle_dataset.parquet"
     assert assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path).valid is True
+
+
+@pytest.mark.parametrize("symbol", ["BTCUSDT", "ETHUSDT"])
+def test_public_archive_fixture_readiness_accepts_durable_btc_eth_pack(tmp_path: Path, symbol: str) -> None:
+    manifest_path = _write_public_archive_ready_fixture(tmp_path, symbol=symbol)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    readiness = assert_public_archive_fixture_ready(manifest, manifest_path=manifest_path)
+
+    assert readiness.ready is True
+    assert readiness.status == "durable_public_archive_ready"
+    assert readiness.symbol == symbol
+    assert readiness.required_families == ("bars", "lower_timeframe_bars", "agg_trade")
+    assert readiness.durable_context_families == ("agg_trade",)
+    assert readiness.diagnostic_context_families == ()
+    assert readiness.to_payload()["research_only"] is True
+    assert readiness.to_payload()["promotion_ready"] is False
+
+
+def test_public_archive_fixture_readiness_keeps_rest_latest_window_context_diagnostic(tmp_path: Path) -> None:
+    manifest_path = _write_public_archive_ready_fixture(tmp_path, symbol="BTCUSDT")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    funding = pd.DataFrame({"event_time_ms": [1_712_649_600_000], "symbol": ["BTCUSDT"], "funding_rate": [0.0001]})
+    funding_path = manifest_path.parent / "funding_rate.parquet"
+    funding.to_parquet(funding_path, index=False)
+    manifest["families"]["funding_rate"] = {
+        "path": funding_path.name,
+        "data_family": "funding_rate",
+        "context_family_role": "perp_context",
+        "coverage_scope": "latest_window_backfill",
+        "latest_window_only": True,
+        "source_name": "binance_usdm_rest",
+        "required": False,
+        "sha256": f"sha256:{_file_sha256(funding_path)}",
+        "row_count": len(funding),
+        "columns": list(funding.columns),
+    }
+
+    readiness = validate_public_archive_fixture_readiness(manifest, manifest_path=manifest_path)
+
+    assert readiness.ready is False
+    assert "latest_window_context_diagnostic_only:funding_rate" in readiness.reasons
+    assert readiness.diagnostic_context_families == ("funding_rate",)
+
+
+def test_public_archive_fixture_readiness_requires_lower_tf_aggtrade_and_window_selection(tmp_path: Path) -> None:
+    manifest_path = _write_fixture_pack(
+        tmp_path,
+        source={
+            "source_name": "binance_vision",
+            "source_raw": "binance_vision_klines",
+            "data_family": "kline",
+            "coverage_scope": "public_archive_partition",
+            "source_sha256": "sha256:source",
+            "checksum_status": "verified",
+        },
+        omitted_optional_families={},
+        research_evidence_limitations=["not_promotion_ready"],
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    readiness = validate_public_archive_fixture_readiness(manifest, manifest_path=manifest_path)
+
+    assert readiness.ready is False
+    assert "public_archive_required_family_missing:lower_timeframe_bars" in readiness.reasons
+    assert "public_archive_required_family_missing:agg_trade" in readiness.reasons
+    assert "window_selection_required" in readiness.reasons
+    assert "bars_gap_check_evidence_required" in readiness.reasons
 
 
 def test_checked_in_btcusdt_fixture_pack_manifest_validates() -> None:

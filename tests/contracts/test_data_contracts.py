@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from tradingbotsuite.data.contracts import (
@@ -12,6 +15,9 @@ from tradingbotsuite.data.contracts import (
     registered_only_manifest,
     validate_data_manifest,
 )
+
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _valid_manifest(**updates: object) -> dict[str, object]:
@@ -82,6 +88,23 @@ def test_data_sources_include_implemented_and_registered_only_providers() -> Non
     assert descriptors["crypto_lake"].implemented_for_ingestion is True
     assert descriptors["hyperliquid_archive"].implemented_for_ingestion is False
     assert descriptors["hyperliquid_archive"].diagnostic_only_by_default is True
+
+
+def test_durable_public_archive_readiness_configs_are_research_only_templates() -> None:
+    for symbol in ("btcusdt", "ethusdt"):
+        path = REPO_ROOT / "configs" / "research" / f"durable_public_archive_fixture_readiness_{symbol}_v1.json"
+        payload = json.loads(path.read_text(encoding="utf-8"))
+
+        assert payload["research_only"] is True
+        assert payload["observe_only"] is True
+        assert payload["promotion_ready"] is False
+        assert payload["base_interval"] == "15m"
+        assert payload["required_primary_source"] == "binance_vision"
+        assert payload["required_families"] == ["bars", "lower_timeframe_bars", "agg_trade"]
+        assert payload["required_context"]["agg_trade"]["feature_claim_scope"] == (
+            "trade_flow_proxy_not_order_book_imbalance_or_ofi"
+        )
+        assert "binance_usdm_rest_latest_window_context" in payload["diagnostic_only_sources"]
 
 
 def test_valid_data_manifest_is_research_only_and_non_promotable_without_receive_time() -> None:

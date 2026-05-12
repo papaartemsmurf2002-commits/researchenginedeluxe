@@ -10,12 +10,29 @@ import pytest
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.main import _run_discovery_candidate_pack_bridge_command
+from tradingbotsuite.research_discovery import candidate_pack_bridge
 from tradingbotsuite.research_discovery.candidate_pack_bridge import (
     DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION,
     evaluate_discovery_candidate_pack_eligibility,
     write_discovery_candidate_pack_eligibility,
 )
-from tradingbotsuite.research_discovery.runner import run_discovery
+from tradingbotsuite.research_discovery.exit_lab import (
+    DiscoveryExitLabSpec,
+    build_discovery_exit_lab,
+    discovery_entry_lead_evidence_sha256,
+    write_discovery_exit_lab_artifacts,
+)
+from tradingbotsuite.research_discovery.multiple_testing import (
+    DiscoveryMultipleTestingSpec,
+    build_discovery_multiple_testing_report,
+    write_discovery_multiple_testing_artifacts,
+)
+from tradingbotsuite.research_discovery.validation_floors import (
+    DiscoveryValidationFloorSpec,
+    build_discovery_validation_floor_report,
+    write_discovery_validation_floor_artifacts,
+)
+from tradingbotsuite.research_discovery.runner import LEDGER_COLUMNS, run_discovery
 
 from tests.research_artifacts.test_candidate_pack import _cycle_outputs
 
@@ -48,6 +65,133 @@ def _write_spec(
     return path
 
 
+def _write_exit_lab(
+    tmp_path: Path,
+    discovery,
+    *,
+    research_candidate_id: str = "candidate-1",
+    treatment_score: float = 0.14,
+    fixed_holding_only: bool = False,
+    lead_hash: str | None = None,
+):
+    spec = DiscoveryExitLabSpec.from_path(Path("configs/discovery/discovery_exit_lab_v4.json"))
+    if fixed_holding_only:
+        spec = DiscoveryExitLabSpec(
+            lab_id=spec.lab_id,
+            entry_group_columns=spec.entry_group_columns,
+            comparisons=(spec.comparisons[0],),
+        )
+    interesting = pd.read_parquet(discovery.interesting_candidates_path)
+    lead = interesting.iloc[0].to_dict()
+    entry_hash = lead_hash or discovery_entry_lead_evidence_sha256(lead)
+    common = {
+        "entry_candidate_id": str(lead["candidate_id"]),
+        "research_candidate_id": research_candidate_id,
+        "entry_lead_evidence_sha256": entry_hash,
+        "strategy_id": "hmm_knn_local_analog_filter_v2",
+        "feature_set_id": "features_discovery_screen_v1",
+        "holding_window": "4h",
+        "parameters_json": "{}",
+        "feature_column_set_id": str(lead.get("feature_column_set_id") or ""),
+        "regime_mode": str(lead.get("regime_mode") or ""),
+        "distance_metric": str(lead.get("distance_metric") or ""),
+        "k": int(float(lead.get("k") or 0)),
+        "cost_stress_status": "passed",
+    }
+    rows = [
+        {
+            **common,
+            "candidate_id": f"{research_candidate_id}-fixed",
+            "exit_policy_id": "fixed_holding_window",
+            "exit_policy_params_json": "{}",
+            "final_score": 0.10,
+            "trade_count": 12,
+        }
+    ]
+    if not fixed_holding_only:
+        rows.append(
+            {
+                **common,
+                "candidate_id": f"{research_candidate_id}-barrier",
+                "exit_policy_id": "triple_barrier_atr",
+                "exit_policy_params_json": "{}",
+                "final_score": treatment_score,
+                "trade_count": 10,
+            }
+        )
+    result = build_discovery_exit_lab(pd.DataFrame(rows), spec=spec)
+    return write_discovery_exit_lab_artifacts(tmp_path / f"exit-lab-{research_candidate_id}", result)
+
+
+def _write_multiple_testing(tmp_path: Path, discovery, *, blocked: bool = False):
+    interesting = pd.read_parquet(discovery.interesting_candidates_path)
+    interesting["split_window_concentration"] = 0.25
+    interesting["side_concentration"] = 0.55
+    spec = DiscoveryMultipleTestingSpec(
+        declared_search_space=10_000 if blocked else 3,
+        latest_window_only=blocked,
+        min_stability_neighborhood_size=3 if blocked else 1,
+        max_best_candidate_concentration=0.50 if blocked else 1.0,
+    )
+    result = build_discovery_multiple_testing_report(interesting, spec=spec)
+    result.manifest["source_discovery_manifest_path"] = str(discovery.manifest_path)
+    result.manifest["source_discovery_manifest_sha256"] = _sha256(discovery.manifest_path)
+    return write_discovery_multiple_testing_artifacts(tmp_path / "multiple-testing", result)
+
+
+def _write_validation_floors(
+    tmp_path: Path,
+    discovery,
+    *,
+    blocked: bool = False,
+    record_sha: str | None = None,
+):
+    interesting = pd.read_parquet(discovery.interesting_candidates_path)
+    frame = interesting.copy()
+    if record_sha is not None:
+        frame.loc[0, "record_sha256"] = record_sha
+    frame["split_pass_ratio"] = 0.80 if not blocked else 0.20
+    frame["side_concentration"] = 0.55
+    frame["cost_stress_survival"] = 1.0
+    frame["stability_neighborhood_size"] = 4
+    frame["baseline_comparator_coverage_status"] = "complete"
+    frame["expectancy_vs_no_trade"] = 0.01
+    frame["directional_comparator_status"] = "complete"
+    frame["no_regime_baseline_status"] = "complete"
+    frame["exit_lab_status"] = "complete"
+    frame["filter_ablation_status"] = "edge_improving"
+    frame["feature_ablation_status"] = "passed"
+    if blocked:
+        frame["independent_event_count"] = 25
+        frame["overlap_ratio"] = 0.90
+        frame["latest_window_only"] = True
+    else:
+        frame["independent_event_count"] = 260
+        frame["overlap_ratio"] = 0.10
+        frame["latest_window_only"] = False
+    spec = DiscoveryValidationFloorSpec(declared_search_space=100)
+    result = build_discovery_validation_floor_report(
+        frame,
+        spec=spec,
+        source_discovery_manifest_path=discovery.manifest_path,
+    )
+    return write_discovery_validation_floor_artifacts(tmp_path / "validation-floors", result)
+
+
+def _sha256(path: Path) -> str:
+    from hashlib import sha256
+
+    digest = sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def test_bridge_ledger_columns_match_runner_columns() -> None:
+    assert tuple(candidate_pack_bridge.DISCOVERY_LEDGER_COLUMNS) == tuple(LEDGER_COLUMNS)
+
+
 def test_bridge_writes_eligibility_only_for_existing_gate_pass(tmp_path: Path) -> None:
     discovery = run_discovery(
         spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
@@ -55,10 +199,16 @@ def test_bridge_writes_eligibility_only_for_existing_gate_pass(tmp_path: Path) -
         clock=_clock,
     )
     cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery)
 
     result = evaluate_discovery_candidate_pack_eligibility(
         discovery_manifest_path=discovery.manifest_path,
         cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        validation_floors_manifest_path=validation_floors.manifest_path,
         candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
     )
     artifact = write_discovery_candidate_pack_eligibility(output_dir=tmp_path / "bridge-output", result=result)
@@ -71,10 +221,272 @@ def test_bridge_writes_eligibility_only_for_existing_gate_pass(tmp_path: Path) -
     assert manifest["promotion_ready"] is False
     assert manifest["candidate_pack_written"] is False
     assert manifest["candidate_pack_paths"] == []
+    assert manifest["exit_lab_gate_required"] is True
     assert manifest["summary"]["eligible_count"] == 1
     assert eligibility.loc[0, "bridge_status"] == "eligible"
+    assert eligibility.loc[0, "exit_lab_status"] == "complete"
+    assert eligibility.loc[0, "exit_lab_best_family"] == "barrier"
+    assert eligibility.loc[0, "multiple_testing_status"] == "passed"
+    assert eligibility.loc[0, "research_maturity"] == "candidate-ready"
+    assert eligibility.loc[0, "validation_floor_status"] == "passed"
     assert bool(eligibility.loc[0, "candidate_pack_written"]) is False
     assert not (cycle_manifest.parent / "research_candidate_pack").exists()
+
+
+def test_bridge_blocks_missing_exit_lab_even_when_cycle_gate_passes(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert result.eligibility.loc[0, "bridge_status"] == "blocked"
+    assert "exit_lab_manifest_required" in result.eligibility.loc[0, "bridge_reasons"]
+    assert result.eligibility.loc[0, "research_candidate_gate_status"] == "passed"
+
+
+def test_bridge_blocks_missing_multiple_testing_even_when_exit_and_cycle_pass(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert result.eligibility.loc[0, "bridge_status"] == "blocked"
+    assert "multiple_testing_manifest_required" in result.eligibility.loc[0, "bridge_reasons"]
+    assert result.eligibility.loc[0, "research_candidate_gate_status"] == "passed"
+
+
+def test_bridge_blocks_missing_validation_floors_even_when_other_gates_pass(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert result.eligibility.loc[0, "bridge_status"] == "blocked"
+    assert "validation_floor_manifest_required" in result.eligibility.loc[0, "bridge_reasons"]
+    assert result.eligibility.loc[0, "research_candidate_gate_status"] == "passed"
+
+
+def test_bridge_blocks_validation_floor_failures(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery, blocked=True)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        validation_floors_manifest_path=validation_floors.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    reasons = result.eligibility.loc[0, "bridge_reasons"]
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert result.eligibility.loc[0, "research_maturity"] == "diagnostic"
+    assert "validation_floor_gate:candidate_ready_validation_required" in reasons
+    assert "validation_floor_gate:independent_event_count_below_floor" in reasons
+    assert "validation_floor_gate:overlap_ratio_above_ceiling" in reasons
+    assert "validation_floor_gate:latest_window_only_diagnostic" in reasons
+
+
+def test_bridge_blocks_validation_floor_record_hash_mismatch(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery, record_sha="wrong-record")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        validation_floors_manifest_path=validation_floors.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "validation_floor_gate:record_sha256_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_multiple_testing_gate_failures(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery, blocked=True)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    reasons = result.eligibility.loc[0, "bridge_reasons"]
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "multiple_testing_gate:sampled_fraction_below_candidate_ready_floor" in reasons
+    assert "multiple_testing_gate:latest_window_only_evidence" in reasons
+
+
+def test_bridge_blocks_multiple_testing_source_manifest_hash_mismatch(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    manifest = json.loads(multiple_testing.manifest_path.read_text(encoding="utf-8"))
+    manifest["source_discovery_manifest_sha256"] = "wrong-source"
+    multiple_testing.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "multiple_testing_source_discovery_manifest_sha256_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_multiple_testing_candidate_record_hash_mismatch(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    gates = pd.read_parquet(multiple_testing.candidate_gates_path)
+    gates.loc[0, "record_sha256"] = "wrong-record"
+    gates.to_parquet(multiple_testing.candidate_gates_path, index=False)
+    manifest = json.loads(multiple_testing.manifest_path.read_text(encoding="utf-8"))
+    manifest["discovery_multiple_testing_candidate_gates_sha256"] = _sha256(multiple_testing.candidate_gates_path)
+    multiple_testing.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "multiple_testing_gate:record_sha256_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_exit_lab_entry_lead_hash_mismatch(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery, lead_hash="wrong-hash")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "exit_lab_entry_lead_hash_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_fixed_holding_only_exit_lab(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery, fixed_holding_only=True)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "exit_lab_gate:exit_lab_fixed_holding_only" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_exit_lab_without_improving_exit(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery, treatment_score=0.10)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "exit_lab_gate:exit_lab_no_improving_exit_over_fixed_holding" in result.eligibility.loc[0, "bridge_reasons"]
 
 
 def test_bridge_blocks_discovery_only_candidate_without_cycle_manifest(tmp_path: Path) -> None:
@@ -152,6 +564,28 @@ def test_bridge_blocks_tampered_interesting_ledger_candidate(tmp_path: Path) -> 
         discovery_manifest_path=discovery.manifest_path,
         cycle_manifest_path=cycle_manifest,
         candidate_id_map={"fabricated-candidate": "candidate-1", "bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "discovery_ledger_records_mismatch:interesting_candidates" in result.manifest["global_reasons"]
+    assert result.eligibility["bridge_status"].eq("blocked").all()
+
+
+def test_bridge_blocks_tampered_discovery_screen_score_v2(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    interesting = pd.read_parquet(discovery.interesting_candidates_path)
+    interesting.loc[0, "discovery_screen_score_v2"] = 999.0
+    interesting.to_parquet(discovery.interesting_candidates_path, index=False)
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
     )
 
     assert result.manifest["summary"]["eligible_count"] == 0
@@ -253,10 +687,14 @@ def test_bridge_propagates_existing_candidate_gate_reasons(tmp_path: Path) -> No
         clock=_clock,
     )
     cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture", synthetic=True)
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
 
     result = evaluate_discovery_candidate_pack_eligibility(
         discovery_manifest_path=discovery.manifest_path,
         cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
         candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
     )
 
@@ -273,11 +711,17 @@ def test_bridge_cli_payload_writes_audit_artifacts_without_pack_paths(tmp_path: 
         clock=_clock,
     )
     cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery)
 
     payload = _run_discovery_candidate_pack_bridge_command(
         Namespace(
             discovery_manifest=str(discovery.manifest_path),
             cycle_manifest=str(cycle_manifest),
+            exit_lab_manifest=str(exit_lab.manifest_path),
+            multiple_testing_manifest=str(multiple_testing.manifest_path),
+            validation_floors_manifest=str(validation_floors.manifest_path),
             output_dir=str(tmp_path / "research" / "cli-bridge"),
             candidate_id_map_json=json.dumps({"bridge-run-candidate-000001": "candidate-1"}),
         )
@@ -298,11 +742,17 @@ def test_bridge_cli_default_output_is_isolated_under_research_root(tmp_path: Pat
         clock=_clock,
     )
     cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery)
 
     payload = _run_discovery_candidate_pack_bridge_command(
         Namespace(
             discovery_manifest=str(discovery.manifest_path),
             cycle_manifest=str(cycle_manifest),
+            exit_lab_manifest=str(exit_lab.manifest_path),
+            multiple_testing_manifest=str(multiple_testing.manifest_path),
+            validation_floors_manifest=str(validation_floors.manifest_path),
             output_dir=None,
             candidate_id_map_json=json.dumps({"bridge-run-candidate-000001": "candidate-1"}),
         )
@@ -327,6 +777,8 @@ def test_bridge_cli_rejects_output_dir_outside_research_root(tmp_path: Path, mon
             Namespace(
                 discovery_manifest=str(discovery.manifest_path),
                 cycle_manifest=str(cycle_manifest),
+                exit_lab_manifest=None,
+                multiple_testing_manifest=None,
                 output_dir=str(tmp_path / "outside"),
                 candidate_id_map_json=json.dumps({"bridge-run-candidate-000001": "candidate-1"}),
             )

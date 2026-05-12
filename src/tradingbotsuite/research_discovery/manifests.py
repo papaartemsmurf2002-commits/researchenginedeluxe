@@ -43,6 +43,21 @@ def discovery_manifest_payload(
         "data": spec.data.to_payload(),
         "data_evidence": dict(data_evidence or {}),
         "search": spec.search.to_payload(),
+        "regime_truthfulness": {
+            "configured_regime_modes": list(spec.search.regime_modes),
+            "configured_regime_detector_types": sorted(
+                {"none" if mode == "none" else "gmm" for mode in spec.search.regime_modes}
+            ),
+            "current_gmm_backend": "sklearn.mixture.GaussianMixture",
+            "true_hmm_backend_used": False,
+        },
+        "event_accounting_policy": {
+            "policy_version": "discovery-independent-event-accounting-v1",
+            "legacy_density_score_retained": True,
+            "active_score_field": "discovery_screen_score_v2",
+            "final_score_maps_to": "discovery_screen_score_v2",
+            "overlapping_bar_signals_count_as_independent_trades": False,
+        },
         "execution": spec.execution.to_payload(),
         "feature_column_set_evidence": dict(feature_column_set_evidence or {}),
         "state": dict(state),

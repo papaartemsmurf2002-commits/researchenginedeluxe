@@ -1,0 +1,374 @@
+{
+  "manifest_version": "btc-eth-candidate-blueprints-v1",
+  "blueprint_matrix_id": "btc_eth_candidate_blueprints_v1",
+  "work_packet": "WPR94-13-btc-eth-candidate-blueprint-configs",
+  "date": "2026-05-12",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_written": false,
+  "candidate_pack_eligible": false,
+  "latest_window_rest_data_diagnostic_only": true,
+  "true_hmm_backend_used": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "plugin_implementation_changes": [],
+  "source_scope_policy": {
+    "latest_window_rest_data_diagnostic_only": true,
+    "latest_window_candidate_pack_eligible": false,
+    "durable_public_archive_required_for_candidate_ready": true,
+    "missing_derivatives_context_policy": "unknown_with_quality_flags_not_zero_fill",
+    "aggtrade_scope": "trade_flow_proxy_not_order_book_imbalance_or_true_ofi",
+    "liquidation_and_depth_scope": "diagnostic_deferred_until_durable_data_and_health_gates_exist"
+  },
+  "global_requirements": {
+    "required_comparator_roles": [
+      "no_trade_baseline",
+      "transparent_strategy_comparator"
+    ],
+    "candidate_bridge_requirements": [
+      "exit_lab_complete",
+      "transparent_comparator_complete",
+      "no_trade_comparator_complete",
+      "no_regime_baseline_complete_when_regime_claimed",
+      "independent_event_accounting_complete",
+      "feature_ablation_complete",
+      "filter_ablation_complete",
+      "exit_ablation_complete",
+      "multiple_testing_and_stability_complete",
+      "validation_floors_candidate_ready",
+      "durable_non_latest_window_fixture_evidence"
+    ],
+    "regime_policy": {
+      "regime_detector_type_options": [
+        "none",
+        "gmm"
+      ],
+      "supported_regime_modes": [
+        "no_regime",
+        "gmm_gate_only",
+        "gmm_same_regime_neighbor",
+        "gmm_all_regime_with_gate"
+      ],
+      "current_regime_backend": "gmm",
+      "current_regime_backend_is_true_hmm": false,
+      "no_regime_baseline_required_when_regime_claimed": true
+    },
+    "knn_policy": {
+      "standalone_alpha_allowed": false,
+      "local_analog_filter_only": true,
+      "active_without_materialized_prediction_overlay": false,
+      "deferred_until": "split_safe_materialized_prediction_overlay_available"
+    }
+  },
+  "symbol_activation": {
+    "BTCUSDT": {
+      "cycle_config": "full_cycle_btcusdt_candidate_blueprints_v1.json",
+      "maturity_label": "diagnostic_screening_only",
+      "candidate_pack_eligible": false,
+      "blocker_codes": [
+        "latest_window_context_non_diagnostic_claim",
+        "durable_multi_window_candidate_evidence_missing"
+      ]
+    },
+    "ETHUSDT": {
+      "cycle_config": "full_cycle_ethusdt_candidate_blueprints_blocked_v1.json",
+      "maturity_label": "blocked",
+      "candidate_pack_eligible": false,
+      "blocker_codes": [
+        "durable_eth_fixture_readiness_not_recorded"
+      ]
+    }
+  },
+  "blueprints": [
+    {
+      "blueprint_id": "perp_basis_convergence_v3",
+      "family_id": "perp_basis_convergence",
+      "priority": "P1",
+      "maturity_label": "diagnostic_blueprint",
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "candidate_pack_eligible": false,
+      "executable_strategy_plugin_id": "perp_basis_convergence_v2",
+      "new_strategy_plugin_required": false,
+      "primary_executable_feature_set_id": "features_perp_context_v2",
+      "source_audit_reference_feature_set_id": "features_perp_context_v3",
+      "required_context": [
+        "basis_or_premium_context",
+        "funding_context",
+        "oi_context",
+        "source_eligibility_flags",
+        "context_missing_quality_flags"
+      ],
+      "comparators": {
+        "no_trade": {
+          "strategy_id": "baseline_no_trade",
+          "role": "no_trade_baseline"
+        },
+        "transparent": [
+          {
+            "strategy_id": "funding_basis_v1",
+            "role": "transparent_strategy_comparator",
+            "feature_set_id": "features_full_context_no_wt"
+          },
+          {
+            "strategy_id": "volatility_breakout_v1",
+            "role": "transparent_price_path_comparator",
+            "feature_set_id": "features_price_trend_vol"
+          }
+        ]
+      },
+      "regime_requirements": {
+        "regime_claim_allowed_only_after_no_regime_baseline": true,
+        "required_baseline_mode": "no_regime",
+        "comparison_modes": [
+          "gmm_gate_only",
+          "gmm_same_regime_neighbor",
+          "gmm_all_regime_with_gate"
+        ],
+        "regime_detector_type_when_claimed": "gmm",
+        "true_hmm_backend_used": false
+      },
+      "knn_overlay": {
+        "active": false,
+        "standalone_alpha_allowed": false,
+        "deferred_until": "split_safe_materialized_prediction_overlay_available",
+        "blocker_code": "missing_materialized_prediction_overlay"
+      },
+      "required_ablations": [
+        {
+          "ablation_id": "no_basis_premium_context",
+          "description": "Remove basis and premium columns or replace them with unknown quality flags.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_funding_context",
+          "description": "Remove funding signal and funding-cost context.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_oi_context",
+          "description": "Remove OI level and OI-delta context.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_regime",
+          "description": "Run the same candidate with regime_detector_type none and regime_mode no_regime.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_knn",
+          "description": "Run without any KNN local analog filter or remaining-edge exit.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "fixed_hold_only",
+          "description": "Use fixed_holding_window only as the exit reference.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "basis_premium_normalization_exits",
+          "description": "Compare basis_normalization_exit_v1 and premium_normalization_exit_v1 against fixed hold.",
+          "required_for_candidate_ready": true
+        }
+      ],
+      "exit_evidence_required": [
+        "fixed_holding_window",
+        "basis_normalization_exit_v1",
+        "premium_normalization_exit_v1"
+      ]
+    },
+    {
+      "blueprint_id": "oi_flow_breakout_v3",
+      "family_id": "oi_flow_breakout",
+      "priority": "P1",
+      "maturity_label": "diagnostic_blueprint",
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "candidate_pack_eligible": false,
+      "executable_strategy_plugin_id": "oi_flow_breakout_v2",
+      "new_strategy_plugin_required": false,
+      "primary_executable_feature_set_id": "features_perp_context_v2",
+      "diagnostic_orderflow_feature_set_id": "features_aggtrade_orderflow_v1",
+      "required_context": [
+        "oi_context",
+        "aggtrade_trade_flow_proxy_context",
+        "funding_context",
+        "source_eligibility_flags",
+        "context_missing_quality_flags"
+      ],
+      "comparators": {
+        "no_trade": {
+          "strategy_id": "baseline_no_trade",
+          "role": "no_trade_baseline"
+        },
+        "transparent": [
+          {
+            "strategy_id": "volatility_breakout_v1",
+            "role": "transparent_strategy_comparator",
+            "feature_set_id": "features_price_trend_vol"
+          },
+          {
+            "strategy_id": "funding_basis_v1",
+            "role": "transparent_perp_context_comparator",
+            "feature_set_id": "features_full_context_no_wt"
+          }
+        ]
+      },
+      "regime_requirements": {
+        "regime_claim_allowed_only_after_no_regime_baseline": true,
+        "required_baseline_mode": "no_regime",
+        "comparison_modes": [
+          "gmm_gate_only",
+          "gmm_same_regime_neighbor",
+          "gmm_all_regime_with_gate"
+        ],
+        "regime_detector_type_when_claimed": "gmm",
+        "true_hmm_backend_used": false
+      },
+      "knn_overlay": {
+        "active": false,
+        "standalone_alpha_allowed": false,
+        "deferred_until": "split_safe_materialized_prediction_overlay_available",
+        "blocker_code": "missing_materialized_prediction_overlay"
+      },
+      "required_ablations": [
+        {
+          "ablation_id": "no_oi_context",
+          "description": "Remove OI level, OI-delta, and OI-over-volume context.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_aggtrade_flow",
+          "description": "Remove aggTrade trade-flow proxy columns while keeping price and perp context fixed.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_funding_context",
+          "description": "Remove funding signal and funding-cost context.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_regime",
+          "description": "Run the same candidate with regime_detector_type none and regime_mode no_regime.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_knn",
+          "description": "Run without any KNN local analog filter or remaining-edge exit.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_oi_contraction_exit",
+          "description": "Compare OI-contraction exit evidence against the same entries without that exit.",
+          "required_for_candidate_ready": true
+        }
+      ],
+      "exit_evidence_required": [
+        "fixed_holding_window",
+        "oi_contraction_exit_v1"
+      ]
+    },
+    {
+      "blueprint_id": "funding_crowding_fade_v3",
+      "family_id": "funding_crowding_fade",
+      "priority": "P2",
+      "maturity_label": "diagnostic_blueprint",
+      "research_only": true,
+      "observe_only": true,
+      "promotion_ready": false,
+      "candidate_pack_eligible": false,
+      "executable_strategy_plugin_id": "funding_crowding_fade_v2",
+      "new_strategy_plugin_required": false,
+      "primary_executable_feature_set_id": "features_perp_context_v2",
+      "source_audit_reference_feature_set_id": "features_perp_context_v3",
+      "required_context": [
+        "funding_context",
+        "basis_or_premium_context",
+        "oi_context",
+        "cost_model_context",
+        "source_eligibility_flags",
+        "context_missing_quality_flags"
+      ],
+      "comparators": {
+        "no_trade": {
+          "strategy_id": "baseline_no_trade",
+          "role": "no_trade_baseline"
+        },
+        "transparent": [
+          {
+            "strategy_id": "funding_basis_v1",
+            "role": "transparent_strategy_comparator",
+            "feature_set_id": "features_full_context_no_wt"
+          },
+          {
+            "strategy_id": "range_reversion_v1",
+            "role": "transparent_price_path_comparator",
+            "feature_set_id": "features_price_trend_vol"
+          }
+        ]
+      },
+      "regime_requirements": {
+        "regime_claim_allowed_only_after_no_regime_baseline": true,
+        "required_baseline_mode": "no_regime",
+        "comparison_modes": [
+          "gmm_gate_only",
+          "gmm_same_regime_neighbor",
+          "gmm_all_regime_with_gate"
+        ],
+        "regime_detector_type_when_claimed": "gmm",
+        "true_hmm_backend_used": false
+      },
+      "knn_overlay": {
+        "active": false,
+        "standalone_alpha_allowed": false,
+        "deferred_until": "split_safe_materialized_prediction_overlay_available",
+        "blocker_code": "missing_materialized_prediction_overlay"
+      },
+      "required_ablations": [
+        {
+          "ablation_id": "no_funding_context",
+          "description": "Remove funding rate, funding z-score, funding timing, and expected funding-cost context.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_crowding_context",
+          "description": "Remove crowding proxy context such as basis, premium, OI, and taker-flow proxy fields.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "cost_drag_only_control",
+          "description": "Verify any apparent edge is not explained by funding cost drag alone.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "crowding_overfit_check",
+          "description": "Require split and window stability for crowding thresholds before interpreting them as signal.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_regime",
+          "description": "Run the same candidate with regime_detector_type none and regime_mode no_regime.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "no_knn",
+          "description": "Run without any KNN local analog filter or remaining-edge exit.",
+          "required_for_candidate_ready": true
+        },
+        {
+          "ablation_id": "fixed_hold_only",
+          "description": "Use fixed_holding_window only as the exit reference.",
+          "required_for_candidate_ready": true
+        }
+      ],
+      "exit_evidence_required": [
+        "fixed_holding_window",
+        "funding_aware_exit_v1"
+      ]
+    }
+  ]
+}

@@ -87,10 +87,68 @@ def test_real_discovery_configs_generate_non_placeholder_search_templates() -> N
     assert deep.execution.persist_trial_artifacts == "interesting_only"
     assert len(standard_templates) == standard.budget.max_trials
     assert len(deep_templates) == deep.budget.max_trials
-    assert {template.candidate_family for template in standard_templates} == {"hmm_knn_entry_discovery"}
-    assert {template.payload["trial_kind"] for template in standard_templates[:10]} == {"hmm_knn_entry_discovery"}
+    assert {template.candidate_family for template in standard_templates} == {"regime_knn_entry_discovery"}
+    assert {template.payload["trial_kind"] for template in standard_templates[:10]} == {"regime_knn_entry_discovery"}
+    assert set(standard.search.regime_modes) == {
+        "none",
+        "gmm_gate_only",
+        "gmm_same_regime_neighbors",
+        "gmm_all_regime_neighbors_with_gate",
+    }
+    assert all(template.payload["true_hmm_backend_used"] is False for template in standard_templates[:10])
     assert {template.payload["feature_column_set_id"] for template in standard_templates}.issuperset(
         {"price_trend_vol", "compact_wt3d_base", "alternative_non_wt_price_state"}
     )
     assert any(template.payload["hmm_state_count"] != 4 for template in deep_templates)
     assert any(template.payload["min_neighbor_count"] != 4 for template in deep_templates)
+
+
+def test_real_discovery_templates_expand_explicit_regime_modes(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "regime-modes.json",
+        {
+            "run_id": "regime-modes",
+            "discovery_mode": "entry_discovery_standard",
+            "feature_column_set_ids": ["price_trend_vol"],
+            "budget": {"max_trials": 4, "rng_seed": 1},
+            "search": {
+                "hmm_state_counts": [4],
+                "hmm_posterior_thresholds": [0.6],
+                "hmm_entropy_thresholds": [0.78],
+                "label_horizons": ["4h"],
+                "k_values": [8],
+                "min_neighbor_counts": [4],
+                "distance_metrics": ["euclidean"],
+                "probability_thresholds": [0.55],
+                "expected_value_thresholds": [0.0],
+                "min_neighbor_agreements": [0.55],
+                "min_distance_qualities": [0.01],
+                "vote_margin_thresholds": [0.05],
+                "regime_modes": [
+                    "none",
+                    "gmm_gate_only",
+                    "gmm_same_regime_neighbors",
+                    "gmm_all_regime_neighbors_with_gate",
+                ],
+            },
+        },
+    )
+    spec = DiscoveryRunSpec.from_path(spec_path)
+
+    templates = generated_trial_templates(spec)
+    by_mode = {str(template.payload["regime_mode"]): template.payload for template in templates}
+
+    assert set(by_mode) == {
+        "none",
+        "gmm_gate_only",
+        "gmm_same_regime_neighbors",
+        "gmm_all_regime_neighbors_with_gate",
+    }
+    assert by_mode["none"]["regime_detector_type"] == "none"
+    assert by_mode["none"]["regime_gate_enabled"] is False
+    assert by_mode["none"]["same_regime_neighbor_pool_enabled"] is False
+    assert by_mode["gmm_same_regime_neighbors"]["regime_detector_type"] == "gmm"
+    assert by_mode["gmm_same_regime_neighbors"]["regime_gate_enabled"] is True
+    assert by_mode["gmm_same_regime_neighbors"]["same_regime_neighbor_pool_enabled"] is True
+    assert by_mode["gmm_all_regime_neighbors_with_gate"]["same_regime_neighbor_pool_enabled"] is False
+    assert {payload["true_hmm_backend_used"] for payload in by_mode.values()} == {False}

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -9,6 +10,8 @@ import pytest
 from tradingbotsuite.data.historical_fixture_pack import assert_valid_historical_fixture_pack_manifest
 from tradingbotsuite.features.builders import materialize_fixture_family_context, materialize_registered_feature_set
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
+from tradingbotsuite.research_cycle.runner import _load_cycle_dataset
+from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec
 from tradingbotsuite.strategies.funding_crowding_fade import REQUIRED_FUNDING_CROWDING_FADE_COLUMNS
 from tradingbotsuite.strategies.funding_window_timing import REQUIRED_FUNDING_WINDOW_TIMING_COLUMNS
 from tradingbotsuite.strategies.hmm_knn_local_analog_filter import REQUIRED_HMM_KNN_LOCAL_ANALOG_COLUMNS
@@ -45,12 +48,410 @@ REQUIRED_STAGE6_STRATEGIES = {
     "baseline_no_trade",
 }
 
+STRATEGY_FAMILY_MATRIX_PATH = Path("configs/research/strategy_family_matrix_existing_plugins_v1.json")
+BTCUSDT_STRATEGY_FAMILY_CYCLE_PATH = Path("configs/research/full_cycle_btcusdt_strategy_family_matrix_v1.json")
+BTC_ETH_CANDIDATE_BLUEPRINTS_PATH = Path("configs/research/btc_eth_candidate_blueprints_v1.json")
+BTCUSDT_CANDIDATE_BLUEPRINT_CYCLE_PATH = Path("configs/research/full_cycle_btcusdt_candidate_blueprints_v1.json")
+ETHUSDT_CANDIDATE_BLUEPRINT_BLOCKED_PATH = Path("configs/research/full_cycle_ethusdt_candidate_blueprints_blocked_v1.json")
+KNN_OVERLAY_STRATEGY_ID = "hmm_knn_local_analog_filter_v2"
+
+
+def _load_research_json(path: Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _plugin_ref_strategy_id(ref: dict[str, Any]) -> str:
+    return str(ref.get("strategy_id") or "").strip()
+
+
+def _plugin_ref_feature_set(ref: dict[str, Any], family: dict[str, Any]) -> str:
+    return str(ref.get("feature_set_id") or family["feature_set_id"])
+
+
+def _plugin_ref_holding_windows(ref: dict[str, Any], family: dict[str, Any]) -> tuple[str, ...]:
+    raw_windows = ref.get("holding_windows") or family["holding_windows"]
+    return tuple(str(item) for item in raw_windows)
+
+
+def _matrix_plugin_refs(family: dict[str, Any]) -> list[dict[str, Any]]:
+    refs = [
+        dict(family["no_trade_comparator"]),
+        *[dict(item) for item in family.get("selected_strategy_plugins", [])],
+        *[dict(item) for item in family.get("transparent_comparators", [])],
+    ]
+    overlay_policy = family.get("overlay_policy") or {}
+    refs.extend(dict(item) for item in overlay_policy.get("required_companion_strategy_plugins", []))
+    return refs
+
+
+def _assert_strategy_ref_is_supported(ref: dict[str, Any], family: dict[str, Any]) -> None:
+    strategy_id = _plugin_ref_strategy_id(ref)
+    feature_set_id = _plugin_ref_feature_set(ref, family)
+    for holding_window in _plugin_ref_holding_windows(ref, family):
+        plugin = get_strategy_plugin(
+            strategy_id,
+            config={"feature_set_id": feature_set_id, "holding_period": holding_window},
+        )
+        assert feature_set_id in plugin.required_feature_sets
+        assert holding_window in plugin.allowed_holding_periods
+
+
+def _blueprint_by_id(manifest: dict[str, Any], blueprint_id: str) -> dict[str, Any]:
+    return next(
+        blueprint
+        for blueprint in manifest["blueprints"]
+        if blueprint["blueprint_id"] == blueprint_id
+    )
+
 
 def test_strategy_registry_contains_stage_six_plugins() -> None:
     registry = strategy_registry()
 
     assert REQUIRED_STAGE6_STRATEGIES <= set(registry)
     assert "baseline_trend" in registry
+
+
+def test_strategy_family_matrix_references_existing_plugins_and_comparator_roles() -> None:
+    matrix = _load_research_json(STRATEGY_FAMILY_MATRIX_PATH)
+    registry = strategy_registry()
+
+    assert matrix["research_only"] is True
+    assert matrix["observe_only"] is True
+    assert matrix["promotion_ready"] is False
+    assert matrix["order_placement_allowed"] is False
+    assert matrix["live_config_writes_allowed"] is False
+    assert matrix["sizing_policy_changed"] is False
+    assert matrix["required_comparator_roles"] == ["no_trade_baseline", "transparent_baseline"]
+    assert matrix["global_comparators"]["no_trade"]["strategy_id"] in registry
+    assert {
+        _plugin_ref_strategy_id(ref)
+        for ref in matrix["global_comparators"]["transparent"]
+    } <= set(registry)
+
+    for family in matrix["families"]:
+        assert family["research_only"] is True
+        assert family["observe_only"] is True
+        assert family["promotion_ready"] is False
+        assert family["selected_strategy_plugins"]
+
+        no_trade = family["no_trade_comparator"]
+        assert no_trade["role"] == "no_trade_baseline"
+        assert no_trade["strategy_id"] == "baseline_no_trade"
+        transparent = family["transparent_comparators"]
+        assert transparent
+        assert all(item["role"] == "transparent_baseline" for item in transparent)
+        assert all(item["strategy_id"] != "baseline_no_trade" for item in transparent)
+
+        for ref in _matrix_plugin_refs(family):
+            assert _plugin_ref_strategy_id(ref) in registry
+            _assert_strategy_ref_is_supported(ref, family)
+
+
+def test_strategy_family_matrix_keeps_knn_overlay_from_running_alone() -> None:
+    matrix = _load_research_json(STRATEGY_FAMILY_MATRIX_PATH)
+    knn_families = [
+        family
+        for family in matrix["families"]
+        if family.get("family_role") == "knn_overlay"
+    ]
+
+    assert knn_families
+    for family in knn_families:
+        selected_ids = {_plugin_ref_strategy_id(ref) for ref in family["selected_strategy_plugins"]}
+        overlay_policy = family["overlay_policy"]
+        companion_ids = {
+            _plugin_ref_strategy_id(ref)
+            for ref in overlay_policy["required_companion_strategy_plugins"]
+        }
+
+        assert selected_ids == {KNN_OVERLAY_STRATEGY_ID}
+        assert overlay_policy["standalone_allowed"] is False
+        assert overlay_policy["requires_materialized_prediction_overlay"] is True
+        assert companion_ids
+        assert KNN_OVERLAY_STRATEGY_ID not in companion_ids
+        assert family["transparent_comparators"]
+
+
+def test_strategy_family_matrix_marks_liquidation_family_diagnostic_only() -> None:
+    matrix = _load_research_json(STRATEGY_FAMILY_MATRIX_PATH)
+    liquidation_family = next(
+        family
+        for family in matrix["families"]
+        if family["family_id"] == "diagnostic_liquidation"
+    )
+
+    assert liquidation_family["diagnostic_only"] is True
+    assert liquidation_family["candidate_pack_eligible"] is False
+    assert liquidation_family["research_evidence_scope"] == "diagnostic_only"
+    assert liquidation_family["promotion_ready"] is False
+    assert {
+        _plugin_ref_strategy_id(ref)
+        for ref in liquidation_family["selected_strategy_plugins"]
+    } == {"liquidation_absorption_classifier_v1"}
+    assert liquidation_family["no_trade_comparator"]["strategy_id"] == "baseline_no_trade"
+    assert liquidation_family["transparent_comparators"]
+
+
+def test_strategy_family_matrix_current_regime_wording_is_gmm_truthful() -> None:
+    matrix = _load_research_json(STRATEGY_FAMILY_MATRIX_PATH)
+    regime_family = next(
+        family
+        for family in matrix["families"]
+        if family["family_id"] == "current_gmm_regime"
+    )
+
+    assert regime_family["regime_detector_type"] == "gmm"
+    assert regime_family["no_regime_baseline_required"] is True
+    assert regime_family["no_regime_comparator"]["regime_detector_type"] == "none"
+    assert regime_family["no_regime_comparator"]["regime_mode"] == "no_regime"
+    assert {
+        "no_regime",
+        "gmm_gate_only",
+        "gmm_same_regime_neighbor",
+        "gmm_all_regime_with_gate",
+    } <= set(regime_family["regime_modes"])
+    assert regime_family["current_regime_evidence_only"] is True
+    assert regime_family["true_hmm_backend_used"] is False
+    assert "gmm" in regime_family["display_name"].lower()
+    assert "hmm" not in regime_family["display_name"].lower()
+    assert "not true-hmm" in regime_family["evidence_note"].lower()
+
+
+def test_btcusdt_strategy_family_cycle_config_parses_research_only_existing_plugins() -> None:
+    payload = _load_research_json(BTCUSDT_STRATEGY_FAMILY_CYCLE_PATH)
+    spec = HistoricalResearchCycleSpec.from_path(BTCUSDT_STRATEGY_FAMILY_CYCLE_PATH)
+    registry = strategy_registry()
+
+    assert payload["research_only"] is True
+    assert payload["observe_only"] is True
+    assert payload["promotion_ready"] is False
+    assert payload["order_placement_allowed"] is False
+    assert payload["live_config_writes_allowed"] is False
+    assert payload["sizing_policy_changed"] is False
+    assert payload["promotion_artifact_policy"]["writes_promotion_artifacts"] is False
+    assert payload["promotion_artifact_policy"]["promotion_ready"] is False
+    assert payload["promotion_artifact_policy"]["research_candidate_pack_scope"] == "disabled_latest_window_diagnostic_only"
+    assert payload["data"]["evidence_scope"] == "latest_window_diagnostic_only"
+    assert payload["data"]["candidate_pack_eligible"] is False
+    assert payload["data"]["latest_window_rest_data_diagnostic_only"] is True
+    assert (BTCUSDT_STRATEGY_FAMILY_CYCLE_PATH.parent / payload["matrix_manifest_path"]).exists()
+
+    assert spec.symbol == "BTCUSDT"
+    assert set(spec.strategies) <= set(registry)
+    assert "baseline_no_trade" in spec.strategies
+    assert KNN_OVERLAY_STRATEGY_ID not in spec.strategies
+    assert payload["features"]["materialized_prediction_overlays"] == []
+    assert payload["features"]["knn_overlay_readiness"]["active_in_cycle"] is False
+    assert {
+        item["strategy_id"]
+        for item in payload["deferred_strategies"]
+    } == {KNN_OVERLAY_STRATEGY_ID}
+    assert payload["strategy_family_requirements"]["knn_overlay_active_in_cycle"] is False
+    assert payload["strategy_family_requirements"]["knn_overlay_blocker_code"] == "missing_materialized_prediction_overlay"
+    assert payload["strategy_family_requirements"]["knn_overlay_standalone_allowed"] is False
+    assert payload["strategy_family_requirements"]["true_hmm_backend_used"] is False
+    assert payload["strategy_family_requirements"]["regime_detector_type"] == "gmm"
+    assert payload["strategy_family_requirements"]["regime_detector_type_options"] == ["none", "gmm"]
+    assert payload["strategy_family_requirements"]["no_regime_baseline_required_when_regime_claimed"] is True
+    assert set(payload["strategy_family_requirements"]["transparent_comparator_strategy_ids"]) <= set(spec.strategies)
+    assert set(payload["strategy_family_requirements"]["knn_overlay_companion_strategy_ids"]) <= set(spec.strategies)
+    assert KNN_OVERLAY_STRATEGY_ID not in set(payload["strategy_family_requirements"]["knn_overlay_companion_strategy_ids"])
+
+    exit_policy_ids = {policy["exit_policy_id"] for policy in spec.exits.exit_policies}
+    assert {
+        "fixed_holding_window",
+        "basis_normalization_exit_v1",
+        "premium_normalization_exit_v1",
+        "gmm_transition_exit_v1",
+    } <= exit_policy_ids
+    assert {
+        policy["exit_policy_id"]
+        for policy in payload["exits"]["deferred_exit_policies"]
+    } == {"knn_remaining_edge_exit_v1", "knn_dynamic_barriers_v1"}
+    assert all(
+        policy["blocker_code"] == "missing_materialized_prediction_overlay"
+        for policy in payload["exits"]["deferred_exit_policies"]
+    )
+
+
+def test_btc_eth_candidate_blueprint_manifest_has_required_ablations_and_boundaries() -> None:
+    manifest = _load_research_json(BTC_ETH_CANDIDATE_BLUEPRINTS_PATH)
+    registry = strategy_registry()
+
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["order_placement_allowed"] is False
+    assert manifest["live_config_writes_allowed"] is False
+    assert manifest["sizing_policy_changed"] is False
+    assert manifest["candidate_pack_written"] is False
+    assert manifest["latest_window_rest_data_diagnostic_only"] is True
+    assert manifest["true_hmm_backend_used"] is False
+    assert manifest["source_scope_policy"]["aggtrade_scope"] == "trade_flow_proxy_not_order_book_imbalance_or_true_ofi"
+
+    blueprints = {
+        blueprint["blueprint_id"]: blueprint
+        for blueprint in manifest["blueprints"]
+    }
+    assert set(blueprints) == {
+        "perp_basis_convergence_v3",
+        "oi_flow_breakout_v3",
+        "funding_crowding_fade_v3",
+    }
+
+    bridge_requirements = set(manifest["global_requirements"]["candidate_bridge_requirements"])
+    assert {
+        "exit_lab_complete",
+        "transparent_comparator_complete",
+        "no_trade_comparator_complete",
+        "no_regime_baseline_complete_when_regime_claimed",
+        "feature_ablation_complete",
+        "filter_ablation_complete",
+        "exit_ablation_complete",
+        "multiple_testing_and_stability_complete",
+        "validation_floors_candidate_ready",
+        "durable_non_latest_window_fixture_evidence",
+    } <= bridge_requirements
+    for blueprint in blueprints.values():
+        assert blueprint["research_only"] is True
+        assert blueprint["observe_only"] is True
+        assert blueprint["promotion_ready"] is False
+        assert blueprint["candidate_pack_eligible"] is False
+        assert blueprint["executable_strategy_plugin_id"] in registry
+        assert blueprint["comparators"]["no_trade"]["strategy_id"] == "baseline_no_trade"
+        assert blueprint["comparators"]["transparent"]
+        assert all(item["strategy_id"] in registry for item in blueprint["comparators"]["transparent"])
+        assert blueprint["regime_requirements"]["regime_claim_allowed_only_after_no_regime_baseline"] is True
+        assert blueprint["regime_requirements"]["required_baseline_mode"] == "no_regime"
+        assert blueprint["regime_requirements"]["regime_detector_type_when_claimed"] == "gmm"
+        assert blueprint["regime_requirements"]["true_hmm_backend_used"] is False
+        assert blueprint["knn_overlay"]["standalone_alpha_allowed"] is False
+        assert blueprint["knn_overlay"]["active"] is False
+        assert blueprint["knn_overlay"]["deferred_until"] == "split_safe_materialized_prediction_overlay_available"
+
+    basis = blueprints["perp_basis_convergence_v3"]
+    assert basis["executable_strategy_plugin_id"] == "perp_basis_convergence_v2"
+    assert {
+        item["ablation_id"]
+        for item in basis["required_ablations"]
+    } >= {
+        "no_basis_premium_context",
+        "no_funding_context",
+        "no_oi_context",
+        "no_regime",
+        "no_knn",
+        "fixed_hold_only",
+        "basis_premium_normalization_exits",
+    }
+
+    oi_flow = blueprints["oi_flow_breakout_v3"]
+    assert oi_flow["executable_strategy_plugin_id"] == "oi_flow_breakout_v2"
+    assert {
+        item["ablation_id"]
+        for item in oi_flow["required_ablations"]
+    } >= {
+        "no_oi_context",
+        "no_aggtrade_flow",
+        "no_funding_context",
+        "no_regime",
+        "no_knn",
+        "no_oi_contraction_exit",
+    }
+    assert oi_flow["diagnostic_orderflow_feature_set_id"] == "features_aggtrade_orderflow_v1"
+
+    funding = blueprints["funding_crowding_fade_v3"]
+    assert funding["executable_strategy_plugin_id"] == "funding_crowding_fade_v2"
+    assert {
+        item["ablation_id"]
+        for item in funding["required_ablations"]
+    } >= {
+        "no_funding_context",
+        "no_crowding_context",
+        "cost_drag_only_control",
+        "crowding_overfit_check",
+        "no_regime",
+        "no_knn",
+        "fixed_hold_only",
+    }
+
+
+def test_btcusdt_candidate_blueprint_cycle_parses_as_diagnostic_research_only() -> None:
+    payload = _load_research_json(BTCUSDT_CANDIDATE_BLUEPRINT_CYCLE_PATH)
+    spec = HistoricalResearchCycleSpec.from_path(BTCUSDT_CANDIDATE_BLUEPRINT_CYCLE_PATH)
+    registry = strategy_registry()
+
+    assert payload["research_only"] is True
+    assert payload["observe_only"] is True
+    assert payload["promotion_ready"] is False
+    assert payload["order_placement_allowed"] is False
+    assert payload["live_config_writes_allowed"] is False
+    assert payload["sizing_policy_changed"] is False
+    assert payload["candidate_pack_written"] is False
+    assert payload["data"]["evidence_scope"] == "latest_window_diagnostic_only"
+    assert payload["data"]["candidate_pack_eligible"] is False
+    assert "latest_window_context_non_diagnostic_claim" in payload["data"]["candidate_blocker_codes"]
+    assert payload["features"]["knn_overlay_readiness"]["active_in_cycle"] is False
+    assert payload["strategy_family_requirements"]["no_regime_baseline_required_when_regime_claimed"] is True
+    assert payload["strategy_family_requirements"]["true_hmm_backend_used"] is False
+    assert payload["blueprint_manifest_path"] == "btc_eth_candidate_blueprints_v1.json"
+    assert (BTCUSDT_CANDIDATE_BLUEPRINT_CYCLE_PATH.parent / payload["blueprint_manifest_path"]).exists()
+
+    assert spec.symbol == "BTCUSDT"
+    assert set(spec.strategies) <= set(registry)
+    assert "baseline_no_trade" in spec.strategies
+    assert {"perp_basis_convergence_v2", "oi_flow_breakout_v2", "funding_crowding_fade_v2"} <= set(spec.strategies)
+    assert not any(strategy_id.endswith("_v3") for strategy_id in spec.strategies)
+    assert KNN_OVERLAY_STRATEGY_ID not in spec.strategies
+    assert payload["deferred_strategies"][0]["strategy_id"] == KNN_OVERLAY_STRATEGY_ID
+    for mapping in payload["candidate_blueprint_mappings"]:
+        strategy_id = mapping["executable_strategy_plugin_id"]
+        feature_set_id = mapping["feature_set_id"]
+        for holding_window in spec.holding_windows:
+            plugin = get_strategy_plugin(
+                strategy_id,
+                config={"feature_set_id": feature_set_id, "holding_period": holding_window},
+            )
+            assert feature_set_id in plugin.required_feature_sets
+            assert holding_window in plugin.allowed_holding_periods
+
+    exit_policy_ids = {policy["exit_policy_id"] for policy in spec.exits.exit_policies}
+    assert {
+        "fixed_holding_window",
+        "basis_normalization_exit_v1",
+        "premium_normalization_exit_v1",
+        "oi_contraction_exit_v1",
+        "funding_aware_exit_v1",
+    } <= exit_policy_ids
+    assert {
+        policy["exit_policy_id"]
+        for policy in payload["exits"]["deferred_exit_policies"]
+    } >= {"knn_remaining_edge_exit_v1", "knn_dynamic_barriers_v1"}
+
+
+def test_ethusdt_candidate_blueprint_cycle_is_blocked_until_durable_fixture_ready(tmp_path: Path) -> None:
+    payload = _load_research_json(ETHUSDT_CANDIDATE_BLUEPRINT_BLOCKED_PATH)
+    spec = HistoricalResearchCycleSpec.from_path(ETHUSDT_CANDIDATE_BLUEPRINT_BLOCKED_PATH)
+
+    assert payload["research_only"] is True
+    assert payload["observe_only"] is True
+    assert payload["promotion_ready"] is False
+    assert payload["order_placement_allowed"] is False
+    assert payload["live_config_writes_allowed"] is False
+    assert payload["sizing_policy_changed"] is False
+    assert payload["symbol"] == "ETHUSDT"
+    assert payload["blocked"] is True
+    assert payload["candidate_pack_eligible"] is False
+    assert payload["activation_requires"]["durable_fixture_readiness_recorded"] is False
+    assert "durable_eth_fixture_readiness_not_recorded" in payload["blocker_codes"]
+    assert payload["blueprint_manifest_path"] == "btc_eth_candidate_blueprints_v1.json"
+    assert payload["data"]["synthetic_fixture"] is False
+    assert payload["data"]["synthetic_fallback_allowed"] is False
+    assert payload["data"]["dataset_manifest_paths"]
+    assert spec.data.synthetic_fixture is False
+    assert spec.data.dataset_manifest_paths
+    assert not any(path.exists() for path in spec.data.dataset_manifest_paths)
+    with pytest.raises(ValueError, match="no usable dataset path"):
+        _load_cycle_dataset(spec, output_dir=tmp_path)
 
 
 def test_strategy_configs_load_and_match_registry() -> None:

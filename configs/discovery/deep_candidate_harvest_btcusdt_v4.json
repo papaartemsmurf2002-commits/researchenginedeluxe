@@ -114,6 +114,12 @@
       true,
       false
     ],
+    "regime_modes": [
+      "none",
+      "gmm_gate_only",
+      "gmm_same_regime_neighbors",
+      "gmm_all_regime_neighbors_with_gate"
+    ],
     "min_splits": 4,
     "purge_embargo_bars": 8,
     "min_trade_count": 30,

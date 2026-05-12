@@ -20,7 +20,69 @@ SUPPORTED_DISCOVERY_MODES = (
     "deep_candidate_harvest",
     "promotion_gate_research_only",
 )
+SUPPORTED_REGIME_MODES = (
+    "none",
+    "gmm_gate_only",
+    "gmm_same_regime_neighbors",
+    "gmm_all_regime_neighbors_with_gate",
+)
 SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryRegimeModeSettings:
+    regime_mode: str
+    regime_detector_type: str
+    regime_gate_enabled: bool
+    same_regime_neighbor_pool_enabled: bool
+    true_hmm_backend_used: bool = False
+
+    @property
+    def same_regime_only(self) -> bool:
+        return self.same_regime_neighbor_pool_enabled
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "regime_mode": self.regime_mode,
+            "regime_detector_type": self.regime_detector_type,
+            "regime_gate_enabled": self.regime_gate_enabled,
+            "same_regime_neighbor_pool_enabled": self.same_regime_neighbor_pool_enabled,
+            "same_regime_only": self.same_regime_only,
+            "true_hmm_backend_used": self.true_hmm_backend_used,
+        }
+
+
+def regime_mode_settings(regime_mode: str) -> DiscoveryRegimeModeSettings:
+    normalized = str(regime_mode or "").strip().lower()
+    if normalized == "none":
+        return DiscoveryRegimeModeSettings(
+            regime_mode="none",
+            regime_detector_type="none",
+            regime_gate_enabled=False,
+            same_regime_neighbor_pool_enabled=False,
+        )
+    if normalized == "gmm_gate_only":
+        return DiscoveryRegimeModeSettings(
+            regime_mode="gmm_gate_only",
+            regime_detector_type="gmm",
+            regime_gate_enabled=True,
+            same_regime_neighbor_pool_enabled=False,
+        )
+    if normalized == "gmm_same_regime_neighbors":
+        return DiscoveryRegimeModeSettings(
+            regime_mode="gmm_same_regime_neighbors",
+            regime_detector_type="gmm",
+            regime_gate_enabled=True,
+            same_regime_neighbor_pool_enabled=True,
+        )
+    if normalized == "gmm_all_regime_neighbors_with_gate":
+        return DiscoveryRegimeModeSettings(
+            regime_mode="gmm_all_regime_neighbors_with_gate",
+            regime_detector_type="gmm",
+            regime_gate_enabled=True,
+            same_regime_neighbor_pool_enabled=False,
+        )
+    raise ValueError(f"unsupported regime_mode:{regime_mode}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +187,7 @@ class DiscoverySearchSpec:
     min_distance_qualities: tuple[float, ...] = (0.01,)
     vote_margin_thresholds: tuple[float, ...] = (0.05,)
     same_regime_only_values: tuple[bool, ...] = (True,)
+    regime_modes: tuple[str, ...] = ("gmm_same_regime_neighbors",)
     min_splits: int = 4
     purge_embargo_bars: int = 8
     min_trade_count: int = 5
@@ -135,6 +198,7 @@ class DiscoverySearchSpec:
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None) -> "DiscoverySearchSpec":
         payload = payload or {}
+        same_regime_only_values = _bool_tuple(payload.get("same_regime_only_values"), default=(True,))
         spec = cls(
             hmm_state_counts=_int_tuple(payload.get("hmm_state_counts"), default=(4,)),
             hmm_posterior_thresholds=_float_tuple(payload.get("hmm_posterior_thresholds"), default=(0.60,)),
@@ -148,7 +212,8 @@ class DiscoverySearchSpec:
             min_neighbor_agreements=_float_tuple(payload.get("min_neighbor_agreements"), default=(0.55,)),
             min_distance_qualities=_float_tuple(payload.get("min_distance_qualities"), default=(0.01,)),
             vote_margin_thresholds=_float_tuple(payload.get("vote_margin_thresholds"), default=(0.05,)),
-            same_regime_only_values=_bool_tuple(payload.get("same_regime_only_values"), default=(True,)),
+            same_regime_only_values=same_regime_only_values,
+            regime_modes=_regime_mode_tuple(payload.get("regime_modes"), same_regime_only_values=same_regime_only_values),
             min_splits=int(payload.get("min_splits", 4)),
             purge_embargo_bars=int(payload.get("purge_embargo_bars", 8)),
             min_trade_count=int(payload.get("min_trade_count", 5)),
@@ -186,6 +251,9 @@ class DiscoverySearchSpec:
         }.items():
             if any(value < 0.0 or value > 1.0 for value in values):
                 raise ValueError(f"search.{field_name} values must be between 0 and 1")
+        invalid_regime_modes = sorted(set(self.regime_modes) - set(SUPPORTED_REGIME_MODES))
+        if invalid_regime_modes:
+            raise ValueError(f"search.regime_modes unsupported:{','.join(invalid_regime_modes)}")
         if self.min_splits < 1:
             raise ValueError("search.min_splits must be positive")
         if self.purge_embargo_bars < 0:
@@ -210,6 +278,7 @@ class DiscoverySearchSpec:
             "min_distance_qualities": list(self.min_distance_qualities),
             "vote_margin_thresholds": list(self.vote_margin_thresholds),
             "same_regime_only_values": list(self.same_regime_only_values),
+            "regime_modes": list(self.regime_modes),
             "min_splits": self.min_splits,
             "purge_embargo_bars": self.purge_embargo_bars,
             "min_trade_count": self.min_trade_count,
@@ -442,7 +511,7 @@ def _generated_real_discovery_trial_templates(spec: DiscoveryRunSpec) -> tuple[D
         ("min_neighbor_agreement", tuple(float(value) for value in search.min_neighbor_agreements)),
         ("min_distance_quality", tuple(float(value) for value in search.min_distance_qualities)),
         ("vote_margin_threshold", tuple(float(value) for value in search.vote_margin_thresholds)),
-        ("same_regime_only", tuple(bool(value) for value in search.same_regime_only_values)),
+        ("regime_mode", tuple(search.regime_modes)),
     )
     total_combinations = _dimension_space_size(dimensions)
     rng = random.Random(int(spec.budget.rng_seed))
@@ -457,15 +526,16 @@ def _generated_real_discovery_trial_templates(spec: DiscoveryRunSpec) -> tuple[D
     for index, combination_index in enumerate(sampled_indices, start=1):
         payload = _payload_from_dimension_index(combination_index, dimensions)
         payload.update(payload.pop("knn_neighbor_pair"))
-        payload["trial_kind"] = "hmm_knn_entry_discovery"
+        payload["trial_kind"] = "regime_knn_entry_discovery"
+        payload.update(regime_mode_settings(str(payload["regime_mode"])).to_payload())
         payload["search_space_total_combinations"] = total_combinations
         digest = _stable_payload_digest({"run_id": spec.run_id, "index": index, **payload})[:16]
         templates.append(
             DiscoveryTrialTemplate(
                 trial_id=f"trial-{index:06d}",
-                candidate_id=f"{spec.run_id}-hmm-knn-{digest}",
+                candidate_id=f"{spec.run_id}-regime-knn-{digest}",
                 ledger_kind="blocked",
-                candidate_family="hmm_knn_entry_discovery",
+                candidate_family="regime_knn_entry_discovery",
                 score=0.0,
                 blocker_code="not_evaluated",
                 filter_blocker_code="",
@@ -544,6 +614,18 @@ def _bool_tuple(value: Any, *, default: tuple[bool, ...]) -> tuple[bool, ...]:
         return default
     values = tuple(_bool_value(item) for item in value)
     return values or default
+
+
+def _regime_mode_tuple(value: Any, *, same_regime_only_values: tuple[bool, ...]) -> tuple[str, ...]:
+    if value is not None:
+        modes = tuple(str(item).strip().lower() for item in value if str(item).strip())
+    else:
+        modes = tuple(
+            "gmm_same_regime_neighbors" if same_regime_only else "gmm_all_regime_neighbors_with_gate"
+            for same_regime_only in same_regime_only_values
+        )
+    deduped = tuple(dict.fromkeys(modes))
+    return deduped or ("gmm_same_regime_neighbors",)
 
 
 def _bool_value(value: Any) -> bool:
