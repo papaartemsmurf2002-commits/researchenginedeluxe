@@ -395,14 +395,14 @@ def _reference_vs_vector_backend_comparison(
             },
             app_config=app_config,
         )
-        reference_cpu15 = _run_backend_comparison_cycle(
+        reference_cpu48 = _run_backend_comparison_cycle(
             pair_dir=pair_dir,
             tier_id=tier_id,
             tier_config=tier_config,
             backend="reference",
-            backend_label="reference_cpu15",
+            backend_label="reference_cpu48",
             compute={
-                "cpu_threads": 15,
+                "cpu_threads": 48,
                 "gpu_acceleration": "disabled",
                 "gpu_required": False,
             },
@@ -413,9 +413,9 @@ def _reference_vs_vector_backend_comparison(
             tier_id=tier_id,
             tier_config=tier_config,
             backend="vector_fixed_holding",
-            backend_label="vector_fixed_holding_cpu15",
+            backend_label="vector_fixed_holding_cpu48",
             compute={
-                "cpu_threads": 15,
+                "cpu_threads": 48,
                 "gpu_acceleration": "disabled",
                 "gpu_required": False,
             },
@@ -423,7 +423,7 @@ def _reference_vs_vector_backend_comparison(
         )
         artifact_equivalence = _behavioral_artifact_hashes_equal(reference["backtest_index"], vector["backtest_index"])
         reference_runtime = float(reference["backtest_runtime_ms_sum"])
-        reference_cpu15_runtime = float(reference_cpu15["backtest_runtime_ms_sum"])
+        reference_cpu48_runtime = float(reference_cpu48["backtest_runtime_ms_sum"])
         vector_runtime = float(vector["backtest_runtime_ms_sum"])
         cuda: dict[str, Any] | None = None
         cuda_artifact_equivalence = {"equal": False, "checked": 0}
@@ -448,7 +448,7 @@ def _reference_vs_vector_backend_comparison(
             {
                 "repeat_index": repeat_index,
                 "reference": _backend_comparison_payload(reference),
-                "reference_cpu15": _backend_comparison_payload(reference_cpu15),
+                "reference_cpu48": _backend_comparison_payload(reference_cpu48),
                 "vector": _backend_comparison_payload(vector),
                 "cuda": _backend_comparison_payload(cuda) if cuda is not None else None,
                 "candidate_backtest_count_equal": reference["candidate_backtest_count"] == vector["candidate_backtest_count"],
@@ -458,7 +458,7 @@ def _reference_vs_vector_backend_comparison(
                 "behavioral_artifact_hashes_equal": artifact_equivalence["equal"],
                 "behavioral_artifact_hashes_checked": artifact_equivalence["checked"],
                 "observed_runtime_ratio_reference_over_vector": round(reference_runtime / max(vector_runtime, 1e-9), 6),
-                "observed_runtime_ratio_reference_serial_over_cpu15": round(reference_runtime / max(reference_cpu15_runtime, 1e-9), 6),
+                "observed_runtime_ratio_reference_serial_over_cpu48": round(reference_runtime / max(reference_cpu48_runtime, 1e-9), 6),
                 "cuda_candidate_backtest_count_equal": (
                     cuda is not None and reference["candidate_backtest_count"] == cuda["candidate_backtest_count"]
                 ),
@@ -486,7 +486,7 @@ def _reference_vs_vector_backend_comparison(
             }
         )
     reference_runtimes = [float(pair["reference"]["backtest_runtime_ms_sum"]) for pair in pairs]
-    reference_cpu15_runtimes = [float(pair["reference_cpu15"]["backtest_runtime_ms_sum"]) for pair in pairs]
+    reference_cpu48_runtimes = [float(pair["reference_cpu48"]["backtest_runtime_ms_sum"]) for pair in pairs]
     vector_runtimes = [float(pair["vector"]["backtest_runtime_ms_sum"]) for pair in pairs]
     cuda_runtimes = [
         float(pair["cuda"]["backtest_runtime_ms_sum"])
@@ -507,7 +507,7 @@ def _reference_vs_vector_backend_comparison(
         "speed_claimed": False,
         "default_backend_verified": "reference",
         "cpu_thread_comparison_measured": bool(pairs),
-        "cpu_parallel_workers": 15,
+        "cpu_parallel_workers": 48,
         "cuda_runtime_available": cuda_available,
         "cuda_runtime_evidence": dict(cuda_evidence),
         "cuda_measured": bool(cuda_available and cuda_runtimes),
@@ -516,7 +516,7 @@ def _reference_vs_vector_backend_comparison(
         "pairs": pairs,
         "summary": {
             "reference_backtest_runtime_ms_sum_median": round(float(median(reference_runtimes)), 6) if reference_runtimes else 0.0,
-            "reference_cpu15_backtest_runtime_ms_sum_median": round(float(median(reference_cpu15_runtimes)), 6) if reference_cpu15_runtimes else 0.0,
+            "reference_cpu48_backtest_runtime_ms_sum_median": round(float(median(reference_cpu48_runtimes)), 6) if reference_cpu48_runtimes else 0.0,
             "vector_backtest_runtime_ms_sum_median": round(float(median(vector_runtimes)), 6) if vector_runtimes else 0.0,
             "cuda_backtest_runtime_ms_sum_median": round(float(median(cuda_runtimes)), 6) if cuda_runtimes else 0.0,
             "observed_runtime_ratio_reference_over_vector_median": round(float(median(ratios)), 6) if ratios else 0.0,

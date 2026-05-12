@@ -101,9 +101,9 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert manifest["candidate_search_mode"] == "metadata_default_search"
     assert manifest["candidate_search_method"] == "metadata_capped_grid"
     assert manifest["backtest_backend_requested"] == "auto"
-    assert manifest["compute_policy"]["cpu_threads"] == 15
+    assert manifest["compute_policy"]["cpu_threads"] == 48
     assert manifest["compute_policy"]["gpu_execution_profile"] == "fastest_exact"
-    assert manifest["compute_policy"]["aggregate_backtest_workers_used"] == 15
+    assert manifest["compute_policy"]["aggregate_backtest_workers_used"] == 48
     assert manifest["compute_policy"]["gpu_execution_status"] == "gpu_execution_profile_fastest_exact_vector_selected"
     assert manifest["aggregate_backtest_count"] == 44
     assert manifest["split_backtest_count"] == 4
@@ -794,7 +794,7 @@ def test_cycle_auto_backend_default_uses_fastest_exact_vector_route(tmp_path: Pa
         dataset=dataset,
     )
 
-    assert auto.compute.cpu_threads == 15
+    assert auto.compute.cpu_threads == 48
     assert auto.compute.gpu_execution_profile == "fastest_exact"
     assert execution.backend_evidence["backtest_backend_used"] == "vector_fixed_holding"
     assert execution.backend_evidence["backtest_backend_fallback_reason"] == "gpu_execution_profile_fastest_exact_vector_selected"

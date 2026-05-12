@@ -299,7 +299,7 @@ class CycleOptimizerSpec:
 
 @dataclass(frozen=True, slots=True)
 class CycleComputeSpec:
-    cpu_threads: int = 15
+    cpu_threads: int = 48
     gpu_acceleration: str = "prefer_nvidia_cuda_when_backend_available"
     gpu_device_class: str = "nvidia_50_series"
     gpu_required: bool = False
@@ -312,7 +312,7 @@ class CycleComputeSpec:
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None) -> "CycleComputeSpec":
         payload = payload or {}
-        cpu_threads = int(payload.get("cpu_threads", 15))
+        cpu_threads = int(payload.get("cpu_threads", 48))
         if cpu_threads < 1 or cpu_threads > 64:
             raise ValueError("compute.cpu_threads must be between 1 and 64")
         gpu_acceleration = str(payload.get("gpu_acceleration", "prefer_nvidia_cuda_when_backend_available")).strip().lower()

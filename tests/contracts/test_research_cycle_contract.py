@@ -109,7 +109,7 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.validation.split_modes == ("purged_embargoed_walk_forward",)
     assert spec.validation.min_cost_stress_survival_rate == 1.0
     assert spec.backtest_backend == "auto"
-    assert spec.compute.cpu_threads == 15
+    assert spec.compute.cpu_threads == 48
     assert spec.compute.gpu_acceleration == "prefer_nvidia_cuda_when_backend_available"
     assert spec.compute.gpu_execution_profile == "fastest_exact"
     assert spec.to_payload()["backtest_backend"] == "auto"
@@ -581,14 +581,14 @@ def test_performance_plan_keeps_auto_cpu_until_r97_profile_requests_gpu(
         candidates=candidates,
         search_mode="metadata_default_search",
         search_method="metadata_capped_grid",
-        aggregate_backtest_workers_used=15,
+        aggregate_backtest_workers_used=48,
     )
 
-    assert fastest.compute.cpu_threads == 15
+    assert fastest.compute.cpu_threads == 48
     assert fastest.compute.gpu_execution_profile == "fastest_exact"
     assert fastest_plan["compute_policy"]["gpu_execution_status"] == "gpu_execution_profile_fastest_exact_vector_selected"
     assert fastest_plan["compute_policy"]["selected_cuda_backend"] == ""
-    assert fastest_plan["compute_policy"]["aggregate_backtest_workers_used"] == 15
+    assert fastest_plan["compute_policy"]["aggregate_backtest_workers_used"] == 48
     assert fastest_plan["compute_policy"]["cuda_runtime_checked"] is False
     assert "default fastest_exact route uses CPU vector" in fastest_plan["compute_policy"]["gpu_truthfulness"]
     assert fastest_plan["stability_region_acceleration_counters"]["planned_gpu_screened_count"] == 0

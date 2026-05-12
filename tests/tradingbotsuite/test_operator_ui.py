@@ -537,8 +537,8 @@ def test_operator_artifacts_include_historical_cycle_profitability_summary(app_c
                 "backtest_backend_requested": "reference",
                 "compute_policy": {
                     "gpu_execution_profile": "fastest_exact",
-                    "cpu_threads": 15,
-                    "aggregate_backtest_workers_used": 15,
+                    "cpu_threads": 48,
+                    "aggregate_backtest_workers_used": 48,
                     "gpu_execution_status": "gpu_execution_profile_fastest_exact_vector_selected",
                     "selected_cuda_backend": "",
                     "cuda_runtime_checked": False,
@@ -583,7 +583,7 @@ def test_operator_artifacts_include_historical_cycle_profitability_summary(app_c
     assert cycle["summary"]["gate_report"]["passed_count"] == 0
     assert cycle["summary"]["holding_windows"]["rows"][0]["holding_window"] == "4h"
     assert cycle["summary"]["compute_profile"] == "fastest_exact"
-    assert cycle["summary"]["aggregate_backtest_workers_used"] == 15
+    assert cycle["summary"]["aggregate_backtest_workers_used"] == 48
     assert cycle["summary"]["gpu_execution_status"] == "gpu_execution_profile_fastest_exact_vector_selected"
     assert cycle["summary"]["selected_cuda_backend"] == ""
     assert cycle["summary"]["cuda_runtime_checked"] is False

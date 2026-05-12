@@ -21,6 +21,9 @@ one-candidate CUDA backend is faster than measured. CUDA/Tensor Core paths stay
 available for diagnostic evidence through explicit `cuda_exact_batched` or
 `hybrid_tensorcore_screening`.
 
+Update: WPR97-07 supersedes the worker count after higher-worker testing. The
+current default is `compute.cpu_threads: 48`.
+
 ## Behavior Changes
 
 - Added accepted compute profile `fastest_exact`.
