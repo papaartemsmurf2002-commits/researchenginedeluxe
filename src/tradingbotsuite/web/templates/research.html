@@ -1092,6 +1092,10 @@
       const rankings = summary.rankings || {};
       const gate = summary.gate_report || {};
       const top = (rankings.top_candidates || [])[0] || {};
+      const backendCounts = summary.backtest_backend_used_counts || {};
+      const backendLabel = Object.keys(backendCounts).length
+        ? Object.entries(backendCounts).map(([backend, count]) => `${backend}:${count}`).join(", ")
+        : "n/a";
       return `
         <div class="card alt">
           <div class="split">
@@ -1106,6 +1110,11 @@
             ["Aggregate Backtests", window.TBS.toMono(summary.aggregate_backtest_count ?? "n/a")],
             ["Split Backtests", window.TBS.toMono(summary.split_backtest_count ?? "n/a")],
             ["Cost Stress", window.TBS.toMono(summary.cost_stress_backtest_count ?? "n/a")],
+            ["Compute Profile", window.TBS.escapeHtml(String(summary.compute_profile || "n/a"))],
+            ["Workers", window.TBS.toMono(summary.aggregate_backtest_workers_used ?? summary.compute_cpu_threads ?? "n/a")],
+            ["Backend Mix", window.TBS.escapeHtml(backendLabel)],
+            ["GPU Status", window.TBS.escapeHtml(String(summary.gpu_execution_status || "n/a"))],
+            ["CUDA Selected", window.TBS.escapeHtml(summary.selected_cuda_backend ? String(summary.selected_cuda_backend) : "no")],
             ["Best Score", window.TBS.toMono(formatNumber(rankings.best_final_score))],
             ["Best Net Return", window.TBS.toMono(formatNumber(rankings.best_net_return))],
             ["Worst Drawdown", window.TBS.toMono(formatNumber(rankings.worst_drawdown))],

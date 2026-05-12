@@ -566,6 +566,8 @@ class OperatorConsoleService:
         for cycle_manifest in sorted(base_dir.rglob("research_cycle_manifest.json")):
             payload = json.loads(cycle_manifest.read_text(encoding="utf-8"))
             required_outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            compute_policy = payload.get("compute_policy") if isinstance(payload.get("compute_policy"), dict) else {}
+            backend_summary = payload.get("backtest_backend_summary") if isinstance(payload.get("backtest_backend_summary"), dict) else {}
             rankings_summary = self._summarize_research_cycle_rankings(required_outputs.get("candidate_rankings"))
             gate_summary = self._summarize_research_cycle_gate_report(required_outputs.get("candidate_gate_report"))
             holding_summary = self._summarize_research_cycle_holding_windows(required_outputs.get("metrics_by_holding_window"))
@@ -587,6 +589,15 @@ class OperatorConsoleService:
                         "candidate_pack_written": payload.get("candidate_pack_written"),
                         "candidate_acceptance_scope": payload.get("candidate_acceptance_scope"),
                         "backtest_backend_requested": payload.get("backtest_backend_requested"),
+                        "backtest_backend_used_counts": backend_summary.get("used_counts") or {},
+                        "compute_profile": compute_policy.get("gpu_execution_profile"),
+                        "compute_cpu_threads": compute_policy.get("cpu_threads"),
+                        "aggregate_backtest_workers_used": compute_policy.get("aggregate_backtest_workers_used"),
+                        "gpu_execution_status": compute_policy.get("gpu_execution_status"),
+                        "selected_cuda_backend": compute_policy.get("selected_cuda_backend"),
+                        "cuda_runtime_checked": compute_policy.get("cuda_runtime_checked"),
+                        "r97_batched_cuda_requested": compute_policy.get("r97_batched_cuda_requested"),
+                        "tensorcore_screening_requested": compute_policy.get("tensorcore_screening_requested"),
                         "runtime_seconds": ((payload.get("runtime") or {}).get("elapsed_seconds")),
                         "data_source_type": ((payload.get("data_source") or {}).get("source_type")),
                         "research_only": payload.get("research_only"),

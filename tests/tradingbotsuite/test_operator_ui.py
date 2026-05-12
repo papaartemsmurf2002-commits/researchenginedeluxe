@@ -535,6 +535,17 @@ def test_operator_artifacts_include_historical_cycle_profitability_summary(app_c
                 "candidate_pack_written": False,
                 "candidate_acceptance_scope": "research_gate_evaluated_fail_closed",
                 "backtest_backend_requested": "reference",
+                "compute_policy": {
+                    "gpu_execution_profile": "fastest_exact",
+                    "cpu_threads": 15,
+                    "aggregate_backtest_workers_used": 15,
+                    "gpu_execution_status": "gpu_execution_profile_fastest_exact_vector_selected",
+                    "selected_cuda_backend": "",
+                    "cuda_runtime_checked": False,
+                    "r97_batched_cuda_requested": False,
+                    "tensorcore_screening_requested": False,
+                },
+                "backtest_backend_summary": {"used_counts": {"vector_fixed_holding": 2, "reference": 2}},
                 "runtime": {"elapsed_seconds": 1.25},
                 "data_source": {"source_type": "historical_fixture_pack"},
                 "required_outputs": {
@@ -571,6 +582,12 @@ def test_operator_artifacts_include_historical_cycle_profitability_summary(app_c
     assert cycle["summary"]["rankings"]["decision_counts"]["rejected"] == 1
     assert cycle["summary"]["gate_report"]["passed_count"] == 0
     assert cycle["summary"]["holding_windows"]["rows"][0]["holding_window"] == "4h"
+    assert cycle["summary"]["compute_profile"] == "fastest_exact"
+    assert cycle["summary"]["aggregate_backtest_workers_used"] == 15
+    assert cycle["summary"]["gpu_execution_status"] == "gpu_execution_profile_fastest_exact_vector_selected"
+    assert cycle["summary"]["selected_cuda_backend"] == ""
+    assert cycle["summary"]["cuda_runtime_checked"] is False
+    assert cycle["summary"]["backtest_backend_used_counts"] == {"vector_fixed_holding": 2, "reference": 2}
 
 
 def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config, sample_bars) -> None:
@@ -613,6 +630,10 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Historical Cycle Review" in response.text
     assert "run-historical-research-cycle" in response.text
     assert "Run Historical Cycle" in response.text
+    assert "Compute Profile" in response.text
+    assert "Backend Mix" in response.text
+    assert "GPU Status" in response.text
+    assert "CUDA Selected" in response.text
     assert "V4 Discovery Run" in response.text
     assert "Run Discovery" in response.text
     assert "Resume Discovery" in response.text

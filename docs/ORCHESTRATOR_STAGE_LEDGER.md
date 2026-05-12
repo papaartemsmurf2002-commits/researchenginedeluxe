@@ -2,7 +2,7 @@
 
 Current stage: Stage R97 aggressive CUDA/TensorCore stability search
 Current stage owner: Codex Research Agent
-Stage status: complete - WPR97-05 closed
+Stage status: complete - WPR97-06 closed
 Last updated: 2026-05-12
 
 ## Stage entry decision
@@ -29,6 +29,7 @@ Last updated: 2026-05-12
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR97-06-research-ui-fastest-compute-summary | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py` | Research UI compute/backend summary wiring and validation recorded in `docs/stage_reports/STAGE_R97_RESEARCH_UI_FASTEST_COMPUTE_SUMMARY_REPORT.md`. |
 | WPR97-05-fastest-exact-default-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | Fastest exact default profile, 15-worker default, default smoke, and validation recorded in `docs/stage_reports/STAGE_R97_FASTEST_EXACT_DEFAULT_POLISH_REPORT.md`. |
 | WPR97-04-throughput-default-and-tensorcore-dependency | Codex Research Agent | closed | `pyproject.toml`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | Throughput default routing, Tensor Core dependency fix, local benchmarks, and validation recorded in `docs/stage_reports/STAGE_R97_THROUGHPUT_DEFAULT_AND_TENSORCORE_DEPENDENCY_REPORT.md`. |
 | WPR97-03-gpu-telemetry-smoke-fix | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | GPU parity telemetry fix, performance estimate, mini full-cycle smoke, and validation recorded in `docs/stage_reports/STAGE_R97_GPU_TELEMETRY_SMOKE_FIX_REPORT.md`. |
@@ -778,3 +779,17 @@ fastest-exact vector selection from a failed CUDA probe through
 and default full-cycle smoke checks passed. This wave does not write candidate
 packs, claim promotion readiness or GPU speedup, add live execution, alter live
 config, place orders, or touch sizing behavior.
+
+## Research UI fastest compute summary wave
+
+Decision: WPR97-06 research UI fastest compute summary complete.
+Reason: Operator Research artifact summaries now surface the historical-cycle
+compute profile, CPU threads, aggregate workers, backend used counts, GPU
+execution status, selected CUDA backend, CUDA runtime checked flag, R97 batched
+CUDA request flag, and Tensor Core screening request flag. The Research artifact
+card displays compute profile, workers, backend mix, GPU status, and CUDA
+selection without requiring operators to open raw manifest JSON. Focused
+operator API/page tests and compile passed. This wave is read-only UI wiring and
+does not change research execution, write candidate packs, claim promotion
+readiness or GPU speedup, add live execution, alter live config, place orders,
+or touch sizing behavior.
