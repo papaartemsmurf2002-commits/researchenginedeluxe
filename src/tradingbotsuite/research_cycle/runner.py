@@ -250,6 +250,10 @@ def _backtest_backend_evidence(
         "vector_execution_scope": vector_scope,
         "cuda_execution_scope": cuda_scope,
         "cuda_parity_status": str(manifest.get("cuda_parity_status") or ""),
+        "backtest_parity_status": str(manifest.get("parity_status") or ""),
+        "backtest_max_metric_abs_diff": manifest.get("max_metric_abs_diff"),
+        "backtest_max_equity_abs_diff": manifest.get("max_equity_abs_diff"),
+        "backtest_max_trade_abs_diff": manifest.get("max_trade_diff"),
         "gpu_execution_status": str(manifest.get("gpu_execution_status") or ""),
         "gpu_execution_profile": str(compute.get("gpu_execution_profile") or ""),
         "tensor_core_policy": str(compute.get("tensor_core_policy") or ""),
@@ -3766,6 +3770,16 @@ def _stability_region_acceleration_counters(
         and str(record.get("gpu_execution_profile") or "") == "hybrid_tensorcore_screening"
         for record in aggregate_records
     )
+    parity_rechecked = sum(
+        str(record.get("backtest_backend_used") or "") in CUDA_BACKTEST_BACKENDS
+        and str(record.get("backtest_parity_status") or "") in {"passed", "failed"}
+        for record in aggregate_records
+    )
+    mismatch_count = sum(
+        str(record.get("backtest_backend_used") or "") in CUDA_BACKTEST_BACKENDS
+        and str(record.get("backtest_parity_status") or "") == "failed"
+        for record in aggregate_records
+    )
     cpu_screened = len(aggregate_records) - gpu_screened
     validation_records = [
         record
@@ -3808,8 +3822,8 @@ def _stability_region_acceleration_counters(
         "tensorcore_screened_count": int(tensorcore_screened),
         "gpu_exact_screened_count": int(gpu_screened),
         "cpu_reference_validated_count": int(len(cpu_reference_validated_ids)),
-        "parity_rechecked_count": 0,
-        "mismatch_count": 0,
+        "parity_rechecked_count": int(parity_rechecked),
+        "mismatch_count": int(mismatch_count),
         "validation_backend_counts": dict(sorted(validation_backend_counts.items())),
         "region_refined_count": int(shortlisted_count),
         "estimated_bruteforce_avoidance_ratio": (

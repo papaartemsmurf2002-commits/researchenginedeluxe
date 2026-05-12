@@ -249,6 +249,10 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
         "gpu_execution_status",
         "gpu_device_name",
         "gpu_compute_capability",
+        "backtest_parity_status",
+        "backtest_max_metric_abs_diff",
+        "backtest_max_equity_abs_diff",
+        "backtest_max_trade_abs_diff",
         "backtest_backend_fallback_reason",
         "backtest_backend_rejection_reason",
         "exit_policy_id",
@@ -293,9 +297,16 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     if aggregate_backend_values == {"cuda_batched_fixed_holding"}:
         assert set(aggregate_index["backtest_engine_version"]) == {CUDA_BATCHED_BACKTEST_ENGINE_VERSION}
         assert set(aggregate_index["cuda_execution_scope"]) == {"cuda_batched_fixed_holding_primary_bar"}
+        assert set(aggregate_index["backtest_parity_status"]) == {"passed"}
+        assert set(aggregate_index["backtest_max_metric_abs_diff"]) == {0.0}
+        assert set(aggregate_index["backtest_max_equity_abs_diff"]) == {0.0}
+        assert set(aggregate_index["backtest_max_trade_abs_diff"]) == {0.0}
+        assert trial_budget_report["stability_region_acceleration_counters"]["parity_rechecked_count"] == len(aggregate_index)
+        assert trial_budget_report["stability_region_acceleration_counters"]["mismatch_count"] == 0
     else:
         assert set(aggregate_index["backtest_engine_version"]) == {VECTOR_BACKTEST_ENGINE_VERSION}
         assert set(aggregate_index["vector_execution_scope"]) == {"fixed_holding_primary_bar"}
+        assert set(aggregate_index["backtest_parity_status"]) == {""}
     assert set(validation_index["cuda_execution_scope"]) == {""}
     assert set(validation_index["gpu_execution_status"]) == {""}
     assert set(validation_index["backtest_backend_fallback_reason"]) == {"cuda_batched_fixed_holding_validation_reference_required"}

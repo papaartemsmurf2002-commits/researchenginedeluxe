@@ -2,7 +2,7 @@
 
 Current stage: Stage R97 aggressive CUDA/TensorCore stability search
 Current stage owner: Codex Research Agent
-Stage status: complete - WPR97-02 closed
+Stage status: complete - WPR97-03 closed
 Last updated: 2026-05-12
 
 ## Stage entry decision
@@ -29,6 +29,7 @@ Last updated: 2026-05-12
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR97-03-gpu-telemetry-smoke-fix | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | GPU parity telemetry fix, performance estimate, mini full-cycle smoke, and validation recorded in `docs/stage_reports/STAGE_R97_GPU_TELEMETRY_SMOKE_FIX_REPORT.md`. |
 | WPR97-02-default-accelerated-runtime-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/**`, `tests/historical/**`, `tests/optimization/**` | Default accelerated research runtime, CPU/reference fallback evidence, longer CUDA parity, and validation recorded in `docs/stage_reports/STAGE_R97_DEFAULT_ACCELERATED_RUNTIME_POLISH_REPORT.md`. |
 | WPR97-01-aggressive-cuda-tensorcore-stability-search | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/**`, `tests/historical/**`, `tests/optimization/**` | Aggressive CUDA/TensorCore stability search implemented and validation recorded in `docs/stage_reports/STAGE_R97_AGGRESSIVE_CUDA_TENSORCORE_STABILITY_SEARCH_REPORT.md`. |
 | WP0-01-branch-and-ledger-setup | Orchestrator Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/BRANCH_PURPOSE.md`, `docs/work_packets/WP0-01-branch-and-ledger-setup.md`, `docs/stage_reports/STAGE_0_EXIT_REPORT.md` | Branch exists; governance files created; validation recorded in Stage 0 exit report. |
@@ -716,6 +717,25 @@ the new default. Local RTX 5070 Ti parity was crosschecked on five deterministic
 zero max metric diff, and passed CUDA manifests. Compile, contracts,
 backtesting, optimization, historical benchmark/full-cycle/local-fixture,
 research-discovery, live-preflight, longer CUDA parity, and diff checks passed.
+This wave does not write candidate packs, claim promotion readiness or GPU
+speedup, add live execution, alter live config, place orders, or touch sizing
+behavior.
+
+## GPU telemetry smoke fix wave
+
+Decision: WPR97-03 GPU telemetry smoke fix complete.
+Reason: Post-push GPU verification found that exact CUDA aggregate manifests
+recorded passing parity, but cycle-level stability counters still reported
+`parity_rechecked_count: 0`. The backtest index now carries CUDA exact parity
+status plus max metric/equity/trade diffs, and research-cycle stability
+counters count aggregate CUDA parity rechecks and mismatches from that evidence.
+The mini default GPU full-cycle smoke on RTX 5070 Ti used
+`cuda_batched_fixed_holding` for aggregate screening, CPU/reference for
+validation, `parity_rechecked_count: 4`, and `mismatch_count: 0`. Local
+performance timing did not support a speedup claim for single-candidate
+artifact-producing backtests, so `speed_claimed: false` remains correct.
+Compile, focused contracts, synthetic full-cycle, benchmark/local-fixture
+historical tests, CUDA/GPU tests, research-discovery, and diff checks passed.
 This wave does not write candidate packs, claim promotion readiness or GPU
 speedup, add live execution, alter live config, place orders, or touch sizing
 behavior.
