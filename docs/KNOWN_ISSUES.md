@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-05
+Last updated: 2026-05-12
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 0 | 0 |
-| P1 | 0 | 0 | 4 | 0 |
+| P1 | 1 | 0 | 4 | 0 |
 | P2 | 0 | 0 | 0 | 0 |
 | P3 | 0 | 0 | 0 | 0 |
 
@@ -121,6 +121,30 @@ Reject non-finite values in optional numeric context conversion and add regressi
 ### Resolution notes
 
 Stage R58 updated `_optional_numeric` to return no context for non-finite numbers and added `test_oi_contraction_exit_skips_non_finite_oi_context`. Focused validation passed after the fix.
+
+## ISSUE-R95-001: CUDA backtest backend absent for NVIDIA acceleration path
+
+Severity: P1
+Stage discovered: Stage R95 - Performance candidate-selection engine crosscheck
+Owner: Codex Research Agent
+Status: open
+Paths affected: `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`
+
+### Problem
+
+The research-cycle candidate-selection path can now record NVIDIA/CUDA preference and run aggregate candidate backtests with bounded CPU workers, but no concrete CUDA/GPU backtest backend is registered. GPU acceleration therefore cannot truthfully be claimed for candidate search or stability-region evaluation yet.
+
+### Evidence
+
+WPR95 crosscheck found only reference and fixed-holding vector CPU backtest backends. The performance plan reports `blocked_no_cuda_backtest_backend_registered` whenever GPU acceleration is requested.
+
+### Required resolution
+
+Add a validated CUDA-capable research backtest or feature-evaluation backend with backend evidence, parity checks against the reference engine, deterministic artifact identity, and fallback behavior before any NVIDIA speedup claim is allowed.
+
+### Resolution notes
+
+Open. Current mitigation is explicit artifact truthfulness plus CPU aggregate-backtest parallelism via `compute.cpu_threads`.
 
 ## Issue template
 

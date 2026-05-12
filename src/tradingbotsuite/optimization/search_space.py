@@ -66,6 +66,14 @@ class SearchSpace:
             ]
         raise ValueError("method must be one of: grid, random, latin_hypercube, coarse_lhs, sobol")
 
+    def grid_size(self) -> int:
+        if not self.parameters:
+            return 1
+        total = 1
+        for values in self.parameters.values():
+            total *= len(tuple(values))
+        return int(total)
+
     def iter_grid(self) -> Iterator[CandidateConfig]:
         keys = sorted(self.parameters)
         if not keys:

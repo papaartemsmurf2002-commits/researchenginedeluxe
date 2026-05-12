@@ -296,6 +296,43 @@ class CycleOptimizerSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class CycleComputeSpec:
+    cpu_threads: int = 1
+    gpu_acceleration: str = "prefer_nvidia_cuda_when_backend_available"
+    gpu_device_class: str = "nvidia_50_series"
+    gpu_required: bool = False
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, Any] | None) -> "CycleComputeSpec":
+        payload = payload or {}
+        cpu_threads = int(payload.get("cpu_threads", 1))
+        if cpu_threads < 1 or cpu_threads > 64:
+            raise ValueError("compute.cpu_threads must be between 1 and 64")
+        gpu_acceleration = str(payload.get("gpu_acceleration", "prefer_nvidia_cuda_when_backend_available")).strip().lower()
+        allowed_gpu_modes = {
+            "disabled",
+            "prefer_nvidia_cuda_when_backend_available",
+            "require_nvidia_cuda_backend",
+        }
+        if gpu_acceleration not in allowed_gpu_modes:
+            raise ValueError(f"compute.gpu_acceleration must be one of: {', '.join(sorted(allowed_gpu_modes))}")
+        return cls(
+            cpu_threads=cpu_threads,
+            gpu_acceleration=gpu_acceleration,
+            gpu_device_class=str(payload.get("gpu_device_class", "nvidia_50_series")),
+            gpu_required=bool(payload.get("gpu_required", gpu_acceleration == "require_nvidia_cuda_backend")),
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "cpu_threads": int(self.cpu_threads),
+            "gpu_acceleration": self.gpu_acceleration,
+            "gpu_device_class": self.gpu_device_class,
+            "gpu_required": bool(self.gpu_required),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class CycleExitSpec:
     exit_policies: tuple[Mapping[str, Any], ...] = field(default_factory=lambda: DEFAULT_EXIT_POLICIES)
 
@@ -326,6 +363,7 @@ class HistoricalResearchCycleSpec:
     strategies: tuple[str, ...]
     validation: CycleValidationSpec
     optimizer: CycleOptimizerSpec
+    compute: CycleComputeSpec
     exits: CycleExitSpec
     backtest_backend: str = "reference"
     output_dir: Path | None = None
@@ -359,6 +397,7 @@ class HistoricalResearchCycleSpec:
             strategies=strategies,
             validation=CycleValidationSpec.from_payload(payload.get("validation")),
             optimizer=CycleOptimizerSpec.from_payload(payload.get("optimizer")),
+            compute=CycleComputeSpec.from_payload(payload.get("compute")),
             exits=CycleExitSpec.from_payload(payload.get("exit_policies") or payload.get("exits")),
             backtest_backend=backtest_backend,
             output_dir=(
@@ -385,6 +424,7 @@ class HistoricalResearchCycleSpec:
             "strategies": list(self.strategies),
             "validation": self.validation.to_payload(),
             "optimizer": self.optimizer.to_payload(),
+            "compute": self.compute.to_payload(),
             "exits": self.exits.to_payload(),
             "backtest_backend": self.backtest_backend,
             "output_dir": str(self.output_dir) if self.output_dir is not None else None,

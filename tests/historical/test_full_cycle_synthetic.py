@@ -526,6 +526,12 @@ def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions
                 }
             ],
         },
+        "compute": {
+            "cpu_threads": 2,
+            "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+            "gpu_device_class": "nvidia_50_series",
+            "gpu_required": False,
+        },
     }
     spec_path = tmp_path / "specs" / "search-space-cycle.json"
     spec_path.parent.mkdir(parents=True, exist_ok=True)
@@ -545,14 +551,31 @@ def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions
     assert manifest["candidate_count"] == 6
     assert manifest["candidate_search_mode"] == "explicit_search_spaces"
     assert manifest["candidate_search_method"] == "grid"
+    assert manifest["compute_policy"]["aggregate_backtest_workers_used"] == 2
+    assert manifest["compute_policy"]["gpu_execution_status"] == "blocked_no_cuda_backtest_backend_registered"
     assert candidate_space_manifest["candidate_id_scheme"] == "candidate_config_sha256"
     assert candidate_space_manifest["search_mode"] == "explicit_search_spaces"
+    performance_plan = candidate_space_manifest["performance_plan"]
+    assert performance_plan["performance_plan_version"] == "candidate-selection-performance-plan-v1"
+    assert performance_plan["bruteforce_equivalent_candidate_count"] == 4
+    assert performance_plan["materialized_search_candidate_count"] == 4
+    assert performance_plan["sampled_fraction_of_bruteforce"] == 1.0
+    assert performance_plan["raw_sampled_fraction_of_bruteforce"] == 1.0
+    assert performance_plan["materialized_search_exceeds_bruteforce"] is False
+    assert performance_plan["compute_policy"]["cpu_threads"] == 2
+    assert performance_plan["compute_policy"]["aggregate_backtest_workers_used"] == 2
+    assert performance_plan["compute_policy"]["gpu_device_class"] == "nvidia_50_series"
+    assert performance_plan["compute_policy"]["gpu_execution_status"] == "blocked_no_cuda_backtest_backend_registered"
     explicit_policy = candidate_space_manifest["default_search_policy"]
     assert explicit_policy["enabled"] is False
     assert explicit_policy["default_search_source"] == "disabled_explicit_search_spaces_supplied"
     assert sum(explicit_policy["candidate_source_counts"].values()) == candidate_space_manifest["candidate_count"]
     assert trial_budget_report["candidate_search_mode"] == "explicit_search_spaces"
     assert trial_budget_report["effective_trial_count"] == 6
+    assert trial_budget_report["bruteforce_equivalent_candidate_count"] == 4
+    assert trial_budget_report["sampled_fraction_of_bruteforce"] == 1.0
+    assert trial_budget_report["bruteforce_avoidance_ratio"] == 1.0
+    assert trial_budget_report["compute_policy"] == performance_plan["compute_policy"]
     assert trial_budget_report["trials_by_candidate_source"]["optimizer_search_space"] == 4
     assert trial_budget_report["trials_by_candidate_source"]["no_trade_comparator_injected"] == 1
     assert trial_budget_report["trials_by_candidate_source"]["transparent_default_comparator_injected"] == 1

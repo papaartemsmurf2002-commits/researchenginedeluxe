@@ -193,6 +193,12 @@
     "max_candidates_per_strategy": 1,
     "top_regions_to_refine": 1
   },
+  "compute": {
+    "cpu_threads": 15,
+    "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+    "gpu_device_class": "nvidia_50_series",
+    "gpu_required": false
+  },
   "exits": {
     "exit_policies": [
       {

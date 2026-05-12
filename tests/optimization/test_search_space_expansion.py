@@ -26,6 +26,19 @@ def test_search_space_expands_grid_and_lhs_deterministically() -> None:
     assert len(lhs) == 3
 
 
+def test_search_space_reports_full_grid_size_independent_of_sample_cap() -> None:
+    space = SearchSpace(
+        strategy_id="trend_following_v1",
+        parameters={"slope_threshold": (0.1, 0.2), "spacing_bars": (8, 12, 16)},
+        holding_window="24h",
+    )
+    empty_space = SearchSpace(strategy_id="baseline_no_trade", parameters={})
+
+    assert space.grid_size() == 6
+    assert len(space.expand(method="grid", max_candidates=2)) == 2
+    assert empty_space.grid_size() == 1
+
+
 def test_search_space_local_neighbors_are_deterministic() -> None:
     space = SearchSpace(
         "trend_following_v1",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from hashlib import sha256
 from pathlib import Path
@@ -58,6 +59,7 @@ from tradingbotsuite.research_artifacts import (
     write_research_candidate_pack,
 )
 from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec, SUPPORTED_RESEARCH_EXIT_POLICIES
+from tradingbotsuite.research_cycle.performance import build_candidate_selection_performance_plan
 from tradingbotsuite.strategies import (
     defaults_for_holding_window,
     get_strategy_plugin,
@@ -171,6 +173,59 @@ def _backtest_backend_evidence(
             (manifest.get("cache_key_components") or {}).get("engine_version") or ""
         ),
     }
+
+
+def _aggregate_candidate_evaluations(
+    *,
+    spec: HistoricalResearchCycleSpec,
+    candidates: list[dict[str, Any]],
+    feature_frames: Mapping[str, pd.DataFrame],
+    feature_build_manifest: Mapping[str, Any],
+    data_source: Mapping[str, Any],
+    backtest_root: Path,
+    workers: int,
+) -> list[dict[str, Any]]:
+    def run_one(candidate: dict[str, Any]) -> dict[str, Any]:
+        candidate_frame = _candidate_feature_frame(feature_frames, candidate)
+        candidate_feature_record = _candidate_feature_record(feature_build_manifest, candidate)
+        candidate_dataset_hash = _validated_feature_frame_hash(candidate_frame, candidate_feature_record, candidate)
+        candidate_feature_manifest_sha256 = str(candidate_feature_record["feature_manifest_sha256"])
+        lower_timeframe_dataset_path = _candidate_lower_timeframe_dataset_path(candidate, data_source)
+        execution = _run_cycle_backtest(
+            cycle_spec=spec,
+            reference_engine=BacktestEngine(),
+            vector_engine=VectorBacktestEngine(),
+            backtest_spec=BacktestSpec(
+                run_id=_candidate_backtest_run_id(candidate, "agg"),
+                symbol=spec.symbol,
+                output_dir=backtest_root,
+                strategy_id=str(candidate["strategy_id"]),
+                holding_window=str(candidate["holding_window"]),
+                feature_set_id=str(candidate["feature_set_id"]),
+                feature_manifest_sha256=candidate_feature_manifest_sha256,
+                dataset_sha256=candidate_dataset_hash,
+                exit_policy_id=str(candidate.get("exit_policy_id", "fixed_holding_window")),
+                target_return=_candidate_target_return(candidate),
+                stop_return=_candidate_stop_return(candidate),
+                exit_policy_params=dict(candidate.get("exit_policy_params") or {}),
+                exit_price_source=_candidate_exit_price_source(candidate),
+                lower_timeframe_dataset_path=lower_timeframe_dataset_path,
+                strategy_config=_strategy_config(candidate),
+            ),
+            dataset=candidate_frame,
+        )
+        return {
+            "candidate": candidate,
+            "result": execution.result,
+            "metrics": _read_json(execution.result.metrics_path),
+            "manifest": execution.manifest,
+            "backend_evidence": execution.backend_evidence,
+        }
+
+    if max(1, int(workers)) == 1 or len(candidates) <= 1:
+        return [run_one(candidate) for candidate in candidates]
+    with ThreadPoolExecutor(max_workers=max(1, int(workers))) as pool:
+        return list(pool.map(run_one, candidates))
 
 
 def _validate_cycle_lower_timeframe_requirements(
@@ -465,7 +520,6 @@ def run_historical_research_cycle(
         "candidates": candidates,
     }
     candidate_space_path = output_dir / "candidate_space_manifest.json"
-    _write_json(candidate_space_path, candidate_space_manifest)
 
     backtest_root = output_dir / "backtests"
     reference_engine = BacktestEngine()
@@ -475,50 +529,46 @@ def run_historical_research_cycle(
     regime_metric_records: list[dict[str, Any]] = []
     side_metric_records: list[dict[str, Any]] = []
     candidate_results_by_id: dict[str, CandidateResult] = {}
-    for candidate in candidates:
-        candidate_frame = _candidate_feature_frame(feature_frames, candidate)
-        candidate_feature_record = _candidate_feature_record(feature_build_manifest, candidate)
-        candidate_dataset_hash = _validated_feature_frame_hash(candidate_frame, candidate_feature_record, candidate)
-        candidate_feature_manifest_sha256 = str(candidate_feature_record["feature_manifest_sha256"])
-        lower_timeframe_dataset_path = _candidate_lower_timeframe_dataset_path(candidate, data_source)
-        execution = _run_cycle_backtest(
-            cycle_spec=spec,
-            reference_engine=reference_engine,
-            vector_engine=vector_engine,
-            backtest_spec=BacktestSpec(
-                run_id=_candidate_backtest_run_id(candidate, "agg"),
-                symbol=spec.symbol,
-                output_dir=backtest_root,
-                strategy_id=str(candidate["strategy_id"]),
-                holding_window=str(candidate["holding_window"]),
-                feature_set_id=str(candidate["feature_set_id"]),
-                feature_manifest_sha256=candidate_feature_manifest_sha256,
-                dataset_sha256=candidate_dataset_hash,
-                exit_policy_id=str(candidate.get("exit_policy_id", "fixed_holding_window")),
-                target_return=_candidate_target_return(candidate),
-                stop_return=_candidate_stop_return(candidate),
-                exit_policy_params=dict(candidate.get("exit_policy_params") or {}),
-                exit_price_source=_candidate_exit_price_source(candidate),
-                lower_timeframe_dataset_path=lower_timeframe_dataset_path,
-                strategy_config=_strategy_config(candidate),
-            ),
-            dataset=candidate_frame,
+    aggregate_workers = max(1, int(spec.compute.cpu_threads))
+    performance_plan = build_candidate_selection_performance_plan(
+        spec=spec,
+        candidates=candidates,
+        search_mode=search_mode,
+        search_method=search_method,
+        aggregate_backtest_workers_used=aggregate_workers,
+    )
+    candidate_space_manifest["performance_plan"] = performance_plan
+    candidate_space_manifest["compute_policy"] = performance_plan["compute_policy"]
+    _write_json(candidate_space_path, candidate_space_manifest)
+
+    aggregate_evaluations = _aggregate_candidate_evaluations(
+        spec=spec,
+        candidates=candidates,
+        feature_frames=feature_frames,
+        feature_build_manifest=feature_build_manifest,
+        data_source=data_source,
+        backtest_root=backtest_root,
+        workers=aggregate_workers,
+    )
+    for evaluation in aggregate_evaluations:
+        candidate = evaluation["candidate"]
+        result = evaluation["result"]
+        metrics = evaluation["metrics"]
+        manifest = evaluation["manifest"]
+        backend_evidence = evaluation["backend_evidence"]
+        aggregate_records.append(
+            _ranking_record(
+                spec=spec,
+                candidate=candidate,
+                metrics=metrics,
+                manifest_path=result.manifest_path,
+                metrics_path=result.metrics_path,
+                data_source=data_source,
+                split_evaluated=False,
+                manifest=manifest,
+                backend_evidence=backend_evidence,
+            )
         )
-        result = execution.result
-        metrics = _read_json(result.metrics_path)
-        manifest = execution.manifest
-        ranking_record = _ranking_record(
-            spec=spec,
-            candidate=candidate,
-            metrics=metrics,
-            manifest_path=result.manifest_path,
-            metrics_path=result.metrics_path,
-            data_source=data_source,
-            split_evaluated=False,
-            manifest=manifest,
-            backend_evidence=execution.backend_evidence,
-        )
-        aggregate_records.append(ranking_record)
         regime_metric_records.extend(_regime_metric_records(candidate, metrics=metrics, manifest_path=result.manifest_path))
         side_metric_records.extend(_side_metric_records(candidate, trades_path=result.trades_path, manifest_path=result.manifest_path))
         candidate_results_by_id[str(candidate["candidate_id"])] = _candidate_result_from_metrics(
@@ -534,7 +584,7 @@ def run_historical_research_cycle(
                 manifest,
                 "aggregate",
                 trades_path=result.trades_path,
-                backend_evidence=execution.backend_evidence,
+                backend_evidence=backend_evidence,
             )
         )
 
@@ -709,6 +759,7 @@ def run_historical_research_cycle(
         cost_stress_records=cost_stress_records,
         search_mode=search_mode,
         search_method=search_method,
+        performance_plan=performance_plan,
     )
     _write_json(trial_budget_report_path, trial_budget_report)
     overfit_adjustment_report_path = output_dir / "overfit_adjustment_report.json"
@@ -764,6 +815,8 @@ def run_historical_research_cycle(
         "candidate_count": len(candidates),
         "candidate_search_mode": search_mode,
         "candidate_search_method": search_method,
+        "candidate_selection_performance_plan": performance_plan,
+        "compute_policy": performance_plan["compute_policy"],
         "backtest_backend_requested": spec.backtest_backend,
         "backtest_backend_summary": _backtest_backend_summary(backtest_index_records),
         "aggregate_backtest_count": len(candidates),
@@ -3431,6 +3484,7 @@ def _trial_budget_report(
     cost_stress_records: list[dict[str, Any]],
     search_mode: str,
     search_method: str,
+    performance_plan: Mapping[str, Any],
 ) -> dict[str, Any]:
     source_counts = _candidate_source_counts(candidates)
     comparator_count = sum(1 for candidate in candidates if bool(candidate.get("comparator_injected", False)))
@@ -3448,6 +3502,17 @@ def _trial_budget_report(
         "symbol": spec.symbol,
         "candidate_search_mode": search_mode,
         "candidate_search_method": search_method,
+        "performance_plan": dict(performance_plan),
+        "bruteforce_equivalent_candidate_count": int(
+            performance_plan.get("bruteforce_equivalent_candidate_count", 0)
+        ),
+        "sampled_fraction_of_bruteforce": float(
+            performance_plan.get("sampled_fraction_of_bruteforce", 0.0)
+        ),
+        "bruteforce_avoidance_ratio": float(
+            performance_plan.get("bruteforce_avoidance_ratio", 1.0)
+        ),
+        "compute_policy": dict(performance_plan.get("compute_policy") or {}),
         "optimizer_method_sequence": list(spec.optimizer.method_sequence),
         "budget_policy": {
             "max_candidates_per_strategy": int(spec.optimizer.max_candidates_per_strategy),

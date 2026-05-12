@@ -107,7 +107,10 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.validation.split_modes == ("purged_embargoed_walk_forward",)
     assert spec.validation.min_cost_stress_survival_rate == 1.0
     assert spec.backtest_backend == "reference"
+    assert spec.compute.cpu_threads == 1
+    assert spec.compute.gpu_acceleration == "prefer_nvidia_cuda_when_backend_available"
     assert spec.to_payload()["backtest_backend"] == "reference"
+    assert spec.to_payload()["compute"]["gpu_device_class"] == "nvidia_50_series"
     assert spec.to_payload()["validation"]["split_modes"] == ["purged_embargoed_walk_forward"]
     assert spec.to_payload()["validation"]["min_cost_stress_survival_rate"] == 1.0
     assert spec.exits.exit_policies[0]["exit_policy_id"] == "fixed_holding_window"
@@ -394,6 +397,60 @@ def test_historical_research_cycle_spec_accepts_optimizer_search_spaces(tmp_path
     assert spec.optimizer.method_sequence == ("grid", "stability_region_refine")
     assert len(spec.optimizer.search_spaces) == 1
     assert payload["optimizer"]["search_spaces"][0]["parameters"]["slope_threshold"] == [0.08, 0.12]
+
+
+def test_historical_research_cycle_spec_accepts_compute_policy(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "compute-policy-cycle",
+            "data": {"synthetic_fixture": True},
+            "compute": {
+                "cpu_threads": 15,
+                "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+                "gpu_device_class": "nvidia_50_series",
+                "gpu_required": False,
+            },
+        },
+    )
+
+    spec = HistoricalResearchCycleSpec.from_path(spec_path)
+    payload = spec.to_payload()["compute"]
+
+    assert spec.compute.cpu_threads == 15
+    assert spec.compute.gpu_acceleration == "prefer_nvidia_cuda_when_backend_available"
+    assert payload == {
+        "cpu_threads": 15,
+        "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+        "gpu_device_class": "nvidia_50_series",
+        "gpu_required": False,
+    }
+
+
+@pytest.mark.parametrize(
+    ("compute", "message"),
+    [
+        ({"cpu_threads": 0}, "compute.cpu_threads"),
+        ({"cpu_threads": 65}, "compute.cpu_threads"),
+        ({"gpu_acceleration": "magic_gpu"}, "compute.gpu_acceleration"),
+    ],
+)
+def test_historical_research_cycle_rejects_invalid_compute_policy(
+    tmp_path: Path,
+    compute: dict[str, object],
+    message: str,
+) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "bad-compute-policy-cycle",
+            "data": {"synthetic_fixture": True},
+            "compute": compute,
+        },
+    )
+
+    with pytest.raises(ValueError, match=message):
+        HistoricalResearchCycleSpec.from_path(spec_path)
 
 
 def test_historical_research_cycle_spec_accepts_exit_policy_candidates(tmp_path: Path) -> None:
