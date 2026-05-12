@@ -25,7 +25,9 @@ DEFAULT_STRATEGIES = (
     "regime_adaptive_v1",
     "hmm_knn_diagnostic_v1",
 )
-BACKTEST_BACKENDS = ("reference", "vector_fixed_holding", "cuda_fixed_holding", "auto")
+BACKTEST_BACKENDS = ("reference", "vector_fixed_holding", "cuda_fixed_holding", "cuda_batched_fixed_holding", "auto")
+GPU_EXECUTION_PROFILES = ("conservative", "cuda_exact_batched", "hybrid_tensorcore_screening")
+TENSOR_CORE_POLICIES = ("disabled", "screening_only")
 SUPPORTED_VALIDATION_SPLIT_MODES = (
     "purged_embargoed_walk_forward",
     "anchored_walk_forward",
@@ -301,6 +303,11 @@ class CycleComputeSpec:
     gpu_acceleration: str = "prefer_nvidia_cuda_when_backend_available"
     gpu_device_class: str = "nvidia_50_series"
     gpu_required: bool = False
+    gpu_execution_profile: str = "cuda_exact_batched"
+    tensor_core_policy: str = "disabled"
+    gpu_batch_candidates: int = 512
+    gpu_memory_fraction_limit: float = 0.70
+    gpu_validation_sample_rate: float = 0.02
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None) -> "CycleComputeSpec":
@@ -316,20 +323,57 @@ class CycleComputeSpec:
         }
         if gpu_acceleration not in allowed_gpu_modes:
             raise ValueError(f"compute.gpu_acceleration must be one of: {', '.join(sorted(allowed_gpu_modes))}")
+        gpu_execution_profile = str(payload.get("gpu_execution_profile", "cuda_exact_batched")).strip().lower()
+        if gpu_execution_profile not in GPU_EXECUTION_PROFILES:
+            raise ValueError(f"compute.gpu_execution_profile must be one of: {', '.join(GPU_EXECUTION_PROFILES)}")
+        tensor_core_policy = str(payload.get("tensor_core_policy", "disabled")).strip().lower()
+        if tensor_core_policy not in TENSOR_CORE_POLICIES:
+            raise ValueError(f"compute.tensor_core_policy must be one of: {', '.join(TENSOR_CORE_POLICIES)}")
+        gpu_batch_candidates = int(payload.get("gpu_batch_candidates", 512))
+        if gpu_batch_candidates < 1 or gpu_batch_candidates > 1_000_000:
+            raise ValueError("compute.gpu_batch_candidates must be between 1 and 1000000")
+        gpu_memory_fraction_limit = float(payload.get("gpu_memory_fraction_limit", 0.70))
+        if gpu_memory_fraction_limit <= 0.0 or gpu_memory_fraction_limit > 1.0:
+            raise ValueError("compute.gpu_memory_fraction_limit must be greater than 0 and at most 1")
+        gpu_validation_sample_rate = _bounded_rate(
+            payload.get("gpu_validation_sample_rate", 0.02),
+            field_name="compute.gpu_validation_sample_rate",
+        )
         return cls(
             cpu_threads=cpu_threads,
             gpu_acceleration=gpu_acceleration,
             gpu_device_class=str(payload.get("gpu_device_class", "nvidia_50_series")),
             gpu_required=bool(payload.get("gpu_required", gpu_acceleration == "require_nvidia_cuda_backend")),
+            gpu_execution_profile=gpu_execution_profile,
+            tensor_core_policy=tensor_core_policy,
+            gpu_batch_candidates=gpu_batch_candidates,
+            gpu_memory_fraction_limit=gpu_memory_fraction_limit,
+            gpu_validation_sample_rate=gpu_validation_sample_rate,
         )
 
-    def to_payload(self) -> dict[str, Any]:
-        return {
+    def to_payload(self, *, include_r97_defaults: bool = False) -> dict[str, Any]:
+        payload = {
             "cpu_threads": int(self.cpu_threads),
             "gpu_acceleration": self.gpu_acceleration,
             "gpu_device_class": self.gpu_device_class,
             "gpu_required": bool(self.gpu_required),
         }
+        r97_payload = {
+            "gpu_execution_profile": self.gpu_execution_profile,
+            "tensor_core_policy": self.tensor_core_policy,
+            "gpu_batch_candidates": int(self.gpu_batch_candidates),
+            "gpu_memory_fraction_limit": float(self.gpu_memory_fraction_limit),
+            "gpu_validation_sample_rate": float(self.gpu_validation_sample_rate),
+        }
+        if include_r97_defaults or r97_payload != {
+            "gpu_execution_profile": "cuda_exact_batched",
+            "tensor_core_policy": "disabled",
+            "gpu_batch_candidates": 512,
+            "gpu_memory_fraction_limit": 0.70,
+            "gpu_validation_sample_rate": 0.02,
+        }:
+            payload.update(r97_payload)
+        return payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,7 +409,7 @@ class HistoricalResearchCycleSpec:
     optimizer: CycleOptimizerSpec
     compute: CycleComputeSpec
     exits: CycleExitSpec
-    backtest_backend: str = "reference"
+    backtest_backend: str = "auto"
     output_dir: Path | None = None
 
     @classmethod
@@ -384,7 +428,7 @@ class HistoricalResearchCycleSpec:
         strategies = tuple(str(item) for item in payload.get("strategies", DEFAULT_STRATEGIES))
         if not strategies:
             raise ValueError("at least one strategy is required")
-        backtest_backend = str(payload.get("backtest_backend", "reference")).strip().lower()
+        backtest_backend = str(payload.get("backtest_backend", "auto")).strip().lower()
         if backtest_backend not in BACKTEST_BACKENDS:
             raise ValueError(f"backtest_backend must be one of: {', '.join(BACKTEST_BACKENDS)}")
         base_path = spec_path.parent
@@ -424,7 +468,7 @@ class HistoricalResearchCycleSpec:
             "strategies": list(self.strategies),
             "validation": self.validation.to_payload(),
             "optimizer": self.optimizer.to_payload(),
-            "compute": self.compute.to_payload(),
+            "compute": self.compute.to_payload(include_r97_defaults=True),
             "exits": self.exits.to_payload(),
             "backtest_backend": self.backtest_backend,
             "output_dir": str(self.output_dir) if self.output_dir is not None else None,

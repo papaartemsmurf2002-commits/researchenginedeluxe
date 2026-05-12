@@ -840,7 +840,7 @@ def _finalize_benchmark_report(
     backend_comparison: dict[str, Any] | None,
     benchmark_data_scope: str,
 ) -> None:
-    for _ in range(25):
+    for _ in range(100):
         _write_json(report_path, report)
         artifact_overhead = _artifact_overhead(benchmark_dir)
         artifact_overhead_payload = {
@@ -868,10 +868,11 @@ def _finalize_benchmark_report(
             backend_comparison=backend_comparison,
             benchmark_data_scope=benchmark_data_scope,
         )
-        if report.get("artifact_overhead") == artifact_overhead_payload and report.get("benchmark_gate") == benchmark_gate:
-            return
         report["artifact_overhead"] = artifact_overhead_payload
         report["benchmark_gate"] = benchmark_gate
+        _write_json(report_path, report)
+        if int(report["artifact_overhead"].get("final_report_bytes", 0)) == int(report_path.stat().st_size):
+            return
     _write_json(report_path, report)
 
 

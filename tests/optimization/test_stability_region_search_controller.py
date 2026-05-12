@@ -114,3 +114,165 @@ def test_stability_region_search_does_not_count_unexecuted_validation() -> None:
     assert report["counters"]["cpu_validated_count"] == 0
     assert report["counters"]["validation_evaluation_count"] == 0
     assert report["stage_reports"][2]["execution_status"] == "not_executed_validation_evaluator_missing"
+
+
+def _r97_screening_evaluator(config: CandidateConfig) -> CandidateResult:
+    threshold = float(config.parameters["threshold"])
+    if threshold in {0.1, 0.2}:
+        backend = "tensorcore_screening"
+    else:
+        backend = "cuda_batched_fixed_holding"
+    return CandidateResult(
+        config,
+        base_score=1.0 - min(abs(threshold - 0.3), 1.0),
+        trade_count=10,
+        split_consistency=0.8,
+        side_balance=0.8,
+        regime_coverage=0.8,
+        cost_stress_survival=0.8,
+        metadata={
+            "screening_backend_used": backend,
+            "tensorcore_screening_evidence": {
+                "screening_module": "cuda_screening_batch_v1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "diagnostic_only": True,
+                "candidate_gate_eligible": False,
+                "speed_claimed": False,
+            },
+            "parity_rechecked": backend == "cuda_batched_fixed_holding",
+            "parity_mismatch": threshold == 0.4,
+        },
+    )
+
+
+def _r97_reference_validation_evaluator(config: CandidateConfig) -> CandidateResult:
+    threshold = float(config.parameters["threshold"])
+    return CandidateResult(
+        config,
+        base_score=1.0 - min(abs(threshold - 0.3), 1.0),
+        trade_count=10,
+        split_consistency=0.8,
+        side_balance=0.8,
+        regime_coverage=0.8,
+        cost_stress_survival=0.8,
+        metadata={
+            "validation_backend_used": "reference",
+            "cpu_reference_validated": True,
+            "parity_rechecked": True,
+            "parity_mismatch": False,
+        },
+    )
+
+
+def test_stability_region_search_r97_counters_distinguish_tensorcore_gpu_exact_and_reference_validation() -> None:
+    space = SearchSpace("trend_following_v1", {"threshold": (0.1, 0.2, 0.3, 0.4)})
+    report = StabilityRegionSearchController(
+        space,
+        StabilityRegionSearchConfig(
+            screening_method="grid",
+            screening_budget=4,
+            top_regions=1,
+            refinement_budget_per_region=1,
+            screening_backend="tensorcore_screening",
+            validation_backend="reference",
+            pass_score=0.5,
+        ),
+    ).run(
+        _r97_screening_evaluator,
+        validation_evaluator=_r97_reference_validation_evaluator,
+    ).to_payload()
+
+    counters = report["counters"]
+    assert counters["tensorcore_screened_count"] >= 1
+    assert counters["gpu_exact_screened_count"] >= 1
+    assert counters["cpu_reference_validated_count"] == len(report["validation_results"])
+    assert counters["parity_rechecked_count"] >= counters["gpu_exact_screened_count"]
+    assert counters["mismatch_count"] == 1
+    assert "gpu_screened_count" in counters
+    assert "cpu_screened_count" in counters
+    assert "cpu_validated_count" in counters
+    assert counters["screening_observed_backend_counts"]["tensorcore_screening"] >= 1
+    assert counters["screening_observed_backend_counts"]["cuda_batched_fixed_holding"] >= 1
+    assert counters["validation_observed_backend_counts"] == {"reference": len(report["validation_results"])}
+
+
+def test_tensorcore_screening_stage_evidence_is_diagnostic_only_and_not_promotion_claim() -> None:
+    space = SearchSpace("trend_following_v1", {"threshold": (0.1, 0.2, 0.3)})
+    report = StabilityRegionSearchController(
+        space,
+        StabilityRegionSearchConfig(
+            screening_method="grid",
+            screening_budget=3,
+            top_regions=1,
+            screening_backend="tensorcore_screening",
+            validation_backend="reference",
+            pass_score=0.5,
+        ),
+    ).run(
+        _r97_screening_evaluator,
+        validation_evaluator=_r97_reference_validation_evaluator,
+    ).to_payload()
+
+    screen_stage = report["stage_reports"][0]
+    evidence = screen_stage["tensorcore_screening_evidence"]
+    assert evidence["screening_module"] == "cuda_screening_batch_v1"
+    assert evidence["research_only"] is True
+    assert evidence["observe_only"] is True
+    assert evidence["promotion_ready"] is False
+    assert evidence["diagnostic_only"] is True
+    assert evidence["candidate_gate_eligible"] is False
+    assert evidence["speed_claimed"] is False
+    assert report["promotion_ready"] is False
+
+
+def test_tensorcore_screening_no_gpu_fallback_is_stable_cpu_reference_diagnostic() -> None:
+    space = SearchSpace("trend_following_v1", {"threshold": (0.1, 0.2, 0.3)})
+
+    def cpu_fallback_evaluator(config: CandidateConfig) -> CandidateResult:
+        threshold = float(config.parameters["threshold"])
+        return CandidateResult(
+            config,
+            base_score=1.0 - min(abs(threshold - 0.2), 1.0),
+            trade_count=10,
+            split_consistency=0.8,
+            side_balance=0.8,
+            regime_coverage=0.8,
+            cost_stress_survival=0.8,
+            metadata={
+                "screening_backend_used": "reference",
+                "tensorcore_screening_evidence": {
+                    "screening_module": "cuda_screening_batch_v1",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "diagnostic_only": True,
+                    "candidate_gate_eligible": False,
+                    "speed_claimed": False,
+                    "execution_status": "fallback_cpu_reference_no_gpu",
+                    "fallback_reason": "tensorcore_runtime_unavailable",
+                },
+            },
+        )
+
+    report = StabilityRegionSearchController(
+        space,
+        StabilityRegionSearchConfig(
+            screening_method="grid",
+            screening_budget=3,
+            top_regions=1,
+            screening_backend="tensorcore_screening",
+            validation_backend="reference",
+            pass_score=0.5,
+        ),
+    ).run(cpu_fallback_evaluator, validation_evaluator=_r97_reference_validation_evaluator).to_payload()
+
+    counters = report["counters"]
+    evidence = report["stage_reports"][0]["tensorcore_screening_evidence"]
+    assert counters["tensorcore_screened_count"] == 0
+    assert counters["gpu_exact_screened_count"] == 0
+    assert counters["cpu_screened_count"] == counters["screening_backend_observed_count"]
+    assert evidence["execution_status"] == "fallback_cpu_reference_no_gpu"
+    assert evidence["fallback_reason"] == "tensorcore_runtime_unavailable"
+    assert evidence["promotion_ready"] is False

@@ -8,6 +8,7 @@ from tradingbotsuite.research.live_readiness import research_boundary_metadata
 
 
 CANDIDATE_SELECTION_PERFORMANCE_PLAN_VERSION = "candidate-selection-performance-plan-v1"
+R97_CUDA_EXECUTION_PROFILES = {"cuda_exact_batched", "hybrid_tensorcore_screening"}
 
 
 def build_candidate_selection_performance_plan(
@@ -25,23 +26,42 @@ def build_candidate_selection_performance_plan(
     screening_candidates = _screening_candidates(spec, candidates)
     raw_sampled_fraction = float(materialized_search_count / brute_force_count) if brute_force_count > 0 else 1.0
     sampled_fraction = min(1.0, raw_sampled_fraction)
-    compute = spec.compute.to_payload()
+    compute = spec.compute.to_payload(include_r97_defaults=True)
     gpu_requested = compute["gpu_acceleration"] != "disabled"
-    cuda_backend_selectable = str(spec.backtest_backend) in {"auto", "cuda_fixed_holding"}
+    r97_batched_profile_requested = str(compute.get("gpu_execution_profile")) in R97_CUDA_EXECUTION_PROFILES
+    tensorcore_screening_requested = (
+        str(compute.get("gpu_execution_profile")) == "hybrid_tensorcore_screening"
+        and str(compute.get("tensor_core_policy")) == "screening_only"
+    )
+    requested_backend = str(spec.backtest_backend)
+    cuda_backend_selectable = requested_backend in {"cuda_fixed_holding", "cuda_batched_fixed_holding"} or (
+        requested_backend == "auto" and gpu_requested and r97_batched_profile_requested
+    )
+    selected_cuda_backend = (
+        "cuda_batched_fixed_holding"
+        if requested_backend == "cuda_batched_fixed_holding"
+        or (requested_backend == "auto" and gpu_requested and r97_batched_profile_requested)
+        else "cuda_fixed_holding"
+    )
     cuda_evidence = cuda_runtime_evidence() if gpu_requested and cuda_backend_selectable else {}
     cuda_available = bool(cuda_evidence.get("available", False))
     gpu_execution_status = (
         "disabled_by_spec"
         if not gpu_requested
-        else "cuda_fixed_holding_backend_not_selected"
+        else "gpu_execution_profile_conservative"
+        if requested_backend == "auto" and not r97_batched_profile_requested
+        else f"{selected_cuda_backend}_backend_not_selected"
         if not cuda_backend_selectable
-        else "cuda_fixed_holding_runtime_available"
+        else f"{selected_cuda_backend}_runtime_available"
         if cuda_available
         else str(cuda_evidence.get("unavailable_reason") or "disabled_by_spec")
     )
     planned_cuda_eligible = sum(1 for candidate in screening_candidates if _cuda_fixed_holding_candidate_eligible(candidate))
     planned_gpu_screened = int(planned_cuda_eligible if cuda_available and cuda_backend_selectable else 0)
     planned_cpu_screened = int(max(0, materialized_search_count - planned_gpu_screened))
+    planned_cpu_validated = int(min(len(candidates), max(1, int(spec.optimizer.top_regions_to_refine))))
+    planned_tensorcore_screened = int(planned_gpu_screened if tensorcore_screening_requested else 0)
+    planned_parity_rechecked = int(round(planned_gpu_screened * float(compute["gpu_validation_sample_rate"])))
     return {
         "performance_plan_version": CANDIDATE_SELECTION_PERFORMANCE_PLAN_VERSION,
         "research_only": True,
@@ -76,8 +96,13 @@ def build_candidate_selection_performance_plan(
             "planned_cpu_screened_count": planned_cpu_screened,
             "planned_cuda_eligible_screened_count": int(planned_cuda_eligible),
             "planned_cuda_ineligible_screened_count": int(max(0, materialized_search_count - planned_cuda_eligible)),
-            "planned_cpu_validated_count": int(min(len(candidates), max(1, int(spec.optimizer.top_regions_to_refine)))),
+            "planned_cpu_validated_count": planned_cpu_validated,
             "planned_region_refined_count": int(max(0, int(spec.optimizer.top_regions_to_refine))),
+            "tensorcore_screened_count": planned_tensorcore_screened,
+            "gpu_exact_screened_count": planned_gpu_screened,
+            "cpu_reference_validated_count": planned_cpu_validated,
+            "parity_rechecked_count": planned_parity_rechecked,
+            "mismatch_count": 0,
             "estimated_bruteforce_avoidance_ratio": (
                 max(1.0, float(brute_force_count / max(materialized_search_count, 1)))
                 if brute_force_count > 0
@@ -88,6 +113,9 @@ def build_candidate_selection_performance_plan(
             **compute,
             "aggregate_backtest_workers_used": int(aggregate_backtest_workers_used),
             "gpu_requested": bool(gpu_requested),
+            "selected_cuda_backend": selected_cuda_backend if cuda_backend_selectable else "",
+            "r97_batched_cuda_requested": bool(r97_batched_profile_requested and gpu_requested),
+            "tensorcore_screening_requested": bool(tensorcore_screening_requested),
             "gpu_execution_status": gpu_execution_status,
             "cuda_runtime_available": cuda_available,
             "cuda_runtime_evidence": dict(cuda_evidence),

@@ -7,9 +7,11 @@ import pandas as pd
 import pytest
 
 from tradingbotsuite.research.command_registry import RESEARCH_COMMANDS
+from tradingbotsuite.research_cycle.performance import build_candidate_selection_performance_plan
 from tradingbotsuite.research_cycle.runner import (
     FeatureBuildResult,
     _apply_materialized_prediction_overlays,
+    _aggregate_backtest_worker_count,
     _baseline_comparator_coverage,
     _candidate_space,
 )
@@ -106,11 +108,13 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.validation.min_splits == 6
     assert spec.validation.split_modes == ("purged_embargoed_walk_forward",)
     assert spec.validation.min_cost_stress_survival_rate == 1.0
-    assert spec.backtest_backend == "reference"
+    assert spec.backtest_backend == "auto"
     assert spec.compute.cpu_threads == 1
     assert spec.compute.gpu_acceleration == "prefer_nvidia_cuda_when_backend_available"
-    assert spec.to_payload()["backtest_backend"] == "reference"
+    assert spec.compute.gpu_execution_profile == "cuda_exact_batched"
+    assert spec.to_payload()["backtest_backend"] == "auto"
     assert spec.to_payload()["compute"]["gpu_device_class"] == "nvidia_50_series"
+    assert spec.to_payload()["compute"]["gpu_execution_profile"] == "cuda_exact_batched"
     assert spec.to_payload()["validation"]["split_modes"] == ["purged_embargoed_walk_forward"]
     assert spec.to_payload()["validation"]["min_cost_stress_survival_rate"] == 1.0
     assert spec.exits.exit_policies[0]["exit_policy_id"] == "fixed_holding_window"
@@ -248,7 +252,7 @@ def test_materialized_prediction_overlay_rejects_future_neighbor_boundary(tmp_pa
         )
 
 
-@pytest.mark.parametrize("backend", ["reference", "vector_fixed_holding", "cuda_fixed_holding", "auto"])
+@pytest.mark.parametrize("backend", ["reference", "vector_fixed_holding", "cuda_fixed_holding", "cuda_batched_fixed_holding", "auto"])
 def test_historical_research_cycle_spec_accepts_backtest_backend(tmp_path: Path, backend: str) -> None:
     spec_path = _write_json(
         tmp_path / "cycle.json",
@@ -410,6 +414,11 @@ def test_historical_research_cycle_spec_accepts_compute_policy(tmp_path: Path) -
                 "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
                 "gpu_device_class": "nvidia_50_series",
                 "gpu_required": False,
+                "gpu_execution_profile": "hybrid_tensorcore_screening",
+                "tensor_core_policy": "screening_only",
+                "gpu_batch_candidates": 4096,
+                "gpu_memory_fraction_limit": 0.75,
+                "gpu_validation_sample_rate": 0.25,
             },
         },
     )
@@ -419,12 +428,39 @@ def test_historical_research_cycle_spec_accepts_compute_policy(tmp_path: Path) -
 
     assert spec.compute.cpu_threads == 15
     assert spec.compute.gpu_acceleration == "prefer_nvidia_cuda_when_backend_available"
+    assert spec.compute.gpu_execution_profile == "hybrid_tensorcore_screening"
+    assert spec.compute.tensor_core_policy == "screening_only"
+    assert spec.compute.gpu_batch_candidates == 4096
+    assert spec.compute.gpu_memory_fraction_limit == 0.75
+    assert spec.compute.gpu_validation_sample_rate == 0.25
     assert payload == {
         "cpu_threads": 15,
         "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
         "gpu_device_class": "nvidia_50_series",
         "gpu_required": False,
+        "gpu_execution_profile": "hybrid_tensorcore_screening",
+        "tensor_core_policy": "screening_only",
+        "gpu_batch_candidates": 4096,
+        "gpu_memory_fraction_limit": 0.75,
+        "gpu_validation_sample_rate": 0.25,
     }
+
+
+@pytest.mark.parametrize("profile", ["conservative", "cuda_exact_batched", "hybrid_tensorcore_screening"])
+def test_historical_research_cycle_spec_accepts_gpu_execution_profiles(tmp_path: Path, profile: str) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": f"{profile}-profile-cycle",
+            "data": {"synthetic_fixture": True},
+            "compute": {"gpu_execution_profile": profile},
+        },
+    )
+
+    spec = HistoricalResearchCycleSpec.from_path(spec_path)
+
+    assert spec.compute.gpu_execution_profile == profile
+    assert spec.to_payload()["compute"]["gpu_execution_profile"] == profile
 
 
 @pytest.mark.parametrize(
@@ -433,6 +469,11 @@ def test_historical_research_cycle_spec_accepts_compute_policy(tmp_path: Path) -
         ({"cpu_threads": 0}, "compute.cpu_threads"),
         ({"cpu_threads": 65}, "compute.cpu_threads"),
         ({"gpu_acceleration": "magic_gpu"}, "compute.gpu_acceleration"),
+        ({"gpu_execution_profile": "eager_gpu"}, "compute.gpu_execution_profile"),
+        ({"tensor_core_policy": "promotion_gate"}, "compute.tensor_core_policy"),
+        ({"gpu_batch_candidates": 0}, "compute.gpu_batch_candidates"),
+        ({"gpu_memory_fraction_limit": 0}, "compute.gpu_memory_fraction_limit"),
+        ({"gpu_validation_sample_rate": 1.5}, "compute.gpu_validation_sample_rate"),
     ],
 )
 def test_historical_research_cycle_rejects_invalid_compute_policy(
@@ -451,6 +492,120 @@ def test_historical_research_cycle_rejects_invalid_compute_policy(
 
     with pytest.raises(ValueError, match=message):
         HistoricalResearchCycleSpec.from_path(spec_path)
+
+
+def test_auto_backend_keeps_conservative_cpu_routing_until_gpu_profile_requests_batched_or_hybrid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "tradingbotsuite.research_cycle.runner.cuda_runtime_evidence",
+        lambda: {"available": True, "unavailable_reason": "", "gpu_name": "Fake R97 GPU"},
+    )
+    base_payload = {
+        "cycle_id": "auto-routing",
+        "data": {"synthetic_fixture": True},
+        "backtest_backend": "auto",
+        "holding_windows": ["4h"],
+        "strategies": ["trend_following_v1"],
+        "compute": {
+            "cpu_threads": 7,
+            "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+            "gpu_execution_profile": "conservative",
+        },
+        "exit_policies": ["fixed_holding_window"],
+    }
+
+    conservative = HistoricalResearchCycleSpec.from_payload(base_payload, spec_path=tmp_path / "conservative.json")
+    assert conservative.compute.gpu_execution_profile == "conservative"
+    assert _aggregate_backtest_worker_count(conservative) == 7
+
+    for profile in ("cuda_exact_batched", "hybrid_tensorcore_screening"):
+        spec = HistoricalResearchCycleSpec.from_payload(
+            {
+                **base_payload,
+                "cycle_id": f"auto-routing-{profile}",
+                "compute": {
+                    **base_payload["compute"],
+                    "gpu_execution_profile": profile,
+                },
+            },
+            spec_path=tmp_path / f"{profile}.json",
+        )
+        assert _aggregate_backtest_worker_count(spec) == 1
+
+
+def test_performance_plan_keeps_auto_conservative_cpu_until_r97_profile_requests_gpu(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "tradingbotsuite.research_cycle.performance.cuda_runtime_evidence",
+        lambda: {"available": True, "unavailable_reason": "", "gpu_name": "Fake R97 GPU"},
+    )
+    base_payload = {
+        "cycle_id": "auto-performance-routing",
+        "data": {"synthetic_fixture": True},
+        "backtest_backend": "auto",
+        "holding_windows": ["4h"],
+        "strategies": ["trend_following_v1"],
+        "compute": {"gpu_acceleration": "prefer_nvidia_cuda_when_backend_available"},
+        "optimizer": {"max_candidates_per_strategy": 1},
+    }
+    candidates = [
+        {
+            "candidate_id": "candidate-1",
+            "candidate_source": "metadata_default_search",
+            "exit_policy_id": "fixed_holding_window",
+            "exit_price_source": "primary_close",
+        }
+    ]
+
+    conservative = HistoricalResearchCycleSpec.from_payload(
+        {
+            **base_payload,
+            "compute": {
+                "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+                "gpu_execution_profile": "conservative",
+            },
+        },
+        spec_path=tmp_path / "conservative.json",
+    )
+    conservative_plan = build_candidate_selection_performance_plan(
+        spec=conservative,
+        candidates=candidates,
+        search_mode="metadata_default_search",
+        search_method="metadata_capped_grid",
+        aggregate_backtest_workers_used=7,
+    )
+
+    assert conservative_plan["compute_policy"]["gpu_execution_status"] == "gpu_execution_profile_conservative"
+    assert conservative_plan["compute_policy"]["selected_cuda_backend"] == ""
+    assert conservative_plan["stability_region_acceleration_counters"]["planned_gpu_screened_count"] == 0
+    assert conservative_plan["stability_region_acceleration_counters"]["planned_cpu_screened_count"] == 1
+
+    batched = HistoricalResearchCycleSpec.from_payload(
+        {
+            **base_payload,
+            "cycle_id": "auto-performance-batched-routing",
+            "compute": {
+                "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+                "gpu_execution_profile": "cuda_exact_batched",
+            },
+        },
+        spec_path=tmp_path / "batched.json",
+    )
+    batched_plan = build_candidate_selection_performance_plan(
+        spec=batched,
+        candidates=candidates,
+        search_mode="metadata_default_search",
+        search_method="metadata_capped_grid",
+        aggregate_backtest_workers_used=1,
+    )
+
+    assert batched_plan["compute_policy"]["selected_cuda_backend"] == "cuda_batched_fixed_holding"
+    assert batched_plan["compute_policy"]["gpu_execution_status"] == "cuda_batched_fixed_holding_runtime_available"
+    assert batched_plan["stability_region_acceleration_counters"]["planned_gpu_screened_count"] == 1
 
 
 def test_historical_research_cycle_spec_accepts_exit_policy_candidates(tmp_path: Path) -> None:

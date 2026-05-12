@@ -1,14 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
 
 from tradingbotsuite.optimization.candidate import CandidateConfig, CandidateResult
+from tradingbotsuite.optimization.gpu_screening import (
+    CUDA_SCREENING_SCOPE,
+    merge_wpr97_screening_counters,
+)
 from tradingbotsuite.optimization.search_space import SearchSpace
 from tradingbotsuite.optimization.stability import StabilityRegion, rank_by_stability
 
 
 StabilityEvaluator = Callable[[CandidateConfig], CandidateResult]
+GPU_EXACT_SCREENING_BACKENDS = {"cuda_fixed_holding", "cuda_batched_fixed_holding"}
+TENSORCORE_SCREENING_BACKENDS = {CUDA_SCREENING_SCOPE, "tensorcore_screening"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,10 +162,11 @@ def _stage_report(
     *,
     execution_status: str = "executed",
 ) -> dict[str, Any]:
-    return {
+    result_list = list(results)
+    report = {
         "stage": stage,
         "requested_backend": backend,
-        "observed_backend_counts": _backend_counts(results),
+        "observed_backend_counts": _backend_counts(result_list),
         "generated_candidate_count": int(generated),
         "result_count": int(result_count),
         "execution_status": execution_status,
@@ -167,6 +174,13 @@ def _stage_report(
         "observe_only": True,
         "promotion_ready": False,
     }
+    tensorcore_evidence = _first_screening_evidence(result_list, key="tensorcore_screening_evidence")
+    if tensorcore_evidence:
+        report["tensorcore_screening_evidence"] = dict(tensorcore_evidence)
+    gpu_evidence = _first_screening_evidence(result_list, key="gpu_screening_evidence")
+    if gpu_evidence:
+        report["gpu_screening_evidence"] = dict(gpu_evidence)
+    return report
 
 
 def _evaluate_unique(
@@ -241,9 +255,22 @@ def _search_counters(
     brute_force = search_space.grid_size()
     screening_backend_counts = _backend_counts(screening_results)
     validation_backend_counts = _backend_counts(validation_results)
-    gpu_screened = int(screening_backend_counts.get("cuda_fixed_holding", 0))
+    gpu_screened = int(
+        sum(
+            count
+            for backend, count in screening_backend_counts.items()
+            if backend in GPU_EXACT_SCREENING_BACKENDS
+        )
+    )
+    cpu_validated = int(
+        sum(
+            count
+            for backend, count in validation_backend_counts.items()
+            if backend not in GPU_EXACT_SCREENING_BACKENDS
+        )
+    )
     observed_screened = sum(screening_backend_counts.values())
-    return {
+    counters = {
         "counter_version": "stability-region-search-counters-v1",
         "research_only": True,
         "observe_only": True,
@@ -256,20 +283,15 @@ def _search_counters(
             sum(
                 count
                 for backend, count in screening_backend_counts.items()
-                if backend != "cuda_fixed_holding"
+                if backend not in GPU_EXACT_SCREENING_BACKENDS
+                and backend not in TENSORCORE_SCREENING_BACKENDS
             )
         ),
         "screening_backend_observed_count": int(observed_screened),
         "screening_backend_unknown_count": int(max(0, len(screening_results) - observed_screened)),
         "screening_observed_backend_counts": dict(screening_backend_counts),
         "selected_candidate_count": int(selected_count),
-        "cpu_validated_count": int(
-            sum(
-                count
-                for backend, count in validation_backend_counts.items()
-                if backend != "cuda_fixed_holding"
-            )
-        ),
+        "cpu_validated_count": int(cpu_validated),
         "validation_evaluation_count": int(len(validation_results)),
         "validation_observed_backend_counts": dict(validation_backend_counts),
         "region_refined_count": int(refined_count),
@@ -279,6 +301,14 @@ def _search_counters(
             else 1.0
         ),
     }
+    return merge_wpr97_screening_counters(
+        counters,
+        tensorcore_screened_count=sum(_is_tensorcore_screening_result(result) for result in screening_results),
+        gpu_exact_screened_count=gpu_screened,
+        cpu_reference_validated_count=cpu_validated,
+        parity_rechecked_count=sum(_parity_rechecked_count(result) for result in screening_results),
+        mismatch_count=sum(_mismatch_count(result) for result in screening_results),
+    )
 
 
 def _backend_counts(results: Iterable[CandidateResult]) -> dict[str, int]:
@@ -298,3 +328,60 @@ def _observed_backend(result: CandidateResult) -> str:
         if backend:
             return backend
     return ""
+
+
+def _is_tensorcore_screening_result(result: CandidateResult) -> bool:
+    metadata = dict(result.metadata or {})
+    if _observed_backend(result) in TENSORCORE_SCREENING_BACKENDS:
+        return True
+    evidence = _screening_evidence(metadata)
+    return (
+        bool(evidence.get("tensor_core_used"))
+        or str(evidence.get("tensor_core_scope") or "") == CUDA_SCREENING_SCOPE
+    )
+
+
+def _parity_rechecked_count(result: CandidateResult) -> int:
+    metadata = dict(result.metadata or {})
+    if bool(metadata.get("parity_rechecked")):
+        return 1
+    evidence = _screening_evidence(metadata)
+    if bool(evidence.get("parity_rechecked")):
+        return 1
+    parity_status = str(evidence.get("parity_status") or "").strip()
+    return int(bool(parity_status and not parity_status.startswith("not_checked")))
+
+
+def _mismatch_count(result: CandidateResult) -> int:
+    metadata = dict(result.metadata or {})
+    if bool(metadata.get("parity_mismatch")):
+        return 1
+    evidence = _screening_evidence(metadata)
+    raw_count = evidence.get("mismatch_count")
+    if raw_count is not None:
+        try:
+            return int(raw_count)
+        except (TypeError, ValueError):
+            return 0
+    return int(str(evidence.get("parity_status") or "") == "mismatch")
+
+
+def _screening_evidence(metadata: Mapping[str, Any]) -> Mapping[str, Any]:
+    for key in (
+        "gpu_screening_evidence",
+        "tensorcore_screening_evidence",
+        "cuda_screening_evidence",
+        "screening_evidence",
+    ):
+        evidence = metadata.get(key)
+        if isinstance(evidence, Mapping):
+            return evidence
+    return metadata
+
+
+def _first_screening_evidence(results: Iterable[CandidateResult], *, key: str) -> Mapping[str, Any]:
+    for result in results:
+        evidence = dict(result.metadata or {}).get(key)
+        if isinstance(evidence, Mapping):
+            return evidence
+    return {}

@@ -479,3 +479,23 @@ def _unavailable_evidence(reason: str, exc: Exception, *, cupy: Any | None = Non
         "memory_free_bytes": None,
         "memory_total_bytes": None,
     }
+
+
+def __getattr__(name: str) -> Any:
+    if name in {
+        "CUDA_BATCHED_BACKEND_NAME",
+        "CUDA_BATCHED_BACKTEST_ENGINE_VERSION",
+        "CUDA_BATCHED_EXECUTION_SCOPE",
+        "CudaBatchedFixedHoldingBacktestEngine",
+        "cuda_batched_backtest_support_reason",
+        "cuda_batched_fixed_holding_support_reason",
+        "cuda_batched_fixed_holding_backtest_support_reason",
+    }:
+        from tradingbotsuite.backtesting import cuda_batched_engine
+
+        aliases = {
+            "cuda_batched_fixed_holding_support_reason": "cuda_batched_backtest_support_reason",
+            "cuda_batched_fixed_holding_backtest_support_reason": "cuda_batched_backtest_support_reason",
+        }
+        return getattr(cuda_batched_engine, aliases.get(name, name))
+    raise AttributeError(name)

@@ -1,8 +1,8 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R96 GPU-accelerated stability-region candidate search
+Current stage: Stage R97 aggressive CUDA/TensorCore stability search
 Current stage owner: Codex Research Agent
-Stage status: complete - WPR96-01 closed; ready for next research-only stage
+Stage status: complete - WPR97-02 closed
 Last updated: 2026-05-12
 
 ## Stage entry decision
@@ -29,6 +29,8 @@ Last updated: 2026-05-12
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR97-02-default-accelerated-runtime-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/**`, `tests/historical/**`, `tests/optimization/**` | Default accelerated research runtime, CPU/reference fallback evidence, longer CUDA parity, and validation recorded in `docs/stage_reports/STAGE_R97_DEFAULT_ACCELERATED_RUNTIME_POLISH_REPORT.md`. |
+| WPR97-01-aggressive-cuda-tensorcore-stability-search | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/**`, `tests/historical/**`, `tests/optimization/**` | Aggressive CUDA/TensorCore stability search implemented and validation recorded in `docs/stage_reports/STAGE_R97_AGGRESSIVE_CUDA_TENSORCORE_STABILITY_SEARCH_REPORT.md`. |
 | WP0-01-branch-and-ledger-setup | Orchestrator Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/BRANCH_PURPOSE.md`, `docs/work_packets/WP0-01-branch-and-ledger-setup.md`, `docs/stage_reports/STAGE_0_EXIT_REPORT.md` | Branch exists; governance files created; validation recorded in Stage 0 exit report. |
 | WP1-01-repo-inventory | Repo Cartographer Agent | closed | `docs/repo_cartography/REPO_INVENTORY.md`, `docs/stage_reports/STAGE_1_EXIT_REPORT.md` | File-family inventory, import map, root launchers, live order paths, research commands, and tests listed. |
 | WP1-02-tradingview-archive-map | Documentation Agent | closed | `docs/repo_cartography/TRADINGVIEW_ARCHIVE_MAP.md`, `docs/stage_reports/STAGE_1_EXIT_REPORT.md` | TradingView/Pine/parity files classified as removed, legacy reference, or candidate archive material. |
@@ -677,3 +679,43 @@ focused backtesting/optimization/contracts/historical tests, fixture-pack
 validation, and benchmark validation passed. This wave does not write candidate
 packs, claim promotion readiness or GPU speedup, add live execution, alter live
 config, place orders, or touch sizing behavior.
+
+## Aggressive CUDA TensorCore stability search wave
+
+Decision: WPR97-01 aggressive CUDA/TensorCore stability search complete.
+Reason: The branch now has an explicit opt-in `cuda_batched_fixed_holding`
+research backend beside the R96 `cuda_fixed_holding` backend, with RawKernel
+candidate indexing, FP64 accounting, deterministic non-overlap trade
+construction, CPU/vector parity evidence, kernel hash, SM target, runtime
+evidence, fallback reason codes, and `speed_claimed: false`. Historical-cycle
+`auto` routing stays conservative unless `gpu_execution_profile` explicitly
+requests `cuda_exact_batched` or `hybrid_tensorcore_screening`, and
+`gpu_required` fails closed when the requested GPU profile/runtime is
+unavailable. Optimization now exposes `cuda_screening_batch_v1` as a
+diagnostic-only matrix screening evaluator for Tensor Core-style prefilters,
+with CPU reference hashes and no candidate-gate authority. Stability-region
+counters now distinguish Tensor Core screened, exact GPU screened,
+CPU/reference validated, parity rechecked, and mismatch counts while retaining
+brute-force-avoidance accounting. Compile, contracts, backtesting,
+optimization, historical benchmark/full-cycle, research-discovery, focused
+local RTX 5070 Ti CUDA parity, and diff checks passed. This wave does not write
+candidate packs, claim promotion readiness or GPU speedup, add live execution,
+alter live config, place orders, or touch sizing behavior.
+
+## Default accelerated runtime polish wave
+
+Decision: WPR97-02 default accelerated runtime polish complete.
+Reason: Historical research cycles now default to accelerated `auto` routing
+with `gpu_execution_profile: cuda_exact_batched`, while CPU vector/reference
+remain the fallback when CUDA is unavailable, unsupported, or disabled.
+Aggregate fixed-holding screening can use `cuda_batched_fixed_holding`; split
+and cost-stress validation remain CPU/reference when CUDA screening was
+requested. Fallback reasons and performance-plan evidence were updated to match
+the new default. Local RTX 5070 Ti parity was crosschecked on five deterministic
+720-row cases with exact signal/trade agreement, strict equity/metric checks,
+zero max metric diff, and passed CUDA manifests. Compile, contracts,
+backtesting, optimization, historical benchmark/full-cycle/local-fixture,
+research-discovery, live-preflight, longer CUDA parity, and diff checks passed.
+This wave does not write candidate packs, claim promotion readiness or GPU
+speedup, add live execution, alter live config, place orders, or touch sizing
+behavior.

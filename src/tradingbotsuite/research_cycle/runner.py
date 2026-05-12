@@ -13,10 +13,13 @@ import pandas as pd
 
 from tradingbotsuite.backtesting import (
     CUDA_BACKTEST_ENGINE_VERSION,
+    CUDA_BATCHED_BACKTEST_ENGINE_VERSION,
     VECTOR_BACKTEST_ENGINE_VERSION,
     BacktestEngine,
+    CudaBatchedFixedHoldingBacktestEngine,
     CudaFixedHoldingBacktestEngine,
     VectorBacktestEngine,
+    cuda_batched_backtest_support_reason,
     cuda_backtest_support_reason,
     cuda_runtime_evidence,
 )
@@ -95,6 +98,8 @@ TRANSPARENT_BASELINE_STRATEGY_IDS = (
     "range_reversion_v1",
     "funding_basis_v1",
 )
+CUDA_BACKTEST_BACKENDS = {"cuda_fixed_holding", "cuda_batched_fixed_holding"}
+R97_CUDA_EXECUTION_PROFILES = {"cuda_exact_batched", "hybrid_tensorcore_screening"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,18 +132,36 @@ def _run_cycle_backtest(
     backtest_spec: BacktestSpec,
     dataset: pd.DataFrame,
     cuda_engine: CudaFixedHoldingBacktestEngine | None = None,
+    cuda_batched_engine: CudaBatchedFixedHoldingBacktestEngine | None = None,
     allow_cuda: bool = True,
 ) -> CycleBacktestExecution:
     cuda_engine = cuda_engine or CudaFixedHoldingBacktestEngine()
+    cuda_batched_engine = cuda_batched_engine or CudaBatchedFixedHoldingBacktestEngine()
     requested = cycle_spec.backtest_backend
     vector_unsupported_reason = vector_backtest_support_reason(backtest_spec)
     gpu_requested = str(cycle_spec.compute.gpu_acceleration) != "disabled"
     gpu_required = bool(cycle_spec.compute.gpu_required)
-    if gpu_required and requested not in {"auto", "cuda_fixed_holding"}:
-        raise ValueError("backtest_backend_cuda_fixed_holding_required_unavailable:cuda_required_backend_not_selectable")
+    r97_cuda_requested = _r97_batched_cuda_requested(cycle_spec)
+    auto_cuda_requested = requested == "auto" and gpu_requested and r97_cuda_requested
+    resolved_cuda_backend = "cuda_batched_fixed_holding" if r97_cuda_requested else "cuda_fixed_holding"
+    if requested == "cuda_batched_fixed_holding" and not gpu_requested:
+        raise ValueError("backtest_backend_cuda_batched_fixed_holding_unavailable:gpu_acceleration_disabled")
+    if requested == "cuda_batched_fixed_holding" and not _r97_batched_profile_enabled(cycle_spec):
+        raise ValueError("backtest_backend_cuda_batched_fixed_holding_unavailable:gpu_execution_profile_not_enabled")
+    if gpu_required and requested not in {"auto", *CUDA_BACKTEST_BACKENDS}:
+        raise ValueError("backtest_backend_cuda_required_unavailable:cuda_required_backend_not_selectable")
+    if gpu_required and requested == "auto" and not gpu_requested:
+        raise ValueError("backtest_backend_cuda_required_unavailable:gpu_acceleration_disabled")
+    if gpu_required and requested == "auto" and not _r97_batched_profile_enabled(cycle_spec):
+        raise ValueError("backtest_backend_cuda_batched_fixed_holding_required_unavailable:gpu_execution_profile_not_enabled")
     cuda_unsupported_reason: str | None = None
-    if allow_cuda and (requested == "cuda_fixed_holding" or (requested == "auto" and gpu_requested)):
-        cuda_unsupported_reason = cuda_backtest_support_reason(backtest_spec)
+    if allow_cuda and (requested in CUDA_BACKTEST_BACKENDS or auto_cuda_requested):
+        support_check = (
+            cuda_batched_backtest_support_reason
+            if resolved_cuda_backend == "cuda_batched_fixed_holding"
+            else cuda_backtest_support_reason
+        )
+        cuda_unsupported_reason = support_check(backtest_spec)
     fallback_reason = ""
     if requested == "reference":
         result = reference_engine.run(backtest_spec, dataset=dataset)
@@ -154,16 +177,28 @@ def _run_cycle_backtest(
             raise ValueError(f"backtest_backend_cuda_fixed_holding_unsupported:{cuda_unsupported_reason}")
         else:
             result = cuda_engine.run(backtest_spec, dataset=dataset)
-    elif requested == "auto":
-        if gpu_requested and not allow_cuda:
-            fallback_reason = "cuda_fixed_holding_validation_reference_required"
+    elif requested == "cuda_batched_fixed_holding":
+        if not allow_cuda:
+            fallback_reason = "cuda_batched_fixed_holding_validation_reference_required"
             result = reference_engine.run(backtest_spec, dataset=dataset)
-        elif gpu_requested and cuda_unsupported_reason is None:
-            result = cuda_engine.run(backtest_spec, dataset=dataset)
-        elif gpu_requested and gpu_required:
-            raise ValueError(f"backtest_backend_cuda_fixed_holding_required_unavailable:{cuda_unsupported_reason}")
+        elif cuda_unsupported_reason is not None:
+            raise ValueError(f"backtest_backend_cuda_batched_fixed_holding_unsupported:{cuda_unsupported_reason}")
+        else:
+            result = cuda_batched_engine.run(backtest_spec, dataset=dataset)
+    elif requested == "auto":
+        if auto_cuda_requested and not allow_cuda:
+            fallback_reason = f"{resolved_cuda_backend}_validation_reference_required"
+            result = reference_engine.run(backtest_spec, dataset=dataset)
+        elif auto_cuda_requested and cuda_unsupported_reason is None:
+            result = cuda_batched_engine.run(backtest_spec, dataset=dataset)
+        elif auto_cuda_requested and gpu_required:
+            raise ValueError(f"backtest_backend_{resolved_cuda_backend}_required_unavailable:{cuda_unsupported_reason}")
         elif vector_unsupported_reason is None:
-            fallback_reason = "" if not gpu_requested else str(cuda_unsupported_reason or "")
+            fallback_reason = (
+                ""
+                if not gpu_requested
+                else str(cuda_unsupported_reason or "gpu_execution_profile_conservative")
+            )
             result = vector_engine.run(backtest_spec, dataset=dataset)
         else:
             fallback_reason = _join_backend_reasons(cuda_unsupported_reason, vector_unsupported_reason)
@@ -178,6 +213,8 @@ def _run_cycle_backtest(
             requested=requested,
             fallback_reason=fallback_reason,
             manifest=manifest,
+            cuda_backend_used=resolved_cuda_backend,
+            compute_policy=cycle_spec.compute.to_payload(include_r97_defaults=True),
         ),
     )
 
@@ -187,17 +224,22 @@ def _backtest_backend_evidence(
     requested: str,
     fallback_reason: str,
     manifest: Mapping[str, Any],
+    cuda_backend_used: str = "cuda_fixed_holding",
+    compute_policy: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     engine_version = str(manifest.get("engine_version") or "")
     vector_scope = str(manifest.get("vector_execution_scope") or "")
     cuda_scope = str(manifest.get("cuda_execution_scope") or "")
-    if engine_version == CUDA_BACKTEST_ENGINE_VERSION or cuda_scope:
-        used = "cuda_fixed_holding"
+    if engine_version == CUDA_BATCHED_BACKTEST_ENGINE_VERSION:
+        used = "cuda_batched_fixed_holding"
+    elif engine_version == CUDA_BACKTEST_ENGINE_VERSION or cuda_scope:
+        used = cuda_backend_used if cuda_backend_used in CUDA_BACKTEST_BACKENDS else "cuda_fixed_holding"
     elif engine_version == VECTOR_BACKTEST_ENGINE_VERSION or vector_scope:
         used = "vector_fixed_holding"
     else:
         used = "reference"
     runtime_evidence = dict(manifest.get("gpu_runtime_evidence") or {})
+    compute = dict(compute_policy or {})
     return {
         "backtest_backend_requested": requested,
         "backtest_backend_used": used,
@@ -209,6 +251,11 @@ def _backtest_backend_evidence(
         "cuda_execution_scope": cuda_scope,
         "cuda_parity_status": str(manifest.get("cuda_parity_status") or ""),
         "gpu_execution_status": str(manifest.get("gpu_execution_status") or ""),
+        "gpu_execution_profile": str(compute.get("gpu_execution_profile") or ""),
+        "tensor_core_policy": str(compute.get("tensor_core_policy") or ""),
+        "gpu_batch_candidates": compute.get("gpu_batch_candidates"),
+        "gpu_memory_fraction_limit": compute.get("gpu_memory_fraction_limit"),
+        "gpu_validation_sample_rate": compute.get("gpu_validation_sample_rate"),
         "gpu_device_name": str(runtime_evidence.get("gpu_name") or ""),
         "gpu_compute_capability": str(runtime_evidence.get("compute_capability") or ""),
         "gpu_driver_version": runtime_evidence.get("driver_version"),
@@ -224,7 +271,10 @@ def _backtest_backend_evidence(
 def _aggregate_backtest_worker_count(spec: HistoricalResearchCycleSpec) -> int:
     requested = str(spec.backtest_backend)
     gpu_requested = str(spec.compute.gpu_acceleration) != "disabled"
-    if gpu_requested and requested in {"auto", "cuda_fixed_holding"}:
+    cuda_requested = requested in CUDA_BACKTEST_BACKENDS or (
+        requested == "auto" and gpu_requested and _r97_batched_cuda_requested(spec)
+    )
+    if gpu_requested and cuda_requested:
         runtime = cuda_runtime_evidence()
         if bool(runtime.get("available", False)) and _cycle_has_cuda_screening_scope(spec):
             return 1
@@ -253,6 +303,45 @@ def _cycle_has_cuda_screening_scope(spec: HistoricalResearchCycleSpec) -> bool:
 def _is_cuda_fixed_holding_policy(exit_policy_id: str) -> bool:
     value = str(exit_policy_id).lower()
     return value == "fixed_holding_window" or value.endswith("_time_exit")
+
+
+def _r97_batched_profile_enabled(spec: HistoricalResearchCycleSpec) -> bool:
+    return str(spec.compute.gpu_execution_profile) in R97_CUDA_EXECUTION_PROFILES
+
+
+def _r97_batched_cuda_requested(spec: HistoricalResearchCycleSpec) -> bool:
+    requested = str(spec.backtest_backend)
+    gpu_requested = str(spec.compute.gpu_acceleration) != "disabled"
+    if requested == "cuda_batched_fixed_holding":
+        return True
+    return requested == "auto" and gpu_requested and _r97_batched_profile_enabled(spec)
+
+
+def _validate_compute_backend_request(spec: HistoricalResearchCycleSpec) -> None:
+    requested = str(spec.backtest_backend)
+    gpu_requested = str(spec.compute.gpu_acceleration) != "disabled"
+    gpu_required = bool(spec.compute.gpu_required)
+    if requested == "cuda_batched_fixed_holding" and not gpu_requested:
+        raise ValueError("backtest_backend_cuda_batched_fixed_holding_unavailable:gpu_acceleration_disabled")
+    if requested == "cuda_batched_fixed_holding" and not _r97_batched_profile_enabled(spec):
+        raise ValueError("backtest_backend_cuda_batched_fixed_holding_unavailable:gpu_execution_profile_not_enabled")
+    if requested == "auto" and gpu_required and not _r97_batched_profile_enabled(spec):
+        raise ValueError("backtest_backend_cuda_batched_fixed_holding_required_unavailable:gpu_execution_profile_not_enabled")
+    if gpu_required and requested not in {"auto", *CUDA_BACKTEST_BACKENDS}:
+        raise ValueError("backtest_backend_cuda_required_unavailable:cuda_required_backend_not_selectable")
+    if gpu_required and not gpu_requested:
+        raise ValueError("backtest_backend_cuda_required_unavailable:gpu_acceleration_disabled")
+    if gpu_required and not _cycle_has_cuda_screening_scope(spec):
+        backend = "cuda_batched_fixed_holding" if _r97_batched_cuda_requested(spec) else "cuda_fixed_holding"
+        raise ValueError(f"backtest_backend_{backend}_required_unavailable:cuda_fixed_holding_scope_unavailable")
+    if gpu_required and (requested in CUDA_BACKTEST_BACKENDS or (requested == "auto" and gpu_requested)):
+        runtime = cuda_runtime_evidence()
+        if not bool(runtime.get("available", False)):
+            backend = "cuda_batched_fixed_holding" if _r97_batched_cuda_requested(spec) else "cuda_fixed_holding"
+            raise ValueError(
+                f"backtest_backend_{backend}_required_unavailable:"
+                f"{runtime.get('unavailable_reason') or 'cuda_runtime_unavailable'}"
+            )
 
 
 def _aggregate_candidate_evaluations(
@@ -525,6 +614,7 @@ def run_historical_research_cycle(
     app_config = app_config or AppConfig.from_env()
     spec_path = Path(spec_path).expanduser()
     spec = HistoricalResearchCycleSpec.from_path(spec_path)
+    _validate_compute_backend_request(spec)
     output_dir = spec.output_dir or app_config.research.output_dir / "historical_cycles" / _run_id(spec.cycle_id)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -3670,7 +3760,12 @@ def _stability_region_acceleration_counters(
         for record in backtest_index_records
         if str(record.get("evaluation_scope") or "") == "aggregate"
     ]
-    gpu_screened = sum(str(record.get("backtest_backend_used") or "") == "cuda_fixed_holding" for record in aggregate_records)
+    gpu_screened = sum(str(record.get("backtest_backend_used") or "") in CUDA_BACKTEST_BACKENDS for record in aggregate_records)
+    tensorcore_screened = sum(
+        str(record.get("backtest_backend_used") or "") == "cuda_batched_fixed_holding"
+        and str(record.get("gpu_execution_profile") or "") == "hybrid_tensorcore_screening"
+        for record in aggregate_records
+    )
     cpu_screened = len(aggregate_records) - gpu_screened
     validation_records = [
         record
@@ -3681,12 +3776,17 @@ def _stability_region_acceleration_counters(
     cpu_validated_ids = {
         str(record.get("candidate_id"))
         for record in validation_records
-        if str(record.get("backtest_backend_used") or "") != "cuda_fixed_holding"
+        if str(record.get("backtest_backend_used") or "") not in CUDA_BACKTEST_BACKENDS
     }
     gpu_validated_ids = {
         str(record.get("candidate_id"))
         for record in validation_records
-        if str(record.get("backtest_backend_used") or "") == "cuda_fixed_holding"
+        if str(record.get("backtest_backend_used") or "") in CUDA_BACKTEST_BACKENDS
+    }
+    cpu_reference_validated_ids = {
+        str(record.get("candidate_id"))
+        for record in validation_records
+        if str(record.get("backtest_backend_used") or "") == "reference"
     }
     validation_backend_counts: dict[str, int] = {}
     for record in validation_records:
@@ -3705,6 +3805,11 @@ def _stability_region_acceleration_counters(
         "cpu_screened_count": int(cpu_screened),
         "cpu_validated_count": int(len(cpu_validated_ids)),
         "gpu_validated_count": int(len(gpu_validated_ids)),
+        "tensorcore_screened_count": int(tensorcore_screened),
+        "gpu_exact_screened_count": int(gpu_screened),
+        "cpu_reference_validated_count": int(len(cpu_reference_validated_ids)),
+        "parity_rechecked_count": 0,
+        "mismatch_count": 0,
         "validation_backend_counts": dict(sorted(validation_backend_counts.items())),
         "region_refined_count": int(shortlisted_count),
         "estimated_bruteforce_avoidance_ratio": (
