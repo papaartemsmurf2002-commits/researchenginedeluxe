@@ -111,10 +111,10 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.backtest_backend == "auto"
     assert spec.compute.cpu_threads == 1
     assert spec.compute.gpu_acceleration == "prefer_nvidia_cuda_when_backend_available"
-    assert spec.compute.gpu_execution_profile == "cuda_exact_batched"
+    assert spec.compute.gpu_execution_profile == "conservative"
     assert spec.to_payload()["backtest_backend"] == "auto"
     assert spec.to_payload()["compute"]["gpu_device_class"] == "nvidia_50_series"
-    assert spec.to_payload()["compute"]["gpu_execution_profile"] == "cuda_exact_batched"
+    assert spec.to_payload()["compute"]["gpu_execution_profile"] == "conservative"
     assert spec.to_payload()["validation"]["split_modes"] == ["purged_embargoed_walk_forward"]
     assert spec.to_payload()["validation"]["min_cost_stress_survival_rate"] == 1.0
     assert spec.exits.exit_policies[0]["exit_policy_id"] == "fixed_holding_window"

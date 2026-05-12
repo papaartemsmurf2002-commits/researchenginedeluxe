@@ -2,7 +2,7 @@
 
 Current stage: Stage R97 aggressive CUDA/TensorCore stability search
 Current stage owner: Codex Research Agent
-Stage status: complete - WPR97-03 closed
+Stage status: complete - WPR97-04 closed
 Last updated: 2026-05-12
 
 ## Stage entry decision
@@ -29,6 +29,7 @@ Last updated: 2026-05-12
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR97-04-throughput-default-and-tensorcore-dependency | Codex Research Agent | closed | `pyproject.toml`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | Throughput default routing, Tensor Core dependency fix, local benchmarks, and validation recorded in `docs/stage_reports/STAGE_R97_THROUGHPUT_DEFAULT_AND_TENSORCORE_DEPENDENCY_REPORT.md`. |
 | WPR97-03-gpu-telemetry-smoke-fix | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | GPU parity telemetry fix, performance estimate, mini full-cycle smoke, and validation recorded in `docs/stage_reports/STAGE_R97_GPU_TELEMETRY_SMOKE_FIX_REPORT.md`. |
 | WPR97-02-default-accelerated-runtime-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/**`, `tests/historical/**`, `tests/optimization/**` | Default accelerated research runtime, CPU/reference fallback evidence, longer CUDA parity, and validation recorded in `docs/stage_reports/STAGE_R97_DEFAULT_ACCELERATED_RUNTIME_POLISH_REPORT.md`. |
 | WPR97-01-aggressive-cuda-tensorcore-stability-search | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/optimization/**`, `src/tradingbotsuite/research_cycle/**`, `tests/backtesting/**`, `tests/contracts/**`, `tests/historical/**`, `tests/optimization/**` | Aggressive CUDA/TensorCore stability search implemented and validation recorded in `docs/stage_reports/STAGE_R97_AGGRESSIVE_CUDA_TENSORCORE_STABILITY_SEARCH_REPORT.md`. |
@@ -739,3 +740,23 @@ historical tests, CUDA/GPU tests, research-discovery, and diff checks passed.
 This wave does not write candidate packs, claim promotion readiness or GPU
 speedup, add live execution, alter live config, place orders, or touch sizing
 behavior.
+
+## Throughput default and TensorCore dependency wave
+
+Decision: WPR97-04 throughput default and TensorCore dependency complete.
+Reason: Local RTX 5070 Ti benchmarks showed the parity-correct
+`cuda_batched_fixed_holding` path is slower than CPU vector execution for the
+current one-candidate, artifact-producing fixed-holding workload. Historical
+research cycles now default to conservative `auto` routing: aggregate
+fixed-holding screening uses `vector_fixed_holding` when supported, while
+validation paths still fall through to the reference engine under
+`auto_validation_reference_required`. Explicit `cuda_exact_batched`,
+`hybrid_tensorcore_screening`, and `cuda_batched_fixed_holding` requests remain
+available for GPU evidence. The optional `research-gpu` dependency set now
+includes `nvidia-cublas-cu12>=12.8` after local Tensor Core-shaped CuPy matmul
+failed without discoverable cuBLASLt DLLs. Longer local benchmarks, Tensor
+Core-shaped matrix timing, Tensor Core screening smoke, compile, contracts,
+historical full-cycle/local-fixture tests, CUDA/GPU focused tests, and diff
+checks passed. This wave does not write candidate packs, claim promotion
+readiness or GPU speedup, add live execution, alter live config, place orders,
+or touch sizing behavior.

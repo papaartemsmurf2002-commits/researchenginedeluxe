@@ -186,8 +186,12 @@ def _run_cycle_backtest(
         else:
             result = cuda_batched_engine.run(backtest_spec, dataset=dataset)
     elif requested == "auto":
-        if auto_cuda_requested and not allow_cuda:
-            fallback_reason = f"{resolved_cuda_backend}_validation_reference_required"
+        if not allow_cuda:
+            fallback_reason = (
+                f"{resolved_cuda_backend}_validation_reference_required"
+                if auto_cuda_requested
+                else "auto_validation_reference_required"
+            )
             result = reference_engine.run(backtest_spec, dataset=dataset)
         elif auto_cuda_requested and cuda_unsupported_reason is None:
             result = cuda_batched_engine.run(backtest_spec, dataset=dataset)

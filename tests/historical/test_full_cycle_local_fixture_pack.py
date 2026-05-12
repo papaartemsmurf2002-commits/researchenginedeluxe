@@ -671,18 +671,15 @@ def test_full_cycle_triple_barrier_uses_fixture_lower_timeframe_evidence(tmp_pat
     assert set(backtest_index["lower_timeframe_cache_key_component"]) == {lower_evidence["lower_timeframe_dataset_sha256"]}
     assert set(backtest_index["backtest_backend_requested"]) == {"auto"}
     assert set(backtest_index["backtest_backend_used"]) == {"reference"}
-    expected_fallback_reason = (
-        "cuda_batched_engine_scope_unsupported:vector_engine_lower_timeframe_not_supported;"
-        "vector_engine_lower_timeframe_not_supported"
-    )
+    expected_fallback_reason = "vector_engine_lower_timeframe_not_supported"
     aggregate_backend_rows = backtest_index.loc[backtest_index["evaluation_scope"] == "aggregate"]
     validation_backend_rows = backtest_index.loc[backtest_index["evaluation_scope"].isin(["walk_forward_split", "cost_stress"])]
     assert set(aggregate_backend_rows["backtest_backend_fallback_reason"]) == {expected_fallback_reason}
-    assert set(validation_backend_rows["backtest_backend_fallback_reason"]) == {"cuda_batched_fixed_holding_validation_reference_required"}
+    assert set(validation_backend_rows["backtest_backend_fallback_reason"]) == {"auto_validation_reference_required"}
     assert manifest["backtest_backend_summary"]["used_counts"] == {"reference": len(backtest_index)}
     assert manifest["backtest_backend_summary"]["fallback_reasons"] == {
         expected_fallback_reason: len(aggregate_backend_rows),
-        "cuda_batched_fixed_holding_validation_reference_required": len(validation_backend_rows),
+        "auto_validation_reference_required": len(validation_backend_rows),
     }
     assert set(rankings["aggregate_backtest_exit_price_source"]) == {"lower_timeframe_ohlc_sequence"}
     assert set(rankings["aggregate_backtest_lower_timeframe_required"]) == {True}

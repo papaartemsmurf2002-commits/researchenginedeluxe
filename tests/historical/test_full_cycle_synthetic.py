@@ -107,8 +107,7 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     aggregate_index = backtest_index.loc[backtest_index["evaluation_scope"] == "aggregate"]
     validation_index = backtest_index.loc[backtest_index["evaluation_scope"] != "aggregate"]
     aggregate_backend_values = set(aggregate_index["backtest_backend_used"])
-    assert aggregate_backend_values <= {"cuda_batched_fixed_holding", "vector_fixed_holding"}
-    assert aggregate_backend_values
+    assert aggregate_backend_values == {"vector_fixed_holding"}
     assert set(validation_index["backtest_backend_used"]) == {"reference"}
     assert manifest["backtest_backend_summary"]["used_counts"]["reference"] == len(validation_index)
     assert sum(manifest["backtest_backend_summary"]["used_counts"].values()) == len(backtest_index)
@@ -309,7 +308,7 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
         assert set(aggregate_index["backtest_parity_status"]) == {""}
     assert set(validation_index["cuda_execution_scope"]) == {""}
     assert set(validation_index["gpu_execution_status"]) == {""}
-    assert set(validation_index["backtest_backend_fallback_reason"]) == {"cuda_batched_fixed_holding_validation_reference_required"}
+    assert set(validation_index["backtest_backend_fallback_reason"]) == {"auto_validation_reference_required"}
     assert set(backtest_index["backtest_backend_rejection_reason"]) == {""}
     assert backtest_index.loc[backtest_index["trade_count"] > 0, "trades_path"].map(lambda value: Path(str(value)).exists()).all()
     assert set(metrics_by_side["side"].dropna().astype(str)) <= {"long", "short"}
@@ -1034,10 +1033,7 @@ def test_cycle_backtest_backend_resolver_fails_or_falls_back_for_unsupported_vec
 
     assert execution.backend_evidence["backtest_backend_requested"] == "auto"
     assert execution.backend_evidence["backtest_backend_used"] == "reference"
-    assert execution.backend_evidence["backtest_backend_fallback_reason"] == (
-        "cuda_batched_engine_scope_unsupported:vector_engine_lower_timeframe_not_supported;"
-        "vector_engine_lower_timeframe_not_supported"
-    )
+    assert execution.backend_evidence["backtest_backend_fallback_reason"] == "vector_engine_lower_timeframe_not_supported"
     assert execution.backend_evidence["backtest_engine_version"] == BACKTEST_ENGINE_VERSION
 
 
