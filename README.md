@@ -2,8 +2,8 @@
 
 This repository contains two related Python codebases:
 
-- `tradingbot`: the Lorentzian Classification signal-generation, backtest, optimization, and data-cache package.
-- `tradingbotsuite`: the BTC runtime, operator console, market-data reliability, execution-safety, and research experiment stack.
+- `tradingbot`: the legacy Lorentzian Classification signal-generation, backtest, optimization, and data-cache package.
+- `tradingbotsuite`: the active BTC runtime, operator console, market-data reliability, execution-safety, and research experiment stack.
 
 Legacy vendor-specific import, chart replay, parity diagnostics, source-script references, and gate-research paths have been removed. Research signal rows are now generic SQLite research events, while Binance, Binance Vision, Crypto Lake, and Hyperliquid sources are market-data/context providers only.
 
@@ -39,16 +39,16 @@ python -m tradingbot.cli backtest --config examples\default.yaml --symbol BTC
 Run the BTC research experiment bundle:
 
 ```powershell
-python -m tradingbotsuite.main run-research-experiment --spec configs\experiments\v2_btc_phase1_research_experiment.json
+tradingbotsuite run-research-experiment --spec configs\experiments\v2_btc_phase1_research_experiment.json
 ```
 
 Provider and archive intake:
 
 ```powershell
-python -m tradingbotsuite.main collect-binance-bars --help
-python -m tradingbotsuite.main fetch-binance-vision --help
-python -m tradingbotsuite.main fetch-crypto-lake --help
-python -m tradingbotsuite.main prepare-hmm-knn-research-data --help
+tradingbotsuite collect-binance-bars --help
+tradingbotsuite fetch-binance-vision --help
+tradingbotsuite fetch-crypto-lake --help
+tradingbotsuite prepare-hmm-knn-research-data --help
 ```
 
 Crypto Lake is optional local fallback data. Install it with
@@ -61,7 +61,7 @@ Runtime operator console:
 ```powershell
 $env:TBS_OPERATOR_UI_ENABLED="true"
 $env:TBS_OPERATOR_UI_SECRET="change-this-local-secret"
-python tools\tradingbotsuite\run_server.py
+tradingbotsuite serve
 ```
 
 Then open `http://127.0.0.1:8000/ui`.
@@ -84,7 +84,6 @@ infrastructure.
 - `examples/`: reproducible YAML profiles.
 - `src/tradingbotsuite/`: BTC runtime engine, Binance microstructure, Hyperliquid execution adapter, operator UI, and research pipeline.
 - `tests/`: unit and regression tests.
-- `tools/tradingbotsuite/`: runtime launch helpers kept out of the main package namespace.
 - `configs/tradingbotsuite/`: runtime config examples and non-secret placeholders.
 
 ## Rules

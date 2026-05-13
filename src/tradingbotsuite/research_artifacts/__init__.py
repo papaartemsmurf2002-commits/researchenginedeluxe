@@ -8,6 +8,7 @@ from tradingbotsuite.research_artifacts.candidate_pack import (
     ResearchCandidatePackResult,
     evaluate_research_candidate_gate,
     evaluate_research_candidate_gate_from_row,
+    source_capability_gate_reasons,
     validate_research_candidate_pack_manifest,
     write_research_candidate_pack,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "ResearchCandidatePackResult",
     "evaluate_research_candidate_gate",
     "evaluate_research_candidate_gate_from_row",
+    "source_capability_gate_reasons",
     "validate_research_candidate_pack_manifest",
     "write_research_candidate_pack",
 ]

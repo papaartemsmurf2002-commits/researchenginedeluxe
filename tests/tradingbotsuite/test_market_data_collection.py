@@ -493,6 +493,8 @@ async def test_collect_binance_usdm_context_rejects_inputs_and_strict_duplicates
 def test_collect_binance_bars_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from tradingbotsuite import main
 
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
+
     async def fake_collect_binance_usdm_bars(**kwargs):
         assert kwargs == {
             "symbol": "ETHUSDT",
@@ -547,6 +549,8 @@ def test_collect_binance_bars_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch,
 
 def test_collect_binance_context_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from tradingbotsuite import main
+
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
 
     async def fake_collect_binance_usdm_context(**kwargs):
         assert kwargs == {
@@ -609,6 +613,8 @@ def test_collect_binance_context_cli_parse_and_run(monkeypatch: pytest.MonkeyPat
 
 def test_fetch_market_data_cli_parse_and_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     from tradingbotsuite import main
+
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
 
     class Result:
         output_dir = tmp_path / "out"

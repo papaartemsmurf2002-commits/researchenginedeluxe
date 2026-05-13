@@ -116,6 +116,7 @@ def test_discovery_benchmark_tiers_come_from_registry_and_config(monkeypatch) ->
 
 
 def test_discovery_benchmark_cli_payload_exposes_passed_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         main,
         "write_discovery_benchmark_report",
@@ -138,6 +139,7 @@ def test_discovery_benchmark_cli_payload_exposes_passed_gate(tmp_path: Path, mon
 
 
 def test_discovery_benchmark_cli_command_fails_on_failed_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         main,
         "write_discovery_benchmark_report",
@@ -156,6 +158,7 @@ def test_discovery_benchmark_cli_command_fails_on_failed_gate(tmp_path: Path, mo
 
 
 def test_discovery_benchmark_cli_command_allows_report_only_failed_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         main,
         "write_discovery_benchmark_report",

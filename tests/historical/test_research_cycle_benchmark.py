@@ -349,6 +349,7 @@ def test_research_cycle_benchmark_gate_marks_missing_required_evidence_incomplet
 
 
 def test_research_cycle_benchmark_cli_command_fails_on_incomplete_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         main,
         "write_research_cycle_benchmark_report",
@@ -372,6 +373,7 @@ def test_research_cycle_benchmark_cli_command_fails_on_incomplete_gate(tmp_path:
 
 
 def test_research_cycle_benchmark_cli_command_allows_report_only_failed_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         main,
         "write_research_cycle_benchmark_report",
@@ -402,6 +404,7 @@ def test_research_cycle_benchmark_cli_command_allows_report_only_failed_gate(tmp
 
 
 def test_research_cycle_benchmark_cli_payload_exposes_passed_gate(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         main,
         "write_research_cycle_benchmark_report",

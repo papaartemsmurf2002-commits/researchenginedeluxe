@@ -42,6 +42,7 @@ from tradingbotsuite.data.historical_fixture_pack import (
     HISTORICAL_FIXTURE_PACK_MANIFEST_VERSION,
     assert_valid_historical_fixture_pack_manifest,
     resolve_fixture_pack_cycle_dataset_path,
+    validate_public_archive_fixture_readiness,
 )
 from tradingbotsuite.features.builders import (
     DEFAULT_INTERVAL_MS,
@@ -63,6 +64,7 @@ from tradingbotsuite.research.live_readiness import research_boundary_metadata
 from tradingbotsuite.research_artifacts import (
     evaluate_research_candidate_gate,
     evaluate_research_candidate_gate_from_row,
+    source_capability_gate_reasons,
     write_research_candidate_pack,
 )
 from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec, SUPPORTED_RESEARCH_EXIT_POLICIES
@@ -1084,12 +1086,14 @@ def _load_cycle_dataset(spec: HistoricalResearchCycleSpec, *, output_dir: Path) 
         manifest_version = str(manifest.get("manifest_version") or manifest.get("fixture_pack_manifest_version") or "")
         if manifest_version == HISTORICAL_FIXTURE_PACK_MANIFEST_VERSION:
             validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+            public_archive_readiness = validate_public_archive_fixture_readiness(manifest, manifest_path=manifest_path)
             parquet_path = resolve_fixture_pack_cycle_dataset_path(manifest, manifest_path=manifest_path)
             frame = pd.read_parquet(parquet_path)
             context = materialize_fixture_family_context(
                 frame,
                 optional_context_families=getattr(validation, "optional_context_families", None),
             )
+            fixture_source = dict(manifest.get("source") or {})
             return context.frame, {
                 "source_type": "historical_fixture_pack",
                 "manifest_path": str(manifest_path),
@@ -1099,7 +1103,9 @@ def _load_cycle_dataset(spec: HistoricalResearchCycleSpec, *, output_dir: Path) 
                 "symbol": manifest.get("symbol"),
                 "base_interval": manifest.get("base_interval"),
                 "fixture_scope": manifest.get("fixture_scope"),
-                "fixture_source": dict(manifest.get("source") or {}),
+                "fixture_source": fixture_source,
+                "provider_capability": dict(fixture_source.get("provider_capability") or {}),
+                "durable_public_archive_readiness": public_archive_readiness.to_payload(),
                 "fixture_derivation": dict(manifest.get("derivation") or {}),
                 "omitted_optional_families": dict(manifest.get("omitted_optional_families") or {}),
                 "research_evidence_limitations": list(manifest.get("research_evidence_limitations") or []),
@@ -3146,6 +3152,7 @@ def _research_gate_details(
         reasons.append("non_synthetic_fixture_evidence_required")
     if not isinstance(data_source.get("validation"), Mapping) or data_source["validation"].get("valid") is not True:
         reasons.append("validated_fixture_pack_required")
+    reasons.extend(source_capability_gate_reasons(data_source))
     if str(row.get("baseline_comparator_coverage_status") or "") != "complete":
         reasons.append("baseline_comparator_coverage_incomplete")
     if str(row.get("comparator_role") or "") == "no_trade_baseline":
@@ -3623,6 +3630,7 @@ def _candidate_gate_report(
         stability = stability_by_candidate.get(candidate_id, {})
         gate_reasons = [
             *gate.reasons,
+            *[reason for reason in str(row.get("failure_reasons") or "").split("|") if reason],
             *_stability_row_gate_reasons(stability),
         ]
         gate_status = "passed" if not gate_reasons else "blocked"

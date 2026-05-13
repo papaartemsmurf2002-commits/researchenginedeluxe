@@ -111,7 +111,7 @@ def parse_args() -> argparse.Namespace:
         "write-hmm-knn-sweep-datasets",
         help="Write deterministic offline BTC datasets for repeatable HMM/KNN sweeps",
     )
-    hmm_knn_dataset.add_argument("--output-dir", default="data/research/deterministic_sweeps")
+    hmm_knn_dataset.add_argument("--output-dir", default=None)
     hmm_knn_dataset.add_argument("--row-count", type=int, default=240)
     hmm_knn_dataset.add_argument(
         "--variant",
@@ -300,6 +300,21 @@ def _resolve_research_output_dir(raw_path: str | Path, *, config: AppConfig, fie
     return resolved
 
 
+def _resolve_optional_research_output_dir(
+    raw_path: str | Path | None,
+    *,
+    config: AppConfig,
+    field_name: str = "output_dir",
+) -> Path | None:
+    if raw_path is None:
+        return None
+    return _resolve_research_output_dir(raw_path, config=config, field_name=field_name)
+
+
+def _default_research_output_dir(config: AppConfig, *relative_parts: str) -> Path:
+    return _research_output_root(config).joinpath(*relative_parts)
+
+
 def _default_discovery_bridge_output_dir(
     config: AppConfig,
     result: object,
@@ -322,15 +337,95 @@ def _safe_cli_path_part(value: str) -> str:
     return (safe or "run")[:96]
 
 
+def _run_research_hmm_knn_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("research-hmm-knn")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _research_output_root(config)
+    )
+    result = run_hmm_knn_research(
+        config_path=Path(args.config),
+        dataset_path=Path(args.dataset) if args.dataset is not None else None,
+        output_dir=output_dir,
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "artifact_manifest_path": str(result.artifact_manifest_path),
+        "metrics_path": str(result.metrics_path),
+        "regime_posteriors_path": str(result.regime_posteriors_path),
+        "knn_predictions_path": str(result.knn_predictions_path),
+        "meta_predictions_path": str(result.meta_predictions_path),
+        "neighbor_diagnostics_path": str(result.neighbor_diagnostics_path),
+    }
+
+
+def _run_hmm_knn_experiments_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("run-hmm-knn-experiments")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "hmm_knn_experiments")
+    )
+    result = run_hmm_knn_experiment_matrix(
+        spec_path=Path(args.spec),
+        dataset_path=Path(args.dataset) if args.dataset is not None else None,
+        output_dir=output_dir,
+        cache_dir=Path(args.cache_dir) if args.cache_dir is not None else None,
+        force=args.force,
+        write_monitoring=not args.skip_monitor,
+        fail_fast=args.fail_fast,
+        max_workers=args.workers,
+    )
+    return {
+        "output_dir": str(result.output_dir),
+        "experiment_manifest_path": str(result.manifest_path),
+        "summary_path": str(result.summary_path),
+    }
+
+
+def _run_write_hmm_knn_sweep_datasets_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("write-hmm-knn-sweep-datasets")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "deterministic_sweeps")
+    )
+    variants = DETERMINISTIC_SWEEP_VARIANTS if args.variant == "all" else (args.variant,)
+    results = write_hmm_knn_sweep_datasets(
+        output_dir=output_dir,
+        row_count=args.row_count,
+        variants=variants,
+    )
+    return {
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "datasets": [
+            {
+                "variant": result.variant,
+                "parquet_path": str(result.parquet_path),
+                "csv_path": str(result.csv_path),
+                "manifest_path": str(result.manifest_path),
+                "row_count": result.row_count,
+                "parquet_sha256": result.parquet_sha256,
+                "csv_sha256": result.csv_sha256,
+                "logical_sha256": result.logical_sha256,
+            }
+            for result in results
+        ],
+    }
+
+
 def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, object]:
-    assert_research_command_not_live(AppConfig.from_env(), "collect-binance-bars")
+    config = _config_for_command("collect-binance-bars")
     result = asyncio.run(
         collect_binance_usdm_bars(
             symbol=args.symbol,
             interval=args.interval,
             start_time_ms=args.start_time_ms,
             end_time_ms=args.end_time_ms,
-            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config),
             strict=args.strict,
         )
     )
@@ -345,7 +440,7 @@ def _run_collect_binance_bars_command(args: argparse.Namespace) -> dict[str, obj
 
 
 def _run_collect_binance_context_command(args: argparse.Namespace) -> dict[str, object]:
-    assert_research_command_not_live(AppConfig.from_env(), "collect-binance-context")
+    config = _config_for_command("collect-binance-context")
     result = asyncio.run(
         collect_binance_usdm_context(
             symbol=args.symbol,
@@ -353,7 +448,7 @@ def _run_collect_binance_context_command(args: argparse.Namespace) -> dict[str, 
             start_time_ms=args.start_time_ms,
             end_time_ms=args.end_time_ms,
             interval=args.interval,
-            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config),
             strict=args.strict,
         )
     )
@@ -374,8 +469,8 @@ def _archive_payload(result: object) -> dict[str, object]:
 
 
 def _run_fetch_binance_vision_command(args: argparse.Namespace) -> dict[str, object]:
-    assert_research_command_not_live(AppConfig.from_env(), "fetch-binance-vision")
-    output_dir = Path(args.output_dir) if args.output_dir is not None else None
+    config = _config_for_command("fetch-binance-vision")
+    output_dir = _resolve_optional_research_output_dir(args.output_dir, config=config)
     if args.download_only:
         result = download_binance_vision_archive(
             symbol=args.symbol,
@@ -410,13 +505,14 @@ def _run_fetch_binance_vision_command(args: argparse.Namespace) -> dict[str, obj
 
 
 def _run_fetch_crypto_lake_command(args: argparse.Namespace) -> dict[str, object]:
-    assert_research_command_not_live(AppConfig.from_env(), "fetch-crypto-lake")
+    config = _config_for_command("fetch-crypto-lake")
+    output_dir = _resolve_optional_research_output_dir(args.output_dir, config=config)
     if args.path is not None:
         result = ingest_crypto_lake_archive(
             Path(args.path),
             symbol=args.symbol,
             data_family=args.data_family,
-            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            output_dir=output_dir,
             interval=args.interval,
             provider_symbol=args.provider_symbol,
             strict=args.strict,
@@ -429,7 +525,7 @@ def _run_fetch_crypto_lake_command(args: argparse.Namespace) -> dict[str, object
             data_family=args.data_family,
             start_time=args.start_time,
             end_time=args.end_time,
-            output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+            output_dir=output_dir,
             interval=args.interval,
             exchange=args.exchange,
             table=args.table,
@@ -457,10 +553,10 @@ def _run_prepare_hmm_knn_research_data_command(args: argparse.Namespace) -> dict
 
 
 def _run_build_historical_fixture_pack_command(args: argparse.Namespace) -> dict[str, object]:
-    assert_research_command_not_live(AppConfig.from_env(), "build-historical-fixture-pack")
+    config = _config_for_command("build-historical-fixture-pack")
     result = build_provider_kline_fixture_pack(
         source_manifest_path=Path(args.source_manifest),
-        output_dir=Path(args.output_dir),
+        output_dir=_resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir"),
         fixture_id=args.fixture_id,
         row_limit=args.row_limit,
         slice_mode=args.slice_mode,
@@ -487,7 +583,7 @@ def _run_benchmark_research_experiment_command(args: argparse.Namespace) -> dict
     config = _config_for_command("benchmark-research-experiment")
     report_path = write_research_experiment_benchmark_report(
         spec_path=Path(args.spec),
-        output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+        output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config),
         repeat=args.repeat,
         app_config=config,
     )
@@ -514,7 +610,7 @@ def _run_benchmark_historical_research_cycle_command(args: argparse.Namespace) -
 
     config = _config_for_command("benchmark-historical-research-cycle")
     result = write_research_cycle_benchmark_report(
-        output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+        output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config),
         tier=args.tier,
         repeat=args.repeat,
         app_config=config,
@@ -552,7 +648,7 @@ def _run_benchmark_discovery_command(args: argparse.Namespace) -> dict[str, obje
 
     config = _config_for_command("benchmark-discovery-run")
     result = write_discovery_benchmark_report(
-        output_dir=Path(args.output_dir) if args.output_dir is not None else None,
+        output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config),
         tier=args.tier,
         repeat=args.repeat,
         app_config=config,
@@ -638,7 +734,11 @@ def _run_discovery_candidate_pack_bridge_command(args: argparse.Namespace) -> di
 def _run_plan_feature_ablation_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("plan-feature-ablation")
     result = write_feature_ablation_plan(
-        output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir / "stage12" / "feature_ablation",
+        output_dir=(
+            _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+            if args.output_dir is not None
+            else _default_research_output_dir(config, "stage12", "feature_ablation")
+        ),
         dataset_manifest_hash=args.dataset_manifest_hash,
     )
     return {
@@ -653,7 +753,11 @@ def _run_plan_feature_ablation_command(args: argparse.Namespace) -> dict[str, ob
 def _run_plan_stage12_research_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("plan-stage12-research")
     result = write_stage12_research_plan(
-        output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir / "stage12",
+        output_dir=(
+            _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+            if args.output_dir is not None
+            else _default_research_output_dir(config, "stage12")
+        ),
         dataset_manifest_hash=args.dataset_manifest_hash,
     )
     return {
@@ -670,7 +774,11 @@ def _run_plan_stage12_research_command(args: argparse.Namespace) -> dict[str, ob
 def _run_plan_stage13_readiness_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("plan-stage13-readiness")
     result = write_stage13_readiness_plan(
-        output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir / "stage13" / "readiness",
+        output_dir=(
+            _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+            if args.output_dir is not None
+            else _default_research_output_dir(config, "stage13", "readiness")
+        ),
     )
     return {
         "output_dir": str(result.output_dir),
@@ -736,26 +844,7 @@ if __name__ == "__main__":
     elif args.command == "research-hmm-knn":
         import json
 
-        config = _config_for_command(args.command)
-        result = run_hmm_knn_research(
-            config_path=Path(args.config),
-            dataset_path=Path(args.dataset) if args.dataset is not None else None,
-            output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir,
-        )
-        print(
-            json.dumps(
-                {
-                    "output_dir": str(result.output_dir),
-                    "artifact_manifest_path": str(result.artifact_manifest_path),
-                    "metrics_path": str(result.metrics_path),
-                    "regime_posteriors_path": str(result.regime_posteriors_path),
-                    "knn_predictions_path": str(result.knn_predictions_path),
-                    "meta_predictions_path": str(result.meta_predictions_path),
-                    "neighbor_diagnostics_path": str(result.neighbor_diagnostics_path),
-                },
-                indent=2,
-            )
-        )
+        print(json.dumps(_run_research_hmm_knn_command(args), indent=2))
     elif args.command == "replay-hmm-knn":
         import json
 
@@ -771,60 +860,11 @@ if __name__ == "__main__":
     elif args.command == "run-hmm-knn-experiments":
         import json
 
-        config = _config_for_command(args.command)
-        result = run_hmm_knn_experiment_matrix(
-            spec_path=Path(args.spec),
-            dataset_path=Path(args.dataset) if args.dataset is not None else None,
-            output_dir=Path(args.output_dir) if args.output_dir is not None else config.research.output_dir / "hmm_knn_experiments",
-            cache_dir=Path(args.cache_dir) if args.cache_dir is not None else None,
-            force=args.force,
-            write_monitoring=not args.skip_monitor,
-            fail_fast=args.fail_fast,
-            max_workers=args.workers,
-        )
-        print(
-            json.dumps(
-                {
-                    "output_dir": str(result.output_dir),
-                    "experiment_manifest_path": str(result.manifest_path),
-                    "summary_path": str(result.summary_path),
-                },
-                indent=2,
-            )
-        )
+        print(json.dumps(_run_hmm_knn_experiments_command(args), indent=2))
     elif args.command == "write-hmm-knn-sweep-datasets":
         import json
 
-        assert_research_command_not_live(AppConfig.from_env(), args.command)
-        variants = DETERMINISTIC_SWEEP_VARIANTS if args.variant == "all" else (args.variant,)
-        results = write_hmm_knn_sweep_datasets(
-            output_dir=Path(args.output_dir),
-            row_count=args.row_count,
-            variants=variants,
-        )
-        print(
-            json.dumps(
-                {
-                    "research_only": True,
-                    "observe_only": True,
-                    "promotion_ready": False,
-                    "datasets": [
-                        {
-                            "variant": result.variant,
-                            "parquet_path": str(result.parquet_path),
-                            "csv_path": str(result.csv_path),
-                            "manifest_path": str(result.manifest_path),
-                            "row_count": result.row_count,
-                            "parquet_sha256": result.parquet_sha256,
-                            "csv_sha256": result.csv_sha256,
-                            "logical_sha256": result.logical_sha256,
-                        }
-                        for result in results
-                    ],
-                },
-                indent=2,
-            )
-        )
+        print(json.dumps(_run_write_hmm_knn_sweep_datasets_command(args), indent=2))
     elif args.command == "collect-binance-bars":
         import json
 

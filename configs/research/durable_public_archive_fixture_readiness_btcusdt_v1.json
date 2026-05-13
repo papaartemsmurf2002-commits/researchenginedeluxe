@@ -5,7 +5,9 @@
   "promotion_ready": false,
   "symbol": "BTCUSDT",
   "base_interval": "15m",
-  "fixture_manifest_path": "set per run: data/research/fixtures/<btcusdt_public_archive_fixture>/fixture_pack_manifest.json",
+  "fixture_manifest_path": "data/research/fixtures/btcusdt_public_archive_multi_window_v1/fixture_pack_manifest.json",
+  "fixture_manifest_sha256": "sha256:c58a44a0a40a942a70f0202b5dc5e3c094139651c148a8b14f00475a1cd54983",
+  "readiness_status": "durable_public_archive_ready",
   "required_families": [
     "bars",
     "lower_timeframe_bars",
@@ -15,8 +17,16 @@
   "required_context": {
     "agg_trade": {
       "source_name": "binance_vision",
-      "feature_claim_scope": "trade_flow_proxy_not_order_book_imbalance_or_ofi"
+      "feature_claim_scope": "trade_flow_proxy_not_order_book_imbalance_or_ofi",
+      "aggregation_interval": "1m",
+      "source_selected_row_count": 2728724,
+      "fixture_row_count": 480
     }
+  },
+  "fixture_row_counts": {
+    "bars": 32,
+    "lower_timeframe_bars": 480,
+    "agg_trade": 480
   },
   "window_selection_required": [
     "trend_bull",
@@ -24,9 +34,15 @@
     "range_chop",
     "high_vol_shock"
   ],
+  "window_selection_recorded": {
+    "trend_bull": "2024-01-10T12:00:00Z/2024-01-10T14:00:00Z",
+    "drawdown_bear": "2024-03-05T16:00:00Z/2024-03-05T18:00:00Z",
+    "range_chop": "2024-05-15T12:00:00Z/2024-05-15T14:00:00Z",
+    "high_vol_shock": "2024-08-05T00:00:00Z/2024-08-05T02:00:00Z"
+  },
   "diagnostic_only_sources": [
     "binance_usdm_rest_latest_window_context",
     "crypto_lake_free_sample"
   ],
-  "claim_scope": "readiness_contract_template_no_fixture_data_no_candidate_pack_write"
+  "claim_scope": "validated_durable_public_archive_fixture_no_candidate_pack_write"
 }

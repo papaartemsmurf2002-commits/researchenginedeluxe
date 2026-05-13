@@ -42,6 +42,21 @@ from tradingbotsuite.research.experiment_runner import (
 )
 
 
+def _assert_research_artifact_boundary(payload: dict[str, object]) -> None:
+    assert payload["research_only"] is True
+    assert payload["observe_only"] is True
+    assert payload["promotion_ready"] is False
+    assert payload["intended_use"] == "research_observe_only"
+    for field in (
+        "live_signal_input",
+        "position_sizing_input",
+        "operator_control_input",
+        "live_execution_input",
+        "runtime_control_input",
+    ):
+        assert payload[field] is False
+
+
 def _make_bar(time_ms: int, open_price: Decimal, close_price: Decimal) -> dict:
     high = max(open_price, close_price) + Decimal("20")
     low = min(open_price, close_price) - Decimal("20")
@@ -536,7 +551,7 @@ async def test_research_dataset_builder_writes_parquet_and_manifest(app_config, 
     assert manifest["missing_feature_rates"]["missing_open_interest"] == 0.0
     assert manifest["missing_feature_rates"]["missing_premium_close"] == 0.0
     assert manifest["row_count"] == 2
-    assert manifest["research_only"] is True
+    _assert_research_artifact_boundary(manifest)
     assert manifest["asset_scope"] == ["BTCUSDT"]
     assert manifest["symbol"] == "BTCUSDT"
     assert manifest["feature_version"] == "v2-btc-acceptance-2"
@@ -823,6 +838,9 @@ def test_research_model_pipeline_and_shadow_scoring(app_config, tmp_path, sample
     train_artifacts = train_base_model(dataset_path, plan, output_dir)
     artifact_manifest_path = calibrate_model(train_artifacts.manifest_path, plan)
     metrics_path = replay_eval(artifact_manifest_path, plan)
+    train_manifest = json.loads(train_artifacts.manifest_path.read_text(encoding="utf-8"))
+    artifact_manifest = json.loads(artifact_manifest_path.read_text(encoding="utf-8"))
+    metrics = json.loads(metrics_path.read_text(encoding="utf-8"))
     scorer = AcceptanceScorer.from_manifest_path(artifact_manifest_path)
     score = scorer.score_snapshot(
         {
@@ -854,6 +872,8 @@ def test_research_model_pipeline_and_shadow_scoring(app_config, tmp_path, sample
 
     assert artifact_manifest_path.exists()
     assert metrics_path.exists()
+    for payload in (train_manifest, artifact_manifest, metrics):
+        _assert_research_artifact_boundary(payload)
     assert score["accept_probability"] >= 0.0
     assert score["model_version"].startswith(plan.version)
     assert score["artifact_manifest_version"] == "v2-artifact-manifest-1"
@@ -1213,6 +1233,8 @@ def test_replay_eval_is_deterministic_and_has_promotion_reasons(tmp_path) -> Non
         key: value for key, value in second_metrics.items() if key != "latency_ms_per_row"
     }
     assert "promotion_failures" in first_metrics
+    assert "research_only_not_live_promotable" in first_metrics["promotion_failures"]
+    _assert_research_artifact_boundary(first_metrics)
     assert "mean_absolute_calibration_error" in first_metrics
     assert "confidence_bucket_summary" in first_metrics
     assert first_metrics["walk_forward_summaries"][0]["train_end_time_ms"] < first_metrics["walk_forward_summaries"][0]["test_start_time_ms"]

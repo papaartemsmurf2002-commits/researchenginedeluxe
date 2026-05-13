@@ -16,6 +16,7 @@ from tradingbotsuite.research.archive_sources import (
 
 DATA_MANIFEST_VERSION = "data-manifest-v1"
 DATA_SCHEMA_VERSION = "family-schema-v1"
+DATA_PROVIDER_CAPABILITY_REGISTRY_VERSION = "provider-capability-registry-v1"
 
 SUPPORTED_SOURCE_NAMES = (
     "binance_rest",
@@ -54,9 +55,11 @@ RESERVED_DATA_MANIFEST_FIELDS = frozenset(
         *REQUIRED_DATA_MANIFEST_FIELDS,
         "observe_only",
         "promotion_ready",
+        "provider_capability",
     }
 )
 BROAD_CONTEXT_COVERAGE_SCOPES = frozenset({"multi_year", "full_history", "broad_historical", "oos_stress_coverage"})
+LATEST_WINDOW_CONTEXT_SOURCE_NAMES = frozenset({"binance_usdm_rest"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,6 +71,35 @@ class DataSourceDescriptor:
     implemented_for_ingestion: bool
     diagnostic_only_by_default: bool
     notes: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DataProviderCapability:
+    source_name: str
+    data_family: str
+    durability_class: str
+    retention_limit: str
+    history_start: str | None
+    exchange_native: bool
+    normalized: bool
+    health_policy: str
+    diagnostic_only_by_default: bool
+    candidate_ready_default: bool
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "registry_version": DATA_PROVIDER_CAPABILITY_REGISTRY_VERSION,
+            "source_name": self.source_name,
+            "data_family": self.data_family,
+            "durability_class": self.durability_class,
+            "retention_limit": self.retention_limit,
+            "history_start": self.history_start,
+            "exchange_native": self.exchange_native,
+            "normalized": self.normalized,
+            "health_policy": self.health_policy,
+            "diagnostic_only_by_default": self.diagnostic_only_by_default,
+            "candidate_ready_default": self.candidate_ready_default,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,8 +159,202 @@ DATA_SOURCE_DESCRIPTORS: dict[str, DataSourceDescriptor] = {
 }
 
 
+def _capability(
+    source_name: str,
+    data_family: str,
+    *,
+    durability_class: str,
+    retention_limit: str,
+    history_start: str | None,
+    exchange_native: bool,
+    normalized: bool,
+    health_policy: str,
+    diagnostic_only_by_default: bool,
+    candidate_ready_default: bool,
+) -> DataProviderCapability:
+    return DataProviderCapability(
+        source_name=source_name,
+        data_family=canonical_data_family(data_family),
+        durability_class=durability_class,
+        retention_limit=retention_limit,
+        history_start=history_start,
+        exchange_native=exchange_native,
+        normalized=normalized,
+        health_policy=health_policy,
+        diagnostic_only_by_default=diagnostic_only_by_default,
+        candidate_ready_default=candidate_ready_default,
+    )
+
+
+DATA_PROVIDER_CAPABILITIES: dict[tuple[str, str], DataProviderCapability] = {
+    ("binance_rest", "kline"): _capability(
+        "binance_rest",
+        "kline",
+        durability_class="direct_rest_backfill",
+        retention_limit="exchange_endpoint_dependent_not_vendor_archive",
+        history_start=None,
+        exchange_native=True,
+        normalized=True,
+        health_policy="receive_time_unavailable_non_promotable",
+        diagnostic_only_by_default=False,
+        candidate_ready_default=False,
+    ),
+    **{
+        ("binance_usdm_rest", family): _capability(
+            "binance_usdm_rest",
+            family,
+            durability_class="latest_window_rest",
+            retention_limit="direct_endpoint_latest_window",
+            history_start=None,
+            exchange_native=True,
+            normalized=True,
+            health_policy="latest_window_only_diagnostic_no_multi_year_claim",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+        for family in ("funding_rate", "premium_index", "open_interest")
+    },
+    **{
+        ("binance_vision", family): _capability(
+            "binance_vision",
+            family,
+            durability_class="public_archive_partition",
+            retention_limit="downloaded_public_archive_partition",
+            history_start="source_partition_dependent",
+            exchange_native=True,
+            normalized=True,
+            health_policy="checksum_gap_duplicate_evidence_required_for_durable_claims",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+        for family in (
+            "agg_trade",
+            "trade",
+            "kline",
+            "premium_index",
+            "funding_rate",
+            "open_interest",
+            "book_ticker",
+            "depth_snapshot",
+            "liquidation",
+        )
+    },
+    **{
+        ("crypto_lake", family): _capability(
+            "crypto_lake",
+            family,
+            durability_class="local_vendor_export",
+            retention_limit="local_export_or_free_sample",
+            history_start="local_export_metadata_required",
+            exchange_native=False,
+            normalized=True,
+            health_policy="explicit_missingness_and_source_health_required",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+        for family in (
+            "trade",
+            "agg_trade",
+            "book_ticker",
+            "depth_snapshot",
+            "kline",
+            "funding_rate",
+            "open_interest",
+            "liquidation",
+        )
+    },
+    **{
+        ("hyperliquid_archive", family): _capability(
+            "hyperliquid_archive",
+            family,
+            durability_class="registered_only",
+            retention_limit="ingestion_not_implemented",
+            history_start=None,
+            exchange_native=True,
+            normalized=False,
+            health_policy="registered_only_no_claims",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+        for family in (
+            "trade",
+            "depth_snapshot",
+            "book_ticker",
+            "funding_rate",
+            "user_fill",
+            "user_funding",
+            "order_event",
+            "position_snapshot",
+        )
+    },
+}
+
+
 def data_source_descriptors() -> tuple[DataSourceDescriptor, ...]:
     return tuple(DATA_SOURCE_DESCRIPTORS[name] for name in SUPPORTED_SOURCE_NAMES)
+
+
+def data_provider_capabilities() -> tuple[DataProviderCapability, ...]:
+    return tuple(
+        DATA_PROVIDER_CAPABILITIES[key]
+        for key in sorted(DATA_PROVIDER_CAPABILITIES)
+    )
+
+
+def provider_capability_payload(
+    *,
+    source_name: str,
+    data_family: str,
+    source_access_mode: str | None = None,
+    latest_window_only: bool | None = None,
+    coverage_scope: str | None = None,
+) -> dict[str, Any]:
+    canonical_family = canonical_data_family(data_family)
+    normalized_source = str(source_name or "").strip()
+    capability = DATA_PROVIDER_CAPABILITIES.get((normalized_source, canonical_family))
+    if capability is None:
+        capability = DataProviderCapability(
+            source_name=normalized_source,
+            data_family=canonical_family,
+            durability_class="unknown_source_capability",
+            retention_limit="unknown",
+            history_start=None,
+            exchange_native=False,
+            normalized=False,
+            health_policy="unsupported_source_or_family_no_claims",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+    if source_access_mode == "free_sample":
+        capability = DataProviderCapability(
+            source_name=normalized_source,
+            data_family=canonical_family,
+            durability_class="free_sample_diagnostic",
+            retention_limit="sample_coverage_only",
+            history_start=None,
+            exchange_native=capability.exchange_native,
+            normalized=capability.normalized,
+            health_policy="free_sample_diagnostic_only_no_durable_claim",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+    elif latest_window_only is True or normalized_source in LATEST_WINDOW_CONTEXT_SOURCE_NAMES:
+        capability = DataProviderCapability(
+            source_name=normalized_source,
+            data_family=canonical_family,
+            durability_class="latest_window_rest",
+            retention_limit="direct_endpoint_latest_window",
+            history_start=None,
+            exchange_native=capability.exchange_native,
+            normalized=capability.normalized,
+            health_policy="latest_window_only_diagnostic_no_multi_year_claim",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+    payload = capability.to_payload()
+    if coverage_scope is not None:
+        payload["coverage_scope"] = coverage_scope
+    return payload
 
 
 def data_family_contracts() -> tuple[ArchiveNormalizedFieldContract, ...]:
@@ -186,6 +412,13 @@ def build_data_manifest(
         if reserved:
             raise ValueError(f"extra_must_not_override_reserved_manifest_fields:{','.join(reserved)}")
         manifest.update(extra_payload)
+    manifest["provider_capability"] = provider_capability_payload(
+        source_name=str(manifest.get("source_name") or ""),
+        data_family=str(manifest.get("data_family") or ""),
+        source_access_mode=_optional_str(manifest.get("source_access_mode")),
+        latest_window_only=manifest.get("latest_window_only") if isinstance(manifest.get("latest_window_only"), bool) else None,
+        coverage_scope=_optional_str(manifest.get("coverage_scope")),
+    )
     return manifest
 
 
@@ -301,6 +534,7 @@ def validate_data_manifest(manifest: Mapping[str, Any]) -> DataManifestValidatio
         quality_flags.add("account_execution_missingness_preserved")
 
     _validate_context_metadata(manifest, errors, quality_flags)
+    _validate_provider_capability_metadata(manifest, errors, quality_flags)
 
     point_in_time_compatible = bool(event_time_field and receive_time_field)
     diagnostic_only = bool(descriptor and descriptor.diagnostic_only_by_default) or not point_in_time_compatible
@@ -355,6 +589,63 @@ def _validate_context_metadata(
             errors.append("free_sample_manifest_must_be_diagnostic_only")
         if coverage_scope not in {None, "free_sample_diagnostic"}:
             errors.append(f"free_sample_manifest_cannot_claim_coverage_scope:{coverage_scope}")
+
+
+def _validate_provider_capability_metadata(
+    manifest: Mapping[str, Any],
+    errors: list[str],
+    quality_flags: set[str],
+) -> None:
+    payload = manifest.get("provider_capability")
+    if payload is None:
+        return
+    if not isinstance(payload, Mapping):
+        errors.append("provider_capability_must_be_object")
+        return
+    required_fields = {
+        "registry_version",
+        "source_name",
+        "data_family",
+        "durability_class",
+        "retention_limit",
+        "history_start",
+        "exchange_native",
+        "normalized",
+        "health_policy",
+        "diagnostic_only_by_default",
+        "candidate_ready_default",
+    }
+    missing = sorted(required_fields - set(str(key) for key in payload))
+    if missing:
+        errors.append(f"provider_capability_missing_fields:{','.join(missing)}")
+        return
+    if payload.get("registry_version") != DATA_PROVIDER_CAPABILITY_REGISTRY_VERSION:
+        errors.append(f"provider_capability_registry_version_must_be:{DATA_PROVIDER_CAPABILITY_REGISTRY_VERSION}")
+
+    expected = provider_capability_payload(
+        source_name=str(manifest.get("source_name") or ""),
+        data_family=str(manifest.get("data_family") or ""),
+        source_access_mode=_optional_str(manifest.get("source_access_mode")),
+        latest_window_only=manifest.get("latest_window_only") if isinstance(manifest.get("latest_window_only"), bool) else None,
+        coverage_scope=_optional_str(manifest.get("coverage_scope")),
+    )
+    for field in (
+        "source_name",
+        "data_family",
+        "durability_class",
+        "retention_limit",
+        "history_start",
+        "exchange_native",
+        "normalized",
+        "health_policy",
+        "diagnostic_only_by_default",
+        "candidate_ready_default",
+    ):
+        if payload.get(field) != expected.get(field):
+            errors.append(f"provider_capability_mismatch:{field}:{payload.get(field)}:{expected.get(field)}")
+    durability_class = _optional_str(payload.get("durability_class"))
+    if durability_class:
+        quality_flags.add(f"provider_capability:{durability_class}")
 
 
 def registered_only_manifest(*, source_name: str, symbol: str, data_family: str) -> dict[str, Any]:

@@ -7,6 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_ROOT = ROOT / "src" / "tradingbotsuite" / "research"
 RESEARCH_DISCOVERY_ROOT = ROOT / "src" / "tradingbotsuite" / "research_discovery"
+RESEARCH_CYCLE_ROOT = ROOT / "src" / "tradingbotsuite" / "research_cycle"
+OPTIMIZATION_ROOT = ROOT / "src" / "tradingbotsuite" / "optimization"
+RESEARCH_ARTIFACTS_ROOT = ROOT / "src" / "tradingbotsuite" / "research_artifacts"
 DATA_ROOT = ROOT / "src" / "tradingbotsuite" / "data"
 FEATURES_ROOT = ROOT / "src" / "tradingbotsuite" / "features"
 BACKTESTING_ROOT = ROOT / "src" / "tradingbotsuite" / "backtesting"
@@ -58,6 +61,39 @@ def test_research_modules_do_not_import_order_placement_paths() -> None:
 def test_research_discovery_modules_do_not_import_order_placement_paths() -> None:
     offenders: list[str] = []
     for path in sorted(RESEARCH_DISCOVERY_ROOT.rglob("*.py")):
+        for module in _imports(path):
+            for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
+                if module == forbidden or module.startswith(f"{forbidden}."):
+                    offenders.append(f"{path.relative_to(ROOT)} imports {module}")
+
+    assert offenders == []
+
+
+def test_research_cycle_modules_do_not_import_order_placement_paths() -> None:
+    offenders: list[str] = []
+    for path in sorted(RESEARCH_CYCLE_ROOT.rglob("*.py")):
+        for module in _imports(path):
+            for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
+                if module == forbidden or module.startswith(f"{forbidden}."):
+                    offenders.append(f"{path.relative_to(ROOT)} imports {module}")
+
+    assert offenders == []
+
+
+def test_optimization_modules_do_not_import_order_placement_paths() -> None:
+    offenders: list[str] = []
+    for path in sorted(OPTIMIZATION_ROOT.rglob("*.py")):
+        for module in _imports(path):
+            for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
+                if module == forbidden or module.startswith(f"{forbidden}."):
+                    offenders.append(f"{path.relative_to(ROOT)} imports {module}")
+
+    assert offenders == []
+
+
+def test_research_artifact_modules_do_not_import_order_placement_paths() -> None:
+    offenders: list[str] = []
+    for path in sorted(RESEARCH_ARTIFACTS_ROOT.rglob("*.py")):
         for module in _imports(path):
             for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
                 if module == forbidden or module.startswith(f"{forbidden}."):

@@ -67,6 +67,14 @@ REQUIRED_RESEARCH_COST_STRESS_SCENARIOS = frozenset(
     }
 )
 LOWER_TIMEFRAME_EXIT_POLICIES = frozenset({"triple_barrier", "triple_barrier_atr"})
+NON_CANDIDATE_DURABILITY_CLASSES = frozenset(
+    {
+        "free_sample_diagnostic",
+        "latest_window_rest",
+        "registered_only",
+        "unknown_source_capability",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,6 +142,40 @@ def evaluate_research_candidate_gate_from_row(
 ) -> ResearchCandidateGate:
     reasons = _gate_reasons(ranking_row, spec=cycle_spec)
     return ResearchCandidateGate(str(candidate_id), "passed" if not reasons else "blocked", tuple(reasons))
+
+
+def source_capability_gate_reasons(data_source: Mapping[str, Any]) -> list[str]:
+    """Return candidate-pack blockers implied by fixture source capability metadata."""
+
+    reasons: list[str] = []
+    capability = _source_provider_capability(data_source)
+    readiness = data_source.get("durable_public_archive_readiness")
+    readiness_ready = isinstance(readiness, Mapping) and readiness.get("ready") is True
+    if not capability:
+        reasons.append("source_provider_capability_required")
+    else:
+        if capability.get("candidate_ready_default") is not True and not readiness_ready:
+            reasons.append("source_provider_capability_not_candidate_ready")
+        if capability.get("diagnostic_only_by_default") is True and not readiness_ready:
+            reasons.append("source_provider_capability_diagnostic_only")
+        durability_class = str(capability.get("durability_class") or "")
+        if durability_class in NON_CANDIDATE_DURABILITY_CLASSES:
+            reasons.append("source_provider_capability_durability_not_candidate_ready")
+        health_policy = str(capability.get("health_policy") or "")
+        if not readiness_ready and any(
+            token in health_policy for token in ("diagnostic", "free_sample", "no_claims", "non_promotable")
+        ):
+            reasons.append("source_provider_capability_health_policy_blocks_candidate_ready")
+
+    if not isinstance(readiness, Mapping):
+        reasons.append("durable_public_archive_readiness_required")
+    elif readiness.get("ready") is not True:
+        reasons.append("durable_public_archive_readiness_not_ready")
+        for reason in readiness.get("reasons") or ():
+            text = str(reason).strip()
+            if text:
+                reasons.append(f"durable_public_archive_readiness:{text}")
+    return list(dict.fromkeys(reasons))
 
 
 def write_research_candidate_pack(
@@ -277,6 +319,7 @@ def _cycle_manifest_gate_reasons(cycle_manifest: Mapping[str, Any]) -> list[str]
     validation = data_source.get("validation")
     if not isinstance(validation, Mapping) or validation.get("valid") is not True:
         reasons.append("fixture_pack_validation_required")
+    reasons.extend(source_capability_gate_reasons(data_source))
     manifest_path = data_source.get("manifest_path")
     if not manifest_path:
         reasons.append("fixture_manifest_path_required")
@@ -1070,6 +1113,10 @@ def _source_data_evidence(cycle_manifest: Mapping[str, Any]) -> dict[str, Any]:
     fixture_manifest_omitted_optional_families: dict[str, Any] = {}
     fixture_manifest_limitations: list[Any] = []
     lower_timeframe_evidence = _source_lower_timeframe_evidence(cycle_manifest, data_source)
+    provider_capability = _source_provider_capability(data_source)
+    durable_public_archive_readiness = data_source.get("durable_public_archive_readiness")
+    readiness_payload = dict(durable_public_archive_readiness) if isinstance(durable_public_archive_readiness, Mapping) else {}
+    capability_gate_reasons = source_capability_gate_reasons(data_source)
     if manifest_sha256_verified:
         try:
             fixture_manifest = _read_json(Path(str(manifest_path)))
@@ -1104,6 +1151,9 @@ def _source_data_evidence(cycle_manifest: Mapping[str, Any]) -> dict[str, Any]:
         "fixture_id": data_source.get("fixture_id"),
         "fixture_scope": data_source.get("fixture_scope"),
         "fixture_source": dict(data_source.get("fixture_source") or {}),
+        "provider_capability": provider_capability,
+        "durable_public_archive_readiness": readiness_payload,
+        "source_capability_gate_reasons": capability_gate_reasons,
         "fixture_derivation": dict(data_source.get("fixture_derivation") or {}),
         "omitted_optional_families": dict(data_source.get("omitted_optional_families") or {}),
         "research_evidence_limitations": list(data_source.get("research_evidence_limitations") or []),
@@ -1133,8 +1183,19 @@ def _source_data_evidence(cycle_manifest: Mapping[str, Any]) -> dict[str, Any]:
         and fixture_manifest_safe
         and fixture_manifest_fixture_id_matches
         and dataset_exists
-        and validation_payload.get("valid") is True,
+        and validation_payload.get("valid") is True
+        and not capability_gate_reasons,
     }
+
+
+def _source_provider_capability(data_source: Mapping[str, Any]) -> dict[str, Any]:
+    fixture_source = data_source.get("fixture_source")
+    if isinstance(fixture_source, Mapping) and isinstance(fixture_source.get("provider_capability"), Mapping):
+        return dict(fixture_source.get("provider_capability") or {})
+    direct = data_source.get("provider_capability")
+    if isinstance(direct, Mapping):
+        return dict(direct)
+    return {}
 
 
 def _source_lower_timeframe_evidence(cycle_manifest: Mapping[str, Any], data_source: Mapping[str, Any]) -> dict[str, Any]:

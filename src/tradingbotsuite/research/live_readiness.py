@@ -160,6 +160,15 @@ def research_boundary_metadata() -> dict[str, Any]:
     }
 
 
+def research_artifact_boundary_metadata() -> dict[str, Any]:
+    return {
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        **research_boundary_metadata(),
+    }
+
+
 def _coerce_input(
     *,
     config: Mapping[str, Any] | None,

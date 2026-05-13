@@ -1116,7 +1116,11 @@ def test_hmm_knn_cli_research_then_monitor_writes_expected_temp_artifacts(tmp_pa
     dataset_path = tmp_path / "dataset.parquet"
     output_dir = tmp_path / "research_output"
     _synthetic_dataset().to_parquet(dataset_path, index=False)
-    env = {**os.environ, "PYTHONPATH": str(Path("src").resolve())}
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(Path("src").resolve()),
+        "TBS_RESEARCH_OUTPUT_DIR": str(tmp_path),
+    }
 
     research = subprocess.run(
         [

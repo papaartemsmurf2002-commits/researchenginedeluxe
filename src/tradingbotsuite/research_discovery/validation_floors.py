@@ -70,6 +70,11 @@ STANDARD_BLOCKER_REGISTRY: dict[str, str] = {
     "split_pass_ratio_required": "Split pass ratio evidence is missing.",
     "split_window_concentration_above_ceiling": "Split/window concentration is above the configured ceiling.",
     "split_window_concentration_required": "Split/window concentration evidence is missing.",
+    "source_provider_capability_diagnostic_only": "Source provider capability is diagnostic-only by default.",
+    "source_provider_capability_missing": "Source provider capability metadata is missing.",
+    "source_provider_capability_not_candidate_ready": "Source provider capability is not candidate-ready by default.",
+    "durable_public_archive_readiness_missing": "Durable public-archive fixture readiness evidence is missing.",
+    "durable_public_archive_readiness_not_ready": "Durable public-archive fixture readiness evidence is not ready.",
     "stability_neighborhood_size_below_floor": "Stability-neighborhood size is below the configured floor.",
     "validation_floor_candidate_gate_row_required": "Validation-floor gate row is missing.",
     "validation_floor_manifest_required": "Validation-floor manifest is required.",
@@ -305,10 +310,20 @@ def _candidate_gates(candidates: pd.DataFrame, *, spec: DiscoveryValidationFloor
                 "stability_neighborhood_min": int(spec.candidate_ready_stability_neighborhood_min),
                 "baseline_comparator_status": _status_value(record, "baseline_comparator_status", "baseline_comparator_coverage_status"),
                 "no_regime_baseline_status": _status_value(record, "no_regime_baseline_status", "regime_baseline_status"),
-                "exit_lab_status": _status_value(record, "exit_lab_status", "exit_lab_gate_status"),
+                "exit_lab_status": _status_value(record, "exit_lab_status"),
+                "exit_lab_gate_status": _status_value(record, "exit_lab_gate_status"),
                 "filter_ablation_status": _status_value(record, "filter_ablation_status", "matched_filter_ablation_status"),
                 "feature_ablation_status": _status_value(record, "feature_ablation_status", "ablation_evidence_status"),
                 "latest_window_only": bool(_truthy(record.get("latest_window_only")) or _truthy(record.get("latest_window_only_penalty"))),
+                "source_provider_capability_present": _source_provider_capability_present(record),
+                "source_provider_capability_candidate_ready_default": _source_provider_capability_candidate_ready_default(record),
+                "source_provider_capability_diagnostic_only_by_default": _source_provider_capability_diagnostic_only_by_default(record),
+                "durable_public_archive_readiness_ready": _durable_public_archive_readiness_ready(record),
+                "durable_public_archive_readiness_status": _status_value(
+                    record,
+                    "durable_public_archive_readiness_status",
+                    "public_archive_readiness_status",
+                ),
                 "research_only": True,
                 "observe_only": True,
                 "promotion_ready": False,
@@ -398,11 +413,72 @@ def _semantic_blockers(record: Mapping[str, Any]) -> list[str]:
         reasons.append("orderflow_feature_not_testable")
     if _truthy(record.get("liquidation_feature_not_testable")):
         reasons.append("liquidation_feature_not_testable")
+    reasons.extend(_source_capability_blockers(record))
     for key in ("blocker_code", "filter_blocker_code"):
         value = str(record.get(key) or "").strip()
         if value in STANDARD_BLOCKER_REGISTRY:
             reasons.append(value)
     return reasons
+
+
+def _source_capability_blockers(record: Mapping[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    readiness = _durable_public_archive_readiness_ready(record)
+    if not _source_provider_capability_present(record):
+        reasons.append("source_provider_capability_missing")
+    if _source_provider_capability_candidate_ready_default(record) is not True and readiness is not True:
+        reasons.append("source_provider_capability_not_candidate_ready")
+    if _source_provider_capability_diagnostic_only_by_default(record) is True and readiness is not True:
+        reasons.append("source_provider_capability_diagnostic_only")
+    if readiness is None:
+        reasons.append("durable_public_archive_readiness_missing")
+    elif readiness is not True:
+        reasons.append("durable_public_archive_readiness_not_ready")
+    return reasons
+
+
+def _source_provider_capability_present(record: Mapping[str, Any]) -> bool:
+    if _truthy(record.get("source_provider_capability_present")) or _truthy(record.get("provider_capability_present")):
+        return True
+    if isinstance(record.get("provider_capability"), Mapping):
+        return True
+    return any(
+        key in record
+        for key in (
+            "source_provider_capability_candidate_ready_default",
+            "provider_capability_candidate_ready_default",
+            "candidate_ready_default",
+            "source_provider_capability_diagnostic_only_by_default",
+            "provider_capability_diagnostic_only_by_default",
+            "diagnostic_only_by_default",
+        )
+    )
+
+
+def _source_provider_capability_candidate_ready_default(record: Mapping[str, Any]) -> bool | None:
+    return _optional_bool(
+        record,
+        "source_provider_capability_candidate_ready_default",
+        "provider_capability_candidate_ready_default",
+        "candidate_ready_default",
+    )
+
+
+def _source_provider_capability_diagnostic_only_by_default(record: Mapping[str, Any]) -> bool | None:
+    return _optional_bool(
+        record,
+        "source_provider_capability_diagnostic_only_by_default",
+        "provider_capability_diagnostic_only_by_default",
+        "diagnostic_only_by_default",
+    )
+
+
+def _durable_public_archive_readiness_ready(record: Mapping[str, Any]) -> bool | None:
+    return _optional_bool(
+        record,
+        "durable_public_archive_readiness_ready",
+        "public_archive_readiness_ready",
+    )
 
 
 def _candidate_ready_contract_reasons(record: Mapping[str, Any]) -> list[str]:
@@ -416,7 +492,7 @@ def _candidate_ready_contract_reasons(record: Mapping[str, Any]) -> list[str]:
         reasons.append("directional_comparator_missing")
     if _regime_claimed(record) and not _status_passes(record, ("no_regime_baseline_status", "regime_baseline_status")):
         reasons.append("no_regime_baseline_missing")
-    if not _status_passes(record, ("exit_lab_status", "exit_lab_gate_status")):
+    if not _exit_lab_gate_passes(record):
         reasons.append("exit_lab_missing")
     filter_status = _status_value(record, "filter_ablation_status", "matched_filter_ablation_status")
     if not filter_status:
@@ -514,9 +590,15 @@ def _candidate_gate_columns() -> list[str]:
         "baseline_comparator_status",
         "no_regime_baseline_status",
         "exit_lab_status",
+        "exit_lab_gate_status",
         "filter_ablation_status",
         "feature_ablation_status",
         "latest_window_only",
+        "source_provider_capability_present",
+        "source_provider_capability_candidate_ready_default",
+        "source_provider_capability_diagnostic_only_by_default",
+        "durable_public_archive_readiness_ready",
+        "durable_public_archive_readiness_status",
         "research_only",
         "observe_only",
         "promotion_ready",
@@ -652,6 +734,13 @@ def _directional_comparator_complete(record: Mapping[str, Any]) -> bool:
     return {"long", "short"} <= sides
 
 
+def _exit_lab_gate_passes(record: Mapping[str, Any]) -> bool:
+    gate_status = _status_value(record, "exit_lab_gate_status")
+    if gate_status:
+        return gate_status == "passed"
+    return False
+
+
 def _regime_claimed(record: Mapping[str, Any]) -> bool:
     mode = str(record.get("regime_mode") or "").strip().lower()
     if mode in {"", "none", "no_regime", "no-regime", "no_regime_baseline"}:
@@ -693,6 +782,28 @@ def _optional_int(value: Any) -> int | None:
     if parsed is None:
         return None
     return int(parsed)
+
+
+def _optional_bool(record: Mapping[str, Any], *keys: str) -> bool | None:
+    for key in keys:
+        if key not in record:
+            continue
+        value = record.get(key)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if pd.isna(value):
+                continue
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "y", "passed", "ready", "candidate-ready"}:
+                return True
+            if normalized in {"0", "false", "no", "n", "blocked", "missing", "not_ready", "diagnostic_or_incomplete"}:
+                return False
+            if normalized in {"", "nan", "none", "null"}:
+                continue
+    return None
 
 
 def _truthy(value: Any) -> bool:

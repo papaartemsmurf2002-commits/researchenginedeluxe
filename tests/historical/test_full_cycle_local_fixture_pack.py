@@ -512,7 +512,7 @@ def test_checked_in_full_cycle_config_does_not_synthesize_when_manifest_missing(
     assert not (Path(payload["output_dir"]) / "synthetic_fixture.parquet").exists()
 
 
-def test_full_cycle_writes_research_candidate_pack_for_complete_fixture_evidence(tmp_path: Path) -> None:
+def test_full_cycle_blocks_candidate_pack_without_source_capability_and_public_archive_readiness(tmp_path: Path) -> None:
     manifest_path = _write_fixture_pack(
         tmp_path,
         fixture_id="btcusdt-local-complete-evidence-v1",
@@ -566,35 +566,32 @@ def test_full_cycle_writes_research_candidate_pack_for_complete_fixture_evidence
     metrics_by_side = pd.read_parquet(manifest["required_outputs"]["metrics_by_side"])
     metrics_by_regime = pd.read_parquet(manifest["required_outputs"]["metrics_by_regime"])
 
-    assert manifest["candidate_pack_written"] is True
-    assert manifest["candidate_pack_paths"]
-    assert manifest["candidate_acceptance_scope"] == "research_only_pack_eligible_candidates_written"
-    passed = rankings.loc[rankings["decision"] == "research_gate_passed"]
-    assert not passed.empty
-    candidate_id = str(passed.iloc[0]["candidate_id"])
-    assert passed.iloc[0]["failure_reasons"] == ""
-    assert passed.iloc[0]["side_evidence_status"] == "complete"
-    assert passed.iloc[0]["regime_evidence_status"] == "complete"
-    assert passed.iloc[0]["cost_stress_scenario_status"] == "complete"
-    assert float(passed.iloc[0]["cost_stress_survival_rate"]) >= 0.7
-    assert bool(passed.iloc[0]["feature_ablation_passed"]) is True
-    assert passed.iloc[0]["ablation_evidence_status"] == "baseline_feature_set_no_optional_claim"
-    assert float(passed.iloc[0]["max_single_split_pnl_share"]) <= 0.5
+    assert manifest["candidate_pack_written"] is False
+    assert manifest["candidate_pack_paths"] == []
+    assert manifest["candidate_acceptance_scope"] == "research_gate_evaluated_fail_closed"
+    assert manifest["data_source"]["durable_public_archive_readiness"]["ready"] is False
+    assert "source_provider_capability_required" in "|".join(rankings["failure_reasons"].astype(str))
+    assert "durable_public_archive_readiness_not_ready" in "|".join(rankings["failure_reasons"].astype(str))
+    candidate = rankings.iloc[0]
+    candidate_id = str(candidate["candidate_id"])
+    assert candidate["decision"] == "rejected"
+    assert candidate["side_evidence_status"] == "complete"
+    assert candidate["regime_evidence_status"] == "complete"
+    assert candidate["cost_stress_scenario_status"] == "complete"
+    assert float(candidate["cost_stress_survival_rate"]) >= 0.7
+    assert bool(candidate["feature_ablation_passed"]) is True
+    assert candidate["ablation_evidence_status"] == "baseline_feature_set_no_optional_claim"
+    assert float(candidate["max_single_split_pnl_share"]) <= 0.5
     gate_row = candidate_gate_report.loc[candidate_gate_report["candidate_id"].astype(str) == candidate_id].iloc[0]
-    assert gate_row["gate_status"] == "passed"
-    assert bool(gate_row["pack_eligible"]) is True
-    assert gate_row["candidate_acceptance_scope"] == "research_only_pack_eligible_not_promotion_ready"
-    assert gate_row["gate_reasons"] == ""
+    assert gate_row["gate_status"] == "blocked"
+    assert bool(gate_row["pack_eligible"]) is False
+    assert gate_row["candidate_acceptance_scope"] == "research_gate_failed_closed"
+    assert "source_provider_capability_required" in gate_row["gate_reasons"]
+    assert "durable_public_archive_readiness_not_ready" in gate_row["gate_reasons"]
     side_rows = metrics_by_side.loc[metrics_by_side["candidate_id"].astype(str) == candidate_id]
     assert set(side_rows["side"]) == {"long", "short"}
     regime_rows = metrics_by_regime.loc[metrics_by_regime["candidate_id"].astype(str) == candidate_id]
     assert len(set(regime_rows["regime"]) - {"unknown", "missing", "all", "aggregate"}) >= 2
-    pack_manifest = json.loads(Path(manifest["candidate_pack_paths"][0]).read_text(encoding="utf-8"))
-    assert pack_manifest["research_only"] is True
-    assert pack_manifest["observe_only"] is True
-    assert pack_manifest["promotion_ready"] is False
-    assert pack_manifest["live_signal_input"] is False
-    assert pack_manifest["order_placement_used"] is False
 
 
 def test_full_cycle_triple_barrier_uses_fixture_lower_timeframe_evidence(tmp_path: Path) -> None:

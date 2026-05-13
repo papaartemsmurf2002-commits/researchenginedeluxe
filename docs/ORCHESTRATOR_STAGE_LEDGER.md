@@ -1,14 +1,22 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R97 aggressive CUDA/TensorCore stability search
+Current stage: Stage R103 durable BTC/ETH data foundation
 Current stage owner: Codex Research Agent
-Stage status: complete - WPR97-07 closed
-Last updated: 2026-05-12
+Stage status: complete - WPR103-01 closed; next stage is R104 candidate validation on durable evidence
+Last updated: 2026-05-13
 
 ## Stage entry decision
 
 - Prior stage completed: yes
 - Evidence links:
+  - `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`
+  - `docs/work_packets/WPR103-01-durable-public-archive-fixtures.md`
+  - `docs/stage_reports/STAGE_R102_BRANCH_COMPLETION_IMPLEMENTATION_REPORT.md`
+  - `docs/work_packets/WPR102-01-branch-completion-implementation.md`
+  - `docs/stage_reports/STAGE_R101_BRANCH_COMPLETION_REVIEW_ORCHESTRATOR_PLAN.md`
+  - `docs/work_packets/WPR101-01-branch-completion-review-orchestrator-plan.md`
+  - `docs/stage_reports/STAGE_R100_PROVIDER_CAPABILITY_REGISTRY_REPORT.md`
+  - `docs/BRANCH_TECHNOLOGY_AND_DEVELOPMENT_REFERENCE.md`
   - `docs/stage_reports/STAGE_12_1_EXIT_REPORT.md`
   - `docs/stage_reports/STAGE_12_EXIT_REPORT.md`
   - `docs/stage_reports/STAGE_12_COMPLETION_LIMITATIONS.md`
@@ -22,13 +30,56 @@ Last updated: 2026-05-12
   - `tests/contracts/test_feature_contracts.py`
   - `docs/stage_reports/STAGE_R96_GPU_ACCELERATED_STABILITY_REGION_SEARCH_REPORT.md`
 - Known blockers accepted into this stage:
-  - None. `ISSUE-R95-001` was resolved by WPR96 with optional
-    `cuda_fixed_holding` backend evidence and remains diagnostic-only.
+  - No P0 issues are open.
+  - No P1 issues are open after R103. `ISSUE-R101-003` is resolved by compact
+    checksum-verified BTCUSDT/ETHUSDT Binance Vision multi-window fixture packs.
+  - `ISSUE-R95-001` remains resolved by WPR96 with optional
+    `cuda_fixed_holding` backend evidence and diagnostic-only status.
+
+## Completion roadmap after R103
+
+The branch is not empirically complete. Infrastructure is strong, but
+candidate-ready completion still depends on proving candidates through
+falsification on durable evidence rather than latest-window screening.
+
+Recommended next stages:
+
+1. Stage R104 candidate validation on durable evidence.
+   Rerun historical cycles and discovery against durable packs; preserve
+   `research_only`, `observe_only`, and `promotion_ready: false`; accept
+   candidate-pack absence when gates block weak evidence.
+2. Stage R105 empirical falsification matrix.
+   Test no-regime versus GMM and optional true-HMM variants, independent-event
+   scoring, signal-density penalties, matched feature/filter/exit ablations,
+   side/split/regime evidence, cost/funding stress, stability neighborhoods,
+   and multiple-testing controls.
+3. Stage R106 maintainability polish.
+   Refresh docs after durable-data work and plan narrow extraction of oversized
+   orchestration modules without broad rewrites.
+4. Stage R107 promotion handoff planning only.
+   Open only after a research-only candidate pack exists with durable evidence
+   and all research gates passing. This branch must still not start live
+   execution, live config changes, runtime-mode changes, order placement, or
+   sizing behavior.
+
+R103 implementation note:
+
+- `WPR103-01-durable-public-archive-fixtures` added compact, checked-in
+  BTCUSDT/ETHUSDT multi-window public archive fixture packs from
+  checksum-verified Binance Vision archives. These are data-foundation
+  artifacts only; they do not claim candidate-ready performance or promotion
+  readiness.
 
 ## Open work packets
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR103-01-durable-public-archive-fixtures | Codex Research Agent | closed | `.gitignore`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `configs/research/**`, `data/research/fixtures/btcusdt_public_archive_multi_window_v1/**`, `data/research/fixtures/ethusdt_public_archive_multi_window_v1/**`, `tests/contracts/**` | Checksum-verified BTCUSDT/ETHUSDT Binance Vision multi-window fixture packs, durable public archive readiness configs, checked-in fixture readiness tests, and validation recorded in `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`. |
+| WPR102-01-branch-completion-implementation | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/**`, `docs/stage_reports/**`, `docs/work_packets/**`, `pyproject.toml`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/research_cycle/**`, `src/tradingbotsuite/research_artifacts/**`, `src/tradingbotsuite/research_discovery/**`, `tests/contracts/**`, `tests/historical/**`, `tests/live/**`, `tests/research_artifacts/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/**` | Source provider capability validation, direct CLI output-root allowlisting, expanded import-boundary coverage, capability-aware readiness and candidate-pack gates, package identity cleanup, and validation recorded in `docs/stage_reports/STAGE_R102_BRANCH_COMPLETION_IMPLEMENTATION_REPORT.md`. |
+| WPR101-01-branch-completion-review-orchestrator-plan | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**` | Broad branch review, issues, weak points, completion roadmap, and validation recorded in `docs/stage_reports/STAGE_R101_BRANCH_COMPLETION_REVIEW_ORCHESTRATOR_PLAN.md`. |
+| WPR100-01-provider-capability-registry | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/data/contracts.py`, `src/tradingbotsuite/data/historical_fixture_pack.py`, `tests/contracts/test_data_contracts.py`, `tests/contracts/test_historical_fixture_pack_contract.py` | Provider capability registry, fixture metadata wiring, mismatch validation, and validation recorded in `docs/stage_reports/STAGE_R100_PROVIDER_CAPABILITY_REGISTRY_REPORT.md`. |
+| WPR99-01-branch-technology-development-reference | Codex Research Agent | closed | `docs/BRANCH_TECHNOLOGY_AND_DEVELOPMENT_REFERENCE.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**` | Branch technology/development reference created and validation recorded in `docs/stage_reports/STAGE_R99_BRANCH_TECHNOLOGY_DEVELOPMENT_REFERENCE_REPORT.md`. |
+| WPR98-01-research-boundary-validation-hardening | Codex Research Agent | closed | `pyproject.toml`, `README.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/boundary_contract.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/cli.py`, `src/tradingbotsuite/research/**`, `src/tradingbotsuite/research_discovery/**`, `tests/live/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/**` | Research artifact boundary metadata normalization, validation-floor exit-lab gate and blocker-registry hardening, canonical console script, docs updates, and validation recorded in `docs/stage_reports/STAGE_R98_RESEARCH_BOUNDARY_VALIDATION_HARDENING_REPORT.md`. |
 | WPR97-07-fastest-worker-scaling-default | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | Worker scaling benchmark, 48-worker default, CPU48 benchmark evidence, and validation recorded in `docs/stage_reports/STAGE_R97_FASTEST_WORKER_SCALING_DEFAULT_REPORT.md`. |
 | WPR97-06-research-ui-fastest-compute-summary | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py` | Research UI compute/backend summary wiring and validation recorded in `docs/stage_reports/STAGE_R97_RESEARCH_UI_FASTEST_COMPUTE_SUMMARY_REPORT.md`. |
 | WPR97-05-fastest-exact-default-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `src/tradingbotsuite/research_cycle/**`, `tests/contracts/**`, `tests/historical/**` | Fastest exact default profile, 15-worker default, default smoke, and validation recorded in `docs/stage_reports/STAGE_R97_FASTEST_EXACT_DEFAULT_POLISH_REPORT.md`. |
@@ -807,3 +858,104 @@ CPU48 naming. Focused compile, contracts, synthetic full-cycle, benchmark, and
 operator artifact tests passed. This wave does not change backtest math,
 strategy signals, candidate gates, live execution, live config, order placement,
 promotion readiness, or sizing behavior.
+
+## Research boundary validation hardening wave
+
+Decision: WPR98-01 research boundary validation hardening complete.
+Reason: Legacy research dataset/model/evaluation artifacts now carry
+fail-closed boundary metadata and replay evaluation can no longer mark local
+research metrics promotion-ready. Discovery validation floors now require an
+explicit passed exit-lab gate for candidate-ready evidence, preserve separate
+exit-lab status fields, and the candidate-pack bridge verifies blocker-registry
+hash and payload integrity before accepting validation-floor evidence. The
+active CLI now has a canonical `tradingbotsuite` console script while retaining
+legacy `tradingbot` compatibility. Focused research, validation-floor, bridge,
+live CLI, contracts, research-discovery, live, compile, full-suite, and diff
+checks passed. This wave does not change live execution, live config, order
+placement, runtime mode, candidate-pack writing, promotion authorization, or
+sizing behavior.
+
+## Branch technology development reference wave
+
+Decision: WPR99-01 branch technology development reference complete.
+Reason: The branch now has a single durable reference document covering the
+technology stack, package architecture, implemented research subsystems,
+development logic, historical stage summary, command surface, validation
+strategy, live/promotion boundaries, high-risk rewrite areas, and deferred
+work. This was a documentation-only wave. Diff checks, compile, and contract
+tests passed. This wave does not change source behavior, generated artifacts,
+live execution, live config, order placement, runtime mode, candidate-pack
+writing, promotion authorization, or sizing behavior.
+
+## Provider capability registry wave
+
+Decision: WPR100-01 provider capability registry complete.
+Reason: The external deep-research report's safest useful recommendation was
+implemented as a contract-layer provider capability registry for existing data
+surfaces, with durability class, retention limit, history-start, exchange-native
+status, normalization status, health policy, diagnostic default, and candidate
+readiness default metadata. Data manifests and generated fixture-pack
+source/context entries now carry this metadata, and supplied mismatches fail
+contract validation. Focused data/fixture contracts, compile, full contracts,
+and diff checks passed. This wave does not add providers, download data,
+generate fixtures, run candidate batches, write candidate packs, claim data or
+live readiness, alter live execution, live config, order placement, runtime
+mode, promotion authorization, or sizing behavior.
+
+## Branch completion review and orchestrator plan wave
+
+Decision: WPR101-01 branch completion review and orchestrator plan complete.
+Reason: A broad post-R100 review found that the branch has strong
+research-only/live-boundary guardrails and passing contract/high-risk validation,
+but is not empirically complete. The review registered six follow-up issues:
+source provider-capability validation, direct CLI output-root allowlisting,
+durable multi-window candidate-ready evidence, import-boundary test coverage,
+capability-aware gate integration, and package naming cleanup. The ledger now
+sets the completion sequence: R102 contract/boundary closure, R103 durable
+BTC/ETH data, R104 candidate validation on durable evidence, R105 empirical
+falsification, R106 packaging/maintainability, and R107 promotion handoff
+planning only if durable research-only candidate packs exist. Compile,
+contracts, research-discovery, live, historical, backtesting, optimization,
+research-artifact, and feature validation passed. This wave does not change
+source behavior, generated artifacts, live execution, live config, order
+placement, runtime mode, candidate-pack writing, promotion authorization, or
+sizing behavior.
+
+## Branch completion implementation wave
+
+Decision: WPR102-01 branch completion implementation complete.
+Reason: The R101 contract and boundary findings were closed without weakening
+the research-only boundary. Fixture manifests now revalidate top-level source
+provider capability metadata, direct research CLI output directories use the
+research output-root allowlist resolver, import-boundary tests cover
+`research_cycle`, `optimization`, and `research_artifacts`, and provider
+capability plus durable public archive readiness feed research-cycle,
+discovery, bridge, and candidate-pack gate evidence. The project distribution
+name is now `tradingbotsuite` while legacy compatibility remains. Durable
+BTC/ETH multi-window archive data was not fabricated; `ISSUE-R101-003` remains
+the sole open P1 and is the entry blocker for R103. Compile, focused contract
+and gate suites, CLI boundary suites, high-risk historical/discovery/artifact/
+live suites, full contracts, full `tests/tradingbotsuite`, backtesting/
+optimization/features, and full-suite validation passed. This wave does not
+write candidate packs from weak data, claim promotion readiness, add live
+execution, alter live config, change runtime mode, place orders, or touch
+sizing behavior.
+
+## Durable public archive fixture data foundation wave
+
+Decision: WPR103-01 durable public archive fixtures complete.
+Reason: The branch now has compact checked-in BTCUSDT and ETHUSDT public
+archive multi-window fixture packs under
+`data/research/fixtures/*_public_archive_multi_window_v1`. The fixtures were
+generated from checksum-verified Binance Vision USD-M daily archives for 15m
+klines, 1m lower-timeframe klines, and aggTrades across trend, drawdown, range,
+and high-volatility windows. Raw aggTrade rows were compacted to a 1-minute
+trade-flow proxy while preserving selected raw row counts, source archive URLs,
+archive hashes, checksum evidence, provider capability metadata, and
+window-selection metadata. Both manifests pass historical fixture validation
+and durable public archive readiness validation. `ISSUE-R101-003` is resolved
+as a data-foundation blocker, but candidate validation remains R104 work and no
+candidate-ready performance claim is made. Focused fixture contract validation,
+compile, full-suite validation, and diff checks passed. This wave does not
+write candidate packs, claim promotion readiness, add live execution, alter
+live config, change runtime mode, place orders, or touch sizing behavior.

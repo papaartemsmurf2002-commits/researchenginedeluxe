@@ -8,6 +8,8 @@ from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
+from tradingbotsuite.data.contracts import provider_capability_payload
+
 HISTORICAL_FIXTURE_PACK_MANIFEST_VERSION = "historical-fixture-pack-manifest-v1"
 REQUIRED_CYCLE_COLUMNS = {
     "symbol",
@@ -421,6 +423,11 @@ def validate_historical_fixture_pack_manifest(
     if manifest.get("promotion_ready") is not False:
         errors.append("fixture_pack_must_not_be_promotion_ready")
     errors.extend(_fixture_manifest_unsafe_provenance_errors(manifest))
+    source = manifest.get("source")
+    if isinstance(source, Mapping):
+        source_errors: list[str] = []
+        _validate_fixture_source_provider_capability_metadata(source, errors=source_errors)
+        errors.extend(f"source_{error}" for error in source_errors)
 
     cycle_dataset = manifest.get("cycle_dataset")
     cycle_path: Path | None = None
@@ -851,7 +858,7 @@ def _provider_source_metadata(
                 "reason": f"{data_family} rows are archive/backfill research data; no live stream continuity is claimed",
             },
         )
-    return metadata
+    return _with_provider_capability_metadata(metadata, source_name=source_name, data_family=data_family)
 
 
 def _provider_context_metadata(
@@ -915,6 +922,24 @@ def _provider_context_metadata(
         metadata.setdefault("latest_window_only", False)
     if family not in CONTEXT_FAMILIES:
         metadata.pop("context_family_role", None)
+    return _with_provider_capability_metadata(metadata, source_name=source_name, data_family=family)
+
+
+def _with_provider_capability_metadata(
+    metadata: dict[str, Any],
+    *,
+    source_name: str,
+    data_family: str,
+) -> dict[str, Any]:
+    latest_window_raw = metadata.get("latest_window_only")
+    capability = provider_capability_payload(
+        source_name=source_name,
+        data_family=data_family,
+        source_access_mode=_optional_text(metadata.get("source_access_mode")),
+        latest_window_only=latest_window_raw if isinstance(latest_window_raw, bool) else None,
+        coverage_scope=_optional_text(metadata.get("coverage_scope")),
+    )
+    metadata.setdefault("provider_capability", capability)
     return metadata
 
 
@@ -957,6 +982,64 @@ def _validate_context_family_metadata(
             errors.append(f"coverage_scope_required_for_crypto_lake_free_sample_context:{coverage_scope}")
         if entry.get("diagnostic_only") is not True:
             errors.append("diagnostic_only_required_for_crypto_lake_free_sample_context")
+
+    _validate_provider_capability_metadata(entry, source_name=source_name, family=family, errors=errors)
+
+
+def _validate_fixture_source_provider_capability_metadata(
+    source: Mapping[str, Any],
+    *,
+    errors: list[str],
+) -> None:
+    if source.get("provider_capability") is None:
+        return
+    source_name = _optional_text(source.get("source_name"))
+    data_family = _optional_text(source.get("data_family"))
+    if source_name is None:
+        errors.append("provider_capability_source_name_required")
+    if data_family is None:
+        errors.append("provider_capability_data_family_required")
+    if source_name is None or data_family is None:
+        return
+    _validate_provider_capability_metadata(source, source_name=source_name, family=data_family, errors=errors)
+
+
+def _validate_provider_capability_metadata(
+    entry: Mapping[str, Any],
+    *,
+    source_name: str | None,
+    family: str,
+    errors: list[str],
+) -> None:
+    payload = entry.get("provider_capability")
+    if payload is None:
+        return
+    if not isinstance(payload, Mapping):
+        errors.append("provider_capability_must_be_object")
+        return
+    latest_window_raw = entry.get("latest_window_only")
+    expected = provider_capability_payload(
+        source_name=source_name or "",
+        data_family=family,
+        source_access_mode=_optional_text(entry.get("source_access_mode")),
+        latest_window_only=latest_window_raw if isinstance(latest_window_raw, bool) else None,
+        coverage_scope=_optional_text(entry.get("coverage_scope")),
+    )
+    for field in (
+        "registry_version",
+        "source_name",
+        "data_family",
+        "durability_class",
+        "retention_limit",
+        "history_start",
+        "exchange_native",
+        "normalized",
+        "health_policy",
+        "diagnostic_only_by_default",
+        "candidate_ready_default",
+    ):
+        if payload.get(field) != expected.get(field):
+            errors.append(f"provider_capability_mismatch:{field}:{payload.get(field)}:{expected.get(field)}")
 
 
 def _validate_parquet_entry(

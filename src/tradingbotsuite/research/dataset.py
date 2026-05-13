@@ -26,6 +26,7 @@ from tradingbotsuite.core.math import BAR_INTERVAL_MS, atr_wilder, build_barrier
 from tradingbotsuite.core.models import Bar, ExitReason, PositionState, SignalDirection, TradeStatus
 from tradingbotsuite.persistence.sqlite_store import SQLiteStore
 from tradingbotsuite.research.config import ResearchPlan
+from tradingbotsuite.research.live_readiness import research_artifact_boundary_metadata
 
 DATASET_MANIFEST_VERSION = "v2-dataset-manifest-1"
 LABEL_VERSION = "triple_barrier_live_parity_v1"
@@ -855,7 +856,7 @@ class ResearchDatasetBuilder:
             "dataset_manifest_version": DATASET_MANIFEST_VERSION,
             "plan_version": self.plan.version,
             "plan_sha256": self.plan.plan_sha256(),
-            "research_only": True,
+            **research_artifact_boundary_metadata(),
             "symbol": self.plan.symbol,
             "asset_scope": [self.plan.symbol],
             "row_count": len(frame),

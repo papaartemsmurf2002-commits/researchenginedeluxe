@@ -76,6 +76,7 @@ def test_stage12_research_accepts_only_oos_stress_evidence_and_rejects_in_sample
 
 
 def test_stage12_research_cli_command_runs(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         sys,
         "argv",

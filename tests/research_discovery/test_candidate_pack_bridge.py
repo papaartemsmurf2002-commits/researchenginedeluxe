@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from argparse import Namespace
 from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 
 import pandas as pd
@@ -159,8 +160,14 @@ def _write_validation_floors(
     frame["directional_comparator_status"] = "complete"
     frame["no_regime_baseline_status"] = "complete"
     frame["exit_lab_status"] = "complete"
+    frame["exit_lab_gate_status"] = "passed"
     frame["filter_ablation_status"] = "edge_improving"
     frame["feature_ablation_status"] = "passed"
+    frame["source_provider_capability_present"] = True
+    frame["source_provider_capability_candidate_ready_default"] = True
+    frame["source_provider_capability_diagnostic_only_by_default"] = False
+    frame["durable_public_archive_readiness_ready"] = True
+    frame["durable_public_archive_readiness_status"] = "durable_public_archive_ready"
     if blocked:
         frame["independent_event_count"] = 25
         frame["overlap_ratio"] = 0.90
@@ -179,13 +186,16 @@ def _write_validation_floors(
 
 
 def _sha256(path: Path) -> str:
-    from hashlib import sha256
-
     digest = sha256()
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _stable_payload_sha256(payload: object) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False).encode("utf-8")
+    return sha256(encoded).hexdigest()
 
 
 def test_bridge_ledger_columns_match_runner_columns() -> None:
@@ -350,6 +360,94 @@ def test_bridge_blocks_validation_floor_record_hash_mismatch(tmp_path: Path) -> 
 
     assert result.manifest["summary"]["eligible_count"] == 0
     assert "validation_floor_gate:record_sha256_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_validation_floor_blocker_registry_hash_mismatch(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery)
+    manifest = json.loads(validation_floors.manifest_path.read_text(encoding="utf-8"))
+    manifest["blocker_registry_sha256"] = "wrong-registry"
+    validation_floors.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        validation_floors_manifest_path=validation_floors.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "validation_floor_blocker_registry_sha256_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_validation_floor_blocker_registry_payload_mismatch(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery)
+    manifest = json.loads(validation_floors.manifest_path.read_text(encoding="utf-8"))
+    registry = dict(manifest["blocker_registry"])
+    codes = dict(registry["codes"])
+    codes.pop("exit_lab_missing")
+    registry["codes"] = codes
+    manifest["blocker_registry"] = registry
+    manifest["blocker_registry_sha256"] = _stable_payload_sha256(registry)
+    validation_floors.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        validation_floors_manifest_path=validation_floors.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "validation_floor_blocker_registry_payload_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
+
+
+def test_bridge_blocks_legacy_validation_floor_gate_without_exit_lab_gate_status(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    exit_lab = _write_exit_lab(tmp_path, discovery)
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery)
+    gates = pd.read_parquet(validation_floors.candidate_gates_path).drop(columns=["exit_lab_gate_status"])
+    gates.to_parquet(validation_floors.candidate_gates_path, index=False)
+    manifest = json.loads(validation_floors.manifest_path.read_text(encoding="utf-8"))
+    manifest["discovery_validation_floor_candidate_gates_sha256"] = _sha256(validation_floors.candidate_gates_path)
+    validation_floors.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        exit_lab_manifest_path=exit_lab.manifest_path,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        validation_floors_manifest_path=validation_floors.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "validation_floor_candidate_gates_schema_mismatch" in result.eligibility.loc[0, "bridge_reasons"]
 
 
 def test_bridge_blocks_multiple_testing_gate_failures(tmp_path: Path) -> None:

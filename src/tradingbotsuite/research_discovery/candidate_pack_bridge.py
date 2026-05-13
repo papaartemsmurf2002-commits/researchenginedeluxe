@@ -23,6 +23,7 @@ from tradingbotsuite.research_discovery.state import read_trial_record
 from tradingbotsuite.research_discovery.validation_floors import (
     DISCOVERY_VALIDATION_FLOORS_MANIFEST_VERSION,
     MATURITY_CANDIDATE_READY,
+    blocker_registry_payload,
 )
 
 
@@ -699,6 +700,18 @@ def _validation_floor_evidence(
     reasons.extend(_research_boundary_reasons(manifest, "validation_floor_manifest"))
     if manifest.get("validation_floors_manifest_version") != DISCOVERY_VALIDATION_FLOORS_MANIFEST_VERSION:
         reasons.append("validation_floor_manifest_version_required")
+    registry = manifest.get("blocker_registry")
+    expected_registry = blocker_registry_payload()
+    if not isinstance(registry, Mapping):
+        reasons.append("validation_floor_blocker_registry_required")
+    else:
+        registry_hash = str(manifest.get("blocker_registry_sha256") or "")
+        if not registry_hash:
+            reasons.append("validation_floor_blocker_registry_sha256_required")
+        elif registry_hash != _stable_payload_sha256(registry):
+            reasons.append("validation_floor_blocker_registry_sha256_mismatch")
+        if dict(registry) != expected_registry:
+            reasons.append("validation_floor_blocker_registry_payload_mismatch")
     expected_source_sha = str(manifest.get("source_discovery_manifest_sha256") or "")
     actual_source_sha = _file_sha256(discovery_manifest_path) if discovery_manifest_path.exists() else ""
     if expected_source_sha and expected_source_sha != actual_source_sha:
@@ -754,6 +767,7 @@ def _validation_floor_candidate_gate_reasons(frame: pd.DataFrame) -> list[str]:
         "validation_floor_status",
         "research_maturity",
         "validation_floor_reasons",
+        "exit_lab_gate_status",
         "research_only",
         "observe_only",
         "promotion_ready",
@@ -900,6 +914,8 @@ def _validation_floor_gate_reasons(record: Mapping[str, Any], gate: Mapping[str,
     gate_reasons = [reason for reason in _gate_text(gate, "validation_floor_reasons").split("|") if reason]
     if maturity != MATURITY_CANDIDATE_READY:
         reasons.append("validation_floor_gate:candidate_ready_validation_required")
+    if _gate_text(gate, "exit_lab_gate_status") != "passed":
+        reasons.append("validation_floor_gate:exit_lab_gate_status_not_passed")
     if status != "passed":
         if gate_reasons:
             reasons.extend(f"validation_floor_gate:{reason}" for reason in gate_reasons)
@@ -1127,6 +1143,11 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _stable_payload_sha256(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str, allow_nan=False).encode("utf-8")
+    return sha256(encoded).hexdigest()
 
 
 def _assert_new_artifact_paths(*paths: Path) -> None:

@@ -10,8 +10,10 @@ from tradingbotsuite.data.contracts import (
     DATA_MANIFEST_VERSION,
     build_data_manifest,
     data_family_contracts,
+    data_provider_capabilities,
     data_source_descriptors,
     normalize_legacy_research_manifest,
+    provider_capability_payload,
     registered_only_manifest,
     validate_data_manifest,
 )
@@ -88,6 +90,30 @@ def test_data_sources_include_implemented_and_registered_only_providers() -> Non
     assert descriptors["crypto_lake"].implemented_for_ingestion is True
     assert descriptors["hyperliquid_archive"].implemented_for_ingestion is False
     assert descriptors["hyperliquid_archive"].diagnostic_only_by_default is True
+
+
+def test_provider_capability_registry_separates_durable_latest_window_and_free_sample_sources() -> None:
+    capabilities = {
+        (capability.source_name, capability.data_family): capability
+        for capability in data_provider_capabilities()
+    }
+
+    assert capabilities[("binance_vision", "agg_trade")].durability_class == "public_archive_partition"
+    assert capabilities[("binance_vision", "agg_trade")].exchange_native is True
+    assert capabilities[("binance_usdm_rest", "funding_rate")].durability_class == "latest_window_rest"
+    assert capabilities[("binance_usdm_rest", "funding_rate")].candidate_ready_default is False
+    assert capabilities[("crypto_lake", "liquidation")].durability_class == "local_vendor_export"
+
+    free_sample = provider_capability_payload(
+        source_name="crypto_lake",
+        data_family="liquidation",
+        source_access_mode="free_sample",
+        coverage_scope="free_sample_diagnostic",
+    )
+
+    assert free_sample["durability_class"] == "free_sample_diagnostic"
+    assert free_sample["retention_limit"] == "sample_coverage_only"
+    assert free_sample["diagnostic_only_by_default"] is True
 
 
 def test_durable_public_archive_readiness_configs_are_research_only_templates() -> None:
@@ -187,6 +213,50 @@ def test_build_data_manifest_rejects_extra_boundary_overrides() -> None:
             non_promotable_reasons=["receive_time_unavailable"],
             extra={"promotion_ready": True},
         )
+
+
+def test_build_data_manifest_attaches_provider_capability_and_rejects_mismatch() -> None:
+    manifest = build_data_manifest(
+        source_name="binance_rest",
+        source_type="rest",
+        symbol="BTCUSDT",
+        data_family="kline",
+        event_time_field="event_time_ms",
+        receive_time_field=None,
+        receive_time_unavailable_reason="unit test backfill has no receive time",
+        start_time_ms=1_000,
+        end_time_ms=61_000,
+        row_count=1,
+        content_hash="sha256:abc123",
+        normalized_fields=[
+            "event_time_ms",
+            "symbol",
+            "interval",
+            "open_price",
+            "high_price",
+            "low_price",
+            "close_price",
+            "volume",
+        ],
+        missing_fields=["receive_time_ms"],
+        non_promotable_reasons=["receive_time_unavailable"],
+    )
+
+    assert manifest["provider_capability"]["durability_class"] == "direct_rest_backfill"
+    assert manifest["provider_capability"]["retention_limit"] == "exchange_endpoint_dependent_not_vendor_archive"
+    assert validate_data_manifest(manifest).valid is True
+
+    tampered = dict(manifest)
+    tampered["provider_capability"] = dict(manifest["provider_capability"])
+    tampered["provider_capability"]["durability_class"] = "public_archive_partition"
+
+    result = validate_data_manifest(tampered)
+
+    assert result.valid is False
+    assert (
+        "provider_capability_mismatch:durability_class:public_archive_partition:direct_rest_backfill"
+        in result.errors
+    )
 
 
 def test_data_manifest_accepts_optional_perp_context_metadata() -> None:

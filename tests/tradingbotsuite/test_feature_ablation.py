@@ -166,6 +166,7 @@ def test_stage12_feature_ablation_spec_executes_as_real_backtest(tmp_path: Path)
 
 
 def test_plan_feature_ablation_cli_command_runs(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     monkeypatch.setattr(
         sys,
         "argv",

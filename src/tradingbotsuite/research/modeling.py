@@ -13,6 +13,7 @@ from sklearn.linear_model import LogisticRegression
 
 from tradingbotsuite.core.features import RESEARCH_FEATURE_COLUMNS, confidence_bucket, size_multiplier_candidate
 from tradingbotsuite.research.config import ResearchPlan
+from tradingbotsuite.research.live_readiness import research_artifact_boundary_metadata
 
 TRAIN_MANIFEST_VERSION = "v2-train-manifest-1"
 ARTIFACT_MANIFEST_VERSION = "v2-artifact-manifest-1"
@@ -137,6 +138,7 @@ def train_base_model(dataset_path: Path, plan: ResearchPlan, output_dir: Path) -
 
     manifest = {
         "train_manifest_version": TRAIN_MANIFEST_VERSION,
+        **research_artifact_boundary_metadata(),
         "plan_file": "plan.json",
         "dataset_path": str(dataset_path),
         "feature_columns": feature_columns,
@@ -180,6 +182,7 @@ def calibrate_model(train_manifest_path: Path, plan: ResearchPlan) -> Path:
 
     full_manifest = {
         **manifest,
+        **research_artifact_boundary_metadata(),
         "artifact_manifest_version": ARTIFACT_MANIFEST_VERSION,
         "calibrator_file": calibrator_path.name,
         "calibration_method": calibrator.method,

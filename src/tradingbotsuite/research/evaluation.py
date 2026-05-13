@@ -10,6 +10,7 @@ import pandas as pd
 
 from tradingbotsuite.core.features import RESEARCH_FEATURE_COLUMNS
 from tradingbotsuite.research.config import ResearchPlan
+from tradingbotsuite.research.live_readiness import research_artifact_boundary_metadata
 from tradingbotsuite.research.modeling import fit_model_and_calibrator, score_frame, validate_training_sources
 
 
@@ -226,8 +227,10 @@ def replay_eval(artifact_manifest_path: Path, plan: ResearchPlan) -> Path:
         promotion_failures.append("calibration_error_too_high")
     if improved_split_ratio < plan.promotion.min_improved_split_ratio:
         promotion_failures.append("insufficient_split_consistency")
+    promotion_failures = list(dict.fromkeys([*promotion_failures, "research_only_not_live_promotable"]))
 
     metrics = {
+        **research_artifact_boundary_metadata(),
         "model_version": manifest["model_version"],
         "calibration_version": manifest["calibration_version"],
         "artifact_manifest_version": manifest.get("artifact_manifest_version"),
@@ -241,7 +244,6 @@ def replay_eval(artifact_manifest_path: Path, plan: ResearchPlan) -> Path:
         "mean_absolute_calibration_error": mean_absolute_calibration_error,
         "improved_split_ratio": improved_split_ratio,
         "promotion_failures": promotion_failures,
-        "promotion_ready": not promotion_failures,
     }
     metrics_path = artifact_dir / "metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True), encoding="utf-8")

@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tradingbotsuite.data.contracts import provider_capability_payload
 from tradingbotsuite.data.historical_fixture_pack import (
     HISTORICAL_FIXTURE_PACK_MANIFEST_VERSION,
     assert_public_archive_fixture_ready,
@@ -28,6 +29,20 @@ CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST = (
 )
 CHECKED_IN_BTC_LIQUIDATION_FREE_SAMPLE_FIXTURE_MANIFEST = (
     REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_liquidation_free_sample_v1" / "fixture_pack_manifest.json"
+)
+CHECKED_IN_PUBLIC_ARCHIVE_MULTI_WINDOW_MANIFESTS = (
+    REPO_ROOT
+    / "data"
+    / "research"
+    / "fixtures"
+    / "btcusdt_public_archive_multi_window_v1"
+    / "fixture_pack_manifest.json",
+    REPO_ROOT
+    / "data"
+    / "research"
+    / "fixtures"
+    / "ethusdt_public_archive_multi_window_v1"
+    / "fixture_pack_manifest.json",
 )
 REMOVED_CHART_SOURCE = "trading" + "view"
 REMOVED_CHART_SOURCE_FLAG = REMOVED_CHART_SOURCE + "_source_used"
@@ -262,6 +277,25 @@ def test_public_archive_fixture_readiness_requires_lower_tf_aggtrade_and_window_
     assert "public_archive_required_family_missing:agg_trade" in readiness.reasons
     assert "window_selection_required" in readiness.reasons
     assert "bars_gap_check_evidence_required" in readiness.reasons
+
+
+@pytest.mark.parametrize("manifest_path", CHECKED_IN_PUBLIC_ARCHIVE_MULTI_WINDOW_MANIFESTS)
+def test_checked_in_public_archive_multi_window_fixture_is_ready(manifest_path: Path) -> None:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+    readiness = assert_public_archive_fixture_ready(manifest, manifest_path=manifest_path)
+
+    assert validation.row_count == 32
+    assert readiness.status == "durable_public_archive_ready"
+    assert readiness.required_families == ("bars", "lower_timeframe_bars", "agg_trade")
+    assert readiness.durable_context_families == ("agg_trade",)
+    assert manifest["source"]["provider_capability"]["durability_class"] == "public_archive_partition"
+    assert manifest["families"]["agg_trade"]["aggregation_interval"] == "1m"
+    assert manifest["families"]["agg_trade"]["source_selected_row_count"] > manifest["families"]["agg_trade"]["row_count"]
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
 
 
 def test_checked_in_btcusdt_fixture_pack_manifest_validates() -> None:
@@ -645,7 +679,11 @@ def test_provider_kline_fixture_pack_builder_rejects_row_count_mismatch(tmp_path
         )
 
 
-def test_build_historical_fixture_pack_cli_payload_is_research_only(tmp_path: Path) -> None:
+def test_build_historical_fixture_pack_cli_payload_is_research_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     source_path = tmp_path / "BTCUSDT_15m_provider_cache.json"
     rows = _provider_kline_rows(row_count=7)
     source_path.write_text(json.dumps(rows, sort_keys=True), encoding="utf-8")
@@ -702,6 +740,10 @@ def test_provider_kline_fixture_pack_builder_includes_provider_context_manifests
     validation = assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=result.manifest_path)
     context_families = validation.to_payload()["optional_context_families"]
 
+    assert manifest["source"]["provider_capability"]["durability_class"] == "direct_rest_backfill"
+    assert manifest["source"]["provider_capability"]["retention_limit"] == (
+        "exchange_endpoint_dependent_not_vendor_archive"
+    )
     assert set(context_families) == {"funding_rate", "premium_index", "open_interest", "agg_trade", "liquidation"}
     assert set(result.to_payload()["context_family_paths"]) == set(context_families)
     assert {record["data_family"] for record in manifest["source"]["context_sources"]} == set(context_families)
@@ -720,6 +762,7 @@ def test_provider_kline_fixture_pack_builder_includes_provider_context_manifests
         assert payload["context_family_role"] == "perp_context"
         assert payload["stream_health"]["status"] == "not_applicable_batch_backfill"
         assert payload["promotion_ready"] is False
+        assert payload["provider_capability"]["candidate_ready_default"] is False
         family_frame = pd.read_parquet(family_path)
         assert {"event_time_ms", "symbol", "source_provider", "source_data_family"} <= set(family_frame.columns)
         assert set(family_frame["symbol"]) == {"BTCUSDT"}
@@ -727,9 +770,12 @@ def test_provider_kline_fixture_pack_builder_includes_provider_context_manifests
         assert int(family_frame["event_time_ms"].max()) <= rows[-1]["time_ms"]
     assert context_families["funding_rate"]["coverage_scope"] == "local_vendor_export"
     assert context_families["funding_rate"]["latest_window_only"] is False
+    assert context_families["funding_rate"]["provider_capability"]["durability_class"] == "local_vendor_export"
     assert context_families["premium_index"]["coverage_scope"] == "public_archive_partition"
     assert context_families["premium_index"]["latest_window_only"] is False
+    assert context_families["premium_index"]["provider_capability"]["durability_class"] == "public_archive_partition"
     assert all(record["context_family_role"] == "perp_context" for record in manifest["source"]["context_sources"])
+    assert all("provider_capability" in record for record in manifest["source"]["context_sources"])
     funding = pd.read_parquet(context_families["funding_rate"]["path"])
     assert funding["funding_rate"].max() < 0.5
     agg_trade = pd.read_parquet(context_families["agg_trade"]["path"])
@@ -744,7 +790,11 @@ def test_provider_kline_fixture_pack_builder_includes_provider_context_manifests
     assert int(liquidation["liquidation_event_count"].max()) == 2
 
 
-def test_build_historical_fixture_pack_cli_accepts_context_manifests(tmp_path: Path) -> None:
+def test_build_historical_fixture_pack_cli_accepts_context_manifests(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path))
     rows = _provider_kline_rows(row_count=8)
     source_manifest_path = _write_provider_kline_manifest(tmp_path, rows)
     funding_manifest_path = _write_provider_context_manifest(
@@ -813,8 +863,90 @@ def test_provider_kline_fixture_pack_builder_accepts_binance_usdm_rest_context_m
     assert manifest["families"]["funding_rate"]["coverage_scope"] == "latest_window_backfill"
     assert manifest["families"]["funding_rate"]["latest_window_only"] is True
     assert manifest["families"]["funding_rate"]["retention_policy"]["claim"] == "not_multi_year_coverage"
+    assert manifest["families"]["funding_rate"]["provider_capability"]["durability_class"] == "latest_window_rest"
+    assert manifest["families"]["funding_rate"]["provider_capability"]["retention_limit"] == (
+        "direct_endpoint_latest_window"
+    )
     assert manifest["source"]["context_sources"][0]["source_name"] == "binance_usdm_rest"
     assert manifest["source"]["context_sources"][0]["coverage_scope"] == "latest_window_backfill"
+    assert manifest["source"]["context_sources"][0]["provider_capability"]["durability_class"] == "latest_window_rest"
+
+
+@pytest.mark.parametrize(
+    ("field", "tampered_value", "expected_error"),
+    [
+        (
+            "source_name",
+            "binance_vision",
+            "source_provider_capability_mismatch:source_name:binance_vision:binance_rest",
+        ),
+        (
+            "durability_class",
+            "public_archive_partition",
+            "source_provider_capability_mismatch:durability_class:public_archive_partition:direct_rest_backfill",
+        ),
+    ],
+)
+def test_historical_fixture_pack_rejects_source_provider_capability_mismatch(
+    tmp_path: Path,
+    field: str,
+    tampered_value: object,
+    expected_error: str,
+) -> None:
+    manifest_path = _write_fixture_pack(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["source"] = {
+        "source_name": "binance_rest",
+        "source_raw": "binance_usdm_klines",
+        "data_family": "kline",
+        "provider_capability": provider_capability_payload(
+            source_name="binance_rest",
+            data_family="kline",
+        ),
+    }
+    manifest["source"]["provider_capability"][field] = tampered_value
+
+    validation = validate_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+
+    assert validation.valid is False
+    assert expected_error in validation.errors
+
+
+def test_historical_fixture_pack_rejects_context_provider_capability_mismatch(tmp_path: Path) -> None:
+    manifest_path = _write_fixture_pack(tmp_path)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    funding = pd.DataFrame({"event_time_ms": [1, 2], "symbol": ["BTCUSDT", "BTCUSDT"], "funding_rate": [0.1, 0.2]})
+    funding_path = manifest_path.parent / "funding_rate.parquet"
+    funding.to_parquet(funding_path, index=False)
+    manifest["families"]["funding_rate"] = {
+        "path": funding_path.name,
+        "data_family": "funding_rate",
+        "context_family_role": "perp_context",
+        "coverage_scope": "latest_window_backfill",
+        "latest_window_only": True,
+        "source_name": "binance_usdm_rest",
+        "provider_capability": provider_capability_payload(
+            source_name="binance_vision",
+            data_family="funding_rate",
+            coverage_scope="public_archive_partition",
+        ),
+        "required": False,
+        "sha256": f"sha256:{_file_sha256(funding_path)}",
+        "row_count": len(funding),
+        "columns": list(funding.columns),
+    }
+
+    validation = validate_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+
+    assert validation.valid is False
+    assert (
+        "family_funding_rate_provider_capability_mismatch:source_name:binance_vision:binance_usdm_rest"
+        in validation.errors
+    )
+    assert (
+        "family_funding_rate_provider_capability_mismatch:durability_class:public_archive_partition:latest_window_rest"
+        in validation.errors
+    )
 
 
 @pytest.mark.asyncio

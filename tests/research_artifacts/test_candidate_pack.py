@@ -30,6 +30,33 @@ REQUIRED_COST_STRESS_SCENARIOS = (
 )
 REMOVED_CHART_SOURCE = "trading" + "view"
 REMOVED_CHART_SOURCE_FLAG = REMOVED_CHART_SOURCE + "_source_used"
+PUBLIC_ARCHIVE_PROVIDER_CAPABILITY = {
+    "registry_version": "provider-capability-registry-v1",
+    "source_name": "binance_vision",
+    "data_family": "kline",
+    "durability_class": "public_archive_partition",
+    "retention_limit": "downloaded_public_archive_partition",
+    "history_start": "source_partition_dependent",
+    "exchange_native": True,
+    "normalized": True,
+    "health_policy": "checksum_gap_duplicate_evidence_required_for_durable_claims",
+    "diagnostic_only_by_default": False,
+    "candidate_ready_default": False,
+}
+DURABLE_PUBLIC_ARCHIVE_READY = {
+    "ready": True,
+    "status": "durable_public_archive_ready",
+    "reasons": [],
+    "fixture_id": "btcusdt-local-offline-v1",
+    "symbol": "BTCUSDT",
+    "base_interval": "15m",
+    "required_families": ["bars", "lower_timeframe_bars", "agg_trade"],
+    "durable_context_families": ["agg_trade"],
+    "diagnostic_context_families": [],
+    "research_only": True,
+    "observe_only": True,
+    "promotion_ready": False,
+}
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
@@ -175,9 +202,10 @@ def _cycle_outputs(
             "fixture_id": "btcusdt-local-offline-v1",
             "fixture_scope": "unit_fixture_not_oos_acceptance_evidence",
             "source": {
-                "source_name": "binance_rest",
-                "source_raw": "binance_usdm_klines",
+                "source_name": "binance_vision",
+                "source_raw": "binance_vision_klines",
                 "data_family": "kline",
+                "provider_capability": dict(PUBLIC_ARCHIVE_PROVIDER_CAPABILITY),
             },
             "derivation": {
                 REMOVED_CHART_SOURCE_FLAG: False,
@@ -545,10 +573,13 @@ def _cycle_outputs(
                 "fixture_id": "btcusdt-local-offline-v1",
                 "fixture_scope": "unit_fixture_not_oos_acceptance_evidence",
                 "fixture_source": {
-                    "source_name": "binance_rest",
-                    "source_raw": "binance_usdm_klines",
+                    "source_name": "binance_vision",
+                    "source_raw": "binance_vision_klines",
                     "data_family": "kline",
+                    "provider_capability": dict(PUBLIC_ARCHIVE_PROVIDER_CAPABILITY),
                 },
+                "provider_capability": dict(PUBLIC_ARCHIVE_PROVIDER_CAPABILITY),
+                "durable_public_archive_readiness": dict(DURABLE_PUBLIC_ARCHIVE_READY),
                 "fixture_derivation": {
                     REMOVED_CHART_SOURCE_FLAG: False,
                     "synthetic_source_used": False,
@@ -631,7 +662,10 @@ def test_research_candidate_pack_is_research_only_and_rejected_for_live_input(tm
     assert source["fixture_scope_matches_manifest"] is True
     assert source["fixture_omitted_optional_families_matches_manifest"] is True
     assert source["fixture_research_evidence_limitations_match_manifest"] is True
-    assert source["fixture_source"]["source_name"] == "binance_rest"
+    assert source["fixture_source"]["source_name"] == "binance_vision"
+    assert source["provider_capability"]["candidate_ready_default"] is False
+    assert source["durable_public_archive_readiness"]["ready"] is True
+    assert source["source_capability_gate_reasons"] == []
     assert source["fixture_derivation"][REMOVED_CHART_SOURCE_FLAG] is False
     assert source["fixture_derivation"]["synthetic_source_used"] is False
     assert source["omitted_optional_families"] == source["fixture_manifest_omitted_optional_families"]
@@ -693,6 +727,32 @@ def test_research_candidate_pack_reports_fixture_provenance_mismatch(tmp_path: P
     assert "fixture_source_mismatch" in gate.reasons
     assert "fixture_derivation_mismatch" in gate.reasons
     with pytest.raises(ValueError, match="fixture_source_mismatch"):
+        write_research_candidate_pack(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+
+def test_research_candidate_pack_blocks_non_candidate_ready_source_capability(tmp_path: Path) -> None:
+    cycle_manifest = _cycle_outputs(tmp_path)
+    manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+    for source in (
+        manifest["data_source"]["fixture_source"],
+        manifest["data_source"],
+    ):
+        source["provider_capability"]["candidate_ready_default"] = False
+        source["provider_capability"]["diagnostic_only_by_default"] = True
+        source["provider_capability"]["durability_class"] = "latest_window_rest"
+    manifest["data_source"]["durable_public_archive_readiness"]["ready"] = False
+    manifest["data_source"]["durable_public_archive_readiness"]["status"] = "diagnostic_or_incomplete"
+    manifest["data_source"]["durable_public_archive_readiness"]["reasons"] = ["latest_window_context_diagnostic_only:funding_rate"]
+    cycle_manifest.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+    assert gate.passed is False
+    assert "source_provider_capability_not_candidate_ready" in gate.reasons
+    assert "source_provider_capability_diagnostic_only" in gate.reasons
+    assert "source_provider_capability_durability_not_candidate_ready" in gate.reasons
+    assert "durable_public_archive_readiness_not_ready" in gate.reasons
+    with pytest.raises(ValueError, match="source_provider_capability_not_candidate_ready"):
         write_research_candidate_pack(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
 
 

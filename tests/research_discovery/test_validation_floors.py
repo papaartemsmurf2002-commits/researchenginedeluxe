@@ -41,8 +41,14 @@ def _candidate(**overrides: object) -> dict[str, object]:
         "expectancy_vs_no_trade": 0.01,
         "directional_comparator_status": "complete",
         "exit_lab_status": "complete",
+        "exit_lab_gate_status": "passed",
         "filter_ablation_status": "edge_improving",
         "feature_ablation_status": "passed",
+        "source_provider_capability_present": True,
+        "source_provider_capability_candidate_ready_default": False,
+        "source_provider_capability_diagnostic_only_by_default": False,
+        "durable_public_archive_readiness_ready": True,
+        "durable_public_archive_readiness_status": "durable_public_archive_ready",
     }
     row.update(overrides)
     return row
@@ -66,6 +72,10 @@ def test_validation_floor_report_marks_candidate_ready_and_writes_registry(tmp_p
     assert manifest["blocker_registry"]["blocker_registry_version"] == "discovery-validation-blocker-registry-v1"
     assert gates.loc[0, "validation_floor_status"] == "passed"
     assert gates.loc[0, "research_maturity"] == "candidate-ready"
+    assert gates.loc[0, "exit_lab_status"] == "complete"
+    assert gates.loc[0, "exit_lab_gate_status"] == "passed"
+    assert bool(gates.loc[0, "source_provider_capability_present"]) is True
+    assert bool(gates.loc[0, "durable_public_archive_readiness_ready"]) is True
     assert gates.loc[0, "validation_floor_reasons"] == ""
 
 
@@ -77,6 +87,7 @@ def test_validation_floor_report_distinguishes_screen_worthy_from_candidate_read
         cost_stress_survival=0.90,
         stability_neighborhood_size=2,
         exit_lab_status="",
+        exit_lab_gate_status="",
         filter_ablation_status="",
         feature_ablation_status="",
     )
@@ -149,6 +160,46 @@ def test_validation_floor_report_emits_standard_blockers_for_failure_modes() -> 
         assert code in reasons
 
 
+def test_validation_floor_report_blocks_missing_or_diagnostic_source_capability() -> None:
+    result = build_discovery_validation_floor_report(
+        pd.DataFrame(
+            [
+                _candidate(
+                    source_provider_capability_candidate_ready_default=False,
+                    source_provider_capability_diagnostic_only_by_default=True,
+                    durable_public_archive_readiness_ready=False,
+                    durable_public_archive_readiness_status="diagnostic_or_incomplete",
+                )
+            ]
+        )
+    )
+    reasons = result.candidate_gates.loc[0, "validation_floor_reasons"]
+
+    assert result.candidate_gates.loc[0, "research_maturity"] == "diagnostic"
+    assert "source_provider_capability_not_candidate_ready" in reasons
+    assert "source_provider_capability_diagnostic_only" in reasons
+    assert "durable_public_archive_readiness_not_ready" in reasons
+
+
+def test_validation_floor_report_blocks_missing_source_capability() -> None:
+    row = _candidate()
+    for key in (
+        "source_provider_capability_present",
+        "source_provider_capability_candidate_ready_default",
+        "source_provider_capability_diagnostic_only_by_default",
+        "durable_public_archive_readiness_ready",
+        "durable_public_archive_readiness_status",
+    ):
+        row.pop(key, None)
+
+    result = build_discovery_validation_floor_report(pd.DataFrame([row]))
+    reasons = result.candidate_gates.loc[0, "validation_floor_reasons"]
+
+    assert result.candidate_gates.loc[0, "research_maturity"] == "diagnostic"
+    assert "source_provider_capability_missing" in reasons
+    assert "durable_public_archive_readiness_missing" in reasons
+
+
 def test_validation_floor_report_requires_no_regime_baseline_when_regime_is_claimed() -> None:
     result = build_discovery_validation_floor_report(
         pd.DataFrame([_candidate(regime_mode="gmm_same_regime_neighbors", no_regime_baseline_status="")])
@@ -162,6 +213,16 @@ def test_validation_floor_report_requires_no_regime_baseline_when_regime_is_clai
 def test_validation_floor_report_rejects_blocked_exit_lab_gate_status() -> None:
     result = build_discovery_validation_floor_report(
         pd.DataFrame([_candidate(exit_lab_status="complete", exit_lab_gate_status="blocked")])
+    )
+    gate = result.candidate_gates.iloc[0]
+
+    assert gate["research_maturity"] == "screen-worthy"
+    assert "exit_lab_missing" in gate["validation_floor_reasons"]
+
+
+def test_validation_floor_report_requires_explicit_passed_exit_lab_gate_status() -> None:
+    result = build_discovery_validation_floor_report(
+        pd.DataFrame([_candidate(exit_lab_status="complete", exit_lab_gate_status="")])
     )
     gate = result.candidate_gates.iloc[0]
 
@@ -222,6 +283,11 @@ def test_validation_blocker_registry_contains_roadmap_codes() -> None:
         "filter_ablation_missing",
         "feature_ablation_missing",
         "multiple_testing_stability_incomplete",
+        "source_provider_capability_missing",
+        "source_provider_capability_not_candidate_ready",
+        "source_provider_capability_diagnostic_only",
+        "durable_public_archive_readiness_missing",
+        "durable_public_archive_readiness_not_ready",
     ):
         assert code in codes
         assert code in registry["codes"]
