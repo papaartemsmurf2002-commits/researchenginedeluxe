@@ -82,6 +82,12 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             raise HTTPException(status_code=400, detail=f"{field_name} must be inside the research output directory")
         return path
 
+    def validate_optional_research_file_path(payload: dict[str, Any], field_name: str) -> Path | None:
+        raw_path = payload.get(field_name)
+        if raw_path is None or str(raw_path).strip() == "":
+            return None
+        return validate_research_file_path(payload, field_name)
+
     def validate_provider_pipeline_request(payload: dict[str, Any]) -> Path:
         spec_path = resolve_operator_path(payload.get("spec_path") or "configs/data/v2_btc_hmm_knn_provider_pipeline.json")
         research_root = resolve_operator_path(active_config().research.output_dir)
@@ -314,6 +320,11 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_session_json(request)
         return {"items": service.list_artifacts()}
 
+    @app.get("/api/operator/research/r104-readiness")
+    async def operator_r104_readiness(request: Request):
+        require_session_json(request)
+        return service.r104_readiness_diagnostics()
+
     @app.get("/api/operator/shadow/diagnostics")
     async def operator_shadow_diagnostics(request: Request, symbol: str = "BTCUSDT", limit: int = 20):
         require_session_json(request)
@@ -479,6 +490,31 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
                     "resume": bool(payload.get("resume", False)),
                     "stop_after_trials": validate_stop_after_trials(payload.get("stop_after_trials")),
                     "overwrite_protection": "isolated_run_id_output_dir",
+                },
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/operator/research/jobs/evaluate-discovery-candidate-pack-eligibility")
+    async def operator_evaluate_discovery_candidate_pack_eligibility(request: Request):
+        require_same_origin(request)
+        session = require_session_json(request)
+        require_csrf(request, session)
+        payload = await request.json()
+        discovery_manifest_path = validate_research_file_path(payload, "discovery_manifest_path")
+        cycle_manifest_path = validate_optional_research_file_path(payload, "cycle_manifest_path")
+        exit_lab_manifest_path = validate_optional_research_file_path(payload, "exit_lab_manifest_path")
+        multiple_testing_manifest_path = validate_optional_research_file_path(payload, "multiple_testing_manifest_path")
+        validation_floors_manifest_path = validate_optional_research_file_path(payload, "validation_floors_manifest_path")
+        try:
+            return await service.queue_job(
+                "evaluate-discovery-candidate-pack-eligibility",
+                {
+                    "discovery_manifest_path": str(discovery_manifest_path),
+                    "cycle_manifest_path": str(cycle_manifest_path) if cycle_manifest_path is not None else None,
+                    "exit_lab_manifest_path": str(exit_lab_manifest_path) if exit_lab_manifest_path is not None else None,
+                    "multiple_testing_manifest_path": str(multiple_testing_manifest_path) if multiple_testing_manifest_path is not None else None,
+                    "validation_floors_manifest_path": str(validation_floors_manifest_path) if validation_floors_manifest_path is not None else None,
                 },
             )
         except ValueError as exc:

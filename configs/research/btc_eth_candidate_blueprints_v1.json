@@ -64,20 +64,25 @@
   },
   "symbol_activation": {
     "BTCUSDT": {
-      "cycle_config": "full_cycle_btcusdt_candidate_blueprints_v1.json",
-      "maturity_label": "diagnostic_screening_only",
+      "cycle_config": "full_cycle_btcusdt_durable_public_archive_r104_v1.json",
+      "supersedes_cycle_config": "full_cycle_btcusdt_candidate_blueprints_v1.json",
+      "maturity_label": "durable_candidate_validation_screening",
       "candidate_pack_eligible": false,
       "blocker_codes": [
-        "latest_window_context_non_diagnostic_claim",
-        "durable_multi_window_candidate_evidence_missing"
+        "candidate_validation_gates_not_yet_passed",
+        "exit_lab_evidence_required",
+        "multiple_testing_and_validation_floors_required"
       ]
     },
     "ETHUSDT": {
-      "cycle_config": "full_cycle_ethusdt_candidate_blueprints_blocked_v1.json",
-      "maturity_label": "blocked",
+      "cycle_config": "full_cycle_ethusdt_durable_public_archive_r104_v1.json",
+      "supersedes_cycle_config": "full_cycle_ethusdt_candidate_blueprints_blocked_v1.json",
+      "maturity_label": "durable_candidate_validation_screening",
       "candidate_pack_eligible": false,
       "blocker_codes": [
-        "durable_eth_fixture_readiness_not_recorded"
+        "candidate_validation_gates_not_yet_passed",
+        "exit_lab_evidence_required",
+        "multiple_testing_and_validation_floors_required"
       ]
     }
   },

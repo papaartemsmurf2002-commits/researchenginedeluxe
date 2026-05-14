@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from collections import deque
 from dataclasses import dataclass
@@ -26,6 +27,10 @@ from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, 
 from tradingbotsuite.research.experiment_runner import run_research_experiment
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.research_cycle import HistoricalResearchCycleSpec, run_historical_research_cycle
+from tradingbotsuite.research_discovery.candidate_pack_bridge import (
+    evaluate_discovery_candidate_pack_eligibility,
+    write_discovery_candidate_pack_eligibility,
+)
 from tradingbotsuite.research_discovery.runner import run_discovery
 from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec
 
@@ -321,13 +326,98 @@ class OperatorConsoleService:
         ]
         return report
 
+    def r104_readiness_diagnostics(self) -> dict[str, Any]:
+        configs_root = REPO_ROOT / "configs"
+        symbols = {
+            "BTCUSDT": {
+                "readiness_config": configs_root / "research" / "durable_public_archive_fixture_readiness_btcusdt_v1.json",
+                "cycle_spec": configs_root / "research" / "full_cycle_btcusdt_durable_public_archive_r104_v1.json",
+                "discovery_spec": configs_root / "discovery" / "standard_entry_discovery_btcusdt_v4.json",
+            },
+            "ETHUSDT": {
+                "readiness_config": configs_root / "research" / "durable_public_archive_fixture_readiness_ethusdt_v1.json",
+                "cycle_spec": configs_root / "research" / "full_cycle_ethusdt_durable_public_archive_r104_v1.json",
+                "discovery_spec": configs_root / "discovery" / "standard_entry_discovery_ethusdt_durable_r104_v1.json",
+            },
+        }
+        items: list[dict[str, Any]] = []
+        for symbol, paths in symbols.items():
+            readiness_payload = self._read_json_path(paths["readiness_config"])
+            cycle_payload = self._read_json_path(paths["cycle_spec"])
+            discovery_payload = self._read_json_path(paths["discovery_spec"])
+            fixture_path = self._resolve_repo_path((readiness_payload or {}).get("fixture_manifest_path"))
+            fixture_exists = bool(fixture_path and fixture_path.exists())
+            expected_sha = str((readiness_payload or {}).get("fixture_manifest_sha256") or "")
+            actual_sha = f"sha256:{self._file_sha256(fixture_path)}" if fixture_exists and fixture_path is not None else ""
+            sha_ok = bool(expected_sha and actual_sha and expected_sha == actual_sha)
+            ready = bool(
+                readiness_payload
+                and readiness_payload.get("readiness_status") == "durable_public_archive_ready"
+                and readiness_payload.get("research_only") is True
+                and readiness_payload.get("observe_only") is True
+                and readiness_payload.get("promotion_ready") is False
+                and fixture_exists
+                and sha_ok
+                and cycle_payload
+                and discovery_payload
+            )
+            blockers: list[str] = []
+            if not readiness_payload:
+                blockers.append("durable_readiness_config_missing_or_invalid")
+            if not fixture_exists:
+                blockers.append("fixture_manifest_missing")
+            if expected_sha and actual_sha and expected_sha != actual_sha:
+                blockers.append("fixture_manifest_sha256_mismatch")
+            if not cycle_payload:
+                blockers.append("r104_cycle_spec_missing_or_invalid")
+            if not discovery_payload:
+                blockers.append("r104_discovery_spec_missing_or_invalid")
+            items.append(
+                {
+                    "symbol": symbol,
+                    "ready": ready,
+                    "status": "durable_ready" if ready else "blocked",
+                    "blockers": blockers,
+                    "readiness_config_path": str(paths["readiness_config"]),
+                    "cycle_spec_path": str(paths["cycle_spec"]),
+                    "discovery_spec_path": str(paths["discovery_spec"]),
+                    "fixture_manifest_path": str(fixture_path) if fixture_path is not None else None,
+                    "fixture_manifest_sha256": actual_sha or None,
+                    "expected_fixture_manifest_sha256": expected_sha or None,
+                    "fixture_row_counts": (readiness_payload or {}).get("fixture_row_counts") or {},
+                    "window_selection_recorded": (readiness_payload or {}).get("window_selection_recorded") or {},
+                    "promotion_ready": False,
+                    "research_only": True,
+                    "observe_only": True,
+                }
+            )
+        ready_count = sum(1 for item in items if item["ready"])
+        return {
+            "stage": "R104",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "ready": ready_count == len(items),
+            "ready_count": ready_count,
+            "symbol_count": len(items),
+            "items": items,
+            "recommended_next_action": (
+                "Run durable BTC or ETH historical cycle, then discovery, then candidate eligibility review."
+                if ready_count == len(items)
+                else "Fix durable fixture readiness before running candidate validation."
+            ),
+            "primary_blockers": sorted({reason for item in items for reason in item["blockers"]}),
+        }
+
     def list_artifacts(self) -> list[dict[str, Any]]:
         base_dir = self.config.research.output_dir
         if not base_dir.exists():
             return []
         artifacts: list[dict[str, Any]] = []
         for train_manifest in sorted(base_dir.rglob("train_manifest.json")):
-            payload = json.loads(train_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, train_manifest, "train_artifact")
+            if payload is None:
+                continue
             artifacts.append(
                 {
                     "type": "train_artifact",
@@ -343,16 +433,18 @@ class OperatorConsoleService:
                 }
             )
         for manifest_path in sorted(base_dir.rglob("artifact_manifest.json")):
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, manifest_path, "artifact_manifest")
+            if payload is None:
+                continue
             if payload.get("artifact_manifest_version") == "v2-hmm-knn-artifact-manifest-1":
                 raw_metrics_path = payload.get("metrics_path")
                 metrics_path = Path(str(raw_metrics_path)) if raw_metrics_path else manifest_path.parent / "walk_forward_metrics.json"
                 if not metrics_path.is_absolute():
                     parent_candidate = manifest_path.parent / metrics_path
                     metrics_path = parent_candidate if parent_candidate.exists() else metrics_path
-                metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else None
+                metrics = self._read_optional_json(metrics_path) if metrics_path.exists() else None
                 monitoring_path = manifest_path.parent / "monitoring_report.json"
-                monitoring = json.loads(monitoring_path.read_text(encoding="utf-8")) if monitoring_path.exists() else None
+                monitoring = self._read_optional_json(monitoring_path) if monitoring_path.exists() else None
                 alert_counts: dict[str, int] = {}
                 for alert in (monitoring or {}).get("alerts", []):
                     severity = str(alert.get("severity", "unknown"))
@@ -386,7 +478,7 @@ class OperatorConsoleService:
                 )
                 continue
             metrics_path = manifest_path.parent / "metrics.json"
-            metrics = json.loads(metrics_path.read_text(encoding="utf-8")) if metrics_path.exists() else None
+            metrics = self._read_optional_json(metrics_path) if metrics_path.exists() else None
             artifacts.append(
                 {
                     "type": "model_artifact",
@@ -406,7 +498,9 @@ class OperatorConsoleService:
                 }
             )
         for dataset_manifest in sorted(base_dir.rglob("dataset_manifest.json")):
-            payload = json.loads(dataset_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, dataset_manifest, "dataset")
+            if payload is None:
+                continue
             artifacts.append(
                 {
                     "type": "dataset",
@@ -422,7 +516,9 @@ class OperatorConsoleService:
                 }
             )
         for pipeline_summary in sorted(base_dir.rglob("pipeline_summary.json")):
-            payload = json.loads(pipeline_summary.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, pipeline_summary, "research_pipeline")
+            if payload is None:
+                continue
             artifacts.append(
                 {
                     "type": "research_pipeline",
@@ -442,7 +538,9 @@ class OperatorConsoleService:
                 }
             )
         for intake_manifest in sorted(base_dir.rglob("data_intake_manifest.json")):
-            payload = json.loads(intake_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, intake_manifest, "data_pipeline_intake")
+            if payload is None:
+                continue
             artifacts.append(
                 {
                     "type": "data_pipeline_intake",
@@ -459,7 +557,9 @@ class OperatorConsoleService:
                 }
             )
         for data_quality_report in sorted(base_dir.rglob("data_quality_report.json")):
-            payload = json.loads(data_quality_report.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, data_quality_report, "data_quality_report")
+            if payload is None:
+                continue
             artifacts.append(
                 {
                     "type": "data_quality_report",
@@ -476,7 +576,9 @@ class OperatorConsoleService:
                 }
             )
         for market_journal_manifest in sorted(base_dir.rglob("market_journal_manifest.json")):
-            payload = json.loads(market_journal_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, market_journal_manifest, "market_journal_manifest")
+            if payload is None:
+                continue
             artifacts.append(
                 {
                     "type": "market_journal_manifest",
@@ -496,7 +598,9 @@ class OperatorConsoleService:
         for provider_manifest in sorted(base_dir.rglob("*.manifest.json")):
             if provider_manifest.name == "market_journal_manifest.json":
                 continue
-            payload = json.loads(provider_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, provider_manifest, "provider_archive_manifest")
+            if payload is None:
+                continue
             if not payload.get("source_name") or not payload.get("data_family"):
                 continue
             if "content_hash" not in payload and "ingestion_status" not in payload:
@@ -521,7 +625,9 @@ class OperatorConsoleService:
                 }
             )
         for experiment_manifest in sorted(base_dir.rglob("experiment_manifest.json")):
-            payload = json.loads(experiment_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, experiment_manifest, "hmm_knn_experiment_matrix")
+            if payload is None:
+                continue
             artifacts.append(
                 {
                     "type": "hmm_knn_experiment_matrix",
@@ -539,7 +645,9 @@ class OperatorConsoleService:
                 }
             )
         for experiment_run_manifest in sorted(base_dir.rglob("experiment_run_manifest.json")):
-            payload = json.loads(experiment_run_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, experiment_run_manifest, "research_experiment_run")
+            if payload is None:
+                continue
             conclusion_path = Path(str((payload.get("artifact_links") or {}).get("conclusion_path") or experiment_run_manifest.parent / "conclusion.md"))
             conclusion_text = conclusion_path.read_text(encoding="utf-8") if conclusion_path.exists() else None
             artifacts.append(
@@ -564,7 +672,9 @@ class OperatorConsoleService:
                 }
             )
         for cycle_manifest in sorted(base_dir.rglob("research_cycle_manifest.json")):
-            payload = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, cycle_manifest, "historical_research_cycle")
+            if payload is None:
+                continue
             required_outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
             compute_policy = payload.get("compute_policy") if isinstance(payload.get("compute_policy"), dict) else {}
             backend_summary = payload.get("backtest_backend_summary") if isinstance(payload.get("backtest_backend_summary"), dict) else {}
@@ -610,7 +720,9 @@ class OperatorConsoleService:
                 }
             )
         for discovery_manifest in sorted(base_dir.rglob("discovery_run_manifest.json")):
-            payload = json.loads(discovery_manifest.read_text(encoding="utf-8"))
+            payload = self._read_json_artifact(artifacts, discovery_manifest, "discovery_run")
+            if payload is None:
+                continue
             required_outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
             artifacts.append(
                 {
@@ -644,10 +756,179 @@ class OperatorConsoleService:
                     },
                 }
             )
+        for exit_lab_manifest in sorted(base_dir.rglob("discovery_exit_lab_manifest.json")):
+            payload = self._read_json_artifact(artifacts, exit_lab_manifest, "discovery_exit_lab")
+            if payload is None:
+                continue
+            outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            artifacts.append(
+                {
+                    "type": "discovery_exit_lab",
+                    "path": str(exit_lab_manifest),
+                    "sort_time": exit_lab_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "input_ranking_row_count": payload.get("input_ranking_row_count"),
+                        "comparison_count": payload.get("comparison_count"),
+                        "candidate_gate_row_count": payload.get("candidate_gate_row_count"),
+                        "decision_counts": payload.get("decision_counts") or {},
+                        "promotion_ready": payload.get("promotion_ready"),
+                        "candidate_gates": self._summarize_gate_artifact(outputs.get("discovery_exit_lab_candidate_gates")),
+                    },
+                }
+            )
+        for multiple_testing_manifest in sorted(base_dir.rglob("discovery_multiple_testing_manifest.json")):
+            payload = self._read_json_artifact(artifacts, multiple_testing_manifest, "discovery_multiple_testing")
+            if payload is None:
+                continue
+            outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            artifacts.append(
+                {
+                    "type": "discovery_multiple_testing",
+                    "path": str(multiple_testing_manifest),
+                    "sort_time": multiple_testing_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "input_candidate_row_count": payload.get("input_candidate_row_count"),
+                        "candidate_gate_row_count": payload.get("candidate_gate_row_count"),
+                        "summary": payload.get("summary") or {},
+                        "promotion_ready": payload.get("promotion_ready"),
+                        "candidate_gates": self._summarize_gate_artifact(outputs.get("discovery_multiple_testing_candidate_gates")),
+                    },
+                }
+            )
+        for validation_floors_manifest in sorted(base_dir.rglob("discovery_validation_floors_manifest.json")):
+            payload = self._read_json_artifact(artifacts, validation_floors_manifest, "discovery_validation_floors")
+            if payload is None:
+                continue
+            outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            artifacts.append(
+                {
+                    "type": "discovery_validation_floors",
+                    "path": str(validation_floors_manifest),
+                    "sort_time": validation_floors_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "input_candidate_row_count": payload.get("input_candidate_row_count"),
+                        "candidate_gate_row_count": payload.get("candidate_gate_row_count"),
+                        "summary": payload.get("summary") or {},
+                        "experiment_budget_ledger": payload.get("experiment_budget_ledger") or {},
+                        "promotion_ready": payload.get("promotion_ready"),
+                        "candidate_gates": self._summarize_gate_artifact(outputs.get("discovery_validation_floor_candidate_gates")),
+                    },
+                }
+            )
+        for bridge_manifest in sorted(base_dir.rglob("candidate_pack_eligibility_manifest.json")):
+            payload = self._read_json_artifact(artifacts, bridge_manifest, "candidate_pack_eligibility")
+            if payload is None:
+                continue
+            outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            artifacts.append(
+                {
+                    "type": "candidate_pack_eligibility",
+                    "path": str(bridge_manifest),
+                    "sort_time": bridge_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": {
+                        "bridge_scope": payload.get("bridge_scope"),
+                        "claim_scope": payload.get("claim_scope"),
+                        "summary": payload.get("summary") or {},
+                        "global_reasons": payload.get("global_reasons") or [],
+                        "candidate_pack_written": payload.get("candidate_pack_written"),
+                        "promotion_ready": payload.get("promotion_ready"),
+                        "eligibility": self._summarize_gate_artifact(outputs.get("candidate_pack_eligibility")),
+                    },
+                }
+            )
         artifacts.sort(key=lambda item: float(item.get("sort_time") or 0.0), reverse=True)
         for artifact in artifacts:
             artifact.pop("sort_time", None)
         return artifacts
+
+    def _read_json_artifact(self, artifacts: list[dict[str, Any]], path: Path, artifact_type: str) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        except Exception as exc:
+            artifacts.append(self._artifact_read_error(path, artifact_type, exc))
+            return None
+        if not isinstance(payload, dict):
+            artifacts.append(self._artifact_read_error(path, artifact_type, ValueError("JSON artifact must be an object")))
+            return None
+        return payload
+
+    def _artifact_read_error(self, path: Path, artifact_type: str, exc: Exception) -> dict[str, Any]:
+        sort_time = path.stat().st_mtime if path.exists() else 0.0
+        return {
+            "type": "artifact_read_error",
+            "path": str(path),
+            "sort_time": sort_time,
+            "manifest": {},
+            "summary": {
+                "intended_type": artifact_type,
+                "error": str(exc),
+                "promotion_ready": False,
+                "research_only": True,
+                "observe_only": True,
+            },
+        }
+
+    def _read_optional_json(self, path: Path) -> dict[str, Any] | None:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+        except Exception:
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _read_json_path(self, path: Path) -> dict[str, Any] | None:
+        return self._read_optional_json(path) if path.exists() else None
+
+    def _resolve_repo_path(self, raw_path: object) -> Path | None:
+        if raw_path is None or str(raw_path).strip() == "":
+            return None
+        path = Path(str(raw_path)).expanduser()
+        return path.resolve() if path.is_absolute() else (REPO_ROOT / path).resolve()
+
+    def _file_sha256(self, path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    def _summarize_gate_artifact(self, raw_path: object) -> dict[str, Any]:
+        path = self._existing_path(raw_path)
+        if path is None:
+            return {"available": False, "reason": "gate_artifact_missing"}
+        try:
+            frame = pd.read_parquet(path)
+        except Exception as exc:
+            return {"available": False, "path": str(path), "reason": str(exc)}
+        reason_columns = [
+            column
+            for column in (
+                "bridge_reasons",
+                "validation_floor_reasons",
+                "multiple_testing_reasons",
+                "exit_lab_reasons",
+                "gate_reasons",
+                "blocker_code",
+                "filter_blocker_code",
+            )
+            if column in frame
+        ]
+        reasons: dict[str, int] = {}
+        for column in reason_columns:
+            for value in frame[column].fillna("").astype(str):
+                for reason in [item for item in value.replace(",", "|").split("|") if item]:
+                    reasons[reason] = reasons.get(reason, 0) + 1
+        return {
+            "available": True,
+            "path": str(path),
+            "row_count": int(len(frame)),
+            "status_counts": self._value_counts(frame, "bridge_status") or self._value_counts(frame, "gate_status") or self._value_counts(frame, "status"),
+            "eligible_count": int(frame.get("eligible_for_existing_candidate_pack_validator", pd.Series(dtype=bool)).fillna(False).astype(bool).sum()) if "eligible_for_existing_candidate_pack_validator" in frame else None,
+            "top_reasons": dict(sorted(reasons.items(), key=lambda item: (-item[1], item[0]))[:8]),
+        }
 
     def _summarize_discovery_ledger(self, raw_path: object) -> dict[str, Any]:
         path = self._existing_path(raw_path)
@@ -1007,6 +1288,12 @@ class OperatorConsoleService:
                 self._positive_int_or_none(request.get("stop_after_trials")),
             )
             return result
+        if job_type == "evaluate-discovery-candidate-pack-eligibility":
+            return await asyncio.to_thread(
+                self._run_isolated_discovery_candidate_pack_eligibility,
+                request,
+                job_id,
+            )
         if job_type == "train-model":
             dataset_path = Path(request["dataset_path"])
             manifest_path = await asyncio.to_thread(train_model, self.config, dataset_path=dataset_path)
@@ -1119,6 +1406,46 @@ class OperatorConsoleService:
             "blocked_candidates_path": str(result.blocked_candidates_path),
             "filter_blockers_path": str(result.filter_blockers_path),
             "snapshot_count": len(result.snapshot_paths),
+        }
+
+    def _run_isolated_discovery_candidate_pack_eligibility(
+        self,
+        request: dict[str, Any],
+        job_id: str,
+    ) -> dict[str, Any]:
+        research_root = self._research_root()
+        safe_job_id = _safe_operator_path_part(job_id)
+        output_dir = (research_root / "operator_runs" / "candidate_pack_eligibility" / safe_job_id).resolve()
+        if not _is_relative_to(output_dir, research_root):
+            raise ValueError("candidate-pack eligibility output_dir must stay inside the configured research output directory")
+        if output_dir.exists() and any(output_dir.iterdir()):
+            raise ValueError(f"candidate-pack eligibility output_dir already contains files: {output_dir}")
+
+        def optional_path(field: str) -> Path | None:
+            raw = request.get(field)
+            return Path(str(raw)).expanduser().resolve() if raw else None
+
+        result = evaluate_discovery_candidate_pack_eligibility(
+            discovery_manifest_path=Path(str(request["discovery_manifest_path"])).expanduser().resolve(),
+            cycle_manifest_path=optional_path("cycle_manifest_path"),
+            exit_lab_manifest_path=optional_path("exit_lab_manifest_path"),
+            multiple_testing_manifest_path=optional_path("multiple_testing_manifest_path"),
+            validation_floors_manifest_path=optional_path("validation_floors_manifest_path"),
+            candidate_id_map=request.get("candidate_id_map") if isinstance(request.get("candidate_id_map"), dict) else None,
+        )
+        artifact = write_discovery_candidate_pack_eligibility(output_dir=output_dir, result=result)
+        eligible_count = int(result.eligibility["eligible_for_existing_candidate_pack_validator"].sum()) if not result.eligibility.empty else 0
+        return {
+            "output_dir": str(artifact.output_dir),
+            "candidate_pack_eligibility_manifest_path": str(artifact.manifest_path),
+            "candidate_pack_eligibility_path": str(artifact.eligibility_path),
+            "candidate_pack_bridge_rejections_path": str(artifact.rejections_path),
+            "eligible_count": eligible_count,
+            "row_count": int(len(result.eligibility)),
+            "candidate_pack_written": False,
+            "promotion_ready": False,
+            "research_only": True,
+            "observe_only": True,
         }
 
     def _positive_int_or_none(self, value: object) -> int | None:

@@ -129,6 +129,28 @@
       "role": "microstructure_liquidation_proxy_smoke"
     },
     {
+      "feature_column_set_id": "durable_aggtrade_orderflow_proxy",
+      "registered_feature_set_id": "features_aggtrade_orderflow_v1",
+      "columns": [
+        "agg_taker_buy_quote_share",
+        "agg_signed_quote_imbalance",
+        "agg_cvd_slope",
+        "agg_flow_burst_score",
+        "agg_sweep_proxy",
+        "quality_aggtrade_source_present",
+        "quality_aggtrade_latest_window_diagnostic",
+        "quality_aggtrade_flow_proxy_not_ofi"
+      ],
+      "scaler_policy": "train_only_robust_zscore",
+      "clamp_policy": "train_only_clip_5_95",
+      "maximum_dimensions": 8,
+      "required_comparator_set": "price_trend_vol",
+      "allowed_experimental_additions": [],
+      "enabled": true,
+      "disabled_reason": "",
+      "role": "durable_public_archive_trade_flow_proxy"
+    },
+    {
       "feature_column_set_id": "future_ntri_entropy_additions",
       "registered_feature_set_id": "features_price_trend_vol",
       "columns": [],

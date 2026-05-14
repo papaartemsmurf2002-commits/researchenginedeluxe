@@ -10,11 +10,11 @@
     "price_trend_vol",
     "compact_wt3d_base",
     "alternative_non_wt_price_state",
-    "perp_feature_addition_smoke"
+    "durable_aggtrade_orderflow_proxy"
   ],
   "data": {
     "dataset_manifest_paths": [
-      "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+      "data/research/fixtures/btcusdt_public_archive_multi_window_v1/fixture_pack_manifest.json"
     ]
   },
   "budget": {
@@ -43,9 +43,7 @@
     ],
     "label_horizons": [
       "1h",
-      "4h",
-      "12h",
-      "24h"
+      "4h"
     ],
     "k_values": [
       5,
@@ -97,9 +95,9 @@
       "gmm_same_regime_neighbors",
       "gmm_all_regime_neighbors_with_gate"
     ],
-    "min_splits": 4,
-    "purge_embargo_bars": 8,
-    "min_trade_count": 20,
+    "min_splits": 2,
+    "purge_embargo_bars": 2,
+    "min_trade_count": 1,
     "min_signal_rate": 0.001,
     "max_signal_rate": 0.35,
     "min_realized_expectancy": -0.0001

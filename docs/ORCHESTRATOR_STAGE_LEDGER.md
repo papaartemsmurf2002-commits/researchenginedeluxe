@@ -1,14 +1,16 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R103 durable BTC/ETH data foundation
+Current stage: Stage R104 candidate validation on durable evidence
 Current stage owner: Codex Research Agent
-Stage status: complete - WPR103-01 closed; next stage is R104 candidate validation on durable evidence
-Last updated: 2026-05-13
+Stage status: in progress - WPR104-01 closed; durable UI/control path is wired, empirical candidate validation runs remain pending
+Last updated: 2026-05-14
 
 ## Stage entry decision
 
 - Prior stage completed: yes
 - Evidence links:
+  - `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`
+  - `docs/work_packets/WPR104-01-research-ui-durable-candidate-console.md`
   - `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`
   - `docs/work_packets/WPR103-01-durable-public-archive-fixtures.md`
   - `docs/stage_reports/STAGE_R102_BRANCH_COMPLETION_IMPLEMENTATION_REPORT.md`
@@ -36,7 +38,7 @@ Last updated: 2026-05-13
   - `ISSUE-R95-001` remains resolved by WPR96 with optional
     `cuda_fixed_holding` backend evidence and diagnostic-only status.
 
-## Completion roadmap after R103
+## Completion roadmap after WPR104-01
 
 The branch is not empirically complete. Infrastructure is strong, but
 candidate-ready completion still depends on proving candidates through
@@ -44,10 +46,12 @@ falsification on durable evidence rather than latest-window screening.
 
 Recommended next stages:
 
-1. Stage R104 candidate validation on durable evidence.
-   Rerun historical cycles and discovery against durable packs; preserve
-   `research_only`, `observe_only`, and `promotion_ready: false`; accept
-   candidate-pack absence when gates block weak evidence.
+1. Continue Stage R104 empirical candidate validation on durable evidence.
+   Use the Research UI to run durable BTC/ETH cycles and discovery against the
+   R103 fixture packs, then run candidate eligibility review after completed
+   manifests are indexed. Preserve `research_only`, `observe_only`, and
+   `promotion_ready: false`; accept candidate-pack absence when gates block
+   weak evidence.
 2. Stage R105 empirical falsification matrix.
    Test no-regime versus GMM and optional true-HMM variants, independent-event
    scoring, signal-density penalties, matched feature/filter/exit ablations,
@@ -70,10 +74,20 @@ R103 implementation note:
   artifacts only; they do not claim candidate-ready performance or promotion
   readiness.
 
+WPR104-01 implementation note:
+
+- `WPR104-01-research-ui-durable-candidate-console` rewired the operator
+  Research tab to durable R104 BTC/ETH defaults, added an R104 readiness API
+  and visible settings/recommendations, added a UI-backed candidate-pack
+  eligibility job, indexed exit-lab/multiple-testing/validation-floor/bridge
+  artifacts, kept provider and signal-history diagnostics secondary, and kept
+  all outputs research-only and observe-only.
+
 ## Open work packets
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR104-01-research-ui-durable-candidate-console | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/research/**`, `configs/discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/base.html`, `src/tradingbotsuite/web/templates/research.html`, `tests/contracts/**`, `tests/integration/test_research_ui.py`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | Durable R104 Research UI/control path, BTC/ETH durable cycle and discovery defaults, candidate-pack eligibility route/job, readiness/artifact indexing, and validation recorded in `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`. |
 | WPR103-01-durable-public-archive-fixtures | Codex Research Agent | closed | `.gitignore`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `configs/research/**`, `data/research/fixtures/btcusdt_public_archive_multi_window_v1/**`, `data/research/fixtures/ethusdt_public_archive_multi_window_v1/**`, `tests/contracts/**` | Checksum-verified BTCUSDT/ETHUSDT Binance Vision multi-window fixture packs, durable public archive readiness configs, checked-in fixture readiness tests, and validation recorded in `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`. |
 | WPR102-01-branch-completion-implementation | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/**`, `docs/stage_reports/**`, `docs/work_packets/**`, `pyproject.toml`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/research_cycle/**`, `src/tradingbotsuite/research_artifacts/**`, `src/tradingbotsuite/research_discovery/**`, `tests/contracts/**`, `tests/historical/**`, `tests/live/**`, `tests/research_artifacts/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/**` | Source provider capability validation, direct CLI output-root allowlisting, expanded import-boundary coverage, capability-aware readiness and candidate-pack gates, package identity cleanup, and validation recorded in `docs/stage_reports/STAGE_R102_BRANCH_COMPLETION_IMPLEMENTATION_REPORT.md`. |
 | WPR101-01-branch-completion-review-orchestrator-plan | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**` | Broad branch review, issues, weak points, completion roadmap, and validation recorded in `docs/stage_reports/STAGE_R101_BRANCH_COMPLETION_REVIEW_ORCHESTRATOR_PLAN.md`. |

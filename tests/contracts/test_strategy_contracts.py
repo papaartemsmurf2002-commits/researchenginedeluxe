@@ -53,6 +53,8 @@ BTCUSDT_STRATEGY_FAMILY_CYCLE_PATH = Path("configs/research/full_cycle_btcusdt_s
 BTC_ETH_CANDIDATE_BLUEPRINTS_PATH = Path("configs/research/btc_eth_candidate_blueprints_v1.json")
 BTCUSDT_CANDIDATE_BLUEPRINT_CYCLE_PATH = Path("configs/research/full_cycle_btcusdt_candidate_blueprints_v1.json")
 ETHUSDT_CANDIDATE_BLUEPRINT_BLOCKED_PATH = Path("configs/research/full_cycle_ethusdt_candidate_blueprints_blocked_v1.json")
+BTCUSDT_R104_DURABLE_CYCLE_PATH = Path("configs/research/full_cycle_btcusdt_durable_public_archive_r104_v1.json")
+ETHUSDT_R104_DURABLE_CYCLE_PATH = Path("configs/research/full_cycle_ethusdt_durable_public_archive_r104_v1.json")
 KNN_OVERLAY_STRATEGY_ID = "hmm_knn_local_analog_filter_v2"
 
 
@@ -312,6 +314,14 @@ def test_btc_eth_candidate_blueprint_manifest_has_required_ablations_and_boundar
         "validation_floors_candidate_ready",
         "durable_non_latest_window_fixture_evidence",
     } <= bridge_requirements
+    assert manifest["symbol_activation"]["BTCUSDT"]["cycle_config"] == BTCUSDT_R104_DURABLE_CYCLE_PATH.name
+    assert manifest["symbol_activation"]["BTCUSDT"]["supersedes_cycle_config"] == BTCUSDT_CANDIDATE_BLUEPRINT_CYCLE_PATH.name
+    assert manifest["symbol_activation"]["ETHUSDT"]["cycle_config"] == ETHUSDT_R104_DURABLE_CYCLE_PATH.name
+    assert manifest["symbol_activation"]["ETHUSDT"]["supersedes_cycle_config"] == ETHUSDT_CANDIDATE_BLUEPRINT_BLOCKED_PATH.name
+    for activation in manifest["symbol_activation"].values():
+        assert activation["maturity_label"] == "durable_candidate_validation_screening"
+        assert activation["candidate_pack_eligible"] is False
+        assert "candidate_validation_gates_not_yet_passed" in activation["blocker_codes"]
     for blueprint in blueprints.values():
         assert blueprint["research_only"] is True
         assert blueprint["observe_only"] is True
@@ -428,6 +438,33 @@ def test_btcusdt_candidate_blueprint_cycle_parses_as_diagnostic_research_only() 
     } >= {"knn_remaining_edge_exit_v1", "knn_dynamic_barriers_v1"}
 
 
+def test_r104_durable_candidate_cycles_parse_and_stay_research_only() -> None:
+    for path, symbol in (
+        (BTCUSDT_R104_DURABLE_CYCLE_PATH, "BTCUSDT"),
+        (ETHUSDT_R104_DURABLE_CYCLE_PATH, "ETHUSDT"),
+    ):
+        payload = _load_research_json(path)
+        spec = HistoricalResearchCycleSpec.from_path(path)
+
+        assert payload["symbol"] == symbol
+        assert payload["research_only"] is True
+        assert payload["observe_only"] is True
+        assert payload["promotion_ready"] is False
+        assert payload["candidate_pack_eligible"] is False
+        assert payload["candidate_pack_written"] is False
+        assert payload["order_placement_allowed"] is False
+        assert payload["live_config_writes_allowed"] is False
+        assert payload["sizing_policy_changed"] is False
+        assert payload["data"]["evidence_scope"] == "durable_public_archive_multi_window_screening"
+        assert payload["data"]["latest_window_rest_data_diagnostic_only"] is False
+        assert payload["validation"]["min_splits"] == 2
+        assert payload["validation"]["trade_count_floor"] == 1
+        assert spec.symbol == symbol
+        assert spec.data.synthetic_fixture is False
+        assert spec.data.dataset_manifest_paths
+        assert all(dataset_path.exists() for dataset_path in spec.data.dataset_manifest_paths)
+
+
 def test_ethusdt_candidate_blueprint_cycle_is_blocked_until_durable_fixture_ready(tmp_path: Path) -> None:
     payload = _load_research_json(ETHUSDT_CANDIDATE_BLUEPRINT_BLOCKED_PATH)
     spec = HistoricalResearchCycleSpec.from_path(ETHUSDT_CANDIDATE_BLUEPRINT_BLOCKED_PATH)
@@ -435,6 +472,7 @@ def test_ethusdt_candidate_blueprint_cycle_is_blocked_until_durable_fixture_read
     assert payload["research_only"] is True
     assert payload["observe_only"] is True
     assert payload["promotion_ready"] is False
+    assert payload["superseded_by"] == ETHUSDT_R104_DURABLE_CYCLE_PATH.name
     assert payload["order_placement_allowed"] is False
     assert payload["live_config_writes_allowed"] is False
     assert payload["sizing_policy_changed"] is False

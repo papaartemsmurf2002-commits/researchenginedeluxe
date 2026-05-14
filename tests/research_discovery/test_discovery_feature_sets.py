@@ -47,7 +47,12 @@ def test_checked_discovery_feature_column_set_manifest_is_valid() -> None:
 
     validate_feature_column_set_manifest(
         manifest,
-        selected_ids=("price_trend_vol", "compact_wt3d_base", "alternative_non_wt_price_state"),
+        selected_ids=(
+            "price_trend_vol",
+            "compact_wt3d_base",
+            "alternative_non_wt_price_state",
+            "durable_aggtrade_orderflow_proxy",
+        ),
     )
 
     assert manifest.research_only is True
@@ -56,6 +61,7 @@ def test_checked_discovery_feature_column_set_manifest_is_valid() -> None:
     assert manifest.manifest_sha256 == stable_feature_column_set_hash(manifest.to_payload(include_hash=False))
     assert any(not item.contains_wt3d for item in manifest.enabled_sets)
     assert manifest.set_by_id()["compact_wt3d_base"].required_comparator_set == "price_trend_vol"
+    assert manifest.set_by_id()["durable_aggtrade_orderflow_proxy"].required_comparator_set == "price_trend_vol"
     assert manifest.set_by_id()["future_ntri_entropy_additions"].enabled is False
 
 

@@ -606,22 +606,29 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Current Run" in response.text
     assert "Progress" in response.text
     assert "Latest Snapshot" in response.text
+    assert "R104 Durable Candidate Validation" in response.text
+    assert "Durable Readiness" in response.text
+    assert "Recommended Run Order" in response.text
+    assert "Check Durable Readiness" in response.text
+    assert "BTC Durable Cycle" in response.text
+    assert "BTC Durable Discovery" in response.text
+    assert "ETH Durable Cycle" in response.text
+    assert "ETH Durable Discovery" in response.text
     assert "Blockers" in response.text
     assert "Leads" in response.text
     assert "Maturity" in response.text
     assert "Diagnostic" in response.text
     assert "Screen-worthy" in response.text
     assert "Candidate-ready" in response.text
-    assert "Preflight Data Readiness" in response.text
-    assert "Quick Discovery" in response.text
-    assert "Standard Discovery" in response.text
-    assert "Deep Discovery" in response.text
+    assert "Quick Plumbing Check" in response.text
+    assert "Deep BTC Harvest" in response.text
     assert "Pause After One Trial" in response.text
     assert "Resume Run" in response.text
     assert "Open Latest Snapshot" in response.text
     assert "Review Candidate Eligibility" in response.text
     assert "Open Artifact List" in response.text
-    assert "Run Provider Stage" in response.text
+    assert "Evaluate Eligibility" in response.text
+    assert "Run Provider Diagnostic" in response.text
     assert "Intake" in response.text
     assert "Dataset" in response.text
     assert "Evidence" in response.text
@@ -630,22 +637,29 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Historical Cycle Review" in response.text
     assert "run-historical-research-cycle" in response.text
     assert "Run Historical Cycle" in response.text
+    assert "BTCUSDT durable R104 cycle" in response.text
+    assert "ETHUSDT durable R104 cycle" in response.text
+    assert "Operator queued runs write isolated output" in response.text
     assert "Compute Profile" in response.text
     assert "Backend Mix" in response.text
     assert "GPU Status" in response.text
     assert "CUDA Selected" in response.text
-    assert "V4 Discovery Run" in response.text
+    assert "V4 Durable Discovery Run" in response.text
     assert "Run Discovery" in response.text
     assert "Resume Discovery" in response.text
-    assert "BTCUSDT standard real entry discovery" in response.text
-    assert "BTCUSDT deep candidate harvest" in response.text
+    assert "BTCUSDT durable standard discovery" in response.text
+    assert "ETHUSDT durable standard discovery" in response.text
+    assert "BTCUSDT durable deep harvest" in response.text
     assert "GMM regime detector plus local KNN entry discovery" in response.text
     assert "explicit no-regime" in response.text
     assert "Real HMM-regime plus local KNN entry discovery" not in response.text
-    assert "selected real discovery run are being submitted" in response.text
-    assert "Evidence review: real discovery ledger" in response.text
+    assert "Queueing evidence review bundle" in response.text
     assert "Discovery Ledger" in response.text
     assert "discovery_run" in response.text
+    assert "candidate_pack_eligibility" in response.text
+    assert "discovery_exit_lab" in response.text
+    assert "discovery_multiple_testing" in response.text
+    assert "discovery_validation_floors" in response.text
     assert "Queue Evidence Review Bundle" in response.text
     assert "Local Action History" in response.text
     assert "isolated job-specific output directories" in response.text
@@ -655,14 +669,14 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "No candidate strategy mix yet. Run Historical Cycle Review." in response.text
     assert "No gate decisions yet. Run Historical Cycle Review and inspect rejection evidence." in response.text
     assert "No holding-window metrics yet. Run Historical Cycle Review." in response.text
-    assert "No discovery run ledgers yet. Run Quick Discovery for plumbing or Standard Discovery for real search." in response.text
+    assert "No discovery run ledgers yet. Run durable discovery for real search or a quick plumbing check." in response.text
     assert "Promotion Boundary" in response.text
     assert "promotion_review_required" in response.text
     assert "summary.last_snapshot_path" in response.text
     assert "latestSnapshot.path" in response.text
     assert 'discoveryLedgerCount(discoverySummary, "blocked_candidates", "blocked_candidates")' in response.text
     assert 'discoveryLedgerCount(discoverySummary, "filter_blockers", "filter_blockers")' in response.text
-    assert 'discoveryLedgerCount(discoverySummary, "interesting_candidates", "interesting_candidates")' in response.text
+    assert 'interestingDiscoveryLeadCount(discovery)' in response.text
     assert "countPositiveValues(discoverySummary.counts || {}) > 0" not in response.text
     assert 'pickLatest("data_pipeline_intake")' in response.text
     assert 'pickLatest("provider_archive_manifest")' in response.text
@@ -674,10 +688,12 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Stage 13 Readiness" in response.text
     assert "/api/operator/shadow/diagnostics" in response.text
     assert "/api/operator/stage13/readiness" in response.text
+    assert "/api/operator/research/r104-readiness" in response.text
     assert "Provider Pipeline" in response.text
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
     assert "/api/operator/research/jobs/run-historical-research-cycle" in response.text
     assert "/api/operator/research/jobs/run-discovery" in response.text
+    assert "/api/operator/research/jobs/evaluate-discovery-candidate-pack-eligibility" in response.text
     assert "hmm_knn_artifact" in response.text
     assert "observe_only" in response.text
     assert "Live Canary" not in response.text
@@ -692,6 +708,91 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "set-mode" not in response.text
     assert "manual-signal" not in response.text
     assert "smoke-live" not in response.text
+
+
+def test_operator_r104_readiness_api_reports_durable_btc_eth(app_config, sample_bars) -> None:
+    config = _operator_config(app_config)
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        response = client.get("/api/operator/research/r104-readiness")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stage"] == "R104"
+    assert payload["research_only"] is True
+    assert payload["observe_only"] is True
+    assert payload["promotion_ready"] is False
+    assert payload["ready"] is True
+    assert payload["ready_count"] == 2
+    by_symbol = {item["symbol"]: item for item in payload["items"]}
+    assert set(by_symbol) == {"BTCUSDT", "ETHUSDT"}
+    assert "full_cycle_btcusdt_durable_public_archive_r104_v1.json" in by_symbol["BTCUSDT"]["cycle_spec_path"]
+    assert "full_cycle_ethusdt_durable_public_archive_r104_v1.json" in by_symbol["ETHUSDT"]["cycle_spec_path"]
+    assert by_symbol["BTCUSDT"]["fixture_row_counts"]["bars"] > 0
+    assert by_symbol["ETHUSDT"]["fixture_row_counts"]["bars"] > 0
+
+
+def test_operator_research_artifacts_survives_corrupt_json(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    bad_manifest = research_dir / "bad_run" / "research_cycle_manifest.json"
+    bad_manifest.parent.mkdir(parents=True)
+    bad_manifest.write_text("{not-json", encoding="utf-8")
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_artifact_read_error.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        response = client.get("/api/operator/research/artifacts")
+
+    assert response.status_code == 200
+    errors = [item for item in response.json()["items"] if item["type"] == "artifact_read_error"]
+    assert errors
+    assert errors[0]["summary"]["intended_type"] == "historical_research_cycle"
+    assert "Expecting property name" in errors[0]["summary"]["error"]
+
+
+def test_operator_candidate_eligibility_route_requires_research_root_paths(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    research_dir.mkdir()
+    outside_manifest = tmp_path / "outside_discovery_run_manifest.json"
+    outside_manifest.write_text("{}", encoding="utf-8")
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_candidate_eligibility.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/evaluate-discovery-candidate-pack-eligibility",
+            json={"discovery_manifest_path": str(outside_manifest)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert response.status_code == 400
+    assert "must be inside the research output directory" in response.text
 
 
 def test_operator_stage13_readiness_api_is_read_only_blocked(app_config, sample_bars, tmp_path) -> None:

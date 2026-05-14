@@ -75,19 +75,26 @@ def test_discovery_spec_rejects_unsafe_trial_id(tmp_path: Path) -> None:
 
 def test_real_discovery_configs_generate_non_placeholder_search_templates() -> None:
     standard = DiscoveryRunSpec.from_path(Path("configs/discovery/standard_entry_discovery_btcusdt_v4.json"))
+    eth_standard = DiscoveryRunSpec.from_path(Path("configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json"))
     deep = DiscoveryRunSpec.from_path(Path("configs/discovery/deep_candidate_harvest_btcusdt_v4.json"))
 
     standard_templates = generated_trial_templates(standard)
+    eth_templates = generated_trial_templates(eth_standard)
     deep_templates = generated_trial_templates(deep)
 
     assert standard.discovery_mode == "entry_discovery_standard"
+    assert eth_standard.discovery_mode == "entry_discovery_standard"
+    assert eth_standard.symbol == "ETHUSDT"
     assert deep.discovery_mode == "deep_candidate_harvest"
     assert standard.execution.max_workers == 4
+    assert eth_standard.execution.max_workers == 4
     assert deep.execution.max_workers == 8
     assert deep.execution.persist_trial_artifacts == "interesting_only"
     assert len(standard_templates) == standard.budget.max_trials
+    assert len(eth_templates) == eth_standard.budget.max_trials
     assert len(deep_templates) == deep.budget.max_trials
     assert {template.candidate_family for template in standard_templates} == {"regime_knn_entry_discovery"}
+    assert {template.candidate_family for template in eth_templates} == {"regime_knn_entry_discovery"}
     assert {template.payload["trial_kind"] for template in standard_templates[:10]} == {"regime_knn_entry_discovery"}
     assert set(standard.search.regime_modes) == {
         "none",
@@ -97,8 +104,12 @@ def test_real_discovery_configs_generate_non_placeholder_search_templates() -> N
     }
     assert all(template.payload["true_hmm_backend_used"] is False for template in standard_templates[:10])
     assert {template.payload["feature_column_set_id"] for template in standard_templates}.issuperset(
-        {"price_trend_vol", "compact_wt3d_base", "alternative_non_wt_price_state"}
+        {"price_trend_vol", "compact_wt3d_base", "alternative_non_wt_price_state", "durable_aggtrade_orderflow_proxy"}
     )
+    assert standard.search.min_splits == 2
+    assert standard.search.min_trade_count == 1
+    assert "btcusdt_public_archive_multi_window_v1" in str(standard.data.dataset_manifest_paths[0])
+    assert "ethusdt_public_archive_multi_window_v1" in str(eth_standard.data.dataset_manifest_paths[0])
     assert any(template.payload["hmm_state_count"] != 4 for template in deep_templates)
     assert any(template.payload["min_neighbor_count"] != 4 for template in deep_templates)
 

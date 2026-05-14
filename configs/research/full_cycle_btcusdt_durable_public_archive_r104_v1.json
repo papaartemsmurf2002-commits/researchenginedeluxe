@@ -1,0 +1,105 @@
+{
+  "cycle_id": "r104-btcusdt-durable-public-archive-v1",
+  "symbol": "BTCUSDT",
+  "work_packet": "WPR104-01-research-ui-durable-candidate-console",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_eligible": false,
+  "candidate_pack_written": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "maturity_label": "durable_candidate_validation_screening",
+  "promotion_artifact_policy": {
+    "writes_promotion_artifacts": false,
+    "research_candidate_pack_scope": "blocked_until_r104_gates_pass",
+    "promotion_ready": false,
+    "candidate_pack_eligible": false
+  },
+  "output_dir": "../../data/research/historical_cycles/r104_btcusdt_durable_public_archive_v1",
+  "holding_windows": [
+    "1h",
+    "4h"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "../../data/research/fixtures/btcusdt_public_archive_multi_window_v1/fixture_pack_manifest.json"
+    ],
+    "local_fixture_dir": null,
+    "synthetic_fixture": false,
+    "synthetic_fallback_allowed": false,
+    "evidence_scope": "durable_public_archive_multi_window_screening",
+    "latest_window_rest_data_diagnostic_only": false,
+    "candidate_pack_eligible": false,
+    "durable_public_archive_required_for_candidate_ready": true,
+    "durable_fixture_readiness_config_path": "durable_public_archive_fixture_readiness_btcusdt_v1.json",
+    "candidate_blocker_codes": [
+      "candidate_validation_gates_not_yet_passed",
+      "exit_lab_evidence_required",
+      "multiple_testing_and_validation_floors_required"
+    ]
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol"
+    ],
+    "materialized_prediction_overlays": []
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "trend_following_v1",
+    "volatility_breakout_v1",
+    "range_reversion_v1"
+  ],
+  "strategy_family_requirements": {
+    "no_trade_comparator_strategy_id": "baseline_no_trade",
+    "transparent_comparator_strategy_ids": [
+      "trend_following_v1",
+      "volatility_breakout_v1",
+      "range_reversion_v1"
+    ],
+    "durable_public_archive_readiness_required": true,
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "true_hmm_backend_used": false,
+    "claim_scope": "price_path_and_trade_flow_proxy_screening_only"
+  },
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 2,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1,
+    "max_single_split_pnl_share": 0.75,
+    "min_cost_stress_survival_rate": 0.7,
+    "split_modes": [
+      "purged_embargoed_walk_forward",
+      "anchored_walk_forward"
+    ]
+  },
+  "optimizer": {
+    "method_sequence": [
+      "grid",
+      "stability_region_refine"
+    ],
+    "max_candidates_per_strategy": 2,
+    "top_regions_to_refine": 1
+  },
+  "compute": {
+    "cpu_threads": 48,
+    "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+    "gpu_device_class": "nvidia_50_series",
+    "gpu_required": false,
+    "gpu_execution_profile": "fastest_exact"
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "r104_durable_default_fixed_holding"
+      }
+    ]
+  },
+  "backtest_backend": "auto"
+}

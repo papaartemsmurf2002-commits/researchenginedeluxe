@@ -3,6 +3,7 @@
   "symbol": "ETHUSDT",
   "blueprint_manifest_path": "btc_eth_candidate_blueprints_v1.json",
   "work_packet": "WPR94-13-btc-eth-candidate-blueprint-configs",
+  "superseded_by": "full_cycle_ethusdt_durable_public_archive_r104_v1.json",
   "blocked": true,
   "enabled": false,
   "research_only": true,
