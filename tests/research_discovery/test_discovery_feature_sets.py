@@ -12,6 +12,8 @@ from tradingbotsuite.research_discovery.feature_sets import (
     stable_feature_column_set_hash,
     validate_feature_column_set_manifest,
 )
+from tradingbotsuite.research_discovery.runner import _prepare_real_discovery_context, _usable_feature_columns
+from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec
 
 
 def _manifest_payload() -> dict[str, object]:
@@ -63,6 +65,48 @@ def test_checked_discovery_feature_column_set_manifest_is_valid() -> None:
     assert manifest.set_by_id()["compact_wt3d_base"].required_comparator_set == "price_trend_vol"
     assert manifest.set_by_id()["durable_aggtrade_orderflow_proxy"].required_comparator_set == "price_trend_vol"
     assert manifest.set_by_id()["future_ntri_entropy_additions"].enabled is False
+
+
+@pytest.mark.parametrize(
+    "config_path",
+    (
+        Path("configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json"),
+        Path("configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json"),
+    ),
+)
+def test_exact_r104_feature_column_sets_materialize_on_durable_fixtures(
+    tmp_path: Path,
+    config_path: Path,
+) -> None:
+    spec = DiscoveryRunSpec.from_path(config_path)
+
+    context = _prepare_real_discovery_context(spec, output_dir=tmp_path / spec.run_id)
+
+    assert context.unavailable_reason == ""
+    assert set(context.feature_sets) == {"price_trend_vol", "compact_wt3d_base"}
+    assert set(context.frames_by_column_set) == set(context.feature_sets)
+    assert context.unavailable_feature_sets == {}
+    assert context.feature_cache_summary["requested_feature_column_set_count"] == 2
+    assert context.feature_cache_summary["unavailable_feature_set_count"] == 0
+    expected_usable = {
+        "price_trend_vol": ("log_return_1", "log_return_4"),
+        "compact_wt3d_base": ("log_return_1", "log_return_4", "wt3d_normal", "wt3d_slope"),
+    }
+    for column_set_id, column_set in context.feature_sets.items():
+        frame = context.frames_by_column_set[column_set_id]
+        assert set(column_set.columns).issubset(frame.columns)
+        assert _usable_feature_columns(frame, column_set) == expected_usable[column_set_id]
+
+
+def test_r104_durable_discovery_specs_pin_compact_viable_feature_column_sets() -> None:
+    manifest = load_feature_column_set_manifest(Path("configs/discovery/feature_column_sets_v4.json"))
+    durable_configs = sorted(Path("configs/discovery").glob("*_durable_r104_v1.json"))
+
+    assert durable_configs
+    for config_path in durable_configs:
+        spec = DiscoveryRunSpec.from_path(config_path)
+        validate_feature_column_set_manifest(manifest, selected_ids=spec.feature_column_set_ids)
+        assert spec.feature_column_set_ids == ("price_trend_vol", "compact_wt3d_base")
 
 
 def test_feature_column_set_validation_rejects_unknown_columns() -> None:

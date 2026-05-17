@@ -226,6 +226,22 @@ class DiscoverySearchSpec:
         return spec
 
     def validate(self) -> None:
+        for field_name, values in {
+            "hmm_state_counts": self.hmm_state_counts,
+            "hmm_posterior_thresholds": self.hmm_posterior_thresholds,
+            "hmm_entropy_thresholds": self.hmm_entropy_thresholds,
+            "label_horizons": self.label_horizons,
+            "k_values": self.k_values,
+            "min_neighbor_counts": self.min_neighbor_counts,
+            "distance_metrics": self.distance_metrics,
+            "probability_thresholds": self.probability_thresholds,
+            "expected_value_thresholds": self.expected_value_thresholds,
+            "min_neighbor_agreements": self.min_neighbor_agreements,
+            "min_distance_qualities": self.min_distance_qualities,
+            "vote_margin_thresholds": self.vote_margin_thresholds,
+            "regime_modes": self.regime_modes,
+        }.items():
+            _assert_unique_values(f"search.{field_name}", values)
         if any(value <= 0 for value in self.hmm_state_counts):
             raise ValueError("search.hmm_state_counts must be positive")
         for field_name, values in {
@@ -371,6 +387,12 @@ class DiscoveryRunSpec:
         if discovery_mode not in SUPPORTED_DISCOVERY_MODES:
             raise ValueError(f"discovery_mode must be one of: {', '.join(SUPPORTED_DISCOVERY_MODES)}")
         root = (repo_root or _repo_root()).resolve()
+        feature_column_set_ids = tuple(
+            str(item).strip()
+            for item in payload.get("feature_column_set_ids") or ()
+            if str(item).strip()
+        )
+        _assert_unique_values("feature_column_set_ids", feature_column_set_ids)
         trial_templates = tuple(
             DiscoveryTrialTemplate.from_payload(item, index=index)
             for index, item in enumerate(payload.get("trial_templates") or (), start=1)
@@ -383,11 +405,7 @@ class DiscoveryRunSpec:
             research_output_dir=_resolve_optional_path(payload.get("research_output_dir"), repo_root=root),
             output_dir=_resolve_optional_path(payload.get("output_dir"), repo_root=root),
             feature_column_sets_path=_resolve_optional_path(payload.get("feature_column_sets_path"), repo_root=root),
-            feature_column_set_ids=tuple(
-                str(item).strip()
-                for item in payload.get("feature_column_set_ids") or ()
-                if str(item).strip()
-            ),
+            feature_column_set_ids=feature_column_set_ids,
             data=DiscoveryDataSpec.from_payload(payload.get("data"), repo_root=root),
             search=DiscoverySearchSpec.from_payload(payload.get("search")),
             execution=DiscoveryExecutionSpec.from_payload(payload.get("execution")),
@@ -546,7 +564,7 @@ def _generated_real_discovery_trial_templates(spec: DiscoveryRunSpec) -> tuple[D
         payload["search_space_planned_trials"] = search_space["planned_trials"]
         payload["search_space_sampled_fraction"] = search_space["sampled_fraction"]
         payload["search_space_exhaustive"] = search_space["exhaustive"]
-        digest = _stable_payload_digest({"run_id": spec.run_id, "index": index, **payload})[:16]
+        digest = _stable_payload_digest({"run_id": spec.run_id, "payload": payload})[:16]
         templates.append(
             DiscoveryTrialTemplate(
                 trial_id=f"trial-{index:06d}",
@@ -665,6 +683,17 @@ def _json_safe_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("payload must be a JSON object")
     return json.loads(json.dumps(dict(value), sort_keys=True, default=str, allow_nan=False))
+
+
+def _assert_unique_values(field_name: str, values: tuple[Any, ...]) -> None:
+    seen: set[Any] = set()
+    duplicates: list[str] = []
+    for value in values:
+        if value in seen and str(value) not in duplicates:
+            duplicates.append(str(value))
+        seen.add(value)
+    if duplicates:
+        raise ValueError(f"{field_name} must not contain duplicate values:{','.join(duplicates)}")
 
 
 def _string_tuple(value: Any, *, default: tuple[str, ...]) -> tuple[str, ...]:

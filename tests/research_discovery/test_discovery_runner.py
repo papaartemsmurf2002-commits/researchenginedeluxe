@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
+from tradingbotsuite.research_discovery.knn_study import KnnStudyResult
 from tradingbotsuite.research_discovery import runner as discovery_runner
 from tradingbotsuite.research_discovery.runner import run_discovery
 from tradingbotsuite.research_discovery.state import payload_sha256
@@ -537,6 +538,231 @@ def test_discovery_runner_no_regime_trial_skips_gmm_materializer(tmp_path: Path,
     assert manifest["regime_truthfulness"]["observed_trial_regime_modes"] == ["none"]
     assert manifest["regime_truthfulness"]["observed_trial_regime_detector_types"] == ["none"]
     assert manifest["regime_truthfulness"]["true_hmm_backend_used"] is False
+
+
+def test_discovery_runner_passes_trial_knn_payload_to_evaluator(tmp_path: Path, monkeypatch) -> None:
+    spec_path = tmp_path / "specs" / "knn-payload-discovery.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "knn-payload-run",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_public_archive_multi_window_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 1, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 1, "persist_trial_artifacts": "interesting_only"},
+                "search": {
+                    "min_splits": 2,
+                    "purge_embargo_bars": 2,
+                    "min_trade_count": 1,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": -1.0,
+                },
+                "trial_templates": [
+                    {
+                        "trial_id": "trial-000001",
+                        "candidate_id": "knn-payload-candidate",
+                        "candidate_family": "regime_knn_entry_discovery",
+                        "ledger_kind": "blocked",
+                        "blocker_code": "not_evaluated",
+                        "payload": {
+                            "trial_kind": "regime_knn_entry_discovery",
+                            "feature_column_set_id": "price_trend_vol",
+                            "regime_mode": "none",
+                            "label_horizon": "1h",
+                            "k": 13,
+                            "min_neighbor_count": 5,
+                            "distance_metric": "cosine",
+                            "probability_threshold": 0.58,
+                            "expected_value_threshold": 0.0002,
+                            "min_neighbor_agreement": 0.60,
+                            "min_distance_quality": 0.01,
+                            "vote_margin_threshold": 0.05,
+                            "same_regime_only": False,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    captured_specs = []
+
+    def fake_knn(frame, *, splits, spec, **kwargs):
+        captured_specs.append(spec)
+        result = frame.copy()
+        result["p_up_barrier"] = 0.5
+        result["p_down_barrier"] = 0.5
+        result["expected_net_return_after_costs"] = 0.0
+        result["neighbor_agreement"] = 0.0
+        result["neighbor_distance_quality"] = 0.0
+        result["neighbor_count"] = 0
+        result["neighbor_min_source_index"] = -1
+        result["neighbor_max_source_index"] = -1
+        result["knn_vote_margin"] = 0.0
+        result["accepted_by_knn"] = False
+        result["knn_skip_reason"] = "probability_below_threshold"
+        return KnnStudyResult(
+            frame=result,
+            manifest={
+                "label_horizon_bars": 4,
+                "neighbor_cache_lookup_count": 0,
+                "neighbor_cache_hit_count": 0,
+            },
+            neighbor_diagnostics=pd.DataFrame(),
+        )
+
+    monkeypatch.setattr(discovery_runner, "materialize_regime_local_knn_predictions", fake_knn)
+
+    result = discovery_runner.run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+    trial_record = json.loads((result.output_dir / "trials" / "trial-000001.json").read_text(encoding="utf-8"))
+    payload = trial_record["payload"]
+    knn_spec = captured_specs[0]
+
+    assert trial_record["status"] == "completed"
+    assert len(captured_specs) == 1
+    assert knn_spec.feature_column_set_id == "price_trend_vol"
+    assert knn_spec.label_horizon == "1h"
+    assert knn_spec.k == 13
+    assert knn_spec.min_neighbor_count == 5
+    assert knn_spec.distance_metric == "cosine"
+    assert knn_spec.probability_threshold == pytest.approx(0.58)
+    assert knn_spec.expected_value_threshold == pytest.approx(0.0002)
+    assert knn_spec.min_neighbor_agreement == pytest.approx(0.60)
+    assert knn_spec.min_distance_quality == pytest.approx(0.01)
+    assert knn_spec.vote_margin_threshold == pytest.approx(0.05)
+    assert knn_spec.regime_mode == "none"
+    assert knn_spec.regime_detector_type == "none"
+    assert knn_spec.regime_gate_enabled is False
+    assert knn_spec.same_regime_neighbor_pool_enabled is False
+    assert knn_spec.same_regime_only is False
+    assert knn_spec.feature_columns == ("log_return_1", "log_return_4")
+    assert payload["feature_column_set_id"] == "price_trend_vol"
+    assert payload["configured_feature_columns"] == [
+        "log_return_1",
+        "log_return_4",
+        "trend_slope_20",
+        "efficiency_ratio",
+        "directional_slope_atr",
+        "realized_volatility",
+        "atr_percentile",
+    ]
+    assert payload["effective_feature_columns"] == ["log_return_1", "log_return_4"]
+    assert payload["pruned_feature_column_count"] == 5
+    assert payload["label_horizon"] == "1h"
+    assert payload["k"] == 13
+    assert payload["min_neighbor_count"] == 5
+    assert payload["distance_metric"] == "cosine"
+    assert payload["probability_threshold"] == pytest.approx(0.58)
+    assert payload["expected_value_threshold"] == pytest.approx(0.0002)
+    assert payload["min_neighbor_agreement"] == pytest.approx(0.60)
+    assert payload["min_distance_quality"] == pytest.approx(0.01)
+    assert payload["vote_margin_threshold"] == pytest.approx(0.05)
+
+
+def test_discovery_runner_failed_real_trial_preserves_search_payload(tmp_path: Path, monkeypatch) -> None:
+    spec_path = tmp_path / "specs" / "failed-knn-payload-discovery.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "failed-knn-payload-run",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_public_archive_multi_window_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 1, "trial_batch_size": 1, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 1, "persist_trial_artifacts": "interesting_only"},
+                "search": {
+                    "min_splits": 2,
+                    "purge_embargo_bars": 2,
+                    "min_trade_count": 1,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": -1.0,
+                },
+                "trial_templates": [
+                    {
+                        "trial_id": "trial-000001",
+                        "candidate_id": "failed-knn-payload-candidate",
+                        "candidate_family": "regime_knn_entry_discovery",
+                        "ledger_kind": "blocked",
+                        "blocker_code": "not_evaluated",
+                        "payload": {
+                            "trial_kind": "regime_knn_entry_discovery",
+                            "feature_column_set_id": "price_trend_vol",
+                            "regime_mode": "none",
+                            "label_horizon": "2h",
+                            "k": 21,
+                            "min_neighbor_count": 4,
+                            "distance_metric": "manhattan",
+                            "probability_threshold": 0.62,
+                            "expected_value_threshold": -0.0002,
+                            "min_neighbor_agreement": 0.55,
+                            "min_distance_quality": 0.005,
+                            "vote_margin_threshold": 0.03,
+                            "same_regime_only": False,
+                        },
+                    }
+                ],
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_knn(*args, **kwargs):
+        raise RuntimeError("forced knn failure")
+
+    monkeypatch.setattr(discovery_runner, "materialize_regime_local_knn_predictions", fail_knn)
+
+    result = discovery_runner.run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+    trial_record = json.loads((result.output_dir / "trials" / "trial-000001.json").read_text(encoding="utf-8"))
+    payload = trial_record["payload"]
+
+    assert trial_record["status"] == "failed"
+    assert trial_record["error_payload"]["error_type"] == "RuntimeError"
+    assert payload["feature_column_set_id"] == "price_trend_vol"
+    assert payload["regime_mode"] == "none"
+    assert payload["regime_detector_type"] == "none"
+    assert payload["same_regime_only"] is False
+    assert payload["label_horizon"] == "2h"
+    assert payload["k"] == 21
+    assert payload["min_neighbor_count"] == 4
+    assert payload["distance_metric"] == "manhattan"
+    assert payload["probability_threshold"] == pytest.approx(0.62)
+    assert payload["expected_value_threshold"] == pytest.approx(-0.0002)
+    assert payload["min_neighbor_agreement"] == pytest.approx(0.55)
+    assert payload["min_distance_quality"] == pytest.approx(0.005)
+    assert payload["vote_margin_threshold"] == pytest.approx(0.03)
+    assert payload["final_score"] == 0.0
+    assert payload["knn_artifact_persisted"] is False
 
 
 def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path: Path, monkeypatch) -> None:

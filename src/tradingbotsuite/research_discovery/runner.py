@@ -116,7 +116,7 @@ LEDGER_COLUMNS = (
     "final_score",
     "record_sha256",
 )
-DISCOVERY_SCORE_POLICY_VERSION = "discovery-screen-score-v2"
+DISCOVERY_SCORE_POLICY_VERSION = "discovery-screen-score-v3-effective-feature-columns"
 REAL_DISCOVERY_TRIAL_KIND = "regime_knn_entry_discovery"
 LEGACY_REAL_DISCOVERY_TRIAL_KIND = "hmm_knn_entry_discovery"
 REAL_DISCOVERY_TRIAL_KINDS = {REAL_DISCOVERY_TRIAL_KIND, LEGACY_REAL_DISCOVERY_TRIAL_KIND}
@@ -726,6 +726,10 @@ def _real_discovery_trial_record(
             trial_dir=trial_dir,
         )
     except Exception as exc:
+        try:
+            mode_payload = _regime_settings_from_trial_payload(trial_payload).to_payload()
+        except ValueError:
+            mode_payload = {}
         return DiscoveryTrialRecord(
             run_id=spec.run_id,
             trial_id=template.trial_id,
@@ -741,6 +745,8 @@ def _real_discovery_trial_record(
             completed_at_utc=iso_utc(clock()),
             error_payload={"error": str(exc), "error_type": type(exc).__name__},
             payload={
+                **trial_payload,
+                **mode_payload,
                 "trial_kind": str(trial_payload.get("trial_kind") or REAL_DISCOVERY_TRIAL_KIND),
                 "discovery_score_policy_version": DISCOVERY_SCORE_POLICY_VERSION,
                 "feature_column_set_id": column_set_id,
@@ -965,8 +971,8 @@ def _evaluate_hmm_knn_trial(
     )
     labeled = label_split_entry.labeled
     splits = label_split_entry.splits
-    available_feature_columns = tuple(column for column in column_set.columns if column in labeled.columns)
-    if not available_feature_columns:
+    effective_feature_columns = _usable_feature_columns(labeled, column_set)
+    if not effective_feature_columns:
         return _blocked_real_trial_record(
             spec,
             template,
@@ -974,7 +980,12 @@ def _evaluate_hmm_knn_trial(
             started_at=started_at,
             completed_at=completed_at,
             blocker_code="feature_column_set_columns_missing",
-            payload={"feature_column_set_id": column_set.feature_column_set_id, "label_horizon": label_horizon},
+            payload={
+                "feature_column_set_id": column_set.feature_column_set_id,
+                "label_horizon": label_horizon,
+                "configured_feature_columns": list(column_set.columns),
+                "effective_feature_columns": [],
+            },
         )
     if regime_settings.regime_detector_type == "none":
         hmm_columns: tuple[str, ...] = ()
@@ -986,7 +997,7 @@ def _evaluate_hmm_knn_trial(
         )
         hmm_cache_hit = False
     else:
-        hmm_columns = _hmm_columns_for_trial(available_feature_columns)
+        hmm_columns = _hmm_columns_for_trial(effective_feature_columns)
         hmm_spec = HmmMaterializationSpec(
             feature_columns=hmm_columns,
             n_states=int(trial_payload.get("hmm_state_count", 4)),
@@ -1016,7 +1027,7 @@ def _evaluate_hmm_knn_trial(
     k_value = int(trial_payload.get("k", 8))
     min_neighbor_count = max(1, min(k_value, int(trial_payload.get("min_neighbor_count", min(4, k_value)))))
     knn_spec = KnnStudySpec(
-        feature_columns=available_feature_columns,
+        feature_columns=effective_feature_columns,
         label_column="label_up",
         pnl_column="label_return",
         k=k_value,
@@ -1114,6 +1125,9 @@ def _evaluate_hmm_knn_trial(
         "discovery_score_policy_version": DISCOVERY_SCORE_POLICY_VERSION,
         "feature_column_set_id": column_set.feature_column_set_id,
         "registered_feature_set_id": column_set.registered_feature_set_id,
+        "configured_feature_columns": list(column_set.columns),
+        "effective_feature_columns": list(effective_feature_columns),
+        "pruned_feature_column_count": int(len(column_set.columns) - len(effective_feature_columns)),
         "hmm_state_count": int(hmm_spec.n_states) if hmm_spec is not None else 0,
         "hmm_posterior_threshold": float(hmm_spec.posterior_threshold) if hmm_spec is not None else None,
         "hmm_entropy_threshold": float(hmm_spec.entropy_threshold) if hmm_spec is not None else None,
@@ -1356,7 +1370,7 @@ def _hmm_columns_for_trial(columns: tuple[str, ...]) -> tuple[str, ...]:
     return selected or columns[: min(8, len(columns))]
 
 
-def _feature_set_preflight_reason(frame: pd.DataFrame, column_set: DiscoveryFeatureColumnSet) -> str:
+def _usable_feature_columns(frame: pd.DataFrame, column_set: DiscoveryFeatureColumnSet) -> tuple[str, ...]:
     usable_columns = []
     for column in column_set.columns:
         if column not in frame.columns:
@@ -1369,9 +1383,14 @@ def _feature_set_preflight_reason(frame: pd.DataFrame, column_set: DiscoveryFeat
         if float(finite.nunique(dropna=True)) <= 1.0:
             continue
         usable_columns.append(column)
+    return tuple(usable_columns)
+
+
+def _feature_set_preflight_reason(frame: pd.DataFrame, column_set: DiscoveryFeatureColumnSet) -> str:
+    usable_columns = _usable_feature_columns(frame, column_set)
     if len(usable_columns) < 2:
         return "feature_set_preflight_insufficient_finite_variant_columns"
-    hmm_columns = _hmm_columns_for_trial(tuple(usable_columns))
+    hmm_columns = _hmm_columns_for_trial(usable_columns)
     if len(hmm_columns) < 2:
         return "feature_set_preflight_insufficient_hmm_columns"
     return ""

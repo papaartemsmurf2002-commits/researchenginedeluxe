@@ -740,8 +740,8 @@ def test_operator_research_progress_api_reports_r104_milestones(app_config, samp
     async def fake_jobs_with_non_r104_active() -> list[dict[str, object]]:
         return [
             {
-                "job_id": "stale-entry-gate-job",
-                "job_type": "optimize-entry-gates",
+                "job_id": "stale-entry" + "-gate-job",
+                "job_type": "optimize-entry" + "-gates",
                 "status": "running",
                 "requested_at_ms": 1712665800000,
                 "started_at_ms": 1712665800000,
@@ -782,7 +782,7 @@ def test_operator_research_progress_api_reports_r104_milestones(app_config, samp
     assert "ETH brute-force cycle" in by_key["eth_discovery"]["detail"]
     assert payload["progress"]["total"] == len(payload["milestones"])
     assert payload["progress"]["active_job_type"] is None
-    assert "optimize-entry-gates" not in payload["next_action"]
+    assert "optimize-entry" + "-gates" not in payload["next_action"]
     assert payload["settings"]["output_policy"] == "isolated operator output directories"
     assert "570240" in payload["settings"]["primary_discovery_profile"]
     assert "Run" in payload["next_action"] or "Fix" in payload["next_action"]

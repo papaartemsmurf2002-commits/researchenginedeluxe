@@ -364,6 +364,53 @@ def test_knn_expected_value_is_side_adjusted_for_short_majority() -> None:
     assert len(diagnostics) == 4
 
 
+@pytest.mark.parametrize(
+    ("overrides", "expected_reason"),
+    (
+        ({"probability_threshold": 0.90}, "probability_below_threshold"),
+        ({"expected_value_threshold": 0.10}, "expected_value_below_threshold"),
+        ({"min_neighbor_agreement": 0.90}, "neighbor_agreement_below_threshold"),
+        ({"min_distance_quality": 0.90}, "distance_quality_below_threshold"),
+        ({"vote_margin_threshold": 0.90}, "vote_margin_below_threshold"),
+    ),
+)
+def test_knn_acceptance_threshold_fields_produce_distinct_rejection_reasons(
+    overrides: dict[str, float],
+    expected_reason: str,
+) -> None:
+    spec_payload = {
+        "k": 4,
+        "min_neighbor_count": 3,
+        "probability_threshold": 0.50,
+        "expected_value_threshold": -0.02,
+        "min_neighbor_agreement": 0.50,
+        "min_distance_quality": 0.0,
+        "vote_margin_threshold": 0.0,
+        **overrides,
+    }
+    spec = _knn_spec(**spec_payload)
+    train_matrix = np.zeros((4, len(FEATURE_COLUMNS)), dtype=float)
+    train_matrix[:, 0] = np.array([0.0, 1.0, 2.0, 3.0], dtype=float)
+
+    prediction, _ = _predict_precomputed_row(
+        source_row=20,
+        fit_end=9,
+        no_trade=False,
+        query_regime="range",
+        query_matrix=np.zeros(len(FEATURE_COLUMNS), dtype=float),
+        train_matrix=train_matrix,
+        train_source=np.array([0, 1, 2, 3], dtype=int),
+        train_regimes=np.array(["range"] * 4, dtype=object),
+        labels=np.array([1.0, 1.0, 1.0, 0.0], dtype=float),
+        pnl=np.array([0.01, 0.02, 0.03, -0.01], dtype=float),
+        spec=spec,
+        split_id="threshold-split",
+    )
+
+    assert prediction["accepted_by_knn"] is False
+    assert prediction["knn_skip_reason"] == expected_reason
+
+
 def test_knn_neighbors_are_same_regime_when_configured() -> None:
     frame, splits = _hmm_frame()
     result = materialize_regime_local_knn_predictions(frame, splits=splits, spec=_knn_spec())
