@@ -2,8 +2,8 @@
 
 Current stage: Stage R104 candidate validation on durable evidence
 Current stage owner: Codex Research Agent
-Stage status: in progress - WPR104-01 closed; durable UI/control path is wired, empirical candidate validation runs remain pending
-Last updated: 2026-05-14
+Stage status: in progress - WPR104-02 closed; durable UI/control path and gap-aware durable cycles are wired, empirical candidate validation runs remain pending
+Last updated: 2026-05-17
 
 ## Stage entry decision
 
@@ -11,6 +11,8 @@ Last updated: 2026-05-14
 - Evidence links:
   - `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`
   - `docs/work_packets/WPR104-01-research-ui-durable-candidate-console.md`
+  - `docs/stage_reports/STAGE_R104_GAP_AWARE_DURABLE_CYCLE_FEATURE_MATERIALIZATION_REPORT.md`
+  - `docs/work_packets/WPR104-02-gap-aware-durable-cycle-feature-materialization.md`
   - `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`
   - `docs/work_packets/WPR103-01-durable-public-archive-fixtures.md`
   - `docs/stage_reports/STAGE_R102_BRANCH_COMPLETION_IMPLEMENTATION_REPORT.md`
@@ -83,10 +85,22 @@ WPR104-01 implementation note:
   artifacts, kept provider and signal-history diagnostics secondary, and kept
   all outputs research-only and observe-only.
 
+WPR104-02 implementation note:
+
+- `WPR104-02-gap-aware-durable-cycle-feature-materialization` fixed the failed
+  R104 durable historical-cycle run by segmenting intentional multi-window
+  fixture gaps during feature materialization. Normal continuous datasets still
+  fail closed on bar gaps; compact public-archive screening fixtures no longer
+  compute returns or rolling features across selected-window gaps. Segmentation
+  is limited to true forward gaps; duplicate bars and short-cadence anomalies
+  remain validation failures. The feature-builder cache identity is now
+  `research-feature-builder-v2` for this semantic change.
+
 ## Open work packets
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR104-02-gap-aware-durable-cycle-feature-materialization | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/features/builders.py`, `src/tradingbotsuite/research_cycle/runner.py`, `tests/features/**`, `tests/historical/**`, `tests/contracts/**` | Gap-aware segmented feature materialization for intentional R104 multi-window fixture cycles, duplicate/short-interval regressions, failed BTC operator spec rerun successfully, and validation recorded in `docs/stage_reports/STAGE_R104_GAP_AWARE_DURABLE_CYCLE_FEATURE_MATERIALIZATION_REPORT.md`. |
 | WPR104-01-research-ui-durable-candidate-console | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/research/**`, `configs/discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/base.html`, `src/tradingbotsuite/web/templates/research.html`, `tests/contracts/**`, `tests/integration/test_research_ui.py`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | Durable R104 Research UI/control path, BTC/ETH durable cycle and discovery defaults, candidate-pack eligibility route/job, readiness/artifact indexing, and validation recorded in `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`. |
 | WPR103-01-durable-public-archive-fixtures | Codex Research Agent | closed | `.gitignore`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `configs/research/**`, `data/research/fixtures/btcusdt_public_archive_multi_window_v1/**`, `data/research/fixtures/ethusdt_public_archive_multi_window_v1/**`, `tests/contracts/**` | Checksum-verified BTCUSDT/ETHUSDT Binance Vision multi-window fixture packs, durable public archive readiness configs, checked-in fixture readiness tests, and validation recorded in `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`. |
 | WPR102-01-branch-completion-implementation | Codex Research Agent | closed | `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/**`, `docs/stage_reports/**`, `docs/work_packets/**`, `pyproject.toml`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/research_cycle/**`, `src/tradingbotsuite/research_artifacts/**`, `src/tradingbotsuite/research_discovery/**`, `tests/contracts/**`, `tests/historical/**`, `tests/live/**`, `tests/research_artifacts/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/**` | Source provider capability validation, direct CLI output-root allowlisting, expanded import-boundary coverage, capability-aware readiness and candidate-pack gates, package identity cleanup, and validation recorded in `docs/stage_reports/STAGE_R102_BRANCH_COMPLETION_IMPLEMENTATION_REPORT.md`. |

@@ -25,6 +25,9 @@ CHECKED_IN_PERP_CONTEXT_FIXTURE_MANIFEST = (
 CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST = (
     REPO_ROOT / "data" / "research" / "fixtures" / "ethusdt_context_provider_latest_month_v1" / "fixture_pack_manifest.json"
 )
+CHECKED_IN_R104_BTC_DURABLE_CYCLE_SPEC = (
+    REPO_ROOT / "configs" / "research" / "full_cycle_btcusdt_durable_public_archive_r104_v1.json"
+)
 CHECKED_IN_LIQUIDATION_FIXTURE_MANIFEST = (
     REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_liquidation_free_sample_v1" / "fixture_pack_manifest.json"
 )
@@ -114,6 +117,34 @@ def test_full_cycle_uses_validated_local_fixture_pack_without_synthetic_fallback
     assert Path(feature_build_manifest["feature_sets"][0]["cache_manifest_path"]).exists()
     for output_path in manifest["required_outputs"].values():
         assert Path(output_path).exists()
+
+
+def test_r104_public_archive_multi_window_cycle_materializes_features_gap_aware(tmp_path: Path) -> None:
+    payload = json.loads(CHECKED_IN_R104_BTC_DURABLE_CYCLE_SPEC.read_text(encoding="utf-8"))
+    payload["output_dir"] = str(tmp_path / "research" / "historical_cycles" / "r104-btc-gap-aware")
+    payload["data"]["dataset_manifest_paths"] = [
+        str(REPO_ROOT / "data" / "research" / "fixtures" / "btcusdt_public_archive_multi_window_v1" / "fixture_pack_manifest.json")
+    ]
+    payload["compute"]["cpu_threads"] = 2
+    payload["compute"]["gpu_acceleration"] = "disabled"
+    spec_path = tmp_path / "specs" / "r104-btc-gap-aware.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = run_historical_research_cycle(
+        spec_path=spec_path,
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+    )
+
+    assert result.manifest_path.exists()
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    feature_build_path = Path(manifest["required_outputs"]["feature_build_manifest"])
+    feature_build = json.loads(feature_build_path.read_text(encoding="utf-8"))
+    feature_record = feature_build["feature_sets"][0]
+    assert feature_build["feature_continuity_required"] is False
+    assert feature_build["feature_gap_policy"] == "segment_on_intentional_multi_window_fixture_gaps"
+    assert feature_record["materialization_scope"] == "registered_features_merged_with_execution_context_segmented_on_bar_time_gaps"
+    assert feature_record["availability_report"]["missing_counts"]["log_return_1"] == 4
 
 
 def test_checked_in_full_cycle_config_consumes_btcusdt_fixture_pack(tmp_path: Path) -> None:

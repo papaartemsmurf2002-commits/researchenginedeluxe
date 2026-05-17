@@ -1323,6 +1323,11 @@ def _feature_build_manifest(
     primary_interval_ms = int(interval_evidence["primary_interval_ms"])
     fixture_family_context = dict((data_source or {}).get("fixture_family_context") or {})
     fixture_family_context_sha256 = (data_source or {}).get("fixture_family_context_sha256")
+    require_continuous_features = _cycle_feature_requires_continuous(
+        dataset,
+        data_source=data_source,
+        interval_ms=primary_interval_ms,
+    )
     records: list[dict[str, Any]] = []
     identity_records: list[dict[str, Any]] = []
     frames_by_feature_set: dict[str, pd.DataFrame] = {}
@@ -1336,7 +1341,7 @@ def _feature_build_manifest(
             builder_version=FEATURE_BUILDER_VERSION,
             interval_ms=primary_interval_ms,
             source_column_mapping=source_mapping,
-            require_continuous=True,
+            require_continuous=require_continuous_features,
             fixture_family_context_sha256=(
                 str(fixture_family_context_sha256)
                 if fixture_family_context_sha256 is not None
@@ -1353,6 +1358,7 @@ def _feature_build_manifest(
                 dataset,
                 feature_set_id=feature_set,
                 interval_ms=primary_interval_ms,
+                require_continuous=require_continuous_features,
             )
             frame = materialized.frame
             if cache_root is not None:
@@ -1416,6 +1422,12 @@ def _feature_build_manifest(
         **interval_evidence,
         "fixture_family_context_sha256": fixture_family_context_sha256,
         "fixture_family_context": fixture_family_context,
+        "feature_continuity_required": require_continuous_features,
+        "feature_gap_policy": (
+            "continuous_completed_bar_series_required"
+            if require_continuous_features
+            else "segment_on_intentional_multi_window_fixture_gaps"
+        ),
         "row_count": int(len(dataset)),
         "feature_cache_root": str(cache_root) if cache_root is not None else None,
         "feature_sets": records,
@@ -1433,6 +1445,33 @@ def _feature_build_manifest(
         }
     )
     return FeatureBuildResult(manifest=payload, frames_by_feature_set=frames_by_feature_set)
+
+
+def _cycle_feature_requires_continuous(
+    dataset: pd.DataFrame,
+    *,
+    data_source: Mapping[str, Any] | None,
+    interval_ms: int,
+) -> bool:
+    if not _cycle_data_source_is_intentional_multi_window_fixture(data_source):
+        return True
+    if "bar_time_ms" not in dataset.columns or len(dataset) <= 1:
+        return True
+    times = pd.to_numeric(dataset["bar_time_ms"], errors="coerce").dropna().astype("int64").sort_values()
+    if len(times) <= 1:
+        return True
+    return not bool((times.diff().iloc[1:] > int(interval_ms)).any())
+
+
+def _cycle_data_source_is_intentional_multi_window_fixture(data_source: Mapping[str, Any] | None) -> bool:
+    if not isinstance(data_source, Mapping):
+        return False
+    derivation = data_source.get("fixture_derivation")
+    if not isinstance(derivation, Mapping):
+        return False
+    derivation_type = str(derivation.get("derivation_type") or "")
+    window_labels = derivation.get("window_labels")
+    return derivation_type == "multi_window_public_archive_selection" and bool(window_labels)
 
 
 def _apply_materialized_prediction_overlays(

@@ -9,11 +9,12 @@ from typing import Any, Mapping
 import numpy as np
 import pandas as pd
 
+from tradingbotsuite.features.alignment import CompletedBarValidation
 from tradingbotsuite.features.packs import FeatureFrameResult, build_feature_frame
-from tradingbotsuite.features.registry import feature_pack_registry, feature_set_presets
+from tradingbotsuite.features.registry import FeatureAvailabilityReport, feature_pack_registry, feature_set_presets
 
 
-FEATURE_BUILDER_VERSION = "research-feature-builder-v1"
+FEATURE_BUILDER_VERSION = "research-feature-builder-v2"
 DEFAULT_INTERVAL_MS = 900_000
 FEATURE_MANIFEST_TESTS = (
     "tests/contracts/test_feature_contracts.py",
@@ -239,13 +240,24 @@ def materialize_registered_feature_set(
     interval_ms: int = DEFAULT_INTERVAL_MS,
     require_continuous: bool = True,
 ) -> MaterializedFeatureSet:
+    base, mapping = canonicalize_bar_frame(frame)
+    if not require_continuous:
+        segments, gap_start_times = _continuous_bar_segments(base, interval_ms=interval_ms)
+        if len(segments) > 1:
+            return _materialize_registered_feature_set_segmented(
+                segments,
+                gap_start_times=gap_start_times,
+                source_column_mapping=mapping,
+                feature_set_id=feature_set_id,
+                interval_ms=interval_ms,
+            )
+
     built = build_registered_feature_set(
-        frame,
+        base,
         feature_set_id=feature_set_id,
         interval_ms=interval_ms,
         require_continuous=require_continuous,
     )
-    base, _ = canonicalize_bar_frame(frame)
     registered_columns = set(registered_feature_columns()) | {"feature_time_ms"}
     base = base.drop(columns=[column for column in registered_columns if column in base.columns], errors="ignore")
     feature_frame = built.result.frame.loc[
@@ -262,6 +274,173 @@ def materialize_registered_feature_set(
         feature_set_id=feature_set_id,
         frame=materialized.sort_values("bar_time_ms", kind="mergesort").reset_index(drop=True),
         built=built,
+    )
+
+
+def _materialize_registered_feature_set_segmented(
+    segments: list[pd.DataFrame],
+    *,
+    gap_start_times: tuple[int, ...],
+    source_column_mapping: Mapping[str, str],
+    feature_set_id: str,
+    interval_ms: int,
+) -> MaterializedFeatureSet:
+    built_segments = [
+        build_registered_feature_set(
+            segment,
+            feature_set_id=feature_set_id,
+            interval_ms=interval_ms,
+            require_continuous=True,
+        )
+        for segment in segments
+    ]
+    combined_feature_frame = (
+        pd.concat([built.result.frame for built in built_segments], ignore_index=True)
+        .sort_values("bar_time_ms", kind="mergesort")
+        .reset_index(drop=True)
+    )
+    first_built = built_segments[0]
+    combined_result = FeatureFrameResult(
+        frame=combined_feature_frame,
+        manifest=first_built.result.manifest,
+        availability_report=_combined_availability_report(
+            combined_feature_frame,
+            reports=[built.result.availability_report for built in built_segments],
+        ),
+        completed_bar_validation=_segmented_completed_bar_validation(
+            built_segments=[built.result.completed_bar_validation for built in built_segments],
+            gap_start_times=gap_start_times,
+            row_count=sum(len(segment) for segment in segments),
+        ),
+    )
+    built = BuiltFeatureSet(
+        feature_set_id=feature_set_id,
+        result=combined_result,
+        source_column_mapping=source_column_mapping,
+    )
+    registered_columns = set(registered_feature_columns()) | {"feature_time_ms"}
+    materialized_frames: list[pd.DataFrame] = []
+    for segment, segment_built in zip(segments, built_segments, strict=True):
+        segment_base = segment.drop(
+            columns=[column for column in registered_columns if column in segment.columns],
+            errors="ignore",
+        )
+        segment_feature_frame = segment_built.result.frame.loc[
+            :,
+            [
+                "bar_time_ms",
+                "feature_time_ms",
+                *segment_built.result.manifest.feature_columns,
+                *segment_built.result.manifest.availability_columns,
+            ],
+        ].copy()
+        materialized_frames.append(
+            segment_base.merge(segment_feature_frame, on="bar_time_ms", how="left", validate="one_to_one")
+        )
+    materialized = pd.concat(materialized_frames, ignore_index=True)
+    return MaterializedFeatureSet(
+        feature_set_id=feature_set_id,
+        frame=materialized.sort_values("bar_time_ms", kind="mergesort").reset_index(drop=True),
+        built=built,
+        materialization_scope="registered_features_merged_with_execution_context_segmented_on_bar_time_gaps",
+    )
+
+
+def _continuous_bar_segments(frame: pd.DataFrame, *, interval_ms: int) -> tuple[list[pd.DataFrame], tuple[int, ...]]:
+    if frame.empty or "bar_time_ms" not in frame.columns:
+        return [frame.copy()], ()
+    ordered = frame.sort_values("bar_time_ms", kind="mergesort").reset_index(drop=True)
+    raw_times = pd.to_numeric(ordered["bar_time_ms"], errors="coerce")
+    if raw_times.isna().any():
+        return [ordered], ()
+    times = raw_times.astype("int64")
+    duplicate_times = tuple(int(value) for value in times[times.duplicated()].drop_duplicates())
+    if duplicate_times:
+        raise ValueError(f"duplicate_bar_times:{','.join(str(value) for value in duplicate_times)}")
+    diffs = times.diff().iloc[1:]
+    short_interval_indexes = [
+        int(index)
+        for index, diff in diffs.items()
+        if int(diff) < int(interval_ms)
+    ]
+    if short_interval_indexes:
+        short_interval_start_times = tuple(int(times.iloc[index - 1]) for index in short_interval_indexes)
+        raise ValueError(
+            f"bar_time_short_intervals:{','.join(str(value) for value in short_interval_start_times)}"
+        )
+    split_indexes = [
+        int(index)
+        for index, diff in diffs.items()
+        if int(diff) > int(interval_ms)
+    ]
+    if not split_indexes:
+        return [ordered], ()
+    starts = [0, *split_indexes]
+    ends = [*split_indexes, len(ordered)]
+    segments = [
+        ordered.iloc[start:end].copy().reset_index(drop=True)
+        for start, end in zip(starts, ends, strict=True)
+        if end > start
+    ]
+    gap_start_times = tuple(int(times.iloc[index - 1]) for index in split_indexes)
+    return segments, gap_start_times
+
+
+def _combined_availability_report(
+    frame: pd.DataFrame,
+    *,
+    reports: list[FeatureAvailabilityReport],
+) -> FeatureAvailabilityReport:
+    first = reports[0]
+    missing_counts = {
+        column: int(frame[column].isna().sum())
+        for column in first.feature_columns
+        if column in frame.columns
+    }
+    row_count = max(int(len(frame)), 1)
+    missing_rates = {column: count / row_count for column, count in missing_counts.items()}
+    missing_context_columns = tuple(
+        sorted({column for report in reports for column in report.missing_context_columns})
+    )
+    return FeatureAvailabilityReport(
+        row_count=int(len(frame)),
+        feature_columns=first.feature_columns,
+        availability_columns=first.availability_columns,
+        missing_counts=missing_counts,
+        missing_rates=missing_rates,
+        missing_context_columns=missing_context_columns,
+    )
+
+
+def _segmented_completed_bar_validation(
+    *,
+    built_segments: list[CompletedBarValidation],
+    gap_start_times: tuple[int, ...],
+    row_count: int,
+) -> CompletedBarValidation:
+    duplicate_bar_times = tuple(
+        sorted({value for validation in built_segments for value in validation.duplicate_bar_times})
+    )
+    incomplete_bar_times = tuple(
+        sorted({value for validation in built_segments for value in validation.incomplete_bar_times})
+    )
+    quality_flags = tuple(
+        sorted(
+            {
+                "bar_time_gaps",
+                "segmented_non_contiguous_bars",
+                *[flag for validation in built_segments for flag in validation.quality_flags],
+            }
+        )
+    )
+    return CompletedBarValidation(
+        valid=all(validation.valid for validation in built_segments),
+        errors=tuple(error for validation in built_segments for error in validation.errors),
+        quality_flags=quality_flags,
+        duplicate_bar_times=duplicate_bar_times,
+        gap_start_times=gap_start_times,
+        incomplete_bar_times=incomplete_bar_times,
+        row_count=int(row_count),
     )
 
 

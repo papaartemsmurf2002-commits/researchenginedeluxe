@@ -185,6 +185,68 @@ def test_materialized_feature_set_replaces_stale_source_feature_columns() -> Non
     assert materialized.materialization_scope == "registered_features_merged_with_execution_context"
 
 
+def _price_frame_for_times(times: list[int]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "bar_time_ms": times,
+            "symbol": ["BTCUSDT"] * len(times),
+            "open": [100.0 + index for index in range(len(times))],
+            "high": [101.0 + index for index in range(len(times))],
+            "low": [99.0 + index for index in range(len(times))],
+            "close": [100.5 + index for index in range(len(times))],
+            "volume": [10.0] * len(times),
+        }
+    )
+
+
+def test_materialized_feature_set_segments_intentional_bar_gaps_without_cross_gap_returns() -> None:
+    interval_ms = 900_000
+    first_window = [index * interval_ms for index in range(6)]
+    second_window = [10 * interval_ms + index * interval_ms for index in range(6)]
+    times = first_window + second_window
+    frame = _price_frame_for_times(times)
+
+    with pytest.raises(ValueError, match="bar_time_gaps"):
+        materialize_registered_feature_set(frame, feature_set_id="features_price_trend_vol")
+
+    materialized = materialize_registered_feature_set(
+        frame,
+        feature_set_id="features_price_trend_vol",
+        require_continuous=False,
+    )
+
+    second_window_first = materialized.frame.loc[materialized.frame["bar_time_ms"] == second_window[0]].iloc[0]
+    second_window_second = materialized.frame.loc[materialized.frame["bar_time_ms"] == second_window[1]].iloc[0]
+    assert pd.isna(second_window_first["log_return_1"])
+    assert pd.notna(second_window_second["log_return_1"])
+    assert materialized.materialization_scope == "registered_features_merged_with_execution_context_segmented_on_bar_time_gaps"
+    assert "segmented_non_contiguous_bars" in materialized.built.result.completed_bar_validation.quality_flags
+
+
+def test_materialized_feature_set_rejects_duplicate_bars_inside_intentional_gap_segments() -> None:
+    interval_ms = 900_000
+    frame = _price_frame_for_times([0, interval_ms, interval_ms, 10 * interval_ms, 11 * interval_ms])
+
+    with pytest.raises(ValueError, match="duplicate_bar_times"):
+        materialize_registered_feature_set(
+            frame,
+            feature_set_id="features_price_trend_vol",
+            require_continuous=False,
+        )
+
+
+def test_materialized_feature_set_rejects_short_intervals_when_continuity_is_relaxed() -> None:
+    interval_ms = 900_000
+    frame = _price_frame_for_times([0, interval_ms, interval_ms + interval_ms // 2, 10 * interval_ms])
+
+    with pytest.raises(ValueError, match="bar_time_short_intervals"):
+        materialize_registered_feature_set(
+            frame,
+            feature_set_id="features_price_trend_vol",
+            require_continuous=False,
+        )
+
+
 def test_perp_context_v2_feature_pack_derives_registered_columns() -> None:
     frame = _perp_context_v2_frame(row_count=200)
 
