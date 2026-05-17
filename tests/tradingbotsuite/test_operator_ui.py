@@ -617,18 +617,18 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Recommended Defaults" in response.text
     assert "Candidate Eligibility Review" in response.text
     assert "Check Durable Readiness" in response.text
-    assert "BTC Durable Cycle" in response.text
-    assert "BTC Durable Discovery" in response.text
-    assert "ETH Durable Cycle" in response.text
-    assert "ETH Durable Discovery" in response.text
+    assert "BTC Deep Cycle" in response.text
+    assert "BTC Exact Sweep" in response.text
+    assert "ETH Deep Cycle" in response.text
+    assert "ETH Exact Sweep" in response.text
     assert "Blockers" in response.text
     assert "Leads" in response.text
     assert "Maturity" in response.text
     assert "Diagnostic" in response.text
     assert "Screen-worthy" in response.text
     assert "Candidate-ready" in response.text
-    assert "Quick Plumbing Check" in response.text
-    assert "Deep BTC Harvest" in response.text
+    assert "Diagnostic Smoke" in response.text
+    assert "BTC Standard Screen" in response.text
     assert "Pause After One Trial" in response.text
     assert "Resume Run" in response.text
     assert "Open Latest Snapshot" in response.text
@@ -644,21 +644,24 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Historical Cycle Review" in response.text
     assert "run-historical-research-cycle" in response.text
     assert "Run Historical Cycle" in response.text
-    assert "BTCUSDT durable R104 cycle" in response.text
-    assert "ETHUSDT durable R104 cycle" in response.text
+    assert "BTCUSDT durable deep R104 cycle" in response.text
+    assert "ETHUSDT durable deep R104 cycle" in response.text
     assert "Operator queued runs write isolated output" in response.text
     assert "Compute Profile" in response.text
     assert "Backend Mix" in response.text
     assert "GPU Status" in response.text
     assert "CUDA Selected" in response.text
-    assert "V4 Durable Discovery Run" in response.text
+    assert "R104 Durable Discovery Run" in response.text
     assert "Run Discovery" in response.text
     assert "Resume Discovery" in response.text
+    assert "BTCUSDT exact bounded sweep" in response.text
+    assert "ETHUSDT exact bounded sweep" in response.text
     assert "BTCUSDT durable standard discovery" in response.text
     assert "ETHUSDT durable standard discovery" in response.text
-    assert "BTCUSDT durable deep harvest" in response.text
-    assert "GMM regime detector plus local KNN entry discovery" in response.text
-    assert "explicit no-regime" in response.text
+    assert "BTCUSDT compatibility sparse harvest" in response.text
+    assert "Exact bounded BTC sweep" in response.text
+    assert "not exhaustive" in response.text
+    assert "570240" in response.text
     assert "Real HMM-regime plus local KNN entry discovery" not in response.text
     assert "Queueing evidence review bundle" in response.text
     assert "Discovery Ledger" in response.text
@@ -773,15 +776,102 @@ def test_operator_research_progress_api_reports_r104_milestones(app_config, samp
     assert by_key["durable_readiness"]["status"] == "complete"
     assert by_key["btc_cycle"]["status"] == "ready"
     assert by_key["btc_discovery"]["status"] == "waiting"
-    assert "BTC historical cycle" in by_key["btc_discovery"]["detail"]
+    assert "BTC brute-force cycle" in by_key["btc_discovery"]["detail"]
     assert by_key["eth_cycle"]["status"] == "ready"
     assert by_key["eth_discovery"]["status"] == "waiting"
-    assert "ETH historical cycle" in by_key["eth_discovery"]["detail"]
+    assert "ETH brute-force cycle" in by_key["eth_discovery"]["detail"]
     assert payload["progress"]["total"] == len(payload["milestones"])
     assert payload["progress"]["active_job_type"] is None
     assert "optimize-entry-gates" not in payload["next_action"]
     assert payload["settings"]["output_policy"] == "isolated operator output directories"
+    assert "570240" in payload["settings"]["primary_discovery_profile"]
     assert "Run" in payload["next_action"] or "Fix" in payload["next_action"]
+
+
+def test_operator_research_progress_api_indexes_bounded_r104_disk_artifacts(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    cycle_manifest = (
+        research_dir
+        / "operator_runs"
+        / "historical_cycles"
+        / "r104-btcusdt-durable-public-archive-deep-v1"
+        / "run-historical-research-cycle-btc"
+        / "research_cycle_manifest.json"
+    )
+    discovery_manifest = (
+        research_dir
+        / "operator_runs"
+        / "discovery_runs"
+        / "exact-entry-sweep-btcusdt-durable-r104-v1"
+        / "run-discovery-btc"
+        / "discovery_run_manifest.json"
+    )
+    cycle_manifest.parent.mkdir(parents=True)
+    discovery_manifest.parent.mkdir(parents=True)
+    cycle_manifest.write_text(
+        json.dumps(
+            {
+                "cycle_id": "r104-btcusdt-durable-public-archive-deep-v1",
+                "symbol": "BTCUSDT",
+                "candidate_count": 128,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    discovery_manifest.write_text(
+        json.dumps(
+            {
+                "run_id": "exact_entry_sweep_btcusdt_durable_r104_v1",
+                "symbol": "BTCUSDT",
+                "state": {"status": "completed", "completed_trial_ids": ["trial-000001"], "snapshot_count": 1},
+                "budget": {"max_trials": 570240},
+                "search_space": {
+                    "planned_trials": 570240,
+                    "total_combinations": 570240,
+                    "sampled_fraction": 1.0,
+                    "exhaustive": True,
+                    "coverage_label": "exhaustive",
+                },
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_ui_disk_artifacts.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    async def no_jobs() -> list[dict[str, object]]:
+        return []
+
+    app.state.operator_service.list_jobs = no_jobs
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        response = client.get("/api/operator/research/progress")
+
+    assert response.status_code == 200
+    by_key = {item["key"]: item for item in response.json()["milestones"]}
+    assert by_key["btc_cycle"]["status"] == "complete"
+    assert by_key["btc_discovery"]["status"] == "complete"
+    assert by_key["candidate_eligibility"]["status"] == "ready"
+    assert "research_cycle_manifest.json" in by_key["btc_cycle"]["artifact_path"]
+    assert "discovery_run_manifest.json" in by_key["btc_discovery"]["artifact_path"]
 
 
 def test_operator_timeline_page_renders_job_status_detail(app_config, sample_bars) -> None:
@@ -817,10 +907,56 @@ def test_operator_r104_readiness_api_reports_durable_btc_eth(app_config, sample_
     assert payload["ready_count"] == 2
     by_symbol = {item["symbol"]: item for item in payload["items"]}
     assert set(by_symbol) == {"BTCUSDT", "ETHUSDT"}
-    assert "full_cycle_btcusdt_durable_public_archive_r104_v1.json" in by_symbol["BTCUSDT"]["cycle_spec_path"]
-    assert "full_cycle_ethusdt_durable_public_archive_r104_v1.json" in by_symbol["ETHUSDT"]["cycle_spec_path"]
+    assert "full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json" in by_symbol["BTCUSDT"]["cycle_spec_path"]
+    assert "full_cycle_ethusdt_durable_public_archive_r104_deep_v1.json" in by_symbol["ETHUSDT"]["cycle_spec_path"]
+    assert "exact_entry_sweep_btcusdt_durable_r104_v1.json" in by_symbol["BTCUSDT"]["discovery_spec_path"]
+    assert "exact_entry_sweep_ethusdt_durable_r104_v1.json" in by_symbol["ETHUSDT"]["discovery_spec_path"]
+    assert "full_cycle_btcusdt_durable_public_archive_r104_v1.json" in by_symbol["BTCUSDT"]["standard_cycle_spec_path"]
     assert by_symbol["BTCUSDT"]["fixture_row_counts"]["bars"] > 0
     assert by_symbol["ETHUSDT"]["fixture_row_counts"]["bars"] > 0
+
+
+def test_operator_research_job_routes_default_to_r104_deep_and_exact_specs(app_config, sample_bars, tmp_path) -> None:
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_ui_default_specs.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=tmp_path / "research"),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    observed: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_queue_job(job_type: str, payload: dict[str, object]) -> dict[str, object]:
+        observed.append((job_type, payload))
+        return {"job_id": f"job-{len(observed)}", "status": "queued", "job_type": job_type}
+
+    app.state.operator_service.queue_job = fake_queue_job
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        cycle_response = client.post(
+            "/api/operator/research/jobs/run-historical-research-cycle",
+            json={},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        discovery_response = client.post(
+            "/api/operator/research/jobs/run-discovery",
+            json={},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert cycle_response.status_code == 200
+    assert discovery_response.status_code == 200
+    assert observed[0][0] == "run-historical-research-cycle"
+    assert observed[1][0] == "run-discovery"
+    assert "full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json" in str(observed[0][1]["spec_path"])
+    assert "exact_entry_sweep_btcusdt_durable_r104_v1.json" in str(observed[1][1]["spec_path"])
 
 
 def test_operator_research_artifacts_survives_corrupt_json(app_config, sample_bars, tmp_path) -> None:

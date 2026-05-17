@@ -1,7 +1,7 @@
 {
   "spec_version": "discovery-run-spec-v1",
-  "run_id": "standard_entry_discovery_ethusdt_durable_r104_v1",
-  "symbol": "ETHUSDT",
+  "run_id": "standard_entry_discovery_btcusdt_durable_r104_v1",
+  "symbol": "BTCUSDT",
   "timeframe": "15m",
   "discovery_mode": "entry_discovery_standard",
   "research_output_dir": "data/research",
@@ -12,14 +12,14 @@
   ],
   "data": {
     "dataset_manifest_paths": [
-      "data/research/fixtures/ethusdt_public_archive_multi_window_v1/fixture_pack_manifest.json"
+      "data/research/fixtures/btcusdt_public_archive_multi_window_v1/fixture_pack_manifest.json"
     ]
   },
   "budget": {
     "max_trials": 720,
     "trial_batch_size": 25,
     "snapshot_interval_minutes": 20,
-    "rng_seed": 10479
+    "rng_seed": 10473
   },
   "execution": {
     "max_workers": 8,

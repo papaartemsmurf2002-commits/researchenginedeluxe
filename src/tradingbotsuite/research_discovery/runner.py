@@ -46,6 +46,7 @@ from tradingbotsuite.research_discovery.snapshots import atomic_write_json, iso_
 from tradingbotsuite.research_discovery.spec import (
     DiscoveryRunSpec,
     DiscoveryTrialTemplate,
+    discovery_search_space_summary,
     generated_trial_templates,
     regime_mode_settings,
     resolve_discovery_paths,
@@ -1649,6 +1650,7 @@ def _snapshot(
             "symbol": spec.symbol,
             "timeframe": spec.timeframe,
             "budget_max_trials": spec.budget.max_trials,
+            "search_space": discovery_search_space_summary(spec),
             "completed_trial_count": len(records),
             "counts": _record_counts(records),
             "last_snapshot_path": state.last_snapshot_path,

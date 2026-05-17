@@ -346,20 +346,26 @@ class OperatorConsoleService:
         symbols = {
             "BTCUSDT": {
                 "readiness_config": configs_root / "research" / "durable_public_archive_fixture_readiness_btcusdt_v1.json",
-                "cycle_spec": configs_root / "research" / "full_cycle_btcusdt_durable_public_archive_r104_v1.json",
-                "discovery_spec": configs_root / "discovery" / "standard_entry_discovery_btcusdt_v4.json",
+                "cycle_spec": configs_root / "research" / "full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json",
+                "standard_cycle_spec": configs_root / "research" / "full_cycle_btcusdt_durable_public_archive_r104_v1.json",
+                "discovery_spec": configs_root / "discovery" / "exact_entry_sweep_btcusdt_durable_r104_v1.json",
+                "standard_discovery_spec": configs_root / "discovery" / "standard_entry_discovery_btcusdt_durable_r104_v1.json",
             },
             "ETHUSDT": {
                 "readiness_config": configs_root / "research" / "durable_public_archive_fixture_readiness_ethusdt_v1.json",
-                "cycle_spec": configs_root / "research" / "full_cycle_ethusdt_durable_public_archive_r104_v1.json",
-                "discovery_spec": configs_root / "discovery" / "standard_entry_discovery_ethusdt_durable_r104_v1.json",
+                "cycle_spec": configs_root / "research" / "full_cycle_ethusdt_durable_public_archive_r104_deep_v1.json",
+                "standard_cycle_spec": configs_root / "research" / "full_cycle_ethusdt_durable_public_archive_r104_v1.json",
+                "discovery_spec": configs_root / "discovery" / "exact_entry_sweep_ethusdt_durable_r104_v1.json",
+                "standard_discovery_spec": configs_root / "discovery" / "standard_entry_discovery_ethusdt_durable_r104_v1.json",
             },
         }
         items: list[dict[str, Any]] = []
         for symbol, paths in symbols.items():
             readiness_payload = self._read_json_path(paths["readiness_config"])
             cycle_payload = self._read_json_path(paths["cycle_spec"])
+            standard_cycle_payload = self._read_json_path(paths["standard_cycle_spec"])
             discovery_payload = self._read_json_path(paths["discovery_spec"])
+            standard_discovery_payload = self._read_json_path(paths["standard_discovery_spec"])
             fixture_path = self._resolve_repo_path((readiness_payload or {}).get("fixture_manifest_path"))
             fixture_exists = bool(fixture_path and fixture_path.exists())
             expected_sha = str((readiness_payload or {}).get("fixture_manifest_sha256") or "")
@@ -374,7 +380,9 @@ class OperatorConsoleService:
                 and fixture_exists
                 and sha_ok
                 and cycle_payload
+                and standard_cycle_payload
                 and discovery_payload
+                and standard_discovery_payload
             )
             blockers: list[str] = []
             if not readiness_payload:
@@ -384,9 +392,13 @@ class OperatorConsoleService:
             if expected_sha and actual_sha and expected_sha != actual_sha:
                 blockers.append("fixture_manifest_sha256_mismatch")
             if not cycle_payload:
-                blockers.append("r104_cycle_spec_missing_or_invalid")
+                blockers.append("r104_deep_cycle_spec_missing_or_invalid")
+            if not standard_cycle_payload:
+                blockers.append("r104_standard_cycle_spec_missing_or_invalid")
             if not discovery_payload:
-                blockers.append("r104_discovery_spec_missing_or_invalid")
+                blockers.append("r104_exact_discovery_spec_missing_or_invalid")
+            if not standard_discovery_payload:
+                blockers.append("r104_standard_discovery_spec_missing_or_invalid")
             items.append(
                 {
                     "symbol": symbol,
@@ -395,7 +407,9 @@ class OperatorConsoleService:
                     "blockers": blockers,
                     "readiness_config_path": str(paths["readiness_config"]),
                     "cycle_spec_path": str(paths["cycle_spec"]),
+                    "standard_cycle_spec_path": str(paths["standard_cycle_spec"]),
                     "discovery_spec_path": str(paths["discovery_spec"]),
+                    "standard_discovery_spec_path": str(paths["standard_discovery_spec"]),
                     "fixture_manifest_path": str(fixture_path) if fixture_path is not None else None,
                     "fixture_manifest_sha256": actual_sha or None,
                     "expected_fixture_manifest_sha256": expected_sha or None,
@@ -417,7 +431,7 @@ class OperatorConsoleService:
             "symbol_count": len(items),
             "items": items,
             "recommended_next_action": (
-                "Run durable BTC or ETH historical cycle, then discovery, then candidate eligibility review."
+                "Run durable BTC or ETH brute-force cycle, then exact discovery, then candidate eligibility review."
                 if ready_count == len(items)
                 else "Fix durable fixture readiness before running candidate validation."
             ),
@@ -426,7 +440,12 @@ class OperatorConsoleService:
 
     async def research_progress_diagnostics(self) -> dict[str, Any]:
         jobs = await self.list_jobs()
-        artifacts = self._research_progress_artifacts_from_jobs(jobs)
+        artifacts = self._dedupe_research_progress_artifacts(
+            [
+                *self._research_progress_artifacts_from_jobs(jobs),
+                *self._research_progress_known_artifacts(),
+            ]
+        )
         readiness = self.r104_readiness_diagnostics()
         r104_job_types = {
             "run-historical-research-cycle",
@@ -444,61 +463,67 @@ class OperatorConsoleService:
             artifacts,
             "historical_research_cycle",
             "BTCUSDT",
+            expected_ids={"r104-btcusdt-durable-public-archive-deep-v1"},
         ) is not None
         eth_cycle_complete = self._latest_research_artifact(
             artifacts,
             "historical_research_cycle",
             "ETHUSDT",
+            expected_ids={"r104-ethusdt-durable-public-archive-deep-v1"},
         ) is not None
         milestones: list[dict[str, Any]] = [
             self._readiness_milestone(readiness),
             self._artifact_job_milestone(
                 "btc_cycle",
-                "BTC durable cycle",
+                "BTC brute-force cycle",
                 "BTCUSDT",
                 "run-historical-research-cycle",
                 "historical_research_cycle",
                 jobs,
                 artifacts,
                 prerequisite_complete=bool(readiness.get("ready")),
-                ready_detail="Run the BTC historical cycle on durable public-archive fixtures.",
+                ready_detail="Run the deep BTC historical cycle on durable public-archive fixtures.",
                 waiting_detail="Durable readiness must be green before the BTC cycle.",
+                expected_artifact_ids={"r104-btcusdt-durable-public-archive-deep-v1"},
             ),
             self._artifact_job_milestone(
                 "btc_discovery",
-                "BTC durable discovery",
+                "BTC exact discovery",
                 "BTCUSDT",
                 "run-discovery",
                 "discovery_run",
                 jobs,
                 artifacts,
                 prerequisite_complete=btc_cycle_complete,
-                ready_detail="Run BTC discovery after the cycle so candidate evidence and blockers are visible.",
-                waiting_detail="Run the BTC historical cycle before BTC discovery.",
+                ready_detail="Run the BTC exact bounded sweep after the deep cycle so search coverage is exhaustive.",
+                waiting_detail="Run the BTC brute-force cycle before BTC exact discovery.",
+                expected_artifact_ids={"exact_entry_sweep_btcusdt_durable_r104_v1"},
             ),
             self._artifact_job_milestone(
                 "eth_cycle",
-                "ETH durable cycle",
+                "ETH brute-force cycle",
                 "ETHUSDT",
                 "run-historical-research-cycle",
                 "historical_research_cycle",
                 jobs,
                 artifacts,
                 prerequisite_complete=bool(readiness.get("ready")),
-                ready_detail="Run the ETH mirror cycle to check whether BTC findings generalize.",
+                ready_detail="Run the deep ETH mirror cycle to check whether BTC findings generalize.",
                 waiting_detail="Durable readiness must be green before the ETH cycle.",
+                expected_artifact_ids={"r104-ethusdt-durable-public-archive-deep-v1"},
             ),
             self._artifact_job_milestone(
                 "eth_discovery",
-                "ETH durable discovery",
+                "ETH exact discovery",
                 "ETHUSDT",
                 "run-discovery",
                 "discovery_run",
                 jobs,
                 artifacts,
                 prerequisite_complete=eth_cycle_complete,
-                ready_detail="Run ETH discovery after ETH cycle evidence is available.",
-                waiting_detail="Run the ETH historical cycle before ETH discovery.",
+                ready_detail="Run ETH exact bounded discovery after ETH cycle evidence is available.",
+                waiting_detail="Run the ETH brute-force cycle before ETH exact discovery.",
+                expected_artifact_ids={"exact_entry_sweep_ethusdt_durable_r104_v1"},
             ),
             self._artifact_job_milestone(
                 "candidate_eligibility",
@@ -508,9 +533,16 @@ class OperatorConsoleService:
                 "candidate_pack_eligibility",
                 jobs,
                 artifacts,
-                prerequisite_complete=any(item.get("type") == "discovery_run" for item in artifacts),
+                prerequisite_complete=any(
+                    item.get("type") == "discovery_run"
+                    and self._artifact_identity(item) in {
+                        "exact_entry_sweep_btcusdt_durable_r104_v1",
+                        "exact_entry_sweep_ethusdt_durable_r104_v1",
+                    }
+                    for item in artifacts
+                ),
                 ready_detail="Evaluate latest discovery output against candidate-pack gate evidence.",
-                waiting_detail="Run at least one durable discovery before eligibility review.",
+                waiting_detail="Run at least one exact durable discovery before eligibility review.",
             ),
         ]
         complete_count = sum(1 for item in milestones if item["status"] == "complete")
@@ -532,6 +564,9 @@ class OperatorConsoleService:
             "milestones": milestones,
             "settings": {
                 "default_scope": "durable public-archive R104 fixtures",
+                "primary_cycle_profile": "deep durable cycle, 64 candidates per strategy, 16 regions refined",
+                "primary_discovery_profile": "exact bounded sweep, 570240 planned combinations per symbol",
+                "standard_discovery_profile": "720-trial sparse screen for quick blocker feedback",
                 "output_policy": "isolated operator output directories",
                 "path_policy": "configs plus research output allowlists",
                 "promotion_policy": "candidate pack blocked until gates pass",
@@ -553,6 +588,7 @@ class OperatorConsoleService:
                         {
                             "type": "historical_research_cycle",
                             "path": str(path),
+                            "sort_time": path.stat().st_mtime,
                             "manifest": payload,
                             "summary": {
                                 "cycle_id": payload.get("cycle_id"),
@@ -569,6 +605,7 @@ class OperatorConsoleService:
                         {
                             "type": "discovery_run",
                             "path": str(path),
+                            "sort_time": path.stat().st_mtime,
                             "manifest": payload,
                             "summary": {
                                 "run_id": payload.get("run_id"),
@@ -585,6 +622,7 @@ class OperatorConsoleService:
                         {
                             "type": "candidate_pack_eligibility",
                             "path": str(path),
+                            "sort_time": path.stat().st_mtime,
                             "manifest": payload,
                             "summary": {
                                 "bridge_scope": payload.get("bridge_scope"),
@@ -593,6 +631,100 @@ class OperatorConsoleService:
                         }
                     )
         return artifacts
+
+    def _research_progress_known_artifacts(self) -> list[dict[str, Any]]:
+        root = self.config.research.output_dir.resolve()
+        if not root.exists():
+            return []
+        cycle_ids = (
+            "r104-btcusdt-durable-public-archive-deep-v1",
+            "r104-ethusdt-durable-public-archive-deep-v1",
+            "r104-btcusdt-durable-public-archive-v1",
+            "r104-ethusdt-durable-public-archive-v1",
+        )
+        discovery_ids = (
+            "exact_entry_sweep_btcusdt_durable_r104_v1",
+            "exact_entry_sweep_ethusdt_durable_r104_v1",
+            "standard_entry_discovery_btcusdt_durable_r104_v1",
+            "standard_entry_discovery_ethusdt_durable_r104_v1",
+            "deep_candidate_harvest_btcusdt_v4",
+            "standard_entry_discovery_btcusdt_v4",
+        )
+        artifacts: list[dict[str, Any]] = []
+        for cycle_id in cycle_ids:
+            safe_id = _safe_operator_path_part(cycle_id)
+            direct_id = cycle_id.replace("-", "_")
+            paths = [
+                *root.glob(f"operator_runs/historical_cycles/{safe_id}/*/research_cycle_manifest.json"),
+                root / "historical_cycles" / direct_id / "research_cycle_manifest.json",
+            ]
+            for path in paths:
+                artifact = self._research_progress_artifact_from_manifest(
+                    path,
+                    artifact_type="historical_research_cycle",
+                )
+                if artifact is not None:
+                    artifacts.append(artifact)
+        for run_id in discovery_ids:
+            safe_id = _safe_operator_path_part(run_id)
+            paths = [
+                *root.glob(f"operator_runs/discovery_runs/{safe_id}/*/discovery_run_manifest.json"),
+                root / "discovery_runs" / run_id / "discovery_run_manifest.json",
+            ]
+            for path in paths:
+                artifact = self._research_progress_artifact_from_manifest(path, artifact_type="discovery_run")
+                if artifact is not None:
+                    artifacts.append(artifact)
+        for path in root.glob("operator_runs/candidate_pack_eligibility/*/candidate_pack_eligibility_manifest.json"):
+            artifact = self._research_progress_artifact_from_manifest(path, artifact_type="candidate_pack_eligibility")
+            if artifact is not None:
+                artifacts.append(artifact)
+        return artifacts
+
+    def _research_progress_artifact_from_manifest(
+        self,
+        path: Path,
+        *,
+        artifact_type: str,
+    ) -> dict[str, Any] | None:
+        path = Path(path)
+        if not path.is_file():
+            return None
+        payload = self._read_json_path(path)
+        if not isinstance(payload, dict):
+            return None
+        if artifact_type == "historical_research_cycle":
+            summary = {
+                "cycle_id": payload.get("cycle_id"),
+                "symbol": payload.get("symbol"),
+                "candidate_count": payload.get("candidate_count"),
+            }
+        elif artifact_type == "discovery_run":
+            summary = {
+                "run_id": payload.get("run_id"),
+                "symbol": payload.get("symbol"),
+                "status": ((payload.get("state") or {}).get("status")),
+            }
+        else:
+            summary = {
+                "bridge_scope": payload.get("bridge_scope"),
+                "candidate_pack_written": payload.get("candidate_pack_written"),
+            }
+        return {
+            "type": artifact_type,
+            "path": str(path),
+            "sort_time": path.stat().st_mtime,
+            "manifest": payload,
+            "summary": summary,
+        }
+
+    def _dedupe_research_progress_artifacts(self, artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        by_path: dict[str, dict[str, Any]] = {}
+        for artifact in artifacts:
+            path = str(artifact.get("path") or "")
+            if path:
+                by_path[path] = artifact
+        return sorted(by_path.values(), key=lambda item: float(item.get("sort_time") or 0.0), reverse=True)
 
     def _readiness_milestone(self, readiness: Mapping[str, Any]) -> dict[str, Any]:
         ready = bool(readiness.get("ready"))
@@ -622,8 +754,9 @@ class OperatorConsoleService:
         prerequisite_complete: bool,
         ready_detail: str,
         waiting_detail: str,
+        expected_artifact_ids: set[str] | None = None,
     ) -> dict[str, Any]:
-        artifact = self._latest_research_artifact(artifacts, artifact_type, symbol)
+        artifact = self._latest_research_artifact(artifacts, artifact_type, symbol, expected_ids=expected_artifact_ids)
         job = self._latest_research_job(jobs, job_type, symbol)
         active = job if job and job.get("status") in {"queued", "running"} else None
         failed = job if job and job.get("status") == "failed" else None
@@ -673,12 +806,27 @@ class OperatorConsoleService:
         artifacts: list[dict[str, Any]],
         artifact_type: str,
         symbol: str | None,
+        expected_ids: set[str] | None = None,
     ) -> dict[str, Any] | None:
         for artifact in artifacts:
             if artifact.get("type") != artifact_type:
                 continue
             if symbol is None or self._research_symbol_from_payload(artifact) == symbol:
-                return artifact
+                if expected_ids is None or self._artifact_identity(artifact) in expected_ids:
+                    return artifact
+        return None
+
+    def _artifact_identity(self, artifact: Mapping[str, Any]) -> str | None:
+        summary = artifact.get("summary") if isinstance(artifact.get("summary"), Mapping) else {}
+        manifest = artifact.get("manifest") if isinstance(artifact.get("manifest"), Mapping) else {}
+        for value in (
+            summary.get("run_id"),
+            summary.get("cycle_id"),
+            manifest.get("run_id"),
+            manifest.get("cycle_id"),
+        ):
+            if value is not None and str(value).strip():
+                return str(value)
         return None
 
     def _latest_research_job(
@@ -1034,6 +1182,7 @@ class OperatorConsoleService:
             if payload is None:
                 continue
             required_outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
+            search_space = payload.get("search_space") if isinstance(payload.get("search_space"), dict) else {}
             artifacts.append(
                 {
                     "type": "discovery_run",
@@ -1052,6 +1201,12 @@ class OperatorConsoleService:
                         "snapshot_count": ((payload.get("state") or {}).get("snapshot_count")),
                         "last_snapshot_path": ((payload.get("state") or {}).get("last_snapshot_path")),
                         "budget_max_trials": ((payload.get("budget") or {}).get("max_trials")),
+                        "search_space": search_space,
+                        "search_space_total_combinations": search_space.get("total_combinations"),
+                        "search_space_planned_trials": search_space.get("planned_trials"),
+                        "search_space_sampled_fraction": search_space.get("sampled_fraction"),
+                        "search_space_exhaustive": search_space.get("exhaustive"),
+                        "search_space_coverage_label": search_space.get("coverage_label"),
                         "candidate_pack_written": payload.get("candidate_pack_written"),
                         "candidate_acceptance_scope": payload.get("candidate_acceptance_scope"),
                         "runtime_seconds": ((payload.get("runtime") or {}).get("elapsed_seconds")),

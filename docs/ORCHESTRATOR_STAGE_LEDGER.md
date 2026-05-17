@@ -2,7 +2,7 @@
 
 Current stage: Stage R104 candidate validation on durable evidence
 Current stage owner: Codex Research Agent
-Stage status: in progress - WPR104-03 closed; durable UI/control path, gap-aware durable cycles, and operator progress usability are wired, empirical candidate validation runs remain pending
+Stage status: in progress - WPR104-04 closed; durable UI/control path, gap-aware durable cycles, brute-force-scale exact discovery profiles, and truthful progress evidence are wired, expanded durable data remains required for candidate-ready evidence
 Last updated: 2026-05-17
 
 ## Stage entry decision
@@ -10,6 +10,8 @@ Last updated: 2026-05-17
 - Prior stage completed: yes
 - Evidence links:
   - `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`
+  - `docs/stage_reports/STAGE_R104_DURABLE_BRUTEFORCE_RUN_HARDENING_REPORT.md`
+  - `docs/work_packets/WPR104-04-durable-bruteforce-run-hardening.md`
   - `docs/work_packets/WPR104-01-research-ui-durable-candidate-console.md`
   - `docs/stage_reports/STAGE_R104_OPERATOR_CONSOLE_USABILITY_HARDENING_REPORT.md`
   - `docs/work_packets/WPR104-03-operator-console-usability-hardening.md`
@@ -37,8 +39,10 @@ Last updated: 2026-05-17
   - `docs/stage_reports/STAGE_R96_GPU_ACCELERATED_STABILITY_REGION_SEARCH_REPORT.md`
 - Known blockers accepted into this stage:
   - No P0 issues are open.
-  - No P1 issues are open after R103. `ISSUE-R101-003` is resolved by compact
-    checksum-verified BTCUSDT/ETHUSDT Binance Vision multi-window fixture packs.
+  - `ISSUE-R104-001` is open. Compact checksum-verified BTCUSDT/ETHUSDT
+    Binance Vision multi-window fixture packs are valid for screening, but
+    expanded durable primary-bar fixtures are still required for
+    candidate-ready brute-force evidence.
   - `ISSUE-R95-001` remains resolved by WPR96 with optional
     `cuda_fixed_holding` backend evidence and diagnostic-only status.
 
@@ -109,10 +113,23 @@ WPR104-03 implementation note:
   no live execution, promotion, runtime-mode, order-placement, or sizing
   behavior was added.
 
+WPR104-04 implementation note:
+
+- `WPR104-04-durable-bruteforce-run-hardening` investigated the no-lead durable
+  runs and found completed short/sparse artifacts plus compact 32-primary-bar
+  fixture limits, not a runner crash. Discovery manifests and snapshots now
+  carry search-space coverage metadata. R104 has BTC/ETH exact bounded sweep
+  configs with 570240 planned combinations per symbol, deeper BTC/ETH
+  historical-cycle configs, durable operator defaults, bounded disk-artifact
+  progress indexing, clearer deep/exact UI controls, and mobile/desktop layout
+  verification. `ISSUE-R104-001` remains open for expanded durable fixture
+  data before candidate-ready claims.
+
 ## Open work packets
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR104-04-durable-bruteforce-run-hardening | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/discovery/**`, `configs/research/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/contracts/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | R104 exact bounded discovery profiles, deeper durable cycle configs, manifest search-space coverage metadata, bounded disk-artifact progress indexing, UI deep/exact operation path, compact-fixture blocker issue, browser layout checks, and validation recorded in `docs/stage_reports/STAGE_R104_DURABLE_BRUTEFORCE_RUN_HARDENING_REPORT.md`. |
 | WPR104-03-operator-console-usability-hardening | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/persistence/sqlite_store.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `src/tradingbotsuite/web/templates/timeline.html`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/contracts/**` | Backend-derived R104 progress API, command-center progress meter/function blocks/defaults, evidence-state milestone ordering, timeline job status/symbol hardening, responsive UI verification, and validation recorded in `docs/stage_reports/STAGE_R104_OPERATOR_CONSOLE_USABILITY_HARDENING_REPORT.md`. |
 | WPR104-02-gap-aware-durable-cycle-feature-materialization | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/features/builders.py`, `src/tradingbotsuite/research_cycle/runner.py`, `tests/features/**`, `tests/historical/**`, `tests/contracts/**` | Gap-aware segmented feature materialization for intentional R104 multi-window fixture cycles, duplicate/short-interval regressions, failed BTC operator spec rerun successfully, and validation recorded in `docs/stage_reports/STAGE_R104_GAP_AWARE_DURABLE_CYCLE_FEATURE_MATERIALIZATION_REPORT.md`. |
 | WPR104-01-research-ui-durable-candidate-console | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/research/**`, `configs/discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/base.html`, `src/tradingbotsuite/web/templates/research.html`, `tests/contracts/**`, `tests/integration/test_research_ui.py`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | Durable R104 Research UI/control path, BTC/ETH durable cycle and discovery defaults, candidate-pack eligibility route/job, readiness/artifact indexing, and validation recorded in `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`. |

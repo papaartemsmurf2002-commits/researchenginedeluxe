@@ -5,7 +5,11 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
-from tradingbotsuite.research_discovery.spec import DiscoveryResolvedPaths, DiscoveryRunSpec
+from tradingbotsuite.research_discovery.spec import (
+    DiscoveryResolvedPaths,
+    DiscoveryRunSpec,
+    discovery_search_space_summary,
+)
 
 
 DISCOVERY_RUN_MANAGER_VERSION = "discovery-run-manager-v1"
@@ -40,6 +44,7 @@ def discovery_manifest_payload(
         "resolved_paths": resolved_paths.to_payload(),
         "output_dir": str(resolved_paths.output_dir),
         "budget": spec.budget.to_payload(),
+        "search_space": discovery_search_space_summary(spec),
         "data": spec.data.to_payload(),
         "data_evidence": dict(data_evidence or {}),
         "search": spec.search.to_payload(),

@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-13
+Last updated: 2026-05-17
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,9 +22,51 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 1 | 0 |
-| P1 | 0 | 0 | 8 | 0 |
+| P1 | 1 | 0 | 8 | 0 |
 | P2 | 0 | 0 | 2 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
+
+## ISSUE-R104-001: Durable R104 fixtures are too compact for candidate-ready brute-force evidence
+
+Severity: P1
+Stage discovered: Stage R104 - candidate validation on durable evidence
+Owner: Codex Research Agent
+Status: open
+Paths affected: `data/research/fixtures/**`, `configs/discovery/**`, `configs/research/**`, `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/research_cycle/**`
+
+### Problem
+
+The current BTCUSDT and ETHUSDT durable public-archive fixture packs are
+checksum-verified and suitable for compact screening, but each pack contains
+only 32 primary 15m bars. Deep discovery runs therefore complete with very low
+trade counts and many fail-closed blockers such as
+`independent_event_count_below_floor`, even when the search budget is expanded.
+This is not a UI failure; it is insufficient primary-bar evidence for a
+candidate-ready empirical claim.
+
+### Evidence
+
+R104 investigation found completed BTC/ETH durable historical cycles with 17
+candidates each and all gates blocked. Latest discovery runs completed 360 to
+5000 trials with zero current interesting candidates; the newest BTC deep run
+blocked 5000/5000 rows and produced maximum trade counts near five. Feature
+matrices from the compact fixtures have only 32 rows, causing long-window
+feature columns and independent-event accounting to fail closed.
+
+### Required resolution
+
+Create expanded BTCUSDT and ETHUSDT durable public-archive fixture packs with
+materially more primary 15m bars across the selected regimes, preserve source
+archive hashes and provider capability metadata, rerun durable readiness, then
+rerun the R104 deep historical cycles and exact bounded discovery sweeps. Keep
+all artifacts `research_only`, `observe_only`, and `promotion_ready: false`
+until candidate gates pass.
+
+### Resolution notes
+
+Open. WPR104-04 adds truthful brute-force-scale run profiles and UI/progress
+wiring, but it does not fabricate additional durable data or claim candidate
+readiness from the compact screening fixture.
 
 ## ISSUE-R101-001: Fixture source provider capability mismatch is not validated
 

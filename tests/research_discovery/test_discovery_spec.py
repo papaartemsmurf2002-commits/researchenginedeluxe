@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
-from tradingbotsuite.research_discovery.spec import DiscoveryRunSpec, generated_trial_templates, resolve_discovery_paths
+from tradingbotsuite.research_discovery.spec import (
+    DiscoveryRunSpec,
+    discovery_search_space_summary,
+    generated_trial_templates,
+    resolve_discovery_paths,
+)
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
@@ -74,21 +79,30 @@ def test_discovery_spec_rejects_unsafe_trial_id(tmp_path: Path) -> None:
 
 
 def test_real_discovery_configs_generate_non_placeholder_search_templates() -> None:
-    standard = DiscoveryRunSpec.from_path(Path("configs/discovery/standard_entry_discovery_btcusdt_v4.json"))
+    standard = DiscoveryRunSpec.from_path(Path("configs/discovery/standard_entry_discovery_btcusdt_durable_r104_v1.json"))
     eth_standard = DiscoveryRunSpec.from_path(Path("configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json"))
     deep = DiscoveryRunSpec.from_path(Path("configs/discovery/deep_candidate_harvest_btcusdt_v4.json"))
+    exact_btc = DiscoveryRunSpec.from_path(Path("configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json"))
+    exact_eth = DiscoveryRunSpec.from_path(Path("configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json"))
 
     standard_templates = generated_trial_templates(standard)
     eth_templates = generated_trial_templates(eth_standard)
     deep_templates = generated_trial_templates(deep)
+    standard_summary = discovery_search_space_summary(standard)
+    deep_summary = discovery_search_space_summary(deep)
+    exact_btc_summary = discovery_search_space_summary(exact_btc)
+    exact_eth_summary = discovery_search_space_summary(exact_eth)
 
     assert standard.discovery_mode == "entry_discovery_standard"
     assert eth_standard.discovery_mode == "entry_discovery_standard"
     assert eth_standard.symbol == "ETHUSDT"
     assert deep.discovery_mode == "deep_candidate_harvest"
-    assert standard.execution.max_workers == 4
-    assert eth_standard.execution.max_workers == 4
+    assert exact_btc.discovery_mode == "deep_candidate_harvest"
+    assert exact_eth.symbol == "ETHUSDT"
+    assert standard.execution.max_workers == 8
+    assert eth_standard.execution.max_workers == 8
     assert deep.execution.max_workers == 8
+    assert exact_btc.execution.max_workers == 48
     assert deep.execution.persist_trial_artifacts == "interesting_only"
     assert len(standard_templates) == standard.budget.max_trials
     assert len(eth_templates) == eth_standard.budget.max_trials
@@ -103,15 +117,28 @@ def test_real_discovery_configs_generate_non_placeholder_search_templates() -> N
         "gmm_all_regime_neighbors_with_gate",
     }
     assert all(template.payload["true_hmm_backend_used"] is False for template in standard_templates[:10])
-    assert {template.payload["feature_column_set_id"] for template in standard_templates}.issuperset(
-        {"price_trend_vol", "compact_wt3d_base", "alternative_non_wt_price_state", "durable_aggtrade_orderflow_proxy"}
-    )
+    assert {template.payload["feature_column_set_id"] for template in standard_templates} == {
+        "price_trend_vol",
+        "compact_wt3d_base",
+    }
     assert standard.search.min_splits == 2
     assert standard.search.min_trade_count == 1
     assert "btcusdt_public_archive_multi_window_v1" in str(standard.data.dataset_manifest_paths[0])
     assert "ethusdt_public_archive_multi_window_v1" in str(eth_standard.data.dataset_manifest_paths[0])
     assert any(template.payload["hmm_state_count"] != 4 for template in deep_templates)
     assert any(template.payload["min_neighbor_count"] != 4 for template in deep_templates)
+    assert standard_summary["coverage_label"] == "sparse_sample"
+    assert standard_summary["planned_trials"] == 720
+    assert standard_summary["sampled_fraction"] < 0.01
+    assert deep_summary["coverage_label"] == "sparse_sample"
+    assert deep_summary["exhaustive"] is False
+    assert exact_btc_summary["total_combinations"] == 570240
+    assert exact_btc_summary["planned_trials"] == 570240
+    assert exact_btc_summary["sampled_fraction"] == 1.0
+    assert exact_btc_summary["exhaustive"] is True
+    assert exact_btc_summary["coverage_label"] == "exhaustive"
+    assert exact_eth_summary["total_combinations"] == 570240
+    assert exact_eth_summary["exhaustive"] is True
 
 
 def test_real_discovery_templates_expand_explicit_regime_modes(tmp_path: Path) -> None:

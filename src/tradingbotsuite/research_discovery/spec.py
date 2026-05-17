@@ -26,6 +26,7 @@ SUPPORTED_REGIME_MODES = (
     "gmm_same_regime_neighbors",
     "gmm_all_regime_neighbors_with_gate",
 )
+REAL_DISCOVERY_MODES = frozenset({"entry_discovery_standard", "hmm_regime_knn_lab", "deep_candidate_harvest"})
 SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
@@ -454,7 +455,7 @@ def resolve_discovery_paths(
 def generated_trial_templates(spec: DiscoveryRunSpec) -> tuple[DiscoveryTrialTemplate, ...]:
     if spec.trial_templates:
         return spec.trial_templates[: spec.budget.max_trials]
-    if spec.discovery_mode in {"entry_discovery_standard", "hmm_regime_knn_lab", "deep_candidate_harvest"}:
+    if spec.discovery_mode in REAL_DISCOVERY_MODES:
         return _generated_real_discovery_trial_templates(spec)
     templates: list[DiscoveryTrialTemplate] = []
     for index in range(1, spec.budget.max_trials + 1):
@@ -487,32 +488,45 @@ def generated_trial_templates(spec: DiscoveryRunSpec) -> tuple[DiscoveryTrialTem
     return tuple(templates)
 
 
+def discovery_search_space_summary(spec: DiscoveryRunSpec) -> dict[str, Any]:
+    if spec.trial_templates:
+        total_combinations = len(spec.trial_templates)
+        planned_trials = min(spec.budget.max_trials, total_combinations)
+        return _search_space_payload(
+            search_space_kind="explicit_trial_templates",
+            configured_max_trials=spec.budget.max_trials,
+            planned_trials=planned_trials,
+            total_combinations=total_combinations,
+            dimension_counts={"trial_templates": total_combinations},
+        )
+    if spec.discovery_mode in REAL_DISCOVERY_MODES:
+        dimensions = _real_discovery_dimensions(spec)
+        total_combinations = _dimension_space_size(dimensions)
+        if total_combinations <= 0:
+            raise ValueError("real discovery search generated no trial combinations")
+        planned_trials = min(spec.budget.max_trials, total_combinations)
+        return _search_space_payload(
+            search_space_kind="real_regime_knn_entry_discovery",
+            configured_max_trials=spec.budget.max_trials,
+            planned_trials=planned_trials,
+            total_combinations=total_combinations,
+            dimension_counts={name: len(values) for name, values in dimensions},
+        )
+    total_combinations = max(1, spec.budget.max_trials)
+    return _search_space_payload(
+        search_space_kind="placeholder_discovery_manager_smoke",
+        configured_max_trials=spec.budget.max_trials,
+        planned_trials=spec.budget.max_trials,
+        total_combinations=total_combinations,
+        dimension_counts={"placeholder_trials": total_combinations},
+    )
+
+
 def _generated_real_discovery_trial_templates(spec: DiscoveryRunSpec) -> tuple[DiscoveryTrialTemplate, ...]:
     import random
 
-    feature_set_ids = spec.feature_column_set_ids or ("price_trend_vol",)
-    search = spec.search
-    k_neighbor_pairs = tuple(
-        {"k": int(k_value), "min_neighbor_count": int(min_neighbor_count)}
-        for k_value in search.k_values
-        for min_neighbor_count in search.min_neighbor_counts
-        if int(min_neighbor_count) <= int(k_value)
-    )
-    dimensions: tuple[tuple[str, tuple[Any, ...]], ...] = (
-        ("feature_column_set_id", tuple(feature_set_ids)),
-        ("hmm_state_count", tuple(int(value) for value in search.hmm_state_counts)),
-        ("hmm_posterior_threshold", tuple(float(value) for value in search.hmm_posterior_thresholds)),
-        ("hmm_entropy_threshold", tuple(float(value) for value in search.hmm_entropy_thresholds)),
-        ("label_horizon", tuple(search.label_horizons)),
-        ("knn_neighbor_pair", k_neighbor_pairs),
-        ("distance_metric", tuple(search.distance_metrics)),
-        ("probability_threshold", tuple(float(value) for value in search.probability_thresholds)),
-        ("expected_value_threshold", tuple(float(value) for value in search.expected_value_thresholds)),
-        ("min_neighbor_agreement", tuple(float(value) for value in search.min_neighbor_agreements)),
-        ("min_distance_quality", tuple(float(value) for value in search.min_distance_qualities)),
-        ("vote_margin_threshold", tuple(float(value) for value in search.vote_margin_thresholds)),
-        ("regime_mode", tuple(search.regime_modes)),
-    )
+    dimensions = _real_discovery_dimensions(spec)
+    search_space = discovery_search_space_summary(spec)
     total_combinations = _dimension_space_size(dimensions)
     rng = random.Random(int(spec.budget.rng_seed))
     if total_combinations <= 0:
@@ -529,6 +543,9 @@ def _generated_real_discovery_trial_templates(spec: DiscoveryRunSpec) -> tuple[D
         payload["trial_kind"] = "regime_knn_entry_discovery"
         payload.update(regime_mode_settings(str(payload["regime_mode"])).to_payload())
         payload["search_space_total_combinations"] = total_combinations
+        payload["search_space_planned_trials"] = search_space["planned_trials"]
+        payload["search_space_sampled_fraction"] = search_space["sampled_fraction"]
+        payload["search_space_exhaustive"] = search_space["exhaustive"]
         digest = _stable_payload_digest({"run_id": spec.run_id, "index": index, **payload})[:16]
         templates.append(
             DiscoveryTrialTemplate(
@@ -543,6 +560,62 @@ def _generated_real_discovery_trial_templates(spec: DiscoveryRunSpec) -> tuple[D
             )
         )
     return tuple(templates)
+
+
+def _real_discovery_dimensions(spec: DiscoveryRunSpec) -> tuple[tuple[str, tuple[Any, ...]], ...]:
+    feature_set_ids = spec.feature_column_set_ids or ("price_trend_vol",)
+    search = spec.search
+    return (
+        ("feature_column_set_id", tuple(feature_set_ids)),
+        ("hmm_state_count", tuple(int(value) for value in search.hmm_state_counts)),
+        ("hmm_posterior_threshold", tuple(float(value) for value in search.hmm_posterior_thresholds)),
+        ("hmm_entropy_threshold", tuple(float(value) for value in search.hmm_entropy_thresholds)),
+        ("label_horizon", tuple(search.label_horizons)),
+        ("knn_neighbor_pair", _valid_knn_neighbor_pairs(search)),
+        ("distance_metric", tuple(search.distance_metrics)),
+        ("probability_threshold", tuple(float(value) for value in search.probability_thresholds)),
+        ("expected_value_threshold", tuple(float(value) for value in search.expected_value_thresholds)),
+        ("min_neighbor_agreement", tuple(float(value) for value in search.min_neighbor_agreements)),
+        ("min_distance_quality", tuple(float(value) for value in search.min_distance_qualities)),
+        ("vote_margin_threshold", tuple(float(value) for value in search.vote_margin_thresholds)),
+        ("regime_mode", tuple(search.regime_modes)),
+    )
+
+
+def _valid_knn_neighbor_pairs(search: DiscoverySearchSpec) -> tuple[dict[str, int], ...]:
+    return tuple(
+        {"k": int(k_value), "min_neighbor_count": int(min_neighbor_count)}
+        for k_value in search.k_values
+        for min_neighbor_count in search.min_neighbor_counts
+        if int(min_neighbor_count) <= int(k_value)
+    )
+
+
+def _search_space_payload(
+    *,
+    search_space_kind: str,
+    configured_max_trials: int,
+    planned_trials: int,
+    total_combinations: int,
+    dimension_counts: Mapping[str, int],
+) -> dict[str, Any]:
+    sampled_fraction = float(planned_trials / total_combinations) if total_combinations else 0.0
+    if planned_trials >= total_combinations:
+        coverage_label = "exhaustive"
+    elif sampled_fraction < 0.01:
+        coverage_label = "sparse_sample"
+    else:
+        coverage_label = "sampled"
+    return {
+        "search_space_kind": search_space_kind,
+        "configured_max_trials": int(configured_max_trials),
+        "planned_trials": int(planned_trials),
+        "total_combinations": int(total_combinations),
+        "sampled_fraction": sampled_fraction,
+        "exhaustive": bool(planned_trials >= total_combinations),
+        "coverage_label": coverage_label,
+        "dimension_counts": dict(dimension_counts),
+    }
 
 
 def _dimension_space_size(dimensions: tuple[tuple[str, tuple[Any, ...]], ...]) -> int:

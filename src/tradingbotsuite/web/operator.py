@@ -149,7 +149,9 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         return spec_path
 
     def validate_historical_cycle_request(payload: dict[str, Any]) -> Path:
-        spec_path = resolve_operator_path(payload.get("spec_path") or "configs/research/full_cycle_btcusdt_perp_context_v2.json")
+        spec_path = resolve_operator_path(
+            payload.get("spec_path") or "configs/research/full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json"
+        )
         research_root = resolve_operator_path(active_config().research.output_dir)
         allowed_spec_roots = [
             (repo_root / "configs" / "research").resolve(),
@@ -170,7 +172,9 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         return spec_path
 
     def validate_discovery_run_request(payload: dict[str, Any]) -> Path:
-        spec_path = resolve_operator_path(payload.get("spec_path") or "configs/discovery/quick_smoke_btcusdt_v4.json")
+        spec_path = resolve_operator_path(
+            payload.get("spec_path") or "configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json"
+        )
         research_root = resolve_operator_path(active_config().research.output_dir)
         allowed_spec_roots = [
             (repo_root / "configs" / "discovery").resolve(),

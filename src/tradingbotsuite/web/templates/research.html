@@ -194,6 +194,9 @@
   }
   .readiness-row > *,
   .workflow-step > *,
+  .evidence-grid > *,
+  .stat-grid > *,
+  .stack > *,
   .function-block,
   .settings-panel,
   .operation-table-wrap,
@@ -202,8 +205,13 @@
   }
   .readiness-row .muted,
   .workflow-step .muted,
-  .settings-line .muted {
+  .settings-line .muted,
+  .list-item {
     overflow-wrap: anywhere;
+  }
+  .research-shell .stat-grid {
+    min-width: 0;
+    grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   }
   .stage-picker {
     display: grid;
@@ -469,7 +477,8 @@
       grid-template-columns: 1fr;
     }
     .workflow-step,
-    .settings-line {
+    .settings-line,
+    .research-shell .stat-grid {
       grid-template-columns: 1fr;
     }
     .job-table {
@@ -515,19 +524,19 @@
         <div class="function-grid">
           <div class="function-block">
             <h3>Primary BTC Path</h3>
-            <div class="muted">Run the default BTC durable cycle, then discovery, then eligibility review.</div>
+            <div class="muted">Run the deeper BTC durable cycle, then the exact bounded sweep, then eligibility review.</div>
             <div class="routine-actions">
-              <button onclick="queueDurableCycle('BTCUSDT')">BTC Durable Cycle</button>
-              <button class="secondary" onclick="queueDurableDiscovery('BTCUSDT')">BTC Durable Discovery</button>
+              <button onclick="queueDurableCycle('BTCUSDT')">BTC Deep Cycle</button>
+              <button class="secondary" onclick="queueDurableDiscovery('BTCUSDT')">BTC Exact Sweep</button>
               <button class="ghost" title="Review Candidate Eligibility" onclick="reviewCandidateEligibility()">Evaluate Eligibility</button>
             </div>
           </div>
           <div class="function-block">
             <h3>ETH Mirror</h3>
-            <div class="muted">Repeat the durable path on ETH so evidence is not BTC-only.</div>
+            <div class="muted">Repeat the brute-force path on ETH so evidence is not BTC-only.</div>
             <div class="routine-actions">
-              <button onclick="queueDurableCycle('ETHUSDT')">ETH Durable Cycle</button>
-              <button class="secondary" onclick="queueDurableDiscovery('ETHUSDT')">ETH Durable Discovery</button>
+              <button onclick="queueDurableCycle('ETHUSDT')">ETH Deep Cycle</button>
+              <button class="secondary" onclick="queueDurableDiscovery('ETHUSDT')">ETH Exact Sweep</button>
             </div>
           </div>
           <div class="function-block">
@@ -541,10 +550,11 @@
           </div>
           <div class="function-block">
             <h3>Discovery Controls</h3>
-            <div class="muted">Use these when you need a quick path check, a deeper BTC harvest, or a paused/resumed run.</div>
+            <div class="muted">Exact sweeps are the durable objective. Standard screens are for quick blocker feedback; smoke is plumbing only.</div>
             <div class="routine-actions">
-              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/quick_smoke_btcusdt_v4.json', 'Quick plumbing check', 1, false)">Quick Plumbing Check</button>
-              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/deep_candidate_harvest_btcusdt_v4.json', 'Deep BTC durable harvest', null, false)">Deep BTC Harvest</button>
+              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/standard_entry_discovery_btcusdt_durable_r104_v1.json', 'BTC standard blocker screen', null, false)">BTC Standard Screen</button>
+              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json', 'ETH standard blocker screen', null, false)">ETH Standard Screen</button>
+              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/quick_smoke_btcusdt_v4.json', 'Quick plumbing check', 1, false)">Diagnostic Smoke</button>
               <button class="ghost" onclick="pauseDiscoveryAfterOneTrial()">Pause After One Trial</button>
               <button class="ghost" onclick="queueDiscoveryRun('Resume discovery run', true)">Resume Run</button>
             </div>
@@ -584,10 +594,10 @@
           <table class="operation-table">
             <thead><tr><th>Step</th><th>Run</th><th>Done When</th><th>Next</th></tr></thead>
             <tbody>
-              <tr><td>1</td><td>Check Durable Readiness</td><td>BTC and ETH fixture manifests are ready.</td><td>Run BTC Durable Cycle.</td></tr>
-              <tr><td>2</td><td>BTC Durable Cycle</td><td>Historical-cycle manifest, rankings, gates, and rejection report are indexed.</td><td>Run BTC Durable Discovery.</td></tr>
-              <tr><td>3</td><td>BTC Durable Discovery</td><td>Discovery manifest, ledgers, snapshots, and blocker evidence are indexed.</td><td>Review Candidate Eligibility.</td></tr>
-              <tr><td>4</td><td>ETH Durable Cycle and Discovery</td><td>ETH mirror evidence is indexed for cross-symbol inspection.</td><td>Compare blockers and leads.</td></tr>
+              <tr><td>1</td><td>Check Durable Readiness</td><td>BTC and ETH fixture manifests are ready.</td><td>Run BTC Deep Cycle.</td></tr>
+              <tr><td>2</td><td>BTC Deep Cycle</td><td>Deep historical-cycle manifest, rankings, gates, and rejection report are indexed.</td><td>Run BTC Exact Sweep.</td></tr>
+              <tr><td>3</td><td>BTC Exact Sweep</td><td>Discovery manifest reports exhaustive coverage and ledgers/snapshots are indexed.</td><td>Review Candidate Eligibility.</td></tr>
+              <tr><td>4</td><td>ETH Deep Cycle and Exact Sweep</td><td>ETH mirror evidence is indexed for cross-symbol inspection.</td><td>Compare blockers and leads.</td></tr>
               <tr><td>5</td><td>Candidate Eligibility Review</td><td>Eligibility manifest states eligible rows or explicit blocker reasons.</td><td>Open Artifacts and inspect gates.</td></tr>
             </tbody>
           </table>
@@ -729,8 +739,10 @@
         <div class="control-grid">
           <label>Cycle preset
             <select id="historical-cycle-preset" onchange="applyHistoricalPreset()">
-              <option value="configs/research/full_cycle_btcusdt_durable_public_archive_r104_v1.json">BTCUSDT durable R104 cycle</option>
-              <option value="configs/research/full_cycle_ethusdt_durable_public_archive_r104_v1.json">ETHUSDT durable R104 cycle</option>
+              <option value="configs/research/full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json">BTCUSDT durable deep R104 cycle</option>
+              <option value="configs/research/full_cycle_ethusdt_durable_public_archive_r104_deep_v1.json">ETHUSDT durable deep R104 cycle</option>
+              <option value="configs/research/full_cycle_btcusdt_durable_public_archive_r104_v1.json">BTCUSDT durable standard R104 cycle</option>
+              <option value="configs/research/full_cycle_ethusdt_durable_public_archive_r104_v1.json">ETHUSDT durable standard R104 cycle</option>
               <option value="configs/research/full_cycle_btcusdt_perp_context_v2.json">BTCUSDT provider-context diagnostic cycle</option>
               <option value="configs/research/full_cycle_ethusdt_perp_context_v2.json">ETHUSDT provider-context diagnostic cycle</option>
               <option value="configs/research/full_cycle_btc_v1.json">BTC baseline cycle</option>
@@ -754,19 +766,21 @@
       </div>
 
       <div class="run-workspace">
-        <h3>V4 Durable Discovery Run</h3>
-        <div class="muted">Queue real entry-discovery searches on durable BTC/ETH fixtures or run a quick plumbing check. Completed runs write to job-specific directories; paused runs keep a stable directory for resume.</div>
+        <h3>R104 Durable Discovery Run</h3>
+        <div class="muted">Queue exact bounded sweeps for durable candidate search, standard screens for fast blocker feedback, or a quick plumbing check. Completed runs write to job-specific directories; paused runs keep a stable directory for resume.</div>
         <div class="control-grid">
           <label>Discovery preset
             <select id="discovery-run-preset" onchange="applyDiscoveryPreset()">
-              <option value="configs/discovery/standard_entry_discovery_btcusdt_v4.json">BTCUSDT durable standard discovery</option>
+              <option value="configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json">BTCUSDT exact bounded sweep</option>
+              <option value="configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json">ETHUSDT exact bounded sweep</option>
+              <option value="configs/discovery/standard_entry_discovery_btcusdt_durable_r104_v1.json">BTCUSDT durable standard discovery</option>
               <option value="configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json">ETHUSDT durable standard discovery</option>
-              <option value="configs/discovery/deep_candidate_harvest_btcusdt_v4.json">BTCUSDT durable deep harvest</option>
+              <option value="configs/discovery/deep_candidate_harvest_btcusdt_v4.json">BTCUSDT compatibility sparse harvest</option>
               <option value="configs/discovery/quick_smoke_btcusdt_v4.json">BTCUSDT quick plumbing check</option>
             </select>
           </label>
           <label>Editable spec path
-            <input id="discovery-run-spec" type="text" value="configs/discovery/standard_entry_discovery_btcusdt_v4.json">
+            <input id="discovery-run-spec" type="text" value="configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json">
           </label>
           <label>Stop after trials
             <input id="discovery-stop-after-trials" type="number" min="1" step="1" placeholder="all configured">
@@ -991,20 +1005,35 @@
   };
 
   const discoveryDetails = {
-    "configs/discovery/standard_entry_discovery_btcusdt_v4.json": [
-      ["What It Tests", "Real GMM regime detector plus local KNN entry discovery on the durable BTC public-archive fixture, with explicit no-regime and GMM-gated modes across feature sets, label horizons, K values, distance metrics, and thresholds."],
-      ["When To Use", "Use after BTC durable readiness is green. It should take meaningfully longer than plumbing checks and produce real trial artifacts."],
+    "configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json": [
+      ["What It Tests", "Exact bounded BTC sweep over 570240 real KNN entry-discovery combinations using the feature sets that pass compact durable-fixture preflight."],
+      ["When To Use", "Use after the BTC deep cycle. This is the primary long durable discovery run for brute-force-scale evidence."],
+      ["Where It Writes", "operator_runs/discovery_runs/<exact-sweep>/<job>, feature matrices, trial records, snapshots, and research_only candidate ledgers."]
+    ],
+    "configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json": [
+      ["What It Tests", "Exact bounded ETH sweep over the same 570240-combination grid for mirror evidence and blocker comparison."],
+      ["When To Use", "Use after the ETH deep cycle or after BTC exact sweep completes and you need cross-symbol evidence."],
+      ["Where It Writes", "Research-only ETH exact-sweep artifacts under isolated operator run directories."]
+    ],
+    "configs/discovery/standard_entry_discovery_btcusdt_durable_r104_v1.json": [
+      ["What It Tests", "A 720-trial sparse BTC blocker screen on durable fixtures using price/trend/vol and compact WT feature columns."],
+      ["When To Use", "Use for fast feedback before committing hours to the exact sweep. It is not exhaustive."],
       ["Where It Writes", "operator_runs/discovery_runs/<run>/<job>, feature_matrices, trial_artifacts, trial records, snapshots, and research_only candidate ledgers."]
     ],
     "configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json": [
-      ["What It Tests", "Real GMM regime detector plus local KNN entry discovery on the durable ETH public-archive fixture."],
-      ["When To Use", "Use after ETH durable readiness is green and you want a second-symbol screen using the same R104 path."],
+      ["What It Tests", "A 720-trial sparse ETH blocker screen on durable fixtures using the same compact feature-column scope as BTC."],
+      ["When To Use", "Use for fast ETH blocker feedback before the exact ETH sweep. It is not exhaustive."],
       ["Where It Writes", "Research-only ETH discovery artifacts under isolated operator run directories."]
     ],
     "configs/discovery/deep_candidate_harvest_btcusdt_v4.json": [
-      ["What It Tests", "A larger real search over WT, non-WT, durable aggtrade proxy features, horizons, KNN thresholds, and regime-local variants for unattended candidate harvests."],
-      ["When To Use", "Use when BTC durable standard discovery is stable and you want broader search with half-hour snapshots and resumable state."],
+      ["What It Tests", "Compatibility broad sparse BTC harvest over a very large declared space. It is useful for diagnostics but is not exhaustive on R104 durable fixtures."],
+      ["When To Use", "Use only when comparing against earlier V4 behavior. Prefer exact_entry_sweep_btcusdt_durable_r104_v1 for the current branch objective."],
       ["Where It Writes", "The same research_only discovery artifacts as standard mode, with more trials and larger ledgers under a separate run id."]
+    ],
+    "configs/discovery/standard_entry_discovery_btcusdt_v4.json": [
+      ["What It Tests", "Older BTC V4 standard screen retained for compatibility with prior stage evidence."],
+      ["When To Use", "Use only when reproducing older V4 behavior. Prefer the R104 standard or exact specs for current durable work."],
+      ["Where It Writes", "Research-only discovery artifacts under the configured research root."]
     ],
     "configs/discovery/quick_smoke_btcusdt_v4.json": [
       ["What It Tests", "Discovery manager plumbing: isolated specs, run state, immutable trials, snapshots, and candidate ledgers."],
@@ -1014,13 +1043,13 @@
   };
 
   const durableCycleSpecs = {
-    BTCUSDT: "configs/research/full_cycle_btcusdt_durable_public_archive_r104_v1.json",
-    ETHUSDT: "configs/research/full_cycle_ethusdt_durable_public_archive_r104_v1.json"
+    BTCUSDT: "configs/research/full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json",
+    ETHUSDT: "configs/research/full_cycle_ethusdt_durable_public_archive_r104_deep_v1.json"
   };
 
   const durableDiscoverySpecs = {
-    BTCUSDT: "configs/discovery/standard_entry_discovery_btcusdt_v4.json",
-    ETHUSDT: "configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json"
+    BTCUSDT: "configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json",
+    ETHUSDT: "configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json"
   };
 
   const milestoneActionHandlers = {
@@ -1261,7 +1290,7 @@
     document.getElementById("historical-cycle-preset").value = spec;
     applyHistoricalPreset();
     focusResearchSection("r104-settings-section");
-    return await queueHistoricalCycle(`${symbol} durable R104 cycle`);
+    return await queueHistoricalCycle(`${symbol} deep durable R104 cycle`);
   }
 
   async function queueDiscoveryRun(actionLabel = "Discovery run", forceResume = null) {
@@ -1282,7 +1311,7 @@
     document.getElementById("discovery-stop-after-trials").value = "";
     document.getElementById("discovery-resume").value = "false";
     focusResearchSection("r104-settings-section");
-    return await queueDiscoveryRun(`${symbol} durable R104 discovery`, false);
+    return await queueDiscoveryRun(`${symbol} exact durable R104 sweep`, false);
   }
 
   async function queuePreflightDataReadiness() {
@@ -1572,6 +1601,7 @@
       const blocked = summary.blocked_candidates || {};
       const filterBlocked = summary.filter_blockers || {};
       const latestSnapshot = summary.latest_snapshot || {};
+      const searchSpace = summary.search_space || {};
       const ledgerRows = [
         ...(interesting.rows || []),
         ...(blocked.rows || []),
@@ -1590,6 +1620,9 @@
             ["Symbol", window.TBS.escapeHtml(String(summary.symbol || "n/a"))],
             ["Status", window.TBS.escapeHtml(String(summary.status || "n/a"))],
             ["Completed Trials", window.TBS.toMono(`${summary.completed_trial_count ?? 0}/${summary.budget_max_trials ?? "n/a"}`)],
+            ["Search Coverage", window.TBS.escapeHtml(String(summary.search_space_coverage_label || "n/a"))],
+            ["Search Space", window.TBS.toMono(`${summary.search_space_planned_trials ?? "n/a"}/${summary.search_space_total_combinations ?? "n/a"}`)],
+            ["Sampled Fraction", window.TBS.toMono(formatRate(summary.search_space_sampled_fraction))],
             ["Interesting", window.TBS.toMono(interesting.row_count ?? 0)],
             ["Blocked", window.TBS.toMono(blocked.row_count ?? 0)],
             ["Filter Blocked", window.TBS.toMono(filterBlocked.row_count ?? 0)],
@@ -1611,7 +1644,7 @@
           ` : '<div class="empty" style="margin-top:10px;">No discovery ledger rows yet.</div>'}
           <details class="details">
             <summary>Manifest / ledgers / latest snapshot</summary>
-            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, ledgers: { interesting, blocked, filter_blockers: filterBlocked }, latest_snapshot: latestSnapshot }))}</pre>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, search_space: searchSpace, ledgers: { interesting, blocked, filter_blockers: filterBlocked }, latest_snapshot: latestSnapshot }))}</pre>
           </details>
         </div>
       `;
