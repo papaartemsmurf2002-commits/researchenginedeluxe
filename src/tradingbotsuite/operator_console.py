@@ -7,7 +7,7 @@ from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import pandas as pd
 
@@ -234,7 +234,22 @@ class OperatorConsoleService:
         return await self.store.get_operator_job(job_id)
 
     async def shadow_diagnostics(self, symbol: str, *, limit: int = 20) -> dict[str, Any]:
-        rows = await self.store.list_research_signals(symbol.upper())
+        try:
+            rows = await self.store.list_research_signals(symbol.upper())
+        except Exception as exc:
+            return {
+                "summary": {
+                    "shadow_decision_count": 0,
+                    "scored_count": 0,
+                    "skipped_count": 0,
+                    "accepted_count": 0,
+                    "skip_reasons": {},
+                    "confidence_buckets": {},
+                    "available": False,
+                    "error": str(exc),
+                },
+                "items": [],
+            }
         items: list[dict[str, Any]] = []
         skip_reasons: dict[str, int] = {}
         confidence_buckets: dict[str, int] = {}
@@ -408,6 +423,301 @@ class OperatorConsoleService:
             ),
             "primary_blockers": sorted({reason for item in items for reason in item["blockers"]}),
         }
+
+    async def research_progress_diagnostics(self) -> dict[str, Any]:
+        jobs = await self.list_jobs()
+        artifacts = self._research_progress_artifacts_from_jobs(jobs)
+        readiness = self.r104_readiness_diagnostics()
+        r104_job_types = {
+            "run-historical-research-cycle",
+            "run-discovery",
+            "evaluate-discovery-candidate-pack-eligibility",
+        }
+        active_job = next(
+            (
+                job for job in jobs
+                if job.get("status") in {"queued", "running"} and job.get("job_type") in r104_job_types
+            ),
+            None,
+        )
+        btc_cycle_complete = self._latest_research_artifact(
+            artifacts,
+            "historical_research_cycle",
+            "BTCUSDT",
+        ) is not None
+        eth_cycle_complete = self._latest_research_artifact(
+            artifacts,
+            "historical_research_cycle",
+            "ETHUSDT",
+        ) is not None
+        milestones: list[dict[str, Any]] = [
+            self._readiness_milestone(readiness),
+            self._artifact_job_milestone(
+                "btc_cycle",
+                "BTC durable cycle",
+                "BTCUSDT",
+                "run-historical-research-cycle",
+                "historical_research_cycle",
+                jobs,
+                artifacts,
+                prerequisite_complete=bool(readiness.get("ready")),
+                ready_detail="Run the BTC historical cycle on durable public-archive fixtures.",
+                waiting_detail="Durable readiness must be green before the BTC cycle.",
+            ),
+            self._artifact_job_milestone(
+                "btc_discovery",
+                "BTC durable discovery",
+                "BTCUSDT",
+                "run-discovery",
+                "discovery_run",
+                jobs,
+                artifacts,
+                prerequisite_complete=btc_cycle_complete,
+                ready_detail="Run BTC discovery after the cycle so candidate evidence and blockers are visible.",
+                waiting_detail="Run the BTC historical cycle before BTC discovery.",
+            ),
+            self._artifact_job_milestone(
+                "eth_cycle",
+                "ETH durable cycle",
+                "ETHUSDT",
+                "run-historical-research-cycle",
+                "historical_research_cycle",
+                jobs,
+                artifacts,
+                prerequisite_complete=bool(readiness.get("ready")),
+                ready_detail="Run the ETH mirror cycle to check whether BTC findings generalize.",
+                waiting_detail="Durable readiness must be green before the ETH cycle.",
+            ),
+            self._artifact_job_milestone(
+                "eth_discovery",
+                "ETH durable discovery",
+                "ETHUSDT",
+                "run-discovery",
+                "discovery_run",
+                jobs,
+                artifacts,
+                prerequisite_complete=eth_cycle_complete,
+                ready_detail="Run ETH discovery after ETH cycle evidence is available.",
+                waiting_detail="Run the ETH historical cycle before ETH discovery.",
+            ),
+            self._artifact_job_milestone(
+                "candidate_eligibility",
+                "Candidate eligibility review",
+                None,
+                "evaluate-discovery-candidate-pack-eligibility",
+                "candidate_pack_eligibility",
+                jobs,
+                artifacts,
+                prerequisite_complete=any(item.get("type") == "discovery_run" for item in artifacts),
+                ready_detail="Evaluate latest discovery output against candidate-pack gate evidence.",
+                waiting_detail="Run at least one durable discovery before eligibility review.",
+            ),
+        ]
+        complete_count = sum(1 for item in milestones if item["status"] == "complete")
+        next_action = self._research_next_action(milestones, active_job)
+        return {
+            "stage": "R104",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "progress": {
+                "completed": complete_count,
+                "total": len(milestones),
+                "percent": round((complete_count / max(len(milestones), 1)) * 100),
+                "active_job_id": active_job.get("job_id") if active_job else None,
+                "active_job_type": active_job.get("job_type") if active_job else None,
+                "active_job_status": active_job.get("status") if active_job else None,
+            },
+            "next_action": next_action,
+            "milestones": milestones,
+            "settings": {
+                "default_scope": "durable public-archive R104 fixtures",
+                "output_policy": "isolated operator output directories",
+                "path_policy": "configs plus research output allowlists",
+                "promotion_policy": "candidate pack blocked until gates pass",
+            },
+        }
+
+    def _research_progress_artifacts_from_jobs(self, jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        artifacts: list[dict[str, Any]] = []
+        for job in jobs:
+            if job.get("status") != "succeeded" or not isinstance(job.get("result"), Mapping):
+                continue
+            result = job["result"]
+            job_type = str(job.get("job_type") or "")
+            if job_type == "run-historical-research-cycle":
+                path = self._existing_path(result.get("research_cycle_manifest_path"))
+                payload = self._read_json_path(path) if path is not None else None
+                if isinstance(payload, dict):
+                    artifacts.append(
+                        {
+                            "type": "historical_research_cycle",
+                            "path": str(path),
+                            "manifest": payload,
+                            "summary": {
+                                "cycle_id": payload.get("cycle_id"),
+                                "symbol": payload.get("symbol"),
+                                "candidate_count": payload.get("candidate_count"),
+                            },
+                        }
+                    )
+            elif job_type == "run-discovery":
+                path = self._existing_path(result.get("discovery_run_manifest_path"))
+                payload = self._read_json_path(path) if path is not None else None
+                if isinstance(payload, dict):
+                    artifacts.append(
+                        {
+                            "type": "discovery_run",
+                            "path": str(path),
+                            "manifest": payload,
+                            "summary": {
+                                "run_id": payload.get("run_id"),
+                                "symbol": payload.get("symbol"),
+                                "status": ((payload.get("state") or {}).get("status")),
+                            },
+                        }
+                    )
+            elif job_type == "evaluate-discovery-candidate-pack-eligibility":
+                path = self._existing_path(result.get("candidate_pack_eligibility_manifest_path"))
+                payload = self._read_json_path(path) if path is not None else None
+                if isinstance(payload, dict):
+                    artifacts.append(
+                        {
+                            "type": "candidate_pack_eligibility",
+                            "path": str(path),
+                            "manifest": payload,
+                            "summary": {
+                                "bridge_scope": payload.get("bridge_scope"),
+                                "candidate_pack_written": payload.get("candidate_pack_written"),
+                            },
+                        }
+                    )
+        return artifacts
+
+    def _readiness_milestone(self, readiness: Mapping[str, Any]) -> dict[str, Any]:
+        ready = bool(readiness.get("ready"))
+        blockers = list(readiness.get("primary_blockers") or [])
+        return {
+            "key": "durable_readiness",
+            "label": "Durable readiness",
+            "symbol": None,
+            "status": "complete" if ready else "blocked",
+            "detail": readiness.get("recommended_next_action")
+            or ("Durable fixtures are ready." if ready else "Fix durable fixture readiness before research runs."),
+            "job_id": None,
+            "artifact_path": None,
+            "blockers": blockers,
+        }
+
+    def _artifact_job_milestone(
+        self,
+        key: str,
+        label: str,
+        symbol: str | None,
+        job_type: str,
+        artifact_type: str,
+        jobs: list[dict[str, Any]],
+        artifacts: list[dict[str, Any]],
+        *,
+        prerequisite_complete: bool,
+        ready_detail: str,
+        waiting_detail: str,
+    ) -> dict[str, Any]:
+        artifact = self._latest_research_artifact(artifacts, artifact_type, symbol)
+        job = self._latest_research_job(jobs, job_type, symbol)
+        active = job if job and job.get("status") in {"queued", "running"} else None
+        failed = job if job and job.get("status") == "failed" else None
+        if artifact is not None:
+            status = "complete"
+            detail = "Indexed artifact exists; inspect Artifacts for evidence and blockers."
+        elif active is not None:
+            status = "running" if active.get("status") == "running" else "queued"
+            detail = "Operator job is queued or running; watch Jobs and Timeline."
+        elif failed is not None:
+            status = "failed"
+            detail = str(failed.get("error_text") or "Latest job failed; inspect job logs.")
+        elif prerequisite_complete:
+            status = "ready"
+            detail = ready_detail
+        else:
+            status = "waiting"
+            detail = waiting_detail
+        return {
+            "key": key,
+            "label": label,
+            "symbol": symbol,
+            "status": status,
+            "detail": detail,
+            "job_id": job.get("job_id") if job else None,
+            "artifact_path": artifact.get("path") if artifact else None,
+            "blockers": [str(failed.get("error_text"))] if failed and failed.get("error_text") else [],
+        }
+
+    def _research_next_action(self, milestones: list[dict[str, Any]], active_job: Mapping[str, Any] | None) -> str:
+        if active_job is not None:
+            return f"Wait for {active_job.get('job_type')} to finish, then refresh artifacts."
+        for milestone in milestones:
+            status = str(milestone.get("status") or "")
+            if status == "failed":
+                return f"Inspect failed {milestone.get('label')} job logs before queueing another run."
+            if status == "blocked":
+                return str(milestone.get("detail") or "Resolve blockers before continuing.")
+            if status == "ready":
+                return f"Run {milestone.get('label')}."
+            if status == "waiting":
+                return str(milestone.get("detail") or "Complete the prerequisite step.")
+        return "All R104 operation milestones are complete; inspect eligibility blockers and keep outputs research-only."
+
+    def _latest_research_artifact(
+        self,
+        artifacts: list[dict[str, Any]],
+        artifact_type: str,
+        symbol: str | None,
+    ) -> dict[str, Any] | None:
+        for artifact in artifacts:
+            if artifact.get("type") != artifact_type:
+                continue
+            if symbol is None or self._research_symbol_from_payload(artifact) == symbol:
+                return artifact
+        return None
+
+    def _latest_research_job(
+        self,
+        jobs: list[dict[str, Any]],
+        job_type: str,
+        symbol: str | None,
+    ) -> dict[str, Any] | None:
+        active = [
+            job for job in jobs
+            if job.get("job_type") == job_type
+            and (symbol is None or self._research_symbol_from_payload(job) == symbol)
+            and job.get("status") in {"queued", "running"}
+        ]
+        if active:
+            return active[0]
+        for job in jobs:
+            if job.get("job_type") == job_type and (symbol is None or self._research_symbol_from_payload(job) == symbol):
+                return job
+        return None
+
+    def _research_symbol_from_payload(self, payload: Mapping[str, Any]) -> str | None:
+        summary = payload.get("summary") if isinstance(payload.get("summary"), Mapping) else {}
+        manifest = payload.get("manifest") if isinstance(payload.get("manifest"), Mapping) else {}
+        request = payload.get("request") if isinstance(payload.get("request"), Mapping) else {}
+        values = [
+            summary.get("symbol"),
+            manifest.get("symbol"),
+            summary.get("cycle_id"),
+            summary.get("run_id"),
+            request.get("spec_path"),
+            payload.get("path"),
+        ]
+        text = " ".join(str(value) for value in values if value is not None).lower()
+        if "ethusdt" in text:
+            return "ETHUSDT"
+        if "btcusdt" in text:
+            return "BTCUSDT"
+        return None
 
     def list_artifacts(self) -> list[dict[str, Any]]:
         base_dir = self.config.research.output_dir

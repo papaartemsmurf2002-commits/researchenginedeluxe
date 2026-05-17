@@ -2,7 +2,7 @@
 
 Current stage: Stage R104 candidate validation on durable evidence
 Current stage owner: Codex Research Agent
-Stage status: in progress - WPR104-02 closed; durable UI/control path and gap-aware durable cycles are wired, empirical candidate validation runs remain pending
+Stage status: in progress - WPR104-03 closed; durable UI/control path, gap-aware durable cycles, and operator progress usability are wired, empirical candidate validation runs remain pending
 Last updated: 2026-05-17
 
 ## Stage entry decision
@@ -11,6 +11,8 @@ Last updated: 2026-05-17
 - Evidence links:
   - `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`
   - `docs/work_packets/WPR104-01-research-ui-durable-candidate-console.md`
+  - `docs/stage_reports/STAGE_R104_OPERATOR_CONSOLE_USABILITY_HARDENING_REPORT.md`
+  - `docs/work_packets/WPR104-03-operator-console-usability-hardening.md`
   - `docs/stage_reports/STAGE_R104_GAP_AWARE_DURABLE_CYCLE_FEATURE_MATERIALIZATION_REPORT.md`
   - `docs/work_packets/WPR104-02-gap-aware-durable-cycle-feature-materialization.md`
   - `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`
@@ -96,10 +98,22 @@ WPR104-02 implementation note:
   remain validation failures. The feature-builder cache identity is now
   `research-feature-builder-v2` for this semantic change.
 
+WPR104-03 implementation note:
+
+- `WPR104-03-operator-console-usability-hardening` added a backend-derived
+  R104 progress contract, visible progress meter, milestone states, next
+  action, recommended defaults, function blocks, and clearer timeline/job
+  details. Discovery milestones now remain waiting until the matching
+  historical-cycle artifact exists. The Research UI remains a thin
+  observe-only operator layer over jobs, readiness, feed, and artifact APIs;
+  no live execution, promotion, runtime-mode, order-placement, or sizing
+  behavior was added.
+
 ## Open work packets
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR104-03-operator-console-usability-hardening | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/persistence/sqlite_store.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `src/tradingbotsuite/web/templates/timeline.html`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/contracts/**` | Backend-derived R104 progress API, command-center progress meter/function blocks/defaults, evidence-state milestone ordering, timeline job status/symbol hardening, responsive UI verification, and validation recorded in `docs/stage_reports/STAGE_R104_OPERATOR_CONSOLE_USABILITY_HARDENING_REPORT.md`. |
 | WPR104-02-gap-aware-durable-cycle-feature-materialization | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/features/builders.py`, `src/tradingbotsuite/research_cycle/runner.py`, `tests/features/**`, `tests/historical/**`, `tests/contracts/**` | Gap-aware segmented feature materialization for intentional R104 multi-window fixture cycles, duplicate/short-interval regressions, failed BTC operator spec rerun successfully, and validation recorded in `docs/stage_reports/STAGE_R104_GAP_AWARE_DURABLE_CYCLE_FEATURE_MATERIALIZATION_REPORT.md`. |
 | WPR104-01-research-ui-durable-candidate-console | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/research/**`, `configs/discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/base.html`, `src/tradingbotsuite/web/templates/research.html`, `tests/contracts/**`, `tests/integration/test_research_ui.py`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | Durable R104 Research UI/control path, BTC/ETH durable cycle and discovery defaults, candidate-pack eligibility route/job, readiness/artifact indexing, and validation recorded in `docs/stage_reports/STAGE_R104_RESEARCH_UI_DURABLE_CANDIDATE_CONSOLE_REPORT.md`. |
 | WPR103-01-durable-public-archive-fixtures | Codex Research Agent | closed | `.gitignore`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/**`, `docs/work_packets/**`, `configs/research/**`, `data/research/fixtures/btcusdt_public_archive_multi_window_v1/**`, `data/research/fixtures/ethusdt_public_archive_multi_window_v1/**`, `tests/contracts/**` | Checksum-verified BTCUSDT/ETHUSDT Binance Vision multi-window fixture packs, durable public archive readiness configs, checked-in fixture readiness tests, and validation recorded in `docs/stage_reports/STAGE_R103_DURABLE_PUBLIC_ARCHIVE_FIXTURES_REPORT.md`. |

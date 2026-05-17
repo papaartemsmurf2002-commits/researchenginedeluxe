@@ -3,8 +3,16 @@
 <style>
   .research-shell {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 18px;
     font-family: "Segoe UI", Arial, sans-serif;
+    min-width: 0;
+    max-width: 100%;
+  }
+  main {
+    min-width: 0;
+    max-width: 100vw;
+    box-sizing: border-box;
   }
   .research-shell .card {
     border-radius: 8px;
@@ -13,6 +21,9 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 22px;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
     background:
       linear-gradient(135deg, rgba(47, 129, 247, 0.22), rgba(115, 209, 138, 0.10)),
       linear-gradient(180deg, #151b23, #111821);
@@ -38,6 +49,9 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 16px;
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
   }
   .band-heading {
     display: flex;
@@ -90,6 +104,9 @@
     grid-template-columns: repeat(3, minmax(180px, 1fr));
     gap: 12px;
     margin-top: 12px;
+  }
+  .settings-panel .maturity-row {
+    grid-template-columns: 1fr;
   }
   .routine-actions {
     display: flex;
@@ -174,6 +191,19 @@
     border-radius: 8px;
     background: #0f1620;
     padding: 10px;
+  }
+  .readiness-row > *,
+  .workflow-step > *,
+  .function-block,
+  .settings-panel,
+  .operation-table-wrap,
+  .table-scroll {
+    min-width: 0;
+  }
+  .readiness-row .muted,
+  .workflow-step .muted,
+  .settings-line .muted {
+    overflow-wrap: anywhere;
   }
   .stage-picker {
     display: grid;
@@ -284,10 +314,127 @@
     padding: 10px;
     background: #111923;
   }
+  .command-center-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.35fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .progress-panel,
+  .function-block,
+  .operation-table-wrap {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #111923;
+    padding: 14px;
+  }
+  .progress-meter {
+    margin: 12px 0 8px;
+  }
+  .progress-track {
+    width: 100%;
+    height: 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #0b1119;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #2f81f7, #73d18a);
+    transition: width 0.25s ease;
+  }
+  .workflow-steps {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .workflow-step {
+    display: grid;
+    grid-template-columns: minmax(120px, 0.45fr) minmax(90px, 0.2fr) 1fr auto;
+    gap: 10px;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #0f1620;
+    padding: 10px;
+  }
+  .workflow-step.complete {
+    border-color: rgba(115, 209, 138, 0.55);
+  }
+  .workflow-step.running,
+  .workflow-step.queued,
+  .workflow-step.ready {
+    border-color: rgba(47, 129, 247, 0.55);
+  }
+  .workflow-step.failed,
+  .workflow-step.blocked {
+    border-color: rgba(255, 143, 131, 0.65);
+  }
+  .function-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .function-block h3,
+  .progress-panel h3 {
+    margin-top: 0;
+  }
+  .function-block .muted {
+    min-height: 36px;
+  }
+  .table-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .research-shell table {
+    table-layout: fixed;
+  }
+  .research-shell th,
+  .research-shell td {
+    overflow-wrap: anywhere;
+  }
+  .operation-table {
+    width: 100%;
+    table-layout: fixed;
+  }
+  .operation-table td,
+  .operation-table th {
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+  .settings-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .settings-line {
+    display: grid;
+    grid-template-columns: minmax(140px, 0.35fr) 1fr;
+    gap: 10px;
+    border-top: 1px solid var(--border);
+    padding-top: 8px;
+  }
+  .secondary-surface {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #101820;
+    padding: 12px;
+  }
+  .secondary-surface summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .job-table {
+    min-width: 620px;
+  }
   @media (max-width: 1100px) {
     .run-grid,
     .evidence-grid,
-    .settings-grid {
+    .settings-grid,
+    .command-center-grid {
       grid-template-columns: 1fr;
     }
     .stage-picker,
@@ -295,13 +442,20 @@
     .flow-steps,
     .explain-grid,
     .operator-board,
-    .maturity-row {
+    .maturity-row,
+    .function-grid {
       grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
   }
   @media (max-width: 640px) {
     .research-hero h1 {
       font-size: 28px;
+    }
+    .research-shell input,
+    .research-shell select,
+    .research-shell button,
+    .research-shell textarea {
+      max-width: 100%;
     }
     .band-heading,
     .readiness-row {
@@ -313,6 +467,13 @@
     }
     .action-history-row {
       grid-template-columns: 1fr;
+    }
+    .workflow-step,
+    .settings-line {
+      grid-template-columns: 1fr;
+    }
+    .job-table {
+      min-width: 520px;
     }
   }
 </style>
@@ -334,44 +495,76 @@
   <section class="research-band" id="operator-board-section">
     <div class="band-heading">
       <div>
-        <h2>Operator Board</h2>
-        <div class="muted">One-screen research state: data readiness, current run, progress, snapshots, blockers, leads, artifacts, and maturity.</div>
+        <h2>R104 Command Center</h2>
+        <div class="muted">Primary durable-candidate workflow: readiness, cycle evidence, discovery evidence, eligibility review, and blocker inspection.</div>
       </div>
       <span class="pill neutral">offline evidence only</span>
     </div>
-    <div id="operator-board" class="operator-board" aria-live="polite">
-      <div class="board-tile"><div class="label">Data Readiness</div><div class="value">Loading</div><div class="meta">Waiting for artifact index.</div></div>
-      <div class="board-tile"><div class="label">Current Run</div><div class="value">Loading</div><div class="meta">Waiting for job index.</div></div>
-      <div class="board-tile"><div class="label">Progress</div><div class="value">Loading</div><div class="meta">Waiting for latest status.</div></div>
-      <div class="board-tile"><div class="label">Latest Snapshot</div><div class="value">Loading</div><div class="meta">Waiting for discovery artifacts.</div></div>
+    <div class="command-center-grid">
+      <div class="progress-panel" id="research-progress-panel" aria-live="polite">
+        <h3>Progress Meter</h3>
+        <div id="research-progress-summary" class="muted">Loading R104 progress.</div>
+        <div class="progress-meter" aria-label="R104 progress">
+          <div class="progress-track"><div id="research-progress-fill" class="progress-fill"></div></div>
+        </div>
+        <div id="research-next-action" class="run-note">Loading recommended next action.</div>
+        <div id="research-workflow-steps" class="workflow-steps"></div>
+      </div>
+      <div>
+        <h3>Function Blocks</h3>
+        <div class="function-grid">
+          <div class="function-block">
+            <h3>Primary BTC Path</h3>
+            <div class="muted">Run the default BTC durable cycle, then discovery, then eligibility review.</div>
+            <div class="routine-actions">
+              <button onclick="queueDurableCycle('BTCUSDT')">BTC Durable Cycle</button>
+              <button class="secondary" onclick="queueDurableDiscovery('BTCUSDT')">BTC Durable Discovery</button>
+              <button class="ghost" title="Review Candidate Eligibility" onclick="reviewCandidateEligibility()">Evaluate Eligibility</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <h3>ETH Mirror</h3>
+            <div class="muted">Repeat the durable path on ETH so evidence is not BTC-only.</div>
+            <div class="routine-actions">
+              <button onclick="queueDurableCycle('ETHUSDT')">ETH Durable Cycle</button>
+              <button class="secondary" onclick="queueDurableDiscovery('ETHUSDT')">ETH Durable Discovery</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <h3>Readiness And Inspection</h3>
+            <div class="muted">Check inputs, then inspect snapshots, jobs, and artifact evidence.</div>
+            <div class="routine-actions">
+              <button onclick="queuePreflightDataReadiness()">Check Durable Readiness</button>
+              <button class="ghost" onclick="openLatestSnapshot()">Open Latest Snapshot</button>
+              <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <h3>Discovery Controls</h3>
+            <div class="muted">Use these when you need a quick path check, a deeper BTC harvest, or a paused/resumed run.</div>
+            <div class="routine-actions">
+              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/quick_smoke_btcusdt_v4.json', 'Quick plumbing check', 1, false)">Quick Plumbing Check</button>
+              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/deep_candidate_harvest_btcusdt_v4.json', 'Deep BTC durable harvest', null, false)">Deep BTC Harvest</button>
+              <button class="ghost" onclick="pauseDiscoveryAfterOneTrial()">Pause After One Trial</button>
+              <button class="ghost" onclick="queueDiscoveryRun('Resume discovery run', true)">Resume Run</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="maturity-row" aria-label="Research maturity labels">
-      <div class="maturity-item">
-        <div class="label">Diagnostic</div>
-        <div class="meta">Plumbing, data-quality, or smoke evidence only. Useful for fixing inputs; not a candidate claim.</div>
+    <div style="margin-top:16px;">
+      <div class="band-heading" style="margin-bottom:10px;">
+        <div>
+          <h3>Operator Board</h3>
+          <div class="muted">One-screen state: Data Readiness, Current Run, Progress, Latest Snapshot, blockers, leads, artifacts, and maturity.</div>
+        </div>
       </div>
-      <div class="maturity-item">
-        <div class="label">Screen-worthy</div>
-        <div class="meta">Reviewable lead with visible artifacts, blocker reasons, and enough evidence to inspect manually.</div>
+      <div id="operator-board" class="operator-board" aria-live="polite">
+        <div class="board-tile"><div class="label">Data Readiness</div><div class="value">Loading</div><div class="meta">Waiting for artifact index.</div></div>
+        <div class="board-tile"><div class="label">Current Run</div><div class="value">Loading</div><div class="meta">Waiting for job index.</div></div>
+        <div class="board-tile"><div class="label">Progress</div><div class="value">Loading</div><div class="meta">Waiting for latest status.</div></div>
+        <div class="board-tile"><div class="label">Latest Snapshot</div><div class="value">Loading</div><div class="meta">Waiting for discovery artifacts.</div></div>
       </div>
-      <div class="maturity-item">
-        <div class="label">Candidate-ready</div>
-        <div class="meta">Requires exit lab, comparator, no-regime baseline when regime is claimed, validation floors, and gate evidence.</div>
-      </div>
-    </div>
-    <div class="routine-actions" aria-label="Routine research actions">
-      <button onclick="queuePreflightDataReadiness()">Check Durable Readiness</button>
-      <button class="secondary" onclick="queueDurableCycle('BTCUSDT')">BTC Durable Cycle</button>
-      <button class="secondary" onclick="queueDurableDiscovery('BTCUSDT')">BTC Durable Discovery</button>
-      <button class="secondary" onclick="queueDurableCycle('ETHUSDT')">ETH Durable Cycle</button>
-      <button class="secondary" onclick="queueDurableDiscovery('ETHUSDT')">ETH Durable Discovery</button>
-      <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/quick_smoke_btcusdt_v4.json', 'Quick plumbing check', 1, false)">Quick Plumbing Check</button>
-      <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/deep_candidate_harvest_btcusdt_v4.json', 'Deep BTC durable harvest', null, false)">Deep BTC Harvest</button>
-      <button class="ghost" onclick="pauseDiscoveryAfterOneTrial()">Pause After One Trial</button>
-      <button class="ghost" onclick="queueDiscoveryRun('Resume discovery run', true)">Resume Run</button>
-      <button class="ghost" onclick="openLatestSnapshot()">Open Latest Snapshot</button>
-      <button class="ghost" onclick="reviewCandidateEligibility()">Review Candidate Eligibility</button>
-      <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
     </div>
   </section>
 
@@ -379,7 +572,7 @@
     <div class="band-heading">
       <div>
         <h2>R104 Durable Candidate Validation</h2>
-        <div class="muted">Default path for this branch: durable public-archive fixtures, isolated operator output, candidate-pack eligibility review, and no promotion claim.</div>
+        <div class="muted">Recommended defaults and completion checks for the branch path. Use the buttons in the command center; this section explains why each step exists.</div>
       </div>
       <span class="pill warn">candidate pack blocked until gates pass</span>
     </div>
@@ -387,12 +580,17 @@
       <div class="settings-panel">
         <h3>Recommended Run Order</h3>
         <div id="r104-recommendation" class="muted">Loading durable fixture readiness and next action.</div>
-        <div class="routine-actions">
-          <button onclick="queueDurableCycle('BTCUSDT')">Run BTC Cycle</button>
-          <button class="secondary" onclick="queueDurableDiscovery('BTCUSDT')">Run BTC Discovery</button>
-          <button onclick="queueDurableCycle('ETHUSDT')">Run ETH Cycle</button>
-          <button class="secondary" onclick="queueDurableDiscovery('ETHUSDT')">Run ETH Discovery</button>
-          <button class="ghost" onclick="reviewCandidateEligibility()">Evaluate Eligibility</button>
+        <div class="operation-table-wrap" style="margin-top:12px;">
+          <table class="operation-table">
+            <thead><tr><th>Step</th><th>Run</th><th>Done When</th><th>Next</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>Check Durable Readiness</td><td>BTC and ETH fixture manifests are ready.</td><td>Run BTC Durable Cycle.</td></tr>
+              <tr><td>2</td><td>BTC Durable Cycle</td><td>Historical-cycle manifest, rankings, gates, and rejection report are indexed.</td><td>Run BTC Durable Discovery.</td></tr>
+              <tr><td>3</td><td>BTC Durable Discovery</td><td>Discovery manifest, ledgers, snapshots, and blocker evidence are indexed.</td><td>Review Candidate Eligibility.</td></tr>
+              <tr><td>4</td><td>ETH Durable Cycle and Discovery</td><td>ETH mirror evidence is indexed for cross-symbol inspection.</td><td>Compare blockers and leads.</td></tr>
+              <tr><td>5</td><td>Candidate Eligibility Review</td><td>Eligibility manifest states eligible rows or explicit blocker reasons.</td><td>Open Artifacts and inspect gates.</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
       <div class="settings-panel">
@@ -400,9 +598,32 @@
         <div id="r104-readiness-panel" class="readiness-list">Loading durable BTC/ETH readiness.</div>
       </div>
     </div>
-    <div class="run-note" style="margin-top:12px;">
-      <strong>Research settings</strong>
-      <div class="muted">Historical cycles and discovery runs use checked-in specs from <span class="mono">configs/research</span> and <span class="mono">configs/discovery</span>. The operator API validates paths, blocks live-mode research jobs, and writes every run under an isolated research output directory.</div>
+    <div class="settings-grid" style="margin-top:14px;">
+      <div class="settings-panel">
+        <h3>Recommended Defaults</h3>
+        <div class="settings-list" id="research-settings-summary">
+          <div class="settings-line"><strong>Scope</strong><span class="muted">Durable public-archive R104 fixtures.</span></div>
+          <div class="settings-line"><strong>Output</strong><span class="muted">Isolated operator directories under the configured research root.</span></div>
+          <div class="settings-line"><strong>Boundary</strong><span class="muted">research_only, observe_only, promotion_ready false.</span></div>
+        </div>
+      </div>
+      <div class="settings-panel">
+        <h3>Maturity Labels</h3>
+        <div class="maturity-row" aria-label="Research maturity labels">
+          <div class="maturity-item">
+            <div class="label">Diagnostic</div>
+            <div class="meta">Plumbing, data-quality, or smoke evidence only.</div>
+          </div>
+          <div class="maturity-item">
+            <div class="label">Screen-worthy</div>
+            <div class="meta">Reviewable lead with visible artifacts and blocker reasons.</div>
+          </div>
+          <div class="maturity-item">
+            <div class="label">Candidate-ready</div>
+            <div class="meta">Requires eligibility, comparator, validation-floor, and gate evidence.</div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -638,8 +859,8 @@
   <section class="research-band">
     <div class="band-heading">
       <div>
-        <h3>Local Action History</h3>
-        <div class="muted">Stored in this browser so you can see what this operator page submitted, even after refresh. Server-side truth remains in Jobs.</div>
+        <h3>Local Action History / Timeline</h3>
+        <div class="muted">Browser-side submit history with queue status. Server-side completion truth remains in Jobs and the Timeline feed.</div>
       </div>
       <button class="ghost" onclick="clearLocalActionHistory()">Clear Local History</button>
     </div>
@@ -687,10 +908,12 @@
 
   <section class="research-band">
     <h3>Jobs</h3>
-    <table>
-      <thead><tr><th>Requested</th><th>Type</th><th>Status</th><th>Summary</th><th>Details</th></tr></thead>
-      <tbody id="jobs-list"><tr><td colspan="5">Loading...</td></tr></tbody>
-    </table>
+    <div class="table-scroll">
+      <table class="job-table">
+        <thead><tr><th>Requested</th><th>Type</th><th>Status</th><th>Summary</th><th>Details</th></tr></thead>
+        <tbody id="jobs-list"><tr><td colspan="5">Loading...</td></tr></tbody>
+      </table>
+    </div>
   </section>
 
   <section class="research-band">
@@ -704,6 +927,7 @@
   let latestArtifacts = [];
   let latestResearchJobs = [];
   let latestR104Readiness = null;
+  let latestResearchProgress = null;
   const localHistoryKey = "tbs.research.localActionHistory.v1";
   const localSettingsKey = "tbs.research.settings.v1";
 
@@ -799,6 +1023,15 @@
     ETHUSDT: "configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json"
   };
 
+  const milestoneActionHandlers = {
+    durable_readiness: "queuePreflightDataReadiness()",
+    btc_cycle: "queueDurableCycle('BTCUSDT')",
+    btc_discovery: "queueDurableDiscovery('BTCUSDT')",
+    eth_cycle: "queueDurableCycle('ETHUSDT')",
+    eth_discovery: "queueDurableDiscovery('ETHUSDT')",
+    candidate_eligibility: "reviewCandidateEligibility()"
+  };
+
   function pickLatest(type) {
     return latestArtifacts.find(item => item.type === type) || null;
   }
@@ -874,6 +1107,14 @@
   function clearLocalActionHistory() {
     saveLocalActionHistory([]);
     renderLocalActionHistory();
+  }
+
+  function withTimeout(promise, ms, label) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(label)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 
   function renderExplainItems(targetId, rows) {
@@ -1791,6 +2032,59 @@
     `).join("");
   }
 
+  function progressStatusPill(status) {
+    const normalized = String(status || "waiting");
+    const stateClass = normalized === "complete"
+      ? "ok"
+      : (normalized === "failed" || normalized === "blocked" ? "bad" : (normalized === "ready" || normalized === "running" || normalized === "queued" ? "warn" : "neutral"));
+    return window.TBS.pill(normalized, stateClass);
+  }
+
+  function renderResearchProgress(payload) {
+    const summary = document.getElementById("research-progress-summary");
+    const fill = document.getElementById("research-progress-fill");
+    const nextAction = document.getElementById("research-next-action");
+    const steps = document.getElementById("research-workflow-steps");
+    const settings = document.getElementById("research-settings-summary");
+    if (!summary || !fill || !nextAction || !steps) return;
+    if (!payload) {
+      summary.textContent = "Progress endpoint has not responded.";
+      fill.style.width = "0%";
+      nextAction.textContent = "Refresh the page or inspect Jobs.";
+      steps.innerHTML = '<div class="empty">No progress milestones loaded.</div>';
+      return;
+    }
+    const progress = payload.progress || {};
+    const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+    summary.innerHTML = `<strong>${window.TBS.escapeHtml(String(progress.completed ?? 0))}/${window.TBS.escapeHtml(String(progress.total ?? 0))} milestones complete</strong><div class="muted">${window.TBS.escapeHtml(progress.active_job_type ? `Active: ${progress.active_job_type} / ${progress.active_job_status}` : "No active research job.")}</div>`;
+    fill.style.width = `${percent}%`;
+    nextAction.innerHTML = `<strong>Next operation</strong><div class="muted">${window.TBS.escapeHtml(payload.next_action || "Inspect Jobs and Artifacts.")}</div>`;
+    const milestones = payload.milestones || [];
+    steps.innerHTML = milestones.length ? milestones.map(item => {
+      const action = milestoneActionHandlers[item.key] || "";
+      const disabled = item.status === "complete" || item.status === "running" || item.status === "queued" || item.status === "waiting" || item.status === "blocked";
+      return `
+        <div class="workflow-step ${window.TBS.escapeHtml(String(item.status || "waiting"))}">
+          <div>
+            <strong>${window.TBS.escapeHtml(item.label || "Research step")}</strong>
+            <div class="muted">${window.TBS.escapeHtml(item.symbol || "R104")}</div>
+          </div>
+          <div>${progressStatusPill(item.status)}</div>
+          <div class="muted">${window.TBS.escapeHtml(item.detail || "")}${item.artifact_path ? `<br><span class="mono">${window.TBS.escapeHtml(item.artifact_path)}</span>` : ""}${item.job_id ? `<br><span class="mono">${window.TBS.escapeHtml(item.job_id)}</span>` : ""}</div>
+          <div>${action ? `<button class="ghost" ${disabled ? "disabled" : ""} onclick="${action}">Run</button>` : ""}</div>
+        </div>
+      `;
+    }).join("") : '<div class="empty">No progress milestones indexed.</div>';
+    if (settings && payload.settings) {
+      settings.innerHTML = Object.entries(payload.settings).map(([key, value]) => `
+        <div class="settings-line">
+          <strong>${window.TBS.escapeHtml(key.replaceAll("_", " "))}</strong>
+          <span class="muted">${window.TBS.escapeHtml(String(value))}</span>
+        </div>
+      `).join("");
+    }
+  }
+
   function renderOperatorBoard(jobs, stage13Readiness, r104Readiness) {
     const target = document.getElementById("operator-board");
     if (!target) return;
@@ -1831,10 +2125,11 @@
     const runMeta = active
       ? `${window.TBS.escapeHtml(active.job_type)} / ${window.TBS.escapeHtml(active.job_id)}`
       : (latestJob ? `${window.TBS.escapeHtml(latestJob.job_type)} / ${window.TBS.escapeHtml(latestJob.job_id)}` : "No research job indexed.");
-    const progressValue = active ? active.job_type : (discoverySummary.status || "No active run");
+    const progressPayload = latestResearchProgress?.progress || {};
+    const progressValue = active ? active.job_type : `${progressPayload.percent ?? 0}% complete`;
     const progressMeta = discoverySummary.run_id
       ? `Discovery ${window.TBS.escapeHtml(discoverySummary.run_id)} / ${window.TBS.escapeHtml(String(discoverySummary.status || "indexed"))}`
-      : "Progress appears after discovery or cycle artifacts are indexed.";
+      : (latestResearchProgress?.next_action || "Progress appears after discovery or cycle artifacts are indexed.");
     const snapshotValue = snapshotPath ? "Indexed" : "None";
     const snapshotMeta = snapshotPath || (discoverySummary.run_id ? `Run ${window.TBS.escapeHtml(discoverySummary.run_id)} has no snapshot path in summary.` : "No discovery snapshot artifact found.");
     const tiles = [
@@ -1920,61 +2215,82 @@
     target.textContent = "No active research jobs.";
   }
 
+  let researchRefreshInFlight = false;
+
   async function refreshResearch() {
-    const [jobsIndex, artifactsIndex, shadowDiagnostics, stage13Readiness, r104Readiness] = await Promise.all([
-      window.TBS.getJson("/api/operator/research/jobs"),
-      window.TBS.getJson("/api/operator/research/artifacts"),
-      window.TBS.getJson("/api/operator/shadow/diagnostics?symbol=BTCUSDT&limit=20"),
-      window.TBS.getJson("/api/operator/stage13/readiness"),
-      window.TBS.getJson("/api/operator/research/r104-readiness")
-    ]);
-    latestArtifacts = artifactsIndex.items || [];
-    latestR104Readiness = r104Readiness;
+    if (researchRefreshInFlight) return;
+    researchRefreshInFlight = true;
+    try {
+      const [jobsIndex, shadowDiagnostics, stage13Readiness, r104Readiness, researchProgress] = await Promise.all([
+        window.TBS.getJson("/api/operator/research/jobs"),
+        window.TBS.getJson("/api/operator/shadow/diagnostics?symbol=BTCUSDT&limit=20"),
+        window.TBS.getJson("/api/operator/stage13/readiness"),
+        window.TBS.getJson("/api/operator/research/r104-readiness"),
+        window.TBS.getJson("/api/operator/research/progress")
+      ]);
+      latestR104Readiness = r104Readiness;
+      latestResearchProgress = researchProgress;
 
-    const jobs = [];
-    for (const job of (jobsIndex.items || []).slice(0, 8)) {
-      jobs.push(await window.TBS.getJson(`/api/operator/research/jobs/${job.job_id}`));
+      const jobs = [];
+      for (const job of (jobsIndex.items || []).slice(0, 8)) {
+        jobs.push(await window.TBS.getJson(`/api/operator/research/jobs/${job.job_id}`));
+      }
+      latestResearchJobs = jobs;
+      document.getElementById("jobs-list").innerHTML = jobs.length ? jobs.map(renderJobRow).join("") : '<tr><td colspan="5">No jobs yet.</td></tr>';
+      renderActiveJobSummary(jobs);
+      renderR104ReadinessPanel(r104Readiness);
+      renderResearchProgress(researchProgress);
+      renderOperatorBoard(jobs, stage13Readiness, r104Readiness);
+
+      try {
+        const artifactsIndex = await withTimeout(
+          window.TBS.getJson("/api/operator/research/artifacts"),
+          8000,
+          "artifact index timed out; command-center progress is still available"
+        );
+        latestArtifacts = artifactsIndex.items || [];
+        document.getElementById("artifacts-list").innerHTML = latestArtifacts.length ? latestArtifacts.map(renderArtifactCard).join("") : '<div class="empty">No research artifacts created yet.</div>';
+        renderOperatorBoard(jobs, stage13Readiness, r104Readiness);
+      } catch (error) {
+        document.getElementById("artifacts-list").innerHTML = `<div class="error-box"><strong>Artifact index unavailable</strong><br>${window.TBS.escapeHtml(String(error.message || error))}</div>`;
+      }
+
+      const latestDataset = pickLatest("dataset");
+      const latestTrain = pickLatest("train_artifact");
+      const latestModel = pickLatest("model_artifact");
+      const latestHmm = pickLatest("hmm_knn_artifact");
+      const latestExperiment = pickLatest("research_experiment_run");
+      const latestHistoricalCycle = pickLatest("historical_research_cycle");
+      const latestDiscovery = pickLatest("discovery_run");
+      const latestEligibility = pickLatest("candidate_pack_eligibility");
+      document.getElementById("research-status").innerHTML = [
+        ["R104 Readiness", r104Readiness?.ready ? "durable_ready" : "blocked"],
+        ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
+        ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
+        ["Latest Model", latestModel?.summary?.model_version ?? "n/a"],
+        ["Boundary", "observe-only"],
+        ["Historical Cycle", latestHistoricalCycle?.summary?.cycle_id ?? "n/a"],
+        ["Cycle Candidates", latestHistoricalCycle?.summary?.candidate_count ?? "n/a"],
+        ["Discovery Run", latestDiscovery?.summary?.run_id ?? "n/a"],
+        ["Discovery Status", latestDiscovery?.summary?.status ?? "n/a"],
+        ["Eligibility Rows", latestEligibility?.summary?.eligibility?.row_count ?? "n/a"],
+        ["Eligible Candidates", latestEligibility?.summary?.eligibility?.eligible_count ?? "n/a"],
+        ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
+        ["HMM/KNN Alerts", latestHmm?.summary?.monitoring_alert_count ?? "n/a"],
+        ["Latest Experiment", latestExperiment?.summary?.conclusion_status ?? "n/a"],
+      ].map(([label, value]) => `
+        <div class="stat">
+          <div class="label">${window.TBS.escapeHtml(label)}</div>
+          <div class="value">${window.TBS.escapeHtml(String(value))}</div>
+        </div>
+      `).join("");
+      document.getElementById("shadow-diagnostics-panel").innerHTML = renderShadowDiagnosticsPanel(shadowDiagnostics);
+      document.getElementById("stage13-readiness-panel").innerHTML = renderStage13ReadinessPanel(stage13Readiness);
+      document.getElementById("hmm-monitoring-panel").innerHTML = renderHmmMonitoringPanel(latestHmm);
+      renderResearchCharts();
+    } finally {
+      researchRefreshInFlight = false;
     }
-    latestResearchJobs = jobs;
-    document.getElementById("jobs-list").innerHTML = jobs.length ? jobs.map(renderJobRow).join("") : '<tr><td colspan="5">No jobs yet.</td></tr>';
-    renderActiveJobSummary(jobs);
-    renderR104ReadinessPanel(r104Readiness);
-    renderOperatorBoard(jobs, stage13Readiness, r104Readiness);
-    document.getElementById("artifacts-list").innerHTML = latestArtifacts.length ? latestArtifacts.map(renderArtifactCard).join("") : '<div class="empty">No research artifacts created yet.</div>';
-
-    const latestDataset = pickLatest("dataset");
-    const latestTrain = pickLatest("train_artifact");
-    const latestModel = pickLatest("model_artifact");
-    const latestHmm = pickLatest("hmm_knn_artifact");
-    const latestExperiment = pickLatest("research_experiment_run");
-    const latestHistoricalCycle = pickLatest("historical_research_cycle");
-    const latestDiscovery = pickLatest("discovery_run");
-    const latestEligibility = pickLatest("candidate_pack_eligibility");
-    document.getElementById("research-status").innerHTML = [
-      ["R104 Readiness", r104Readiness?.ready ? "durable_ready" : "blocked"],
-      ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
-      ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
-      ["Latest Model", latestModel?.summary?.model_version ?? "n/a"],
-      ["Boundary", "observe-only"],
-      ["Historical Cycle", latestHistoricalCycle?.summary?.cycle_id ?? "n/a"],
-      ["Cycle Candidates", latestHistoricalCycle?.summary?.candidate_count ?? "n/a"],
-      ["Discovery Run", latestDiscovery?.summary?.run_id ?? "n/a"],
-      ["Discovery Status", latestDiscovery?.summary?.status ?? "n/a"],
-      ["Eligibility Rows", latestEligibility?.summary?.eligibility?.row_count ?? "n/a"],
-      ["Eligible Candidates", latestEligibility?.summary?.eligibility?.eligible_count ?? "n/a"],
-      ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
-      ["HMM/KNN Alerts", latestHmm?.summary?.monitoring_alert_count ?? "n/a"],
-      ["Latest Experiment", latestExperiment?.summary?.conclusion_status ?? "n/a"],
-    ].map(([label, value]) => `
-      <div class="stat">
-        <div class="label">${window.TBS.escapeHtml(label)}</div>
-        <div class="value">${window.TBS.escapeHtml(String(value))}</div>
-      </div>
-    `).join("");
-    document.getElementById("shadow-diagnostics-panel").innerHTML = renderShadowDiagnosticsPanel(shadowDiagnostics);
-    document.getElementById("stage13-readiness-panel").innerHTML = renderStage13ReadinessPanel(stage13Readiness);
-    document.getElementById("hmm-monitoring-panel").innerHTML = renderHmmMonitoringPanel(latestHmm);
-    renderResearchCharts();
   }
 
   initializeResearchControls();

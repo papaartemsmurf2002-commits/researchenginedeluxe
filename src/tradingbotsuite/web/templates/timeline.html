@@ -2,6 +2,26 @@
 {% block content %}
 <h1>Timeline</h1>
 <p class="muted">This is the structured activity feed: decisions, execution, supervision, health changes, operator commands, jobs, and traces.</p>
+<style>
+  .timeline-status-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .timeline-job-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+  }
+  @media (max-width: 640px) {
+    .timeline-job-meta {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
 <div class="card wide">
   <h3>Recent Feed</h3>
   <div class="inline-buttons" style="margin-bottom:0.8rem;">
@@ -34,6 +54,22 @@
     return window.TBS.pill(pair[0], pair[1]);
   }
 
+  function jobStatusBadge(status) {
+    const normalized = String(status || "unknown");
+    const stateClass = normalized === "succeeded" ? "ok" : (normalized === "failed" ? "bad" : (normalized === "running" || normalized === "queued" ? "warn" : "neutral"));
+    return window.TBS.pill(normalized, stateClass);
+  }
+
+  function timelineSymbol(item) {
+    if (item.symbol && item.symbol !== "BTCUSDT") return item.symbol;
+    const payload = item.payload || {};
+    const request = payload.request || {};
+    const text = `${request.spec_path || ""} ${JSON.stringify(payload.result || {})}`.toLowerCase();
+    if (text.includes("ethusdt")) return "ETHUSDT";
+    if (text.includes("btcusdt")) return "BTCUSDT";
+    return item.symbol || "";
+  }
+
   function itemSummary(item) {
     if (item.kind === "operator_command") {
       return `${item.summary} ${(item.payload || {}).success === false ? "(failed)" : ""}`.trim();
@@ -48,6 +84,22 @@
       return `${item.summary} ${(item.reason_code ? `(${item.reason_code})` : "")}`.trim();
     }
     return item.summary || item.kind || "item";
+  }
+
+  function jobDetails(item) {
+    if (item.kind !== "operator_job") return "";
+    const payload = item.payload || {};
+    return `
+      <div class="timeline-status-row">
+        ${jobStatusBadge(payload.status)}
+        <span class="muted">${window.TBS.escapeHtml(payload.error_text ? "failed with stored error" : "status stored by operator job loop")}</span>
+      </div>
+      <div class="timeline-job-meta">
+        <div class="list-item"><strong>Requested</strong><div class="muted">${window.TBS.formatTime(item.time_ms)}</div></div>
+        <div class="list-item"><strong>Started</strong><div class="muted">${payload.started_at_ms ? window.TBS.formatTime(payload.started_at_ms) : "not started"}</div></div>
+        <div class="list-item"><strong>Finished</strong><div class="muted">${payload.finished_at_ms ? window.TBS.formatTime(payload.finished_at_ms) : "not finished"}</div></div>
+      </div>
+    `;
   }
 
   async function refreshTimeline(force = false) {
@@ -67,7 +119,8 @@
           <div class="muted">${window.TBS.formatTime(item.time_ms)}</div>
         </div>
         <div><strong>${window.TBS.escapeHtml(itemSummary(item))}</strong></div>
-        <div class="muted">${window.TBS.escapeHtml(item.symbol || "")}</div>
+        ${jobDetails(item)}
+        <div class="muted">${window.TBS.escapeHtml(timelineSymbol(item))}</div>
         <details class="details">
           <summary>Inspect</summary>
           <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.payload || {}))}</pre>

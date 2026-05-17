@@ -600,6 +600,11 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
 
     assert response.status_code == 200
     assert "Research Operations" in response.text
+    assert "R104 Command Center" in response.text
+    assert "Progress Meter" in response.text
+    assert "Function Blocks" in response.text
+    assert "Primary BTC Path" in response.text
+    assert "ETH Mirror" in response.text
     assert "Operator Board" in response.text
     assert "Choose Evidence Task" in response.text
     assert "Data Readiness" in response.text
@@ -609,6 +614,8 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "R104 Durable Candidate Validation" in response.text
     assert "Durable Readiness" in response.text
     assert "Recommended Run Order" in response.text
+    assert "Recommended Defaults" in response.text
+    assert "Candidate Eligibility Review" in response.text
     assert "Check Durable Readiness" in response.text
     assert "BTC Durable Cycle" in response.text
     assert "BTC Durable Discovery" in response.text
@@ -661,7 +668,7 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "discovery_multiple_testing" in response.text
     assert "discovery_validation_floors" in response.text
     assert "Queue Evidence Review Bundle" in response.text
-    assert "Local Action History" in response.text
+    assert "Local Action History / Timeline" in response.text
     assert "isolated job-specific output directories" in response.text
     assert "Profitability Chart" in response.text
     assert "Waiting for profitability artifacts." in response.text
@@ -689,6 +696,7 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "/api/operator/shadow/diagnostics" in response.text
     assert "/api/operator/stage13/readiness" in response.text
     assert "/api/operator/research/r104-readiness" in response.text
+    assert "/api/operator/research/progress" in response.text
     assert "Provider Pipeline" in response.text
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
     assert "/api/operator/research/jobs/run-historical-research-cycle" in response.text
@@ -708,6 +716,87 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "set-mode" not in response.text
     assert "manual-signal" not in response.text
     assert "smoke-live" not in response.text
+
+
+def test_operator_research_progress_api_reports_r104_milestones(app_config, sample_bars, tmp_path) -> None:
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_ui.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=tmp_path / "research"),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    async def fake_jobs_with_non_r104_active() -> list[dict[str, object]]:
+        return [
+            {
+                "job_id": "stale-entry-gate-job",
+                "job_type": "optimize-entry-gates",
+                "status": "running",
+                "requested_at_ms": 1712665800000,
+                "started_at_ms": 1712665800000,
+                "finished_at_ms": None,
+                "request": {},
+                "result": None,
+                "error_text": None,
+            }
+        ]
+
+    app.state.operator_service.list_jobs = fake_jobs_with_non_r104_active
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        response = client.get("/api/operator/research/progress")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["stage"] == "R104"
+    assert payload["research_only"] is True
+    assert payload["observe_only"] is True
+    assert payload["promotion_ready"] is False
+    keys = {item["key"] for item in payload["milestones"]}
+    assert {
+        "durable_readiness",
+        "btc_cycle",
+        "btc_discovery",
+        "eth_cycle",
+        "eth_discovery",
+        "candidate_eligibility",
+    } <= keys
+    by_key = {item["key"]: item for item in payload["milestones"]}
+    assert by_key["durable_readiness"]["status"] == "complete"
+    assert by_key["btc_cycle"]["status"] == "ready"
+    assert by_key["btc_discovery"]["status"] == "waiting"
+    assert "BTC historical cycle" in by_key["btc_discovery"]["detail"]
+    assert by_key["eth_cycle"]["status"] == "ready"
+    assert by_key["eth_discovery"]["status"] == "waiting"
+    assert "ETH historical cycle" in by_key["eth_discovery"]["detail"]
+    assert payload["progress"]["total"] == len(payload["milestones"])
+    assert payload["progress"]["active_job_type"] is None
+    assert "optimize-entry-gates" not in payload["next_action"]
+    assert payload["settings"]["output_policy"] == "isolated operator output directories"
+    assert "Run" in payload["next_action"] or "Fix" in payload["next_action"]
+
+
+def test_operator_timeline_page_renders_job_status_detail(app_config, sample_bars) -> None:
+    config = _operator_config(app_config)
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        response = client.get("/ui/timeline")
+
+    assert response.status_code == 200
+    assert "timeline-job-meta" in response.text
+    assert "jobStatusBadge" in response.text
+    assert "status stored by operator job loop" in response.text
+    assert "request.spec_path" in response.text
 
 
 def test_operator_r104_readiness_api_reports_durable_btc_eth(app_config, sample_bars) -> None:
@@ -1022,6 +1111,37 @@ def test_operator_feed_is_deterministic(app_config, sample_bars, tmp_path, monke
         first = client.get("/api/operator/feed?limit=20").json()
         second = client.get("/api/operator/feed?limit=20").json()
     assert [item["id"] for item in first["items"]] == [item["id"] for item in second["items"]]
+
+
+def test_operator_feed_derives_job_symbol_from_request_spec_path(app_config, sample_bars, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_feed_job_symbols.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=app_config.research,
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        asyncio.run(
+            app.state.engine.store.queue_operator_job(
+                job_id="eth-cycle-job",
+                job_type="run-historical-research-cycle",
+                requested_at_ms=1712665800000,
+                request={"spec_path": "configs/research/full_cycle_ethusdt_durable_public_archive_r104_v1.json"},
+            )
+        )
+        feed = client.get("/api/operator/feed?limit=20").json()
+
+    item = next(item for item in feed["items"] if item["kind"] == "operator_job")
+    assert item["symbol"] == "ETHUSDT"
+    assert item["payload"]["request"]["spec_path"].endswith("ethusdt_durable_public_archive_r104_v1.json")
 
 
 def test_operator_feed_can_hide_health_and_execution_metrics(app_config, sample_bars, tmp_path, monkeypatch) -> None:

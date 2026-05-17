@@ -18,6 +18,26 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"Unsupported JSON value: {type(value)!r}")
 
 
+def _operator_payload_symbol(*payloads: dict[str, Any] | None, default: str | None = None) -> str | None:
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            continue
+        symbol = payload.get("symbol")
+        if isinstance(symbol, str) and symbol.strip():
+            return symbol.strip().upper()
+        asset_scope = payload.get("asset_scope")
+        if isinstance(asset_scope, list) and len(asset_scope) == 1 and isinstance(asset_scope[0], str):
+            return asset_scope[0].strip().upper()
+    text = json.dumps(payloads, default=str, sort_keys=True).lower()
+    has_eth = "ethusdt" in text
+    has_btc = "btcusdt" in text
+    if has_eth and not has_btc:
+        return "ETHUSDT"
+    if has_btc and not has_eth:
+        return "BTCUSDT"
+    return default
+
+
 class SQLiteStore:
     def __init__(self, db_path: Path):
         self.db_path = db_path
@@ -1088,7 +1108,7 @@ class SQLiteStore:
             )
             commands = await commands_cursor.fetchall()
             jobs_cursor = await db.execute(
-                "SELECT job_id, job_type, status, requested_at_ms, started_at_ms, finished_at_ms, result_json, error_text FROM operator_jobs ORDER BY requested_at_ms DESC, job_id DESC LIMIT ?",
+                "SELECT job_id, job_type, status, requested_at_ms, started_at_ms, finished_at_ms, request_json, result_json, error_text FROM operator_jobs ORDER BY requested_at_ms DESC, job_id DESC LIMIT ?",
                 (query_limit,),
             )
             jobs = await jobs_cursor.fetchall()
@@ -1152,35 +1172,40 @@ class SQLiteStore:
             )
         for row in commands:
             sort_id = f"{int(row['requested_at_ms']):013d}:command:{row['command_id']}"
+            request_payload = json.loads(row["request_json"]) if row["request_json"] else {}
+            result_payload = json.loads(row["result_json"]) if row["result_json"] else None
             entries.append(
                 {
                     "id": sort_id,
                     "time_ms": row["requested_at_ms"],
                     "kind": "operator_command",
                     "summary": row["command_type"],
-                    "symbol": (json.loads(row["request_json"]).get("symbol") if row["request_json"] else "BTCUSDT"),
+                    "symbol": _operator_payload_symbol(request_payload, result_payload, default="BTCUSDT"),
                     "payload": {
-                        "request": json.loads(row["request_json"]) if row["request_json"] else {},
-                        "result": json.loads(row["result_json"]) if row["result_json"] else None,
+                        "request": request_payload,
+                        "result": result_payload,
                         "success": None if row["success"] is None else bool(row["success"]),
                     },
                 }
             )
         for row in jobs:
             sort_id = f"{int(row['requested_at_ms']):013d}:job:{row['job_id']}"
+            request_payload = json.loads(row["request_json"]) if row["request_json"] else {}
+            result_payload = json.loads(row["result_json"]) if row["result_json"] else None
             entries.append(
                 {
                     "id": sort_id,
                     "time_ms": row["requested_at_ms"],
                     "kind": "operator_job",
                     "summary": f"{row['job_type']}:{row['status']}",
-                    "symbol": "BTCUSDT",
+                    "symbol": _operator_payload_symbol(request_payload, result_payload),
                     "payload": {
                         "job_type": row["job_type"],
                         "status": row["status"],
                         "started_at_ms": row["started_at_ms"],
                         "finished_at_ms": row["finished_at_ms"],
-                        "result": json.loads(row["result_json"]) if row["result_json"] else None,
+                        "request": request_payload,
+                        "result": result_payload,
                         "error_text": row["error_text"],
                     },
                 }
