@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\core\models.py
+# hypothesis_version: 6.151.12
+
+['0', 'accept', 'acked', 'adverse_selection', 'alpha_decay', 'basis_dislocation', 'blocked', 'bootstrap', 'cancel', 'canceled', 'close', 'degraded', 'enter', 'exit', 'filled', 'flat', 'flip', 'healthy', 'heartbeat_loss', 'ignore', 'intended', 'live', 'long', 'manual', 'none', 'open', 'order_timeout', 'paper', 'pending_close', 'pending_open', 'phase1-bootstrap', 'phase1-none', 'position_ambiguity', 'protective_sl', 'protective_tp', 'reconciliation_stale', 'reject', 'rejected', 'safe_mode', 'shadow', 'short', 'stale_market_data', 'stop_loss', 'symbol', 'take_profit', 'time_barrier', 'tradingview', 'unknown']

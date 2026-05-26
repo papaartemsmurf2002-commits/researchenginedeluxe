@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\oi_flow_breakout.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 0.0, 1e-09, 0.75, 1.0, 4.0, 5.0, 10000.0, '12h', '24h', '4h', '72h', 'basis_bps', 'coerce', 'flow_z', 'flow_z_threshold', 'ignore', 'long', 'oi_delta', 'oi_delta_1h', 'oi_delta_z_7d', 'oi_delta_z_threshold', 'oi_flow_breakout_v2', 'oi_notional', 'oi_z', 'perp_premium', 'premium_bps', 'premium_slope_bps', 'quality_has_oi_gap', 'require_when_present', 'required', 'short', 'spacing_bars', 'v1']

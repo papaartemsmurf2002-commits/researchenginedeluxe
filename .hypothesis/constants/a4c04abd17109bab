@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\regime_adaptive.py
+# hypothesis_version: 6.151.12
+
+[8e-05, 0.0002, 0.18, 1.0, 2.5, 50.0, '12h', '24h', '4h', '72h', '7d', 'choppiness', 'funding_rate', 'long', 'regime_adaptive_v1', 'short', 'spacing_bars', 'v1']

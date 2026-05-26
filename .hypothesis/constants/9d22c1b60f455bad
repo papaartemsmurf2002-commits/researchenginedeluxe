@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\hmm_knn\diagnostics.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.6, 0.78, 'accepted', 'accepted_by_knn', 'accepted_by_meta', 'coerce', 'configured_with_wt3d', 'full_context_no_wt3d', 'high_regime_entropy', 'knn_skip', 'knn_skip_reason', 'meta_filter_rejected', 'missing', 'p05', 'p50', 'p95', 'posterior_entropy', 'query_regime', 'recent_regime_flip', 'regime_no_trade', 'rejected', 'row_count', 'top_regime_label', 'wt3d_', 'wt3d_feature_count']

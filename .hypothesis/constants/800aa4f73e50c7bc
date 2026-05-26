@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\replay.py
+# hypothesis_version: 6.151.12
+
+[',', ':', 'aggregate_trade_id', 'cloid', 'contract_version', 'data_family', 'event_count', 'event_time_ms', 'event_type', 'first_mismatch', 'first_mismatch_index', 'index', 'left_event', 'left_event_count', 'left_event_hash', 'left_sha256', 'match', 'observe_only', 'order_by', 'ordered_event_hashes', 'ordered_events', 'payload_hash', 'promotion_ready', 'receive_time', 'receive_time_ms', 'research_only', 'right_event', 'right_event_count', 'right_event_hash', 'right_sha256', 'schema_version', 'sha256', 'signal_id', 'source_event_time_ms', 'source_name', 'source_row_index', 'source_time', 'symbol', 'time_ms', 'trade_id', 'utf-8']

@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\core\engine.py
+# hypothesis_version: 6.151.12
+
+[1000, '0', 'accepted', 'acked', 'atr', 'bar_count', 'duplicate', 'duplicate_signal', 'enter', 'filled', 'intended', 'json', 'last_exit_reason', 'last_updated_ms', 'latest_bar_time_ms', 'latest_close', 'no bars returned', 'no_market_data', 'packet', 'position_size', 'protective_sl', 'protective_tp', 'rejection_reason', 'reports', 'safe_mode', 'safe_mode_detail', 'safe_mode_reason', 'sl_order_cloid', 'stale_market_data', 'status', 'tp_order_cloid']

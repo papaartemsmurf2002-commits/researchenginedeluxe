@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\features\builders.py
+# hypothesis_version: 6.151.12
+
+[0.0, 900000, 'availability_report', 'bar_time_ms', 'builder_version', 'close', 'coerce', 'entry_price', 'errors', 'feature_manifest', 'feature_set_id', 'feature_time_ms', 'high', 'ignore', 'left', 'low', 'materialized_columns', 'mergesort', 'observe_only', 'one_to_one', 'open', 'promotion_ready', 'quality_flags', 'research_only', 'row_count', 'signal_bar_close', 'signal_bar_high', 'signal_bar_low', 'signal_bar_open', 'signal_bar_time_ms', 'signal_bar_volume', 'time_ms', 'valid', 'volume']

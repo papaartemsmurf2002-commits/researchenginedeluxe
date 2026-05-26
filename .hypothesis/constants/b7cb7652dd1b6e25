@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\execution_sim.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1.0, 3.0, 1000, 'allow_same_bar_exit', 'bar_time_ms', 'close', 'decision_time_ms', 'entry_latency_ms', 'entry_price', 'entry_price_source', 'entry_time_ms', 'equity', 'exit_price', 'exit_reason', 'exit_time_ms', 'fee_return', 'funding_rate', 'funding_return', 'gross_return', 'high', 'holding_ms', 'holding_period_ms', 'holding_window', 'int64', 'interval_ms', 'low', 'max_holding_ms', 'mergesort', 'min_holding_ms', 'net_return', 'next_bar_open', 'open', 'realized_net_return', 'records', 'side', 'signal_bar_close', 'signal_id', 'slippage_return', 'spread_bps', 'spread_return', 'symbol', 'time_ms', 'trade_id', 'vwap_approximation']

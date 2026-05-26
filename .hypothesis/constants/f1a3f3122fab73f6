@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\data\manager.py
+# hypothesis_version: 6.151.12
+
+[0.0, 100.0, 1000, '.json', '12h', '15m', '1d', '1h', '1m', '2h', '30m', '3m', '4h', '5m', '8h', 'UTC', '_binance', '_hyperliquid', 'actual_end', 'actual_start', 'binance_futures', 'cache_path', 'close', 'close_binance', 'close_hyperliquid', 'data/cache', 'end', 'error', 'gaps', 'hyperliquid', 'hyperliquid_fallback', 'inner', 'last', 'missing_overlap_data', 'ok', 'overlap_rows', 'provider', 'providers', 'reason', 'requested_end', 'requested_start', 'resolved', 'row_count', 'rows', 's', 'skipped', 'start', 'status', 'symbol', 'threshold_pct', 'timeframe', 'timestamp', 'utf-8', 'validation']

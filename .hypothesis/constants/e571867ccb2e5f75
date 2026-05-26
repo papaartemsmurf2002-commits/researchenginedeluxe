@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\features\split_transforms.py
+# hypothesis_version: 6.151.12
+
+['fit_scope', 'observe_only', 'preprocessor', 'promotion_ready', 'research_only', 'split_id', 'train_only', 'train_row_count', 'validation_row_count']

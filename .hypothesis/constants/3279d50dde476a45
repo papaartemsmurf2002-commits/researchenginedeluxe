@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\execution_journal.py
+# hypothesis_version: 6.151.12
+
+[1000, 1024, ',', '.manifest.json', '0x', ':', '; ', 'a', 'account', 'cloid', 'cloid_derivation', 'cloid_deterministic', 'cloid_strategy', 'data_path', 'deterministic', 'event_type', 'event_types', 'exit_intent', 'funding_payment', 'generated_at_ms', 'journal_type', 'last_receive_time_ms', 'manifest_hash', 'notes', 'order_', 'order_acknowledged', 'order_filled', 'order_intent', 'order_rejected', 'order_submitted', 'parts', 'payload', 'payload_hash', 'position_snapshot', 'pre_submit_reject', 'prefix', 'raw_payload', 'rb', 'receive_time_ms', 'reconciliation', 'reduce_only', 'replay_order', 'research_only', 'row_count', 'schedule_cancel_set', 'schema_version', 'scope', 'sha256', 'source_event_time_ms', 'source_row_index', 'symbol', 'tbs', 'utf-8']

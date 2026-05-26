@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\costs.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 0.0, 1.0, 2.0, 5.0, 10000.0, 1000, 'binance_usdm', 'fee_bps', 'fee_return', 'funding_interval_ms', 'funding_rate', 'funding_return', 'gross_return', 'long', 'net_return', 'slippage_bps', 'slippage_return', 'spread_bps', 'spread_return', 'venue']

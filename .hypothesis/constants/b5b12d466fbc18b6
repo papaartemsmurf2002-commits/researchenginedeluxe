@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\web\app.py
+# hypothesis_version: 6.151.12
+
+[0.25, 401, 422, '/health', '/health/details', '0.1.0', '5', 'BTCUSDT', 'Trading Bot Suite', 'X-Signature', 'X-Timestamp-Ms', 'accepted', 'action', 'error', 'json', 'mode', 'now_ms', 'ok', 'reports', 'server_monitor:error', 'signal_id', 'status', 'symbol', 'ticket_id']

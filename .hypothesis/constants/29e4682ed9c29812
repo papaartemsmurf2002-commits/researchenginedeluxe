@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\dataset.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1024, '1', 'BTCUSDT', 'accepted', 'basis', 'basis_bps', 'calibration_version', 'config', 'dataset', 'dataset_path', 'dataset_sha256', 'decision_packet', 'direction', 'entry_price', 'evaluation', 'feature_snapshot', 'feature_version', 'features', 'label_accept', 'label_exit_reason', 'label_pnl_multiple', 'microstructure', 'missing_', 'model', 'model_version', 'none', 'observe_only', 'plan_version', 'rb', 'received_time_ms', 'rejection_reason', 'row_count', 'signal_id', 'sl_price', 'symbol', 'tp_price', 'tv_bar_time_ms', 'utf-8', 'v1_baseline_accept', 'v1_rejection_reason']

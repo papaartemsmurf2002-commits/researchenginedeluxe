@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\order_blocks.py
+# hypothesis_version: 6.151.12
+
+[1.0, 2.0, 4.0, 100.0, 'Full', 'Middle', 'None', 'Recent', 'close', 'event_kind', 'high', 'low', 'open', 'pivot_price', 'volume']

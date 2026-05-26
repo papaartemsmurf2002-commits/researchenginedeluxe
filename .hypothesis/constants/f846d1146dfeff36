@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\tv_backtest.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1.0, 4.0, 'close', 'early_signal_flips', 'end_long_trade', 'end_short_trade', 'high', 'is_early_signal_flip', 'low', 'open', 'start_long_trade', 'start_short_trade', 'total_losses', 'total_trades', 'total_wins', 'tv_long_profit', 'tv_long_short_profit', 'tv_short_profit', 'tv_total_losses', 'tv_total_trades', 'tv_total_wins', 'tv_win_loss_ratio', 'tv_win_rate', 'win_loss_ratio', 'win_rate']

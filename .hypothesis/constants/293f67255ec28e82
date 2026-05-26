@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\persistence\sqlite_store.py
+# hypothesis_version: 6.151.12
+
+['direction', 'entry_atr', 'entry_bar_time_ms', 'entry_order_cloid', 'entry_price', 'entry_time_ms', 'hurst_at_entry', 'imbalance_at_entry', 'last_exit_reason', 'last_updated_ms', 'position_size', 'safety_status', 'sl_order_cloid', 'sl_price', 'state_json', 'status', 'symbol', 'tp_order_cloid', 'tp_price']

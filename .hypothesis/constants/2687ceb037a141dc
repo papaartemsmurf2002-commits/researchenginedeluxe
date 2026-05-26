@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\persistence\sqlite_store.py
+# hypothesis_version: 6.151.12
+
+['accepted', 'decision_packet', 'decision_packet_json', 'direction', 'entry_atr', 'entry_bar_time_ms', 'entry_order_cloid', 'entry_price', 'entry_time_ms', 'hurst_at_entry', 'imbalance_at_entry', 'last_exit_reason', 'last_updated_ms', 'position_size', 'raw_payload', 'raw_payload_json', 'received_time_ms', 'rejection_reason', 'safety_status', 'signal_id', 'sl_order_cloid', 'sl_price', 'source', 'state_json', 'status', 'symbol', 'tp_order_cloid', 'tp_price', 'tv_bar_time_ms']

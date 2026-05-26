@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\features\cache.py
+# hypothesis_version: 6.151.12
+
+[1024, '%.12g', ',', ':', 'availability_columns', 'availability_report', 'bar_time_ms', 'builder_version', 'cache_version', 'columns', 'dataset_sha256', 'feature_cache_key', 'feature_columns', 'feature_frame_sha256', 'feature_manifest', 'feature_path', 'feature_set_id', 'feature_time_ms', 'features.parquet', 'interval_ms', 'manifest_sha256', 'observe_only', 'promotion_ready', 'rb', 'require_continuous', 'research_only', 'row_count', 'rows', 'split_id', 'utf-8']

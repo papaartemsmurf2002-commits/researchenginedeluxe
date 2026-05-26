@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\optimization\optimizer.py
+# hypothesis_version: 6.151.12
+
+[0.0, 100, 'cache_enabled', 'cache_size', 'cache_telemetry', 'effective_candidates', 'grid', 'hit_rate', 'hits', 'misses', 'observe_only', 'optimizer-report-v1', 'parallel_workers', 'promotion_ready', 'research_only', 'results', 'size', 'stability_regions', 'total_candidates', 'writes']

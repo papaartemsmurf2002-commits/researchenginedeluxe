@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\market_structure.py
+# hypothesis_version: 6.151.12
+
+['close', 'high', 'low', 'timestamp']

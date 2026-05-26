@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\core\features.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1.0, 2.0, 24.0, 60.0, 1000.0, 1000, '0', 'atr', 'atr_percentile', 'bar_count', 'basis', 'basis_bps', 'basis_rate', 'direction', 'direction_long', 'feature_version', 'funding_context', 'funding_rate', 'funding_rate_change', 'high', 'hurst', 'latest_bar_time_ms', 'latest_close', 'low', 'medium', 'microstructure', 'missing', 'missing_basis_bps', 'missing_funding_rate', 'missing_hurst', 'open_interest', 'open_interest_change', 'open_interest_value', 'premium_basis_abs', 'premium_basis_rate', 'premium_close', 'premium_context', 'queue_imbalance_l1', 'queue_imbalance_l10', 'queue_imbalance_l5', 'realized_volatility', 'session_asia', 'session_europe', 'session_hour_cos', 'session_hour_sin', 'session_hour_utc', 'session_us', 'session_weekday', 'signed_ratio', 'unscored', 'v2-btc-acceptance-1', 'very_low', 'windows']

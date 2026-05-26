@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\lc_reference.py
+# hypothesis_version: 6.151.12
+
+[0.1, 0.5, 1.0, '12h', '1h', '24h', '4h', '72h', '7d', 'direction_long', 'lc_reference_v1', 'long', 'short', 'slope_threshold', 'spacing_bars', 'v1']

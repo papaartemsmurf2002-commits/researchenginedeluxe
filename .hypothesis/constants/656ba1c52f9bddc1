@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\registry.py
+# hypothesis_version: 6.151.12
+
+['baseline_no_trade', 'baseline_trend', 'funding_basis_v1', 'lc_reference_v1', 'oi_flow_breakout_v2', 'range_reversion_v1', 'regime_adaptive_v1', 'trend_following_v1']

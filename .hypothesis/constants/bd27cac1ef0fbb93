@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\features\alignment.py
+# hypothesis_version: 6.151.12
+
+[',', '; ', 'backward', 'bar_time_gaps', 'coerce', 'decision_time_ms', 'duplicate_bar_times', 'empty_bar_series', 'feature_age_ms', 'feature_available_', 'feature_time_ms', 'int64', 'invalid_bar_time', 'mergesort']

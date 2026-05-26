@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\funding_window_timing.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 0.0, 1e-09, 0.25, 0.4, 1.0, 2.5, 4.0, 10000.0, '12h', '24h', '4h', '72h', 'avoid_acceleration', 'basis_bps', 'both', 'coerce', 'entry_window_h', 'funding_momentum', 'funding_rate', 'funding_z', 'funding_z_threshold', 'ignore', 'long', 'oi_delta_z_7d', 'oi_z', 'perp_funding_z_7d', 'perp_premium', 'post', 'post_funding', 'pre', 'pre_funding', 'pre_or_post', 'premium_bps', 'quality_has_oi_gap', 'require_reversal', 'short', 'since_last_h', 'spacing_bars', 'to_next_h', 'v1', 'window_mode']

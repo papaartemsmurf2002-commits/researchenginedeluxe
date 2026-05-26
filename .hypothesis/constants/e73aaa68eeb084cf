@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\hmm_routed_alpha_sleeves.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 0.0, 1e-09, 0.01, 0.6, 0.75, 0.78, 1.0, 3.0, 5.0, 6.0, 10000.0, 1000, '0', '1', '12h', '24h', '4h', '72h', 'basis_bps_threshold', 'bear', 'bull', 'chop', 'down_trend', 'downtrend', 'entropy_threshold', 'false', 'flow_alignment_z_min', 'funding_z_threshold', 'hmm_fit_end_row', 'long', 'mean_revert', 'min_edge_bps', 'n', 'no', 'oi_delta_1h', 'oi_delta_z_7d', 'oi_delta_z_threshold', 'perp_funding_z_7d', 'perp_premium', 'perp_premium_z_7d', 'posterior_entropy', 'posterior_threshold', 'premium_z_threshold', 'quality_has_oi_gap', 'range', 'recent_regime_flip', 'regime_bucket', 'regime_no_trade', 'shock', 'short', 'source_row_index', 'spacing_bars', 'top_regime_label', 'transition', 'true', 'unknown', 'up_trend', 'uptrend', 'v1', 'volatile', 'y', 'yes']

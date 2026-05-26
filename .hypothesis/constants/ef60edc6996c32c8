@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\promotion\artifact_validator.py
+# hypothesis_version: 6.151.12
+
+[300, 1000, 10000, '0', '0.50', '1', '_version', 'candidate_id', 'comparison', 'cost_assumptions', 'event_rows_by_asset', 'evidence', 'evidence_floors', 'evidence_required', 'improved_split_ratio', 'intended_use', 'live_execution_input', 'live_signal_input', 'long', 'manifest_version', 'max_split_pnl_share', 'metrics', 'metrics_digest', 'min_trade_count', 'observe_only', 'plan', 'promotion', 'promotion-candidate', 'promotion_candidate', 'promotion_failures', 'promotion_plan', 'promotion_ready', 'regime_metrics', 'regime_rows', 'regime_rows_required', 'research', 'research_only', 'research_plan', 'shadow', 'shadow_only', 'short', 'side_metrics', 'side_outcomes', 'strategy_version', 'stress_periods', 'trade_count', 'unknown', 'uses_regime_model', 'utf-8-sig', 'volatility_regimes', 'wt3d_ablation_passed', 'wt3d_claimed']

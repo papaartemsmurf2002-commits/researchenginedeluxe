@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\state.py
+# hypothesis_version: 6.151.12
+
+[0.0, 'DiscoveryRunState', 'DiscoveryTrialRecord', 'attempt-001', 'attempt_id', 'blocker_code', 'candidate_family', 'candidate_id', 'completed', 'completed_at_utc', 'completed_trial_ids', 'error_payload', 'failed_trial_ids', 'filter_blocker_code', 'in_progress', 'last_snapshot_path', 'ledger_kind', 'live_execution_input', 'live_fetch_used', 'live_signal_input', 'message', 'observe_only', 'order_placement_used', 'payload', 'promotion_ready', 'record_sha256', 'research_only', 'run_id', 'run_state_version', 'runtime_mode_changed', 'score', 'snapshot_count', 'started_at_utc', 'status', 'trial_id', 'trial_index', 'trial_record_version', 'updated_at_utc', 'utf-8']

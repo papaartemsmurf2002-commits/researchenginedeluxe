@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\optimization\optimizer.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.25, 100, 'adaptive_grid', 'bootstrap_mean_score', 'bootstrap_pass_rate', 'bootstrap_validation', 'cache_enabled', 'cache_size', 'cache_telemetry', 'candidate_count', 'candidate_id', 'candidate_summaries', 'effective_candidates', 'generation_scope', 'grid', 'hit_rate', 'hits', 'method', 'misses', 'observe_only', 'optimizer-report-v1', 'parallel_workers', 'pass_score', 'promotion_ready', 'random_seed', 'repeats', 'research_only', 'result_count', 'results', 'sample_count', 'search_space_expand', 'search_stage_count', 'size', 'split_scores', 'stability_regions', 'stage_index', 'stage_reports', 'total_candidates', 'writes']

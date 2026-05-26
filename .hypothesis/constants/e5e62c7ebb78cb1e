@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\trend.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.00025, 0.12, 1.0, 50.0, 58.0, '12h', '24h', '4h', '72h', '7d', 'choppiness', 'funding_rate', 'long', 'max_choppiness', 'short', 'slope_threshold', 'spacing_bars', 'trend_following_v1', 'v1']

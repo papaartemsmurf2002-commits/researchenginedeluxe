@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\adapters\binance.py
+# hypothesis_version: 6.151.12
+
+[1.0, 10.0, 512, 1000, 120000, '/', '0', '10000', '15m', '2', 'A', 'B', 'E', 'T', 'a', 'aggTrade', 'aggressor_side', 'ask_price', 'ask_qty', 'b', 'best_ask_price', 'best_ask_qty', 'best_bid_price', 'best_bid_qty', 'bid_price', 'bid_qty', 'bookTicker', 'buy', 'buy_qty', 'c', 'e', 'enabled', 'h', 'healthy', 'interval', 'k', 'kline', 'l', 'last_error', 'last_trade_time_ms', 'last_ws_message_ms', 'limit', 'm', 'mid_price', 'missing_trade_stream', 'notional', 'o', 'p', 'price', 'q', 'qty', 'reasons', 's', 'sell', 'sell_qty', 'signed_notional', 'signed_qty', 'signed_ratio', 'spread_bps', 'stale_trade_stream', 'started', 'started_ms', 'symbol', 'symbol_status', 't', 'time_ms', 'total_notional', 'tracked_symbols', 'trade_count', 'v', 'windows', 'x']

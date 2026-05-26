@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\feature_sets.py
+# hypothesis_version: 6.151.12
+
+[',', ';', 'clamp_policy', 'columns', 'disabled_reason', 'enabled', 'feature_column_sets', 'knn_feature_matrix', 'manifest_id', 'manifest_sha256', 'manifest_version', 'maximum_dimensions', 'notes', 'observe_only', 'promotion_ready', 'research_only', 'role', 'scaler_policy', 'train_only_clip_5_95', 'utf-8', 'utf-8-sig', 'v1', 'wt3d_']

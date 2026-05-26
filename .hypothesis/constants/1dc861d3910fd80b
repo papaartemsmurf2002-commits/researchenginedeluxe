@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\config\__init__.py
+# hypothesis_version: 6.151.12
+
+['-', 'ADX', 'BTC', 'CCI', 'RSI', 'WT', 'backtest', 'color compression -', 'data', 'execution', 'feature 1 -', 'feature 2 -', 'feature 3 -', 'feature 4 -', 'feature 5 -', 'feature count -', 'feature_definitions', 'lookback window -', 'max bars back -', 'neighbors count -', 'optimization', 'references', 'regression level -', 'relative weighting -', 'risk', 'settings.txt', 'show default exits -', 'strategies', 'trade with kernel -', 'true', 'use dynamic exits -', 'utf-8']

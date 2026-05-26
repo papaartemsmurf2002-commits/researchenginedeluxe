@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\range_reversion.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.1, 1.0, 55.0, '12h', '1h', '24h', '4h', 'choppiness', 'choppiness_threshold', 'long', 'path_zscore_20', 'range_reversion_v1', 'short', 'spacing_bars', 'stretch_threshold', 'v1']

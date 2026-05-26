@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\neighbor_cache.py
+# hypothesis_version: 6.151.12
+
+[',', ':', 'cache_key', 'distance_metric', 'enabled', 'feature_columns', 'hit_rate', 'hits', 'identity', 'label_horizon', 'label_horizon_bars', 'lookups', 'misses', 'record_count', 'regime_detector_type', 'regime_gate_enabled', 'regime_mode', 'row_count', 'selection_k_limit', 'source_identity', 'split_id', 'train_row_count', 'train_source_max', 'train_source_min', 'utf-8', 'validation_row_count', 'writes']

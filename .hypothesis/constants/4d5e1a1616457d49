@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\features\packs.py
+# hypothesis_version: 6.151.12
+
+[-2.0, 0.0, 0.75, 1.0, 2.0, 3.0, 24.0, 60.0, 100.0, 'adx_proxy', 'atr', 'atr_percentile', 'bar_time_ms', 'btc_close', 'calendar_v1', 'choppiness', 'close', 'coerce', 'cross_asset_v1', 'efficiency_ratio', 'entry_price', 'eth_close', 'feature_time_ms', 'high', 'hurst_proxy', 'log_return_1', 'log_return_16', 'log_return_4', 'low', 'momentum_16', 'momentum_4', 'ms', 'path_zscore_20', 'perp_context_v1', 'premium_close', 'price_path_v1', 'range_width', 'realized_volatility', 'session_hour_cos', 'session_hour_sin', 'session_weekday', 'trend_chop_v1', 'trend_slope_20', 'vol_of_vol', 'volatility_v1', 'weekend_session', 'wt3d_acceleration', 'wt3d_fast', 'wt3d_mtf_agreement', 'wt3d_normal', 'wt3d_slope', 'wt3d_slow', 'wt3d_v1']

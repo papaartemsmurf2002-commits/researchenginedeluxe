@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\volatility_breakout.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.45, 1.0, '12h', '1h', '24h', '4h', '72h', '7d', 'atr_percentile', 'long', 'shock_threshold', 'short', 'spacing_bars', 'v1']

@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\metrics.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1.0, 10.0, 999999.0, 'available', 'bar_time_ms', 'coerce', 'entry_month', 'equity', 'expectancy', 'expectancy_per_trade', 'exposure', 'funding_contribution', 'funding_return', 'gross_return', 'hit_rate', 'holding_ms', 'long', 'long_count', 'market_row_count', 'max_drawdown', 'max_spread_bps', 'missing', 'net_return', 'net_return_sum', 'no_trades', 'profit_factor', 'reason', 'regime', 'short', 'short_count', 'side', 'signal_count', 'slippage_return', 'slippage_sensitivity', 'split_by_month', 'split_by_regime', 'spread_bps', 'spread_bps_missing', 'trade_count', 'turnover', 'volatility_bucket']

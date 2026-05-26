@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\strategy_integration.py
+# hypothesis_version: 6.151.12
+
+[1024, ',', '1', '24h', ':', '; ', 'BTCUSDT', 'accepted_by_knn', 'accounting_sha256', 'executed_trade_count', 'feature_set_id', 'filter_block_count', 'flat', 'holding_period', 'holding_window', 'knn_skip_reason', 'live_fetch_used', 'nan', 'none', 'null', 'observe_only', 'order_placement_used', 'plugin_signal_count', 'promotion_ready', 'rb', 'required_outputs', 'research_only', 'row_count', 'runtime_mode_changed', 'side', 'side_counts', 'skip_reason', 'split_safety_rule', 'strategy_config', 'strategy_id', 'strategy_signals', 'symbol', 'true', 'utf-8', 'y', 'yes']

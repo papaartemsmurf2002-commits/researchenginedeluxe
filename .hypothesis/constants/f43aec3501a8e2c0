@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\data\providers\binance_rest.py
+# hypothesis_version: 6.151.12
+
+['.manifest.json', '15m', '; ', 'binance_rest', 'close_price', 'duplicate_count', 'duplicates_detected', 'event_time_ms', 'f', 'gap_count', 'gaps_detected', 'high_price', 'interval', 'kline', 'low_price', 'open_price', 'quality_flags', 'receive_time_ms', 'rest', 'storage_layout', 'symbol', 'utf-8', 'volume']

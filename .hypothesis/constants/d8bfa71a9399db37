@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\indicators.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.015, 1.0, 3.0, 4.0, 100.0, 10000.0, 100, 365, 10000000000, 'ADX', 'CCI', 'RSI', 'UNKNOWN', 'WT', 'close', 'high', 'low', 'ms', 'open', 's', 'symbol', 'time', 'timestamp', 'volume']

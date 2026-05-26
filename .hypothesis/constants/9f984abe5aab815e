@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\adapters\execution.py
+# hypothesis_version: 6.151.12
+
+[10.0, '0', 'BTC', 'BTCUSDT', 'ETH', 'ETHUSDT', 'assetPositions', 'cloid', 'close', 'coin', 'data', 'entry', 'entry_cloid', 'filled', 'isMarket', 'json', 'oid', 'open', 'open_order_cloids', 'paper fill', 'position', 'position_size', 'response', 'resting', 'result', 'shadow mode', 'signal_id', 'sl', 'statuses', 'success', 'symbol', 'szi', 'tp', 'tpsl', 'trigger', 'triggerPx']

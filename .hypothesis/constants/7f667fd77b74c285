@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\exits.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 0.0, 5e-05, 0.002, 0.005, 0.01, 0.05, 0.1, 1.0, 20.0, 'activation_return', 'adverse_selection', 'alpha_decay', 'alpha_decay_exit', 'alpha_threshold', 'atr_percentile', 'bar_time_ms', 'close', 'close_only_stop', 'close_only_target', 'coerce', 'fixed_holding_window', 'funding_adverse', 'funding_adverse_exit', 'funding_rate', 'funding_threshold', 'high', 'holding_window', 'imbalance_threshold', 'int64', 'long', 'low', 'max_mae_stop', 'mergesort', 'realized_volatility', 'regime', 'regime_flip', 'regime_flip_exit', 'short', 'spread_bps', 'spread_threshold_bps', 'stop', 'stop_return', 'symbol', 'target', 'target_return', 'time', 'top_regime_label', 'trail_return', 'trailing_stop', 'triple_barrier_atr', 'triple_barrier_stop']

@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\data\historical_fixture_pack.py
+# hypothesis_version: 6.151.12
+
+[1024, ':', 'agg_trade', 'bar_time_ms', 'bars', 'close', 'close_price', 'columns', 'content_hash', 'cycle_dataset', 'cycle_dataset_path', 'data_path', 'dataset_path', 'entry_price', 'errors', 'event_time_ms', 'families', 'families_required', 'fixture_id', 'funding_rate', 'high', 'high_price', 'interval', 'low', 'low_price', 'lower_timeframe_bars', 'manifest_version', 'observe_only', 'open', 'open_interest', 'open_price', 'parquet_path', 'parquet_sha256', 'path', 'premium_index', 'promotion_ready', 'rb', 'required', 'research_only', 'row_count', 'row_count_required', 'sha256', 'sha256:', 'sha256_mismatch', 'sha256_required', 'signal_bar_close', 'signal_bar_high', 'signal_bar_low', 'signal_bar_open', 'signal_bar_time_ms', 'signal_bar_volume', 'symbol', 'time_ms', 'valid', 'volume', 'warnings']

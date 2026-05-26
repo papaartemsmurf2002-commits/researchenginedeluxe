@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\live_smoke.py
+# hypothesis_version: 6.151.12
+
+[0.2, '0', 'BTCUSDT', 'account_not_flat', 'close_reports', 'entry_not_confirmed', 'entry_report', 'expected_exit_reason', 'json', 'live-smoke-enter', 'market_snapshot', 'mid_price', 'ok', 'position_size', 'preflight', 'reason', 'reconcile_before', 'side', 'stream_status']

@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\liquidation_absorption_classifier.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1e-09, 0.65, 1.0, 1.25, 3.0, 4.0, 15.0, '0', '1', '12h', '1h', '24h', '4h', 'coerce', 'event_age_h', 'event_count', 'false', 'imbalance', 'liq_event_count_1h', 'long', 'max_event_age_h', 'min_event_count', 'no', 'notional_z', 'notional_z_threshold', 'reclaim_bps', 'short', 'spacing_bars', 'total_notional', 'true', 'v1', 'yes']

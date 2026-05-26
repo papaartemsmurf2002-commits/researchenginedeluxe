@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\optimization\stability.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.5, 1.0, 10.0, 'accepted_region', 'center_candidate_id', 'cost_stress_survival', 'decision', 'member_candidate_ids', 'missingness_rate', 'regime_coverage', 'region_median_score', 'region_pass_rate', 'region_score_std', 'side_balance', 'split_stability', 'stability_score', 'validation_enriched']

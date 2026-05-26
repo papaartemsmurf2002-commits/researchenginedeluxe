@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\hmm_knn\config.py
+# hypothesis_version: 6.151.12
+
+['HmmKnnPluginConfig', 'atr_percentile', 'basis_bps', 'choppiness', 'direction_long', 'distance', 'efficiency_ratio', 'feature_pack', 'full_context_no_wt3d', 'full_context_wt3d', 'funding_rate', 'funding_rate_change', 'inverse_distance', 'k', 'lorentzian', 'perp_context_only', 'premium_basis_rate', 'price_trend_vol', 'queue_imbalance_l5', 'range_width', 'realized_volatility', 'regime_backend', 'same_regime_only', 'spread_bps', 'thresholds', 'weighting', 'wt3d_acceleration', 'wt3d_fast', 'wt3d_mtf_agreement', 'wt3d_normal', 'wt3d_slope', 'wt3d_slow']

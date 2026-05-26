@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\benchmark.py
+# hypothesis_version: 6.151.12
+
+[1e-09, 0.1, 1.0, 60.0, 1000.0, 240, '24h', 'BTCUSDT', 'balanced', 'baseline_trend', 'benchmark-fixture', 'cache_hit_speedup', 'dataset_path', 'dataset_sha256', 'dimensions', 'elapsed_ms', 'engine', 'fixtures', 'manifest_path', 'memory_peak', 'observe_only', 'process_scaling', 'promotion_ready', 'reason', 'registered_baseline', 'research_only', 'result_sha256', 'run_id', 'runs', 'slope_threshold', 'spacing_bars', 'status', 'utf-8', 'workers_1', 'workers_n']

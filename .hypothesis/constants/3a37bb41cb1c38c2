@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\config.py
+# hypothesis_version: 6.151.12
+
+[0.03, 120, 256, 1000, 60000, 120000, ',', '0', '0.001', '0.03', '0.1', '1.0', '1.5', '10,20,30,60', '120', '120000', '14', '20', '24', '256', '5', '60000', '75', 'AppConfig', 'TBS_ATR_LENGTH', 'TBS_BINANCE_BASE_URL', 'TBS_DB_PATH', 'TBS_HL_BASE_URL', 'TBS_HL_ENABLE_LIVE', 'TBS_HL_MAX_BASIS_BPS', 'TBS_HL_PRIVATE_KEY', 'TBS_HL_VAULT_ADDRESS', 'TBS_ORDER_SIZE', 'TBS_PRICE_TICK', 'TBS_RUNTIME_MODE', 'TBS_SIZE_STEP', 'TBS_SL_ATR_MULT', 'TBS_TP_ATR_MULT', 'TBS_WEBHOOK_SECRET', 'change-me', 'false', 'true']

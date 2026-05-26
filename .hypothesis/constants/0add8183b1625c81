@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\operator_commands.py
+# hypothesis_version: 6.151.12
+
+['70000', '75000', 'BTCUSDT', '_trace', 'accepted', 'armed', 'base_url', 'cleanup_scheduled', 'cloid', 'config', 'decision_rejected', 'eligible', 'execution_health', 'generated_at', 'hyperliquid', 'in_safe_mode', 'intent_type', 'json', 'live', 'live_testnet_only', 'manual-cli', 'market_data_health', 'mode', 'not_live_mode', 'not_requested', 'packet', 'protective_sl', 'protective_tp', 'reason', 'reconcile', 'rejected', 'reports', 'requested', 'runtime_mode', 'safety', 'seconds', 'signal', 'sl_order_cloid', 'snapshot', 'source', 'status', 'stream_events', 'testing_only', 'testnet', 'ticket', 'tp_order_cloid', 'typed_command']

@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\snapshots.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.05, 1.0, '%Y%m%dT%H%M%SZ', '+00:00', 'Z', 'created_at_utc', 'observe_only', 'promotion_ready', 'research_only', 'run_id', 'snapshot_sequence', 'snapshot_version', 'snapshots', 'summary', 'utf-8']

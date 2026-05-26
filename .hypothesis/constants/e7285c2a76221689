@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\telemetry.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1e-12, 0.25, 20.0, 35.0, 60.0, 100.0, '*', 'active_workers', 'artifact_file_count', 'cache_counts', 'cache_hit_rates', 'diagnostic_reasons', 'enabled', 'gmm_regime', 'hit_rate', 'hits', 'hmm_cache_hit', 'label_split', 'logical_cpu_count', 'lookups', 'memory_peak_bytes', 'misses', 'neighbor', 'neighbor_cache_hit', 'observe_only', 'observed', 'payload', 'process_cpu_percent', 'process_cpu_seconds', 'promotion_ready', 'research_only', 'single_core_percent', 'telemetry_version', 'trials_per_minute', 'wall_time_seconds']

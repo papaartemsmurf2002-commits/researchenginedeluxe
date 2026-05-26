@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\evaluation.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1.0, 1000.0, 10000.0, 'absolute_error', 'accept_probability', 'accepted_by_model', 'basis_bps', 'basis_entry_bps_mean', 'basis_exit_bps_mean', 'calibration.csv', 'calibration_version', 'calibrator_file', 'comparison', 'confidence_bucket', 'dataset_path', 'feature_columns', 'label_accept', 'label_exit_reason', 'label_pnl_multiple', 'latency_ms_per_row', 'mean_label', 'mean_probability', 'metrics.json', 'model_file', 'model_version', 'pnl_after_cost', 'profit_factor', 'promotion_ready', 'rb', 'records', 'rejection_rate', 'row_count', 'signal_id', 'take_profit', 'tp_before_sl_rate', 'trade_count', 'tv_bar_time_ms', 'utf-8', 'v1_baseline_accept']

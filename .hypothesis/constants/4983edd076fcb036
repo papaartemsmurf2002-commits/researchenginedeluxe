@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\portfolio.py
+# hypothesis_version: 6.151.12
+
+[1.0, 'entry_time_ms', 'exit_time_ms', 'mergesort', 'position_fraction', 'records']

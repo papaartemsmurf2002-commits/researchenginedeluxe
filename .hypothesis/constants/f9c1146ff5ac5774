@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\core\microstructure_prediction.py
+# hypothesis_version: 6.151.12
+
+['-0.05', '-1', '0', '0.05', '0.08', '0.10', '0.12', '0.20', '0.25', '0.28', '0.42', '0.45', '0.55', '0.60', '0.75', '1', '1.00', '2', '20', 'ask_l5', 'available', 'bid_l5', 'calibrated', 'components', 'confidence', 'coverage', 'depth_depletion', 'depth_depletion_bias', 'description', 'direction', 'directional_score', 'down', 'horizon', 'inputs', 'method', 'name', 'neutral', 'observe_only', 'pressure_strength', 'probabilities', 'queue_depth', 'queue_imbalance', 'queue_imbalance_l1', 'queue_imbalance_l10', 'queue_imbalance_l5', 'reason', 'scored', 'signed_flow_20s', 'signed_ratio', 'spread_bps', 'spread_penalty', 'status', 'top_of_book', 'trade_flow_available', 'unavailable', 'up', 'value', 'warning', 'weight', 'windows']

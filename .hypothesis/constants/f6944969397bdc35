@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\parameters.py
+# hypothesis_version: 6.151.12
+
+[0.0, 3e-05, 4e-05, 6e-05, 0.00025, 0.0005, 0.001, 0.002, 0.003, 0.005, 0.04, 0.06, 0.08, 0.1, 0.12, 0.16, 0.18, 0.25, 0.3, 0.35, 0.4, 0.45, 0.55, 0.6, 0.65, 0.7, 0.8, 1.0, 1.3, 1.5, 50.0, 52.0, 55.0, 58.0, 60.0, 64.0, ',', '12h', '1h', '24h', '4h', '72h', '7d', ':', 'baseline_no_trade', 'baseline_trend', 'basis_bps_threshold', 'breakout_flat_slope', 'choppiness_threshold', 'funding_basis_v1', 'funding_threshold', 'lc_reference_v1', 'max_choppiness', 'max_signal_rate', 'max_turnover', 'min_signal_rate', 'no_trade_comparator', 'parameter_space', 'range_low_choppiness', 'range_reversion_v1', 'regime_adaptive_v1', 'shock_threshold', 'signal_density', 'slope_threshold', 'spacing_bars', 'stretch_threshold', 'trend_following_v1', 'utf-8']

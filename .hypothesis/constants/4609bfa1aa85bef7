@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\optimization\search_space.py
+# hypothesis_version: 6.151.12
+
+['24h', 'SearchSpace', 'coarse_lhs', 'feature_set_id', 'grid', 'holding_window', 'latin_hypercube', 'parameter_space', 'parameters', 'random', 'sobol', 'strategy_id']

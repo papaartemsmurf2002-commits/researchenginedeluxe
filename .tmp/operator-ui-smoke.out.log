@@ -1,0 +1,5 @@
+INFO:     127.0.0.1:58955 - "GET /ui/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59097 - "GET /health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59098 - "GET /ui/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51712 - "GET /ui HTTP/1.1" 303 See Other
+INFO:     127.0.0.1:51712 - "GET /ui/login HTTP/1.1" 200 OK

@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\optimization\stability_search.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1.0, 'accepted_region', 'backend_used', 'broad_screen', 'broad_screened_count', 'counter_version', 'counters', 'cpu', 'cpu_screened_count', 'cpu_validated_count', 'cuda_fixed_holding', 'executed', 'execution_status', 'gpu_screened_count', 'grid', 'local_region_refine', 'mismatch', 'mismatch_count', 'not_checked', 'observe_only', 'parity_mismatch', 'parity_rechecked', 'parity_status', 'promotion_ready', 'reference', 'region_refined_count', 'requested_backend', 'research_only', 'result_count', 'results', 'screening_evidence', 'stability_regions', 'stage', 'stage_reports', 'tensor_core_scope', 'tensor_core_used', 'tensorcore_screening', 'validation_results']

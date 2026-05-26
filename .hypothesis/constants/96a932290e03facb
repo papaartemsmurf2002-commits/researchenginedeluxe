@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\contracts.py
+# hypothesis_version: 6.151.12
+
+[1000, '24h', 'coerce', 'confidence', 'contract_version', 'enabled', 'entry_policy', 'exit_policy_id', 'feature_set_id', 'flat', 'holding_period', 'long', 'model_version', 'parameters', 'research_only', 'short', 'side', 'signal_time_ms', 'skip_reason', 'strategy_id', 'strategy_version', 'strength', 'symbol', 'utf-8', 'v1']

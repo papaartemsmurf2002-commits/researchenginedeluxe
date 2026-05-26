@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_cycle\performance.py
+# hypothesis_version: 6.151.12
+
+[1.0, '_time_exit', 'accepted_region', 'auto', 'available', 'candidate_source', 'comparator_injected', 'compute_policy', 'conservative', 'cpu_execution_status', 'cuda_exact_batched', 'cuda_fixed_holding', 'cuda_runtime_checked', 'disabled', 'disabled_by_spec', 'enabled', 'exit_policy_id', 'exit_price_source', 'fastest_exact', 'fixed_holding_window', 'gpu_acceleration', 'gpu_execution_status', 'gpu_requested', 'gpu_truthfulness', 'method_sequence', 'mismatch_count', 'objective', 'observe_only', 'primary_close', 'promotion_ready', 'research_only', 'screening_only', 'selection_order', 'serial', 'tensor_core_policy', 'unavailable_reason']

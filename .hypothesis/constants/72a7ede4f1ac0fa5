@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\run_deltas.py
+# hypothesis_version: 6.151.12
+
+[0.0, '## Cycle Delta', '## Discovery Delta', '## Takeaways', 'analysis_path', 'analysis_version', 'available', 'best_pure_roi_delta', 'blocked_candidates', 'blocked_reasons', 'blocker_counts', 'candidate_id', 'comparison_scope', 'compatible', 'completed_trials', 'count', 'counts', 'current', 'cycle', 'cycle_delta', 'cycle_id', 'cycle_id_changed', 'cycle_path', 'delta', 'delta_version', 'discovery', 'discovery_delta', 'discovery_path', 'discovery_run_id', 'filter_blockers', 'gate_reason_counts', 'intended_use', 'interpretation', 'leaders', 'manifest', 'next_steps', 'observe_only', 'pack_eligible_count', 'path', 'previous', 'promotion_ready', 'rankings', 'research_only', 'row_count', 'run_id', 'symbol', 'symbol_match', 'takeaways', 'trade_sortino', 'utf-8', 'utf-8-sig', 'value']

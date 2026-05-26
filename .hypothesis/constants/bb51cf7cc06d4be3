@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\optimization\candidate.py
+# hypothesis_version: 6.151.12
+
+[0.0, ',', '24h', ':', 'base_score', 'candidate_id', 'config', 'cost_stress_survival', 'exit_policy_id', 'exit_policy_params', 'feature_set_id', 'final_score', 'fixed_holding_window', 'holding_window', 'max_drawdown', 'metadata', 'missingness_rate', 'parameters', 'penalties', 'regime_coverage', 'risk_score', 'robustness_score', 'side_balance', 'split_consistency', 'strategy_id', 'trade_count', 'turnover', 'utf-8']

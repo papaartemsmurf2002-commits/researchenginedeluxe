@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\exits.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 0.0, 1.0, 'bar_time_ms', 'close', 'close_only_stop', 'close_only_target', 'coerce', 'fixed_holding_window', 'high', 'holding_window', 'int64', 'long', 'low', 'mergesort', 'short', 'stop', 'symbol', 'target', 'time', 'triple_barrier_atr', 'triple_barrier_stop']

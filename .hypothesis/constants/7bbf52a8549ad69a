@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\command_registry.py
+# hypothesis_version: 6.151.12
+
+['build-dataset', 'calibrate-model', 'collect-binance-bars', 'collect-durable-data', 'fetch-binance-vision', 'fetch-crypto-lake', 'monitor-hmm-knn', 'replay-eval', 'replay-hmm-knn', 'research', 'research-hmm-knn', 'run-discovery', 'train-model']

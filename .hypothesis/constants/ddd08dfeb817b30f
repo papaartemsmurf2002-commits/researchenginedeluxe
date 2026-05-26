@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\live.py
+# hypothesis_version: 6.151.12
+
+['action', 'close_position', 'hold', 'latest_decision', 'long', 'metrics', 'open_long', 'open_short', 'position_side', 'symbol', 'utf-8']

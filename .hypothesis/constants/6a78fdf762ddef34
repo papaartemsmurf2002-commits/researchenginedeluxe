@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\config.py
+# hypothesis_version: 6.151.12
+
+[0.03, 0.85, 120, 250, 256, 1000, 2000, 8192, 15000, 30000, 60000, 120000, 85500000, ',', '0', '0.001', '0.03', '0.1', '0.85', '0x[a-fA-F0-9]{40,64}', '1.0', '1.5', '10', '10,20,30,60', '1000', '120', '120000', '14', '15000', '20', '2000', '24', '25', '250', '256', '30000', '5', '60000', '75', '8192', '85500000', 'AppConfig', 'TBS_ATR_LENGTH', 'TBS_BINANCE_BASE_URL', 'TBS_DB_PATH', 'TBS_HL_BASE_URL', 'TBS_HL_ENABLE_LIVE', 'TBS_HL_MAX_BASIS_BPS', 'TBS_HL_PRIVATE_KEY', 'TBS_HL_TESTNET_FILE', 'TBS_HL_VAULT_ADDRESS', 'TBS_MAX_SPREAD_BPS', 'TBS_ORDER_SIZE', 'TBS_PRICE_TICK', 'TBS_RUNTIME_MODE', 'TBS_SIZE_STEP', 'TBS_SL_ATR_MULT', 'TBS_TP_ATR_MULT', 'TBS_WEBHOOK_SECRET', 'account_address', 'address', 'adress', 'base_url', 'change-me', 'data/research', 'enable_live', 'false', 'main', 'private_key', 'source_path', 'tbs_operator_session', 'testnet', 'true', 'utf-8']

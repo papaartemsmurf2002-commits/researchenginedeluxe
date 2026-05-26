@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\modeling.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1e-06, 'accept_probability', 'accepted_by_model', 'balanced', 'base_probability', 'calibration_rows', 'calibration_version', 'calibrator.pkl', 'calibrator_file', 'clip', 'confidence_bucket', 'dataset', 'dataset_path', 'evaluation', 'feature_columns', 'features', 'isotonic', 'label_accept', 'model', 'model.pkl', 'model_file', 'model_version', 'plan.json', 'plan_file', 'platt', 'rb', 'split_index', 'symbol', 'total_rows', 'train_manifest.json', 'train_rows', 'tv_bar_time_ms', 'utf-8', 'version', 'wb']

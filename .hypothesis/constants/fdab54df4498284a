@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\adapters\execution.py
+# hypothesis_version: 6.151.12
+
+[10.0, 1000, '0', 'BTC', 'BTCUSDT', 'ETH', 'ETHUSDT', 'account_address', 'assetPositions', 'channel', 'cloid', 'close', 'coin', 'data', 'disconnect_websocket', 'enabled', 'entry', 'entry_cloid', 'execution timeout', 'filled', 'isMarket', 'json', 'last_fill_event_ms', 'last_order_update_ms', 'last_user_event_ms', 'last_ws_channel', 'last_ws_message_ms', 'oid', 'open', 'open_order_cloids', 'orderUpdates', 'paper fill', 'position', 'position_size', 'raw', 'response', 'resting', 'result', 'shadow mode', 'signal_id', 'sl', 'started', 'started_ms', 'statuses', 'subscribe', 'subscription_count', 'success', 'symbol', 'szi', 'tp', 'tpsl', 'trigger', 'triggerPx', 'type', 'unsubscribe', 'user', 'userEvents', 'userFills']

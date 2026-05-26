@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\data\binance.py
+# hypothesis_version: 6.151.12
+
+[30.0, 1500, '/fapi/v1/klines', 'USDT', 'close', 'close_time', 'endTime', 'high', 'ignore', 'interval', 'limit', 'low', 'ms', 'open', 'open_time', 'quote_volume', 'startTime', 'symbol', 'timestamp', 'trade_count', 'volume']

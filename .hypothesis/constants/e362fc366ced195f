@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research_discovery\manifests.py
+# hypothesis_version: 6.151.12
+
+[1024, 'active_score_field', 'budget', 'candidate_pack_paths', 'counts', 'current_gmm_backend', 'data', 'data_evidence', 'discovery_mode', 'elapsed_seconds', 'execution', 'final_score_maps_to', 'gmm', 'hmm_regime_knn_lab', 'live_fetch_used', 'none', 'observe_only', 'order_placement_used', 'output_dir', 'policy_version', 'promotion_ready', 'rb', 'regime_truthfulness', 'required_outputs', 'research_only', 'resolved_paths', 'run_id', 'runner_version', 'runtime', 'runtime_mode_changed', 'search', 'spec_path', 'spec_sha256', 'state', 'symbol', 'timeframe']

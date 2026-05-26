@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\adapters\binance.py
+# hypothesis_version: 6.151.12
+
+[1.0, 10.0, 512, 1000, 120000, '/', '15m', 'E', 'c', 'e', 'enabled', 'h', 'interval', 'k', 'kline', 'l', 'last_error', 'last_ws_message_ms', 'limit', 'o', 's', 'started', 'started_ms', 'symbol', 'symbol_status', 't', 'tracked_symbols', 'v', 'x']

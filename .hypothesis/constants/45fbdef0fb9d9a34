@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\hmm_knn\meta.py
+# hypothesis_version: 6.151.12
+
+[0.0, 'accepted_by_knn', 'accepted_by_meta', 'knn_accepted_count', 'meta_accepted_count', 'meta_retention_rate']

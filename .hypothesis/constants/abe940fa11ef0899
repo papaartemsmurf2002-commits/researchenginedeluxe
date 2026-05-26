@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\optimization.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.25, 1.0, '#', '-', '-inf', '.', 'backtest', 'baseline_net_profit', 'baseline_trade_count', 'baseline_win_rate', 'changed_fields', 'display', 'drawdown_delta_pct', 'feature_definitions', 'field', 'filter_failures', 'filtered_best', 'max_drawdown_pct', 'minimum_trades', 'name', 'net_profit', 'net_profit_delta', 'new', 'old', 'optimize', 'optimized_net_profit', 'optimized_win_rate', 'param_a', 'passes_filters', 'prescreen', 'raw_score', 'risk', 'score', 'strategy', 'symbol', 'timestamp', 'trade_count', 'win_rate', 'win_rate_delta']

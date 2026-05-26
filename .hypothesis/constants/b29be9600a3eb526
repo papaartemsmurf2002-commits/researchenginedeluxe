@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\manual_cli.py
+# hypothesis_version: 6.151.12
+
+['\nAction ticket:', '\nDecision packet:', '\nExecution health:', '\nExecution reports:', '\nLive exit snapshot:', '\nMarket data health:', '\nPosition:', '\nSafety:', '\n[execution-stream]', '\n[live-monitor]', '\nmanual> ', '  auto_exit_reports:', '5', '?', 'BTCUSDT', 'Tracing disabled.', 'Tracing enabled.', 'current_price', 'execution_health', 'exit', 'exit_reason', 'fresh_stream_events', 'h', 'has_open_position', 'help', 'json', 'l', 'live_exit_snapshot', 'long', 'market_data_health', 'market_stream_status', 'microstructure', 'no_exit', 'position', 'q', 'quit', 'quit -> exit shell', 'reconcile', 'reports', 'result', 's', 'safety', 'short', 'sl_distance', 'snapshot', 'status', 'stream_events', 'supervise', 'symbol', 'time_to_barrier_ms', 'tp_distance', 'trace off', 'trace on']

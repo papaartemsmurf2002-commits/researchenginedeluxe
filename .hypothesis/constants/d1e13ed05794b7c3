@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\hmm_knn_local_analog_filter.py
+# hypothesis_version: 6.151.12
+
+[0.0, 0.01, 0.05, 0.55, 0.6, 0.78, 1.0, '0', '1', '12h', '24h', '4h', '72h', 'accepted_by_knn', 'entropy_threshold', 'false', 'hmm_fit_end_row', 'knn_skip_reason', 'knn_vote_margin', 'long', 'min_neighbor_count', 'min_vote_margin', 'n', 'nan', 'neighbor_agreement', 'neighbor_count', 'no', 'none', 'null', 'p_down_barrier', 'p_up_barrier', 'posterior_entropy', 'posterior_threshold', 'recent_regime_flip', 'regime_no_trade', 'short', 'source_row_index', 'spacing_bars', 'top_regime_label', 'true', 'v1', 'y', 'yes']

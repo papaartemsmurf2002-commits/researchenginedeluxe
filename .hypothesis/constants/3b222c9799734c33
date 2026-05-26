@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\hmm_knn\distances.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 1e-12, 1.0, 'Cosine', 'Euclidean Robust Z', 'Log Lorentzian', 'aliases', 'auto', 'cosine', 'cpu', 'cupy', 'display_name', 'euclidean_robust_z', 'feature_scale_mode', 'id', 'log_lorentzian', 'lorentzian', 'supports_backend']

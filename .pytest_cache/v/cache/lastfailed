@@ -1,0 +1,12 @@
+{
+  "tests/test_entry_gate.py::test_trend_indicators_are_closed_bar_and_directional": true,
+  "tests/test_entry_gate.py::test_gate_component_masks_can_disable_all_alpha_components": true,
+  "tests/contracts/test_strategy_contracts.py::test_hmm_routed_alpha_sleeves_v2_fails_closed_on_unsafe_or_invalid_router_context[hmm_fit_end_row-99]": true,
+  "tests/contracts/test_research_cycle_contract.py::test_historical_research_cycle_spec_accepts_gpu_execution_profiles[batched]": true,
+  "tests/contracts/test_research_cycle_contract.py::test_historical_research_cycle_spec_accepts_gpu_execution_profiles[hybrid]": true,
+  "tests/contracts/test_research_cycle_contract.py::test_historical_research_cycle_rejects_invalid_compute_policy[compute4-compute.tensorcore_screening_policy]": true,
+  "tests/contracts/test_research_cycle_contract.py::test_historical_research_cycle_rejects_invalid_compute_policy[compute5-compute.gpu_batch_size]": true,
+  "tests/contracts/test_research_cycle_contract.py::test_historical_research_cycle_rejects_invalid_compute_policy[compute6-compute.gpu_memory_limit_mb]": true,
+  "tests/contracts/test_research_cycle_contract.py::test_historical_research_cycle_rejects_invalid_compute_policy[compute7-compute.validation_sample_rate]": true,
+  "tests/contracts/test_research_cycle_contract.py::test_historical_research_cycle_rejects_invalid_compute_policy[compute8-compute.validation_sample_rate]": true
+}

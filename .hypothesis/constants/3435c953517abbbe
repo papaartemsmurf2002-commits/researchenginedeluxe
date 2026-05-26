@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\hmm_knn\artifacts.py
+# hypothesis_version: 6.151.12
+
+[0.1, '24h', 'baseline_no_trade', 'benchmark_scope', 'manifest_path', 'metrics_path', 'observe_only', 'promotion_ready', 'research_only', 'result_sha256', 'slope_threshold', 'spacing_bars', 'strategies', 'trade_count', 'trend_following_v1', 'utf-8']

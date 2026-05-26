@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\inference.py
+# hypothesis_version: 6.151.12
+
+[0.0, 'AcceptanceScorer', 'accept_probability', 'base_probability', 'calibration_version', 'calibrator_file', 'confidence_bucket', 'feature_columns', 'feature_version', 'model_file', 'model_version', 'observe_only', 'plan_file', 'rb', 'utf-8']

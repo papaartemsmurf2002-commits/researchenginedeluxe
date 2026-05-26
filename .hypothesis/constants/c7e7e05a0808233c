@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\core\security.py
+# hypothesis_version: 6.151.12
+
+[b'.', 1000, 10000000000, ',', ':', 'action', 'alert_id', 'bar_time_ms', 'bar_timestamp', 'buy', 'direction', 'external_signal', 'id', 'long', 'missing timestamp', 'sell', 'short', 'side', 'signal', 'signal_bar_time_ms', 'signal_id', 'source', 'symbol', 'symbol is required', 'ticker', 'time', 'utf-8']

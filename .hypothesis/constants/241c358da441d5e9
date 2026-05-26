@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\features\preprocessing.py
+# hypothesis_version: 6.151.12
+
+[0.0, 1.0, 'coerce', 'columns', 'fit_row_count', 'fit_scope', 'imputation_policy', 'median', 'q25', 'q75', 'scale', 'train_only']

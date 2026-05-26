@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbot\data\hyperliquid.py
+# hypothesis_version: 6.151.12
+
+[0.0, 30.0, '/info', 'Gtc', 'a', 'c', 'candleSnapshot', 'clearinghouseState', 'close', 'coin', 'endTime', 'h', 'high', 'interval', 'l', 'limit', 'low', 'market', 'meta', 'method', 'ms', 'o', 'open', 'req', 'startTime', 'subscribe', 'subscription', 'symbol', 't', 'tif', 'timestamp', 'type', 'user', 'utf-8', 'v', 'volume']

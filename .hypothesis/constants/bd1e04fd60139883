@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\strategies\funding_crowding_fade.py
+# hypothesis_version: 6.151.12
+
+[-1.0, 0.0, 1e-09, 0.25, 0.4, 1.0, 1.25, 2.0, 2.5, 4.0, 10000.0, 1000, '12h', '24h', '4h', '72h', 'against_fade_filter', 'allow', 'avoid_acceleration', 'basis_bps', 'coerce', 'flow_z', 'funding_momentum', 'funding_rate', 'funding_z', 'funding_z_threshold', 'ignore', 'long', 'min_edge_bps', 'oi_delta_z_7d', 'oi_z', 'perp_funding_z_7d', 'perp_premium', 'premium_bps', 'quality_has_oi_gap', 'require_reversal', 'short', 'spacing_bars', 'v1']

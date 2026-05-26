@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\live\preflight.py
+# hypothesis_version: 6.151.12
+
+[', ', '0', 'LivePreflightReport', 'binance_surface', 'blocker', 'deterministic_cloid', 'event_types', 'evidence_fields', 'hyperliquid_surface', 'market_data_health', 'max_basis_bps', 'max_spread_bps', 'name', 'order_filled', 'order_intent', 'passed', 'reasons', 'reconciliation', 'schedule_cancel_set', 'severity']

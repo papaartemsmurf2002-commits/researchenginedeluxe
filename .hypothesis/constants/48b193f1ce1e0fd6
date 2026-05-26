@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\research\market_data.py
+# hypothesis_version: 6.151.12
+
+[1000, ',', '15m', ':', 'BTCUSDT', 'ETHUSDT', 'binance_usdm_klines', 'close', 'collector_version', 'data_path', 'delta_ms', 'duplicate_count', 'duplicates', 'end_time_ms', 'first_time_ms', 'gap_count', 'gaps', 'generated_at_ms', 'high', 'interval', 'last_time_ms', 'low', 'missing_bar_count', 'next_time_ms', 'notes', 'open', 'previous_time_ms', 'research_only', 'row_count', 'sha256', 'source', 'start_time_ms', 'symbol', 'time_ms', 'utf-8', 'volume', 'w']

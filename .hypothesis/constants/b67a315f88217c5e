@@ -1,0 +1,4 @@
+# file: C:\Users\papaa\Music\tradingbotsuite\src\tradingbotsuite\backtesting\splits.py
+# hypothesis_version: 6.151.12
+
+[0.0, 2.0, '%Y-%m', 'anchored', 'bar_time_ms', 'coerce', 'holdout', 'int64', 'mergesort', 'month_holdout', 'ms', 'regime', 'regime_holdout', 'rolling', 'rolling_walk_forward', 'stress-01']
