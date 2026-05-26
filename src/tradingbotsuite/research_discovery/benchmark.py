@@ -308,6 +308,7 @@ def _run_payload(result: DiscoveryRunResult, *, elapsed_seconds: float | None) -
         "live_fetch_used": manifest.get("live_fetch_used"),
         "order_placement_used": manifest.get("order_placement_used"),
         "runtime_mode_changed": manifest.get("runtime_mode_changed"),
+        "compute_telemetry": _compute_telemetry_payload(manifest.get("compute_telemetry")),
     }
     if elapsed_seconds is not None:
         payload["elapsed_seconds"] = round(float(elapsed_seconds), 6)
@@ -322,6 +323,24 @@ def _run_payload(result: DiscoveryRunResult, *, elapsed_seconds: float | None) -
         }
     )
     return payload
+
+
+def _compute_telemetry_payload(raw: Any) -> dict[str, Any]:
+    telemetry = dict(raw) if isinstance(raw, Mapping) else {}
+    processor = telemetry.get("processor_utilization")
+    processor_payload = dict(processor) if isinstance(processor, Mapping) else {}
+    return {
+        "telemetry_version": telemetry.get("telemetry_version"),
+        "active_workers": int(telemetry.get("active_workers") or 0),
+        "logical_cpu_count": int(telemetry.get("logical_cpu_count") or 0),
+        "trials_per_minute": float(telemetry.get("trials_per_minute") or 0.0),
+        "process_cpu_percent_of_worker_capacity": telemetry.get("process_cpu_percent_of_worker_capacity"),
+        "process_cpu_percent_of_logical_capacity": telemetry.get("process_cpu_percent_of_logical_capacity"),
+        "artifact_write_wall_time_share": telemetry.get("artifact_write_wall_time_share"),
+        "processor_diagnostic_reasons": list(processor_payload.get("diagnostic_reasons") or []),
+        "artifact_file_count": int(telemetry.get("artifact_file_count") or 0),
+        "artifact_bytes_written": int(telemetry.get("artifact_bytes_written") or 0),
+    }
 
 
 def _ledger_payload(result: DiscoveryRunResult) -> dict[str, Any]:

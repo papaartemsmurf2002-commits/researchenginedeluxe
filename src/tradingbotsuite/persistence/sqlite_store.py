@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from pathlib import Path
@@ -48,6 +49,7 @@ class SQLiteStore:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("PRAGMA journal_mode=WAL;")
             await db.execute("PRAGMA foreign_keys=ON;")
+            await db.execute("PRAGMA busy_timeout=5000;")
             await db.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS signals (
@@ -209,6 +211,8 @@ class SQLiteStore:
             await self.initialize()
         connection = await aiosqlite.connect(self.db_path)
         connection.row_factory = aiosqlite.Row
+        await connection.execute("PRAGMA foreign_keys=ON;")
+        await connection.execute("PRAGMA busy_timeout=5000;")
         return connection
 
     @asynccontextmanager
@@ -1002,28 +1006,39 @@ class SQLiteStore:
         payload: dict[str, Any] | None = None,
     ) -> None:
         payload = payload or {}
-        async with self._connection() as db:
-            cursor = await db.execute(
-                "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM operator_job_logs WHERE job_id = ?",
-                (job_id,),
-            )
-            row = await cursor.fetchone()
-            next_seq = int(row["next_seq"])
-            await db.execute(
-                """
-                INSERT INTO operator_job_logs (job_id, seq, time_ms, level, message, payload_json)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    job_id,
-                    next_seq,
-                    time_ms,
-                    level,
-                    message,
-                    json.dumps(payload, default=_json_default, sort_keys=True),
-                ),
-            )
-            await db.commit()
+        payload_json = json.dumps(payload, default=_json_default, sort_keys=True)
+        last_error: sqlite3.IntegrityError | None = None
+        for _ in range(5):
+            async with self._connection() as db:
+                try:
+                    await db.execute("BEGIN IMMEDIATE")
+                    cursor = await db.execute(
+                        "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq FROM operator_job_logs WHERE job_id = ?",
+                        (job_id,),
+                    )
+                    row = await cursor.fetchone()
+                    next_seq = int(row["next_seq"])
+                    await db.execute(
+                        """
+                        INSERT INTO operator_job_logs (job_id, seq, time_ms, level, message, payload_json)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            job_id,
+                            next_seq,
+                            time_ms,
+                            level,
+                            message,
+                            payload_json,
+                        ),
+                    )
+                    await db.commit()
+                    return
+                except sqlite3.IntegrityError as exc:
+                    last_error = exc
+                    await db.rollback()
+        if last_error is not None:
+            raise last_error
 
     async def get_operator_job(self, job_id: str) -> dict[str, Any] | None:
         async with self._connection() as db:

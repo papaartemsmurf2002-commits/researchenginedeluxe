@@ -467,6 +467,7 @@ def _is_primary_bar_research_exit_policy(exit_policy_id: str) -> bool:
         "alpha_decay_exit",
         "adverse_selection_exit",
         "trailing_atr_after_profit",
+        "simple_runner_v1",
         "max_mae_stop",
     }
 

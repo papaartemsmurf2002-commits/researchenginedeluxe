@@ -9,6 +9,12 @@ from tradingbotsuite.core.models import RuntimeMode
 from tradingbotsuite.live.preflight import assert_live_preflight, assert_research_command_not_live
 from tradingbotsuite.live_smoke import run_live_smoke
 from tradingbotsuite.manual_cli import run_manual_shell
+from tradingbotsuite.data.durable_public_archive import collect_candidate_depth_public_archive_fixtures
+from tradingbotsuite.data.historical_data_catalog import (
+    DEFAULT_HISTORICAL_CATALOG_START_MONTH,
+    default_historical_catalog_end_month,
+    refresh_historical_data_catalog,
+)
 from tradingbotsuite.data.historical_fixture_pack import build_provider_kline_fixture_pack
 from tradingbotsuite.research.deterministic_datasets import (
     DETERMINISTIC_SWEEP_VARIANTS,
@@ -24,7 +30,11 @@ from tradingbotsuite.research.experiment_runner import (
 )
 from tradingbotsuite.research.feature_ablation import write_feature_ablation_plan
 from tradingbotsuite.research.stage12_research import write_stage12_research_plan
-from tradingbotsuite.research_cycle import run_historical_research_cycle, write_research_cycle_benchmark_report
+from tradingbotsuite.research_cycle import (
+    run_historical_research_cycle,
+    write_hardware_utilization_report,
+    write_research_cycle_benchmark_report,
+)
 from tradingbotsuite.research_cycle.benchmark import BENCHMARK_TIERS
 from tradingbotsuite.research_discovery.benchmark import DISCOVERY_BENCHMARK_TIERS, write_discovery_benchmark_report
 from tradingbotsuite.research_discovery.candidate_pack_bridge import (
@@ -43,7 +53,7 @@ from tradingbotsuite.research.market_data import (
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.web.app import create_app
 
-app = create_app() if __name__ != "__main__" else None
+app = create_app() if __name__ not in {"__main__", "__mp_main__"} else None
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -191,6 +201,24 @@ def parse_args() -> argparse.Namespace:
         help="Repeatable local provider context manifest for funding, premium, open interest, or aggregate trades",
     )
 
+    collect_durable_data = subparsers.add_parser(
+        "collect-durable-data",
+        help="Collect expanded BTC/ETH Binance Vision public-archive fixture packs for required research evidence",
+    )
+    collect_durable_data.add_argument("--symbol", action="append", choices=["BTCUSDT", "ETHUSDT"], default=[])
+    collect_durable_data.add_argument("--start-month", default="2024-01")
+    collect_durable_data.add_argument("--end-month", default="2024-12")
+    collect_durable_data.add_argument("--output-dir", default=None)
+
+    refresh_catalog = subparsers.add_parser(
+        "refresh-historical-data-catalog",
+        help="Refresh the R106 central historical-data source-of-truth catalog",
+    )
+    refresh_catalog.add_argument("--symbol", action="append", choices=["BTCUSDT", "ETHUSDT"], default=[])
+    refresh_catalog.add_argument("--start-month", default=DEFAULT_HISTORICAL_CATALOG_START_MONTH)
+    refresh_catalog.add_argument("--end-month", default=None)
+    refresh_catalog.add_argument("--output-dir", default=None)
+
     research_experiment = subparsers.add_parser("run-research-experiment", help="Run a bundled BTC Phase 1 research experiment")
     research_experiment.add_argument("--spec", required=True)
 
@@ -227,6 +255,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Write a report-only benchmark payload even when the discovery benchmark gate fails",
     )
+
+    hardware_benchmark = subparsers.add_parser(
+        "benchmark-hardware-utilization",
+        help="Run a research-only CPU/GPU hardware utilization benchmark",
+    )
+    hardware_benchmark.add_argument("--output-dir", default=None)
+    hardware_benchmark.add_argument("--cpu-workers", type=int, default=None)
+    hardware_benchmark.add_argument("--cpu-seconds", type=float, default=3.0)
+    hardware_benchmark.add_argument("--gpu-seconds", type=float, default=3.0)
+    hardware_benchmark.add_argument("--matrix-size", type=int, default=1024)
 
     discovery_pack_bridge = subparsers.add_parser(
         "evaluate-discovery-candidate-pack-eligibility",
@@ -565,6 +603,44 @@ def _run_build_historical_fixture_pack_command(args: argparse.Namespace) -> dict
     return result.to_payload()
 
 
+def _run_collect_durable_data_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("collect-durable-data")
+    default_output = _default_research_output_dir(
+        config,
+        "operator_runs",
+        "durable_data",
+        "cli-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"),
+    )
+    result = collect_candidate_depth_public_archive_fixtures(
+        output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config) or default_output,
+        symbols=args.symbol or ["BTCUSDT", "ETHUSDT"],
+        start_month=args.start_month,
+        end_month=args.end_month,
+        repo_root=Path(__file__).resolve().parents[2],
+        download_cache_dir=_default_research_output_dir(config, "historical_data_cache", "binance_vision_public_archive", "downloads"),
+    )
+    return result.to_payload()
+
+
+def _run_refresh_historical_data_catalog_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("refresh-historical-data-catalog")
+    default_output = _default_research_output_dir(
+        config,
+        "operator_runs",
+        "historical_data",
+        "cli-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"),
+    )
+    result = refresh_historical_data_catalog(
+        output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config) or default_output,
+        symbols=args.symbol or ["BTCUSDT", "ETHUSDT"],
+        start_month=args.start_month,
+        end_month=args.end_month or default_historical_catalog_end_month(),
+        repo_root=Path(__file__).resolve().parents[2],
+        download_cache_dir=_default_research_output_dir(config, "historical_data_cache", "binance_vision_public_archive", "downloads"),
+    )
+    return result.to_payload()
+
+
 def _run_research_experiment_command(args: argparse.Namespace) -> dict[str, object]:
     config = _config_for_command("run-research-experiment")
     result = run_research_experiment(
@@ -679,6 +755,33 @@ def _run_benchmark_discovery_command(args: argparse.Namespace) -> dict[str, obje
         detail = ",".join(str(reason) for reason in reasons) or "benchmark_gate_failed"
         raise ValueError(f"benchmark_discovery_run_gate_failed:{detail}")
     return payload
+
+
+def _run_benchmark_hardware_utilization_command(args: argparse.Namespace) -> dict[str, object]:
+    import json
+
+    config = _config_for_command("benchmark-hardware-utilization")
+    result = write_hardware_utilization_report(
+        output_dir=_resolve_optional_research_output_dir(args.output_dir, config=config),
+        cpu_workers=getattr(args, "cpu_workers", None),
+        cpu_seconds=float(getattr(args, "cpu_seconds", 3.0)),
+        gpu_seconds=float(getattr(args, "gpu_seconds", 3.0)),
+        matrix_size=int(getattr(args, "matrix_size", 1024)),
+        app_config=config,
+    )
+    report = json.loads(result.report_path.read_text(encoding="utf-8"))
+    cpu_probe = dict(report.get("cpu_probe") or {})
+    gpu_probe = dict(report.get("gpu_probe") or {})
+    return {
+        "output_dir": str(result.output_dir),
+        "hardware_utilization_report_path": str(result.report_path),
+        "cpu_probe_succeeded": bool(cpu_probe.get("probe_succeeded", False)),
+        "gpu_probe_succeeded": bool(gpu_probe.get("probe_succeeded", False)),
+        "cpu_worker_capacity_percent": cpu_probe.get("process_cpu_percent_of_worker_capacity"),
+        "cpu_logical_capacity_percent": cpu_probe.get("process_cpu_percent_of_logical_capacity"),
+        "gpu_execution_status": gpu_probe.get("gpu_execution_status"),
+        "recommended_best_option": (report.get("recommendations") or {}).get("best_option"),
+    }
 
 
 def _run_discovery_candidate_pack_bridge_command(args: argparse.Namespace) -> dict[str, object]:
@@ -889,6 +992,14 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_build_historical_fixture_pack_command(args), indent=2))
+    elif args.command == "collect-durable-data":
+        import json
+
+        print(json.dumps(_run_collect_durable_data_command(args), indent=2))
+    elif args.command == "refresh-historical-data-catalog":
+        import json
+
+        print(json.dumps(_run_refresh_historical_data_catalog_command(args), indent=2))
     elif args.command == "run-research-experiment":
         import json
 
@@ -909,6 +1020,10 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_benchmark_discovery_command(args), indent=2))
+    elif args.command == "benchmark-hardware-utilization":
+        import json
+
+        print(json.dumps(_run_benchmark_hardware_utilization_command(args), indent=2))
     elif args.command == "evaluate-discovery-candidate-pack-eligibility":
         import json
 

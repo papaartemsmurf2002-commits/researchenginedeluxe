@@ -11,6 +11,13 @@ from tradingbotsuite.core.models import RuntimeMode
 HEX_40_OR_64_RE = re.compile(r"0x[a-fA-F0-9]{40,64}")
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
@@ -178,6 +185,7 @@ class BinanceConfig:
     websocket_planned_reconnect_ms: int = 85_500_000
     websocket_planned_reconnect_jitter_ms: int = 60_000
     rest_weight_budget_pct: float = 0.85
+    market_streams_enabled: bool = True
 
     def __post_init__(self) -> None:
         if self.kline_limit_padding < 0:
@@ -321,12 +329,12 @@ class AppConfig:
             websocket_planned_reconnect_ms=int(os.getenv("TBS_BINANCE_WS_PLANNED_RECONNECT_MS", "85500000")),
             websocket_planned_reconnect_jitter_ms=int(os.getenv("TBS_BINANCE_WS_PLANNED_RECONNECT_JITTER_MS", "60000")),
             rest_weight_budget_pct=float(os.getenv("TBS_BINANCE_REST_WEIGHT_BUDGET_PCT", "0.85")),
+            market_streams_enabled=_env_bool("TBS_BINANCE_MARKET_STREAMS_ENABLED", True),
         )
         hl_base_url = os.getenv("TBS_HL_BASE_URL")
         hl_account_address = os.getenv("TBS_HL_ACCOUNT_ADDRESS")
         hl_private_key = os.getenv("TBS_HL_PRIVATE_KEY")
         hl_vault_address = os.getenv("TBS_HL_VAULT_ADDRESS")
-        hl_enable_live_raw = os.getenv("TBS_HL_ENABLE_LIVE")
         hyperliquid = HyperliquidConfig(
             base_url=(
                 hl_base_url
@@ -335,11 +343,7 @@ class AppConfig:
             account_address=hl_account_address or (str((file_credentials or {}).get("account_address")) if file_credentials else None),
             private_key=hl_private_key or (str((file_credentials or {}).get("private_key")) if file_credentials else None),
             vault_address=hl_vault_address,
-            enable_live=(
-                hl_enable_live_raw.lower() == "true"
-                if hl_enable_live_raw is not None
-                else bool((file_credentials or {}).get("enable_live", False))
-            ),
+            enable_live=_env_bool("TBS_HL_ENABLE_LIVE", bool((file_credentials or {}).get("enable_live", False))),
             market_order_slippage=float(os.getenv("TBS_HL_MARKET_SLIPPAGE", "0.03")),
             order_timeout_seconds=int(os.getenv("TBS_HL_ORDER_TIMEOUT_SECONDS", "5")),
             ws_stale_after_ms=int(os.getenv("TBS_HL_WS_STALE_AFTER_MS", "120000")),
@@ -355,7 +359,7 @@ class AppConfig:
             ),
         )
         operator_ui = OperatorUIConfig(
-            enabled=os.getenv("TBS_OPERATOR_UI_ENABLED", "false").lower() == "true",
+            enabled=_env_bool("TBS_OPERATOR_UI_ENABLED", False),
             secret=os.getenv("TBS_OPERATOR_UI_SECRET"),
             session_cookie_name=os.getenv("TBS_OPERATOR_UI_COOKIE_NAME", "tbs_operator_session"),
         )

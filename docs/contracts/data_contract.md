@@ -8,7 +8,7 @@ Every normalized research dataset must have a manifest.
 {
   "manifest_version": "data-manifest-v1",
   "research_only": true,
-  "source_name": "binance_vision | binance_rest | crypto_lake | hyperliquid_archive",
+  "source_name": "binance_vision | binance_rest | bybit_archive | crypto_lake | hyperliquid_archive",
   "source_type": "archive | rest | websocket_capture | local_file",
   "symbol": "BTCUSDT",
   "data_family": "kline | trade | agg_trade | book_ticker | depth_snapshot | funding_rate | open_interest | premium_index | liquidation | user_fill | order_event | position_snapshot",
@@ -34,3 +34,18 @@ Every normalized research dataset must have a manifest.
 - Missing context must be explicit missingness, not silent zero-fill.
 - Provider-specific field names must be normalized into canonical fields.
 - Data-quality reports must include gaps, duplicates, stale receive times, source mismatches, zero-row manifests, and non-promotable sources.
+
+## R106 Historical Data Catalog
+
+`historical_data_catalog.json` is the required operator source of truth for
+current BTCUSDT/ETHUSDT research historical data. It records:
+
+- active fixture/readiness/cycle/discovery paths selected for required runs
+- provider states for Binance Vision, Crypto Lake, Bybit archive, and
+  Hyperliquid archive
+- candidate-depth status separately from fixture integrity
+- source priority and merge policy
+
+The catalog is still research-only, observe-only, and `promotion_ready: false`.
+Registered providers must not become active catalog sources until downloader,
+parser, gap/duplicate/hash validation, and missingness contracts exist.

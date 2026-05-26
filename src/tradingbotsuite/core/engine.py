@@ -99,8 +99,10 @@ class TradingEngine:
                 self.research_plan = load_research_plan(self.config.research.config_path)
             except Exception as exc:
                 self._trace("initialize:research_plan_unavailable", error=str(exc), config_path=str(self.config.research.config_path))
-        if hasattr(self.candle_client, "start_market_streams"):
+        if self.config.binance.market_streams_enabled and hasattr(self.candle_client, "start_market_streams"):
             await self.candle_client.start_market_streams(["BTCUSDT"])
+        elif not self.config.binance.market_streams_enabled:
+            self._trace("initialize:market_streams_skipped", reason="binance_market_streams_disabled")
         await self.execution_adapter.start_user_streams()
         preflight: dict[str, Any] | None = None
         if self.config.runtime_mode == RuntimeMode.LIVE:

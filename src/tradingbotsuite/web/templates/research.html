@@ -8,11 +8,13 @@
     font-family: "Segoe UI", Arial, sans-serif;
     min-width: 0;
     max-width: 100%;
+    overflow-x: hidden;
   }
   main {
     min-width: 0;
     max-width: 100vw;
     box-sizing: border-box;
+    overflow-x: hidden;
   }
   .research-shell .card {
     border-radius: 8px;
@@ -70,6 +72,47 @@
     gap: 16px;
     align-items: stretch;
   }
+  .workflow-callout {
+    border: 1px solid rgba(115, 209, 138, 0.48);
+    border-radius: 8px;
+    background: #0f1b17;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    line-height: 1.45;
+  }
+  .workflow-callout strong {
+    display: block;
+    margin-bottom: 4px;
+  }
+  .action-tier {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .task-tag {
+    display: inline-flex;
+    width: fit-content;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 8px;
+    margin-bottom: 8px;
+    color: #c7d0da;
+    background: #0b1119;
+    font-size: 12px;
+    text-transform: uppercase;
+  }
+  .task-tag.required {
+    border-color: rgba(115, 209, 138, 0.55);
+    color: #73d18a;
+  }
+  .task-tag.diagnostic {
+    border-color: rgba(240, 195, 106, 0.55);
+    color: #f0c36a;
+  }
+  .task-tag.legacy {
+    border-color: rgba(255, 143, 131, 0.55);
+    color: #ffb1a9;
+  }
   .operator-board {
     display: grid;
     grid-template-columns: repeat(4, minmax(180px, 1fr));
@@ -92,12 +135,14 @@
     margin-top: 5px;
     font-size: 22px;
     font-weight: 700;
+    overflow-wrap: anywhere;
   }
   .board-tile .meta,
   .maturity-item .meta {
     margin-top: 6px;
     color: var(--muted);
     line-height: 1.35;
+    overflow-wrap: anywhere;
   }
   .maturity-row {
     display: grid;
@@ -148,6 +193,21 @@
   .run-workspace {
     padding: 16px;
     background: #101820;
+  }
+  .run-workspace.required-control {
+    border-color: rgba(115, 209, 138, 0.42);
+  }
+  .run-workspace.optional-control {
+    border-color: rgba(240, 195, 106, 0.36);
+  }
+  .run-workspace.legacy-control {
+    border-color: rgba(255, 143, 131, 0.36);
+  }
+  .run-workspace .explain-grid {
+    grid-template-columns: 1fr;
+  }
+  .run-workspace .stage-picker {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
   .control-grid {
     display: grid;
@@ -213,6 +273,10 @@
     min-width: 0;
     grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
   }
+  .research-shell .stat .value,
+  .research-shell .stat .label {
+    overflow-wrap: anywhere;
+  }
   .stage-picker {
     display: grid;
     grid-template-columns: repeat(4, minmax(120px, 1fr));
@@ -275,6 +339,16 @@
     margin-top: 8px;
     min-height: 20px;
     line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+  .chart-warning {
+    border: 1px solid rgba(240, 195, 106, 0.42);
+    border-radius: 8px;
+    background: #181711;
+    color: #f0c36a;
+    padding: 10px 12px;
+    margin: 10px 0 14px 0;
+    line-height: 1.4;
   }
   .flow-steps {
     display: grid;
@@ -353,6 +427,22 @@
     background: linear-gradient(90deg, #2f81f7, #73d18a);
     transition: width 0.25s ease;
   }
+  .active-progress {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #0f1620;
+    padding: 10px;
+    margin-top: 10px;
+  }
+  .active-progress .meta-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .active-progress .progress-track {
+    margin-top: 8px;
+  }
   .workflow-steps {
     display: grid;
     gap: 8px;
@@ -393,6 +483,12 @@
     min-height: 36px;
   }
   .table-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .operation-table-wrap {
+    width: 100%;
     max-width: 100%;
     overflow-x: auto;
   }
@@ -430,6 +526,23 @@
     background: #101820;
     padding: 12px;
   }
+  .diagnostic-details {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #101820;
+    padding: 12px;
+  }
+  .diagnostic-details summary {
+    cursor: pointer;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .diagnostic-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 14px;
+  }
   .secondary-surface summary {
     cursor: pointer;
     color: var(--accent);
@@ -442,7 +555,9 @@
     .run-grid,
     .evidence-grid,
     .settings-grid,
-    .command-center-grid {
+    .command-center-grid,
+    .diagnostic-grid,
+    .action-tier {
       grid-template-columns: 1fr;
     }
     .stage-picker,
@@ -477,6 +592,7 @@
       grid-template-columns: 1fr;
     }
     .workflow-step,
+    .active-progress .meta-row,
     .settings-line,
     .research-shell .stat-grid {
       grid-template-columns: 1fr;
@@ -491,7 +607,7 @@
   <section class="research-hero">
     <h1>Research Operations</h1>
     <div class="hero-copy">
-      Queue offline provider preparation, experiment bundles, discovery runs, and historical-cycle evidence review. This page never places orders, never changes runtime mode, and never turns research output into live signals.
+      Use the Required Evidence Checklist first. Everything marked diagnostic or legacy is optional support work and is not part of the required candidate-evidence path. This page never places orders, never changes runtime mode, and never turns research output into live signals.
     </div>
     <div class="hero-strip">
       <span class="pill neutral">research_only</span>
@@ -504,69 +620,119 @@
   <section class="research-band" id="operator-board-section">
     <div class="band-heading">
       <div>
-        <h2>R104 Command Center</h2>
-        <div class="muted">Primary durable-candidate workflow: readiness, cycle evidence, discovery evidence, eligibility review, and blocker inspection.</div>
+        <h2>Required Evidence Checklist</h2>
+        <div class="muted">This checklist is the only required run path for the current research branch. Run it from top to bottom, then inspect blockers and artifacts.</div>
       </div>
-      <span class="pill neutral">offline evidence only</span>
+      <span class="pill ok">required workflow</span>
+    </div>
+    <div class="workflow-callout">
+      <strong>Only this checklist is required.</strong>
+      Historical Data Catalog readiness, historical-cycle evidence, discovery evidence, research analysis, and candidate eligibility are the branch gate path. Step 0 refreshes the central source of truth: active fixture/spec paths come from implemented validated sources, while Bybit, Crypto Lake, and Hyperliquid remain visible provider slots until they produce the same validated fixture contract. Provider diagnostics, HMM/KNN experiments, hardware probes, standard screens, and legacy compatibility runs are optional troubleshooting tools.
     </div>
     <div class="command-center-grid">
       <div class="progress-panel" id="research-progress-panel" aria-live="polite">
-        <h3>Progress Meter</h3>
-        <div id="research-progress-summary" class="muted">Loading R104 progress.</div>
-        <div class="progress-meter" aria-label="R104 progress">
+        <h3>Checklist Progress</h3>
+        <div id="research-progress-summary" class="muted">Loading required workflow progress.</div>
+        <div class="progress-meter" aria-label="Required workflow progress">
           <div class="progress-track"><div id="research-progress-fill" class="progress-fill"></div></div>
         </div>
         <div id="research-next-action" class="run-note">Loading recommended next action.</div>
+        <div id="active-run-progress" class="active-progress empty">No active research compute run.</div>
         <div id="research-workflow-steps" class="workflow-steps"></div>
       </div>
       <div>
-        <h3>Function Blocks</h3>
-        <div class="function-grid">
+        <h3>Required Action Buttons</h3>
+        <div class="action-tier">
           <div class="function-block">
-            <h3>Primary BTC Path</h3>
-            <div class="muted">Run the deeper BTC durable cycle, then the exact bounded sweep, then eligibility review.</div>
+            <span class="task-tag required">required</span>
+            <h3>Run Research Autopilot</h3>
+            <div class="muted">Runs or reuses the required catalog, BTC/ETH cycle, exact discovery, analysis, run-to-run delta, frozen-entry exit lab, and eligibility steps. It stops at the first blocked prerequisite and writes an autopilot manifest.</div>
             <div class="routine-actions">
-              <button onclick="queueDurableCycle('BTCUSDT')">BTC Deep Cycle</button>
-              <button class="secondary" onclick="queueDurableDiscovery('BTCUSDT')">BTC Exact Sweep</button>
-              <button class="ghost" title="Review Candidate Eligibility" onclick="reviewCandidateEligibility()">Evaluate Eligibility</button>
+              <button onclick="queueResearchAutopilot()">Run Research Autopilot</button>
+              <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
             </div>
           </div>
           <div class="function-block">
-            <h3>ETH Mirror</h3>
-            <div class="muted">Repeat the brute-force path on ETH so evidence is not BTC-only.</div>
+            <span class="task-tag required">required</span>
+            <h3>0. Refresh Historical Data Catalog</h3>
+            <div class="muted">This is the only required data step. It refreshes the central catalog, records provider limitations, downloads the implemented Binance Vision BTC/ETH archive fixture path, verifies checksums, and writes active research-only fixture/spec links. Bybit, Crypto Lake, and Hyperliquid stay visible as catalog provider slots until their validated ingestion is implemented.</div>
+            <div class="routine-actions">
+              <button onclick="queueHistoricalDataCatalogRefresh()">Refresh Historical Catalog</button>
+              <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <span class="task-tag required">required</span>
+            <h3>1. Check Catalog Inputs</h3>
+            <div class="muted">Run after Step 0. It reads the catalog-selected active BTC/ETH fixture hashes, row counts, gap checks, and candidate-depth floors before compute work.</div>
+            <div class="routine-actions">
+              <button onclick="queuePreflightDataReadiness()">Check Catalog Readiness</button>
+              <button class="ghost" onclick="focusResearchSection('r104-settings-section')">Show Data Gap</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <span class="task-tag required">required</span>
+            <h3>2. BTC Evidence Path</h3>
+            <div class="muted">Run BTC deep cycle, then BTC exact sweep. Eligibility review uses the indexed outputs.</div>
+            <div class="routine-actions">
+              <button onclick="queueDurableCycle('BTCUSDT')">BTC Deep Cycle</button>
+              <button class="secondary" onclick="queueDurableDiscovery('BTCUSDT')">BTC Exact Sweep</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <span class="task-tag required">required</span>
+            <h3>3. ETH Mirror Evidence</h3>
+            <div class="muted">Run ETH deep cycle and exact sweep before treating evidence as cross-symbol reviewable.</div>
             <div class="routine-actions">
               <button onclick="queueDurableCycle('ETHUSDT')">ETH Deep Cycle</button>
               <button class="secondary" onclick="queueDurableDiscovery('ETHUSDT')">ETH Exact Sweep</button>
             </div>
           </div>
           <div class="function-block">
-            <h3>Readiness And Inspection</h3>
-            <div class="muted">Check inputs, then inspect snapshots, jobs, and artifact evidence.</div>
+            <span class="task-tag required">required</span>
+            <h3>4. Analyze Evidence</h3>
+            <div class="muted">Run after cycle and discovery outputs exist. This writes the deterministic analysis artifact used to choose the next research mutation.</div>
             <div class="routine-actions">
-              <button onclick="queuePreflightDataReadiness()">Check Durable Readiness</button>
-              <button class="ghost" onclick="openLatestSnapshot()">Open Latest Snapshot</button>
+              <button onclick="queueResearchAnalysis()">Analyze Current Evidence</button>
               <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
             </div>
           </div>
           <div class="function-block">
-            <h3>Discovery Controls</h3>
-            <div class="muted">Exact sweeps are the durable objective. Standard screens are for quick blocker feedback; smoke is plumbing only.</div>
+            <span class="task-tag required">required</span>
+            <h3>5. Compare Runs</h3>
+            <div class="muted">Run after analysis exists. This writes a run-to-run delta or a baseline artifact when there is no compatible prior analysis.</div>
             <div class="routine-actions">
-              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/standard_entry_discovery_btcusdt_durable_r104_v1.json', 'BTC standard blocker screen', null, false)">BTC Standard Screen</button>
-              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json', 'ETH standard blocker screen', null, false)">ETH Standard Screen</button>
-              <button class="ghost" onclick="queueDiscoveryPreset('configs/discovery/quick_smoke_btcusdt_v4.json', 'Quick plumbing check', 1, false)">Diagnostic Smoke</button>
-              <button class="ghost" onclick="pauseDiscoveryAfterOneTrial()">Pause After One Trial</button>
-              <button class="ghost" onclick="queueDiscoveryRun('Resume discovery run', true)">Resume Run</button>
+              <button onclick="queueResearchDelta()">Analyze Run Delta</button>
+              <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <span class="task-tag required">required</span>
+            <h3>6. Frozen-Entry Exit Lab</h3>
+            <div class="muted">Run after the delta. It replays frozen entries across fixed holding and simple-runner exits, or writes a blocked manifest when entry timestamps are absent.</div>
+            <div class="routine-actions">
+              <button onclick="queueFrozenEntryExitLab()">Run Frozen Entry Exit Lab</button>
+              <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
+            </div>
+          </div>
+          <div class="function-block">
+            <span class="task-tag required">required</span>
+            <h3>7. Review Eligibility</h3>
+            <div class="muted">Run only after the analysis delta and frozen-entry exit lab exist. This checks gates and blockers without writing a candidate pack.</div>
+            <div class="routine-actions">
+              <button onclick="reviewCandidateEligibility()">Review Candidate Eligibility</button>
+              <button class="ghost" onclick="openLatestSnapshot()">Open Latest Snapshot</button>
             </div>
           </div>
         </div>
+        <div id="primary-job-response" class="empty" style="margin-top:12px;">No job submitted.</div>
       </div>
     </div>
     <div style="margin-top:16px;">
       <div class="band-heading" style="margin-bottom:10px;">
         <div>
-          <h3>Operator Board</h3>
-          <div class="muted">One-screen state: Data Readiness, Current Run, Progress, Latest Snapshot, blockers, leads, artifacts, and maturity.</div>
+          <h3>Current Evidence State</h3>
+          <div class="muted">Fast status for the checklist: readiness, current run, progress, latest discovery snapshot, hardware, blockers, leads, artifacts, and maturity.</div>
         </div>
       </div>
       <div id="operator-board" class="operator-board" aria-live="polite">
@@ -581,38 +747,41 @@
   <section class="research-band" id="r104-settings-section">
     <div class="band-heading">
       <div>
-        <h2>R104 Durable Candidate Validation</h2>
-        <div class="muted">Recommended defaults and completion checks for the branch path. Use the buttons in the command center; this section explains why each step exists.</div>
+        <h2>Catalog Workflow Details</h2>
+        <div class="muted">Reference details for the required checklist above. Internal spec filenames may still include older labels, but the operator workflow is the R106 catalog path.</div>
       </div>
-      <span class="pill warn">candidate pack blocked until gates pass</span>
+      <span class="pill warn">reference only</span>
     </div>
     <div class="settings-grid">
       <div class="settings-panel">
-        <h3>Recommended Run Order</h3>
-        <div id="r104-recommendation" class="muted">Loading durable fixture readiness and next action.</div>
+        <h3>Checklist Details</h3>
+        <div id="r104-recommendation" class="muted">Loading catalog fixture readiness and next action.</div>
         <div class="operation-table-wrap" style="margin-top:12px;">
           <table class="operation-table">
             <thead><tr><th>Step</th><th>Run</th><th>Done When</th><th>Next</th></tr></thead>
             <tbody>
-              <tr><td>1</td><td>Check Durable Readiness</td><td>BTC and ETH fixture manifests are ready.</td><td>Run BTC Deep Cycle.</td></tr>
+              <tr><td>0</td><td>Refresh Historical Data Catalog</td><td>Central catalog, provider states, expanded BTC/ETH public-archive fixture packs, and active specs are written under the research output directory.</td><td>Check Catalog Readiness.</td></tr>
+              <tr><td>1</td><td>Check Catalog Readiness</td><td>BTC and ETH catalog-selected fixture integrity and candidate-depth floors are ready.</td><td>Run BTC Deep Cycle.</td></tr>
               <tr><td>2</td><td>BTC Deep Cycle</td><td>Deep historical-cycle manifest, rankings, gates, and rejection report are indexed.</td><td>Run BTC Exact Sweep.</td></tr>
-              <tr><td>3</td><td>BTC Exact Sweep</td><td>Discovery manifest reports exhaustive coverage and ledgers/snapshots are indexed.</td><td>Review Candidate Eligibility.</td></tr>
-              <tr><td>4</td><td>ETH Deep Cycle and Exact Sweep</td><td>ETH mirror evidence is indexed for cross-symbol inspection.</td><td>Compare blockers and leads.</td></tr>
-              <tr><td>5</td><td>Candidate Eligibility Review</td><td>Eligibility manifest states eligible rows or explicit blocker reasons.</td><td>Open Artifacts and inspect gates.</td></tr>
+              <tr><td>3</td><td>BTC Exact Sweep</td><td>Discovery manifest reports exhaustive coverage and ledgers/snapshots are indexed.</td><td>Run ETH mirror evidence.</td></tr>
+              <tr><td>4</td><td>ETH Deep Cycle and Exact Sweep</td><td>ETH mirror evidence is indexed for cross-symbol inspection.</td><td>Analyze Evidence.</td></tr>
+              <tr><td>5</td><td>Research Analysis and Delta</td><td>Analysis and run-to-run delta artifacts exist with research-only boundaries.</td><td>Run Frozen-Entry Exit Lab.</td></tr>
+              <tr><td>6</td><td>Frozen-Entry Exit Lab</td><td>Exit-lab manifest records simple-runner versus fixed holding, or a blocked reason for missing frozen entries.</td><td>Review Candidate Eligibility.</td></tr>
+              <tr><td>7</td><td>Candidate Eligibility Review</td><td>Eligibility manifest states eligible rows or explicit blocker reasons.</td><td>Open Artifacts and inspect gates.</td></tr>
             </tbody>
           </table>
         </div>
       </div>
       <div class="settings-panel">
-        <h3>Durable Readiness</h3>
-        <div id="r104-readiness-panel" class="readiness-list">Loading durable BTC/ETH readiness.</div>
+        <h3>Catalog Readiness</h3>
+        <div id="r104-readiness-panel" class="readiness-list">Loading catalog BTC/ETH readiness.</div>
       </div>
     </div>
     <div class="settings-grid" style="margin-top:14px;">
       <div class="settings-panel">
         <h3>Recommended Defaults</h3>
         <div class="settings-list" id="research-settings-summary">
-          <div class="settings-line"><strong>Scope</strong><span class="muted">Durable public-archive R104 fixtures.</span></div>
+          <div class="settings-line"><strong>Current evidence set</strong><span class="muted">Durable public-archive BTC/ETH fixtures.</span></div>
           <div class="settings-line"><strong>Output</strong><span class="muted">Isolated operator directories under the configured research root.</span></div>
           <div class="settings-line"><strong>Boundary</strong><span class="muted">research_only, observe_only, promotion_ready false.</span></div>
         </div>
@@ -640,8 +809,8 @@
   <section class="research-band">
     <div class="band-heading">
       <div>
-        <h2>Choose Evidence Task</h2>
-        <div class="muted">Start from the task. Each path states the check, trigger condition, and output location.</div>
+        <h2>Required Checklist Map</h2>
+        <div class="muted">This is the same required path as the checklist above. Use it to understand what each required step proves.</div>
       </div>
       <div class="stack">
         <button onclick="queueFullResearchReview()">Queue Evidence Review Bundle</button>
@@ -657,92 +826,102 @@
         </div>
         <div class="intent-tile">
           <strong>2. Historical Cycle</strong>
-          <div class="muted">Run the current R104 cycle specs to rank transparent baseline and strategy candidates under gates.</div>
+          <div class="muted">Run the current durable cycle specs to rank transparent baseline and strategy candidates under gates.</div>
         </div>
         <div class="intent-tile">
           <strong>3. Discovery Search</strong>
           <div class="muted">Run real entry-discovery screens on the same durable fixture packs, including feature-set and blocker evidence.</div>
         </div>
         <div class="intent-tile">
-          <strong>4. Eligibility Review</strong>
+          <strong>4. Analysis Artifact</strong>
+          <div class="muted">Summarize completed cycle/discovery evidence before changing the research surface.</div>
+        </div>
+        <div class="intent-tile">
+          <strong>5. Run-to-Run Delta</strong>
+          <div class="muted">Compare the latest analysis against a prior compatible run, or establish a baseline artifact.</div>
+        </div>
+        <div class="intent-tile">
+          <strong>6. Frozen-Entry Exit Lab</strong>
+          <div class="muted">Keep entries fixed while comparing fixed holding against simple-runner exits.</div>
+        </div>
+        <div class="intent-tile">
+          <strong>7. Eligibility Review</strong>
           <div class="muted">Bridge discovery leads to existing candidate-pack validation evidence without writing a candidate pack.</div>
+        </div>
+        <div class="intent-tile">
+          <strong>8. Artifact Review</strong>
+          <div class="muted">Open artifacts, compare blockers and leads, and keep all outputs research_only and observe_only.</div>
         </div>
       </div>
 
-      <div class="run-workspace">
-        <h3>Provider Pipeline Diagnostics</h3>
-        <div class="muted">Secondary diagnostics for provider/archive preparation. R104 defaults use the durable fixture readiness panel above.</div>
-        <div class="control-grid">
-          <label>Preset
-            <select id="provider-pipeline-preset" onchange="applyProviderPreset()">
-              <option value="configs/data/v2_btc_hmm_knn_provider_pipeline.json">BTCUSDT provider diagnostics</option>
-            </select>
-          </label>
-          <label>Editable spec path
-            <input id="provider-pipeline-spec" type="text" value="configs/data/v2_btc_hmm_knn_provider_pipeline.json">
-          </label>
-        </div>
-        <input id="provider-pipeline-stage" type="hidden" value="intake">
-        <div class="stage-picker" id="provider-stage-picker">
-          <button type="button" class="stage-option active" data-stage="intake" onclick="selectProviderStage('intake')">
-            <strong>Intake</strong>
-            <span class="muted">Collect or register source manifests and write provider quality evidence.</span>
-          </button>
-          <button type="button" class="stage-option" data-stage="dataset" onclick="selectProviderStage('dataset')">
-            <strong>Dataset</strong>
-            <span class="muted">Build configured research datasets from already prepared provider inputs.</span>
-          </button>
-          <button type="button" class="stage-option" data-stage="evidence" onclick="selectProviderStage('evidence')">
-            <strong>Evidence</strong>
-            <span class="muted">Run configured checks and summaries against prepared data outputs.</span>
-          </button>
-          <button type="button" class="stage-option" data-stage="all" onclick="selectProviderStage('all')">
-            <strong>All</strong>
-            <span class="muted">Run intake, dataset, and evidence in order when you want a complete refresh.</span>
-          </button>
-        </div>
-        <div class="explain-grid" id="provider-stage-explainer"></div>
+      <div class="run-workspace required-control">
+        <span class="task-tag required">required</span>
+        <h3>Research Analysis</h3>
+        <div class="muted">Run after a cycle or discovery manifest exists. It writes research_analysis.json and Markdown, and does not promote candidates.</div>
         <div class="inline-buttons" style="margin-top:14px;">
-          <button onclick="queueProviderPipeline()">Run Provider Diagnostic</button>
-          <button class="ghost" onclick="selectProviderStage('all')">Select Full Refresh</button>
+          <button onclick="queueResearchAnalysis()">Analyze Current Evidence</button>
+          <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
+        </div>
+      </div>
+
+      <div class="run-workspace required-control">
+        <span class="task-tag required">required</span>
+        <h3>Run-to-Run Delta</h3>
+        <div class="muted">Run after analysis exists. It writes research_analysis_delta.json and Markdown without promotion claims.</div>
+        <div class="inline-buttons" style="margin-top:14px;">
+          <button onclick="queueResearchDelta()">Analyze Run Delta</button>
+          <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
+        </div>
+      </div>
+
+      <div class="run-workspace required-control">
+        <span class="task-tag required">required</span>
+        <h3>Frozen-Entry Exit Lab</h3>
+        <div class="muted">Run after the delta exists. It writes a discovery_exit_lab manifest for eligibility review.</div>
+        <div class="inline-buttons" style="margin-top:14px;">
+          <button onclick="queueFrozenEntryExitLab()">Run Frozen Entry Exit Lab</button>
+          <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
+        </div>
+      </div>
+
+      <div class="run-workspace required-control">
+        <span class="task-tag required">required</span>
+        <h3>Candidate Eligibility Review</h3>
+        <div class="muted">Run after analysis, delta, and exit lab exist. It checks existing gate evidence and blocker reasons; it does not write a candidate pack.</div>
+        <div class="inline-buttons" style="margin-top:14px;">
+          <button onclick="reviewCandidateEligibility()">Review Candidate Eligibility</button>
+          <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
         </div>
       </div>
     </div>
   </section>
 
   <section class="research-band">
-    <div class="run-grid">
-      <div class="run-workspace">
-        <h3>Research Experiment</h3>
-        <div class="muted">Secondary experiment bundles for HMM/KNN and provider-path checks. Use R104 cycles and discovery for candidate validation.</div>
-        <div class="control-grid">
-          <label>Preset
-            <select id="research-experiment-preset" onchange="applyExperimentPreset()">
-              <option value="configs/experiments/v2_btc_phase1_research_experiment.json">BTC phase 1 research bundle</option>
-              <option value="configs/experiments/v2_btc_hmm_knn_current_artifact_experiments.json">HMM/KNN current artifact checks</option>
-              <option value="configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json">HMM/KNN deterministic sweep</option>
-            </select>
-          </label>
-          <label>Editable spec path
-            <input id="research-experiment-spec" type="text" value="configs/experiments/v2_btc_phase1_research_experiment.json">
-          </label>
-        </div>
-        <div class="explain-grid" id="experiment-explainer"></div>
-        <div class="inline-buttons" style="margin-top:14px;">
-          <button onclick="queueResearchExperiment()">Run Research Experiment</button>
-        </div>
+    <div class="band-heading">
+      <div>
+        <h2>Manual Presets And Optional Diagnostics</h2>
+        <div class="muted">Use the checklist above for normal operation. This area is for explicit manual preset selection, troubleshooting diagnostics, hardware checks, and legacy compatibility reproduction.</div>
       </div>
+      <span class="pill neutral">secondary controls</span>
+    </div>
+    <div class="workflow-callout">
+      <strong>Secondary controls are not the required path.</strong>
+      The two required manual presets below mirror the checklist buttons. Open diagnostics only when you need provider plumbing, HMM/KNN checks, hardware measurement, or legacy compatibility evidence.
+    </div>
 
-      <div class="run-workspace">
+    <h3>Required Manual Presets</h3>
+    <div class="run-grid">
+      <div class="run-workspace required-control">
+        <span class="task-tag required">required manual preset</span>
         <h3>Historical Cycle Review</h3>
-        <div class="muted">Full historical cycles are the main R104 candidate-validation runs. The operator queues isolated runs so checked evidence directories are not overwritten.</div>
+        <div class="muted">Full historical cycles are required candidate-evidence runs. The selected specs currently use the internal durable fixture label.</div>
         <div class="control-grid">
           <label>Cycle preset
             <select id="historical-cycle-preset" onchange="applyHistoricalPreset()">
-              <option value="configs/research/full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json">BTCUSDT durable deep R104 cycle</option>
-              <option value="configs/research/full_cycle_ethusdt_durable_public_archive_r104_deep_v1.json">ETHUSDT durable deep R104 cycle</option>
-              <option value="configs/research/full_cycle_btcusdt_durable_public_archive_r104_v1.json">BTCUSDT durable standard R104 cycle</option>
-              <option value="configs/research/full_cycle_ethusdt_durable_public_archive_r104_v1.json">ETHUSDT durable standard R104 cycle</option>
+              <option value="configs/research/full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json">BTCUSDT durable deep cycle</option>
+              <option value="configs/research/full_cycle_ethusdt_durable_public_archive_r104_deep_v1.json">ETHUSDT durable deep cycle</option>
+              <option value="configs/research/full_cycle_btcusdt_durable_public_archive_r104_v1.json">BTCUSDT durable standard cycle</option>
+              <option value="configs/research/full_cycle_ethusdt_durable_public_archive_r104_v1.json">ETHUSDT durable standard cycle</option>
               <option value="configs/research/full_cycle_btcusdt_perp_context_v2.json">BTCUSDT provider-context diagnostic cycle</option>
               <option value="configs/research/full_cycle_ethusdt_perp_context_v2.json">ETHUSDT provider-context diagnostic cycle</option>
               <option value="configs/research/full_cycle_btc_v1.json">BTC baseline cycle</option>
@@ -765,9 +944,10 @@
         <div id="historical-cycle-explainer" class="explain-grid"></div>
       </div>
 
-      <div class="run-workspace">
-        <h3>R104 Durable Discovery Run</h3>
-        <div class="muted">Queue exact bounded sweeps for durable candidate search, standard screens for fast blocker feedback, or a quick plumbing check. Completed runs write to job-specific directories; paused runs keep a stable directory for resume.</div>
+      <div class="run-workspace required-control">
+        <span class="task-tag required">required manual preset</span>
+        <h3>Durable Discovery Search</h3>
+        <div class="muted">Exact bounded sweeps are required candidate-search presets. Standard screens are diagnostics; V4 harvest and smoke entries are legacy compatibility or plumbing checks.</div>
         <div class="control-grid">
           <label>Discovery preset
             <select id="discovery-run-preset" onchange="applyDiscoveryPreset()">
@@ -775,11 +955,11 @@
               <option value="configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json">ETHUSDT exact bounded sweep</option>
               <option value="configs/discovery/standard_entry_discovery_btcusdt_durable_r104_v1.json">BTCUSDT durable standard discovery</option>
               <option value="configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json">ETHUSDT durable standard discovery</option>
-              <option value="configs/discovery/deep_candidate_harvest_btcusdt_v4.json">BTCUSDT compatibility sparse harvest</option>
-              <option value="configs/discovery/quick_smoke_btcusdt_v4.json">BTCUSDT quick plumbing check</option>
+              <option value="configs/discovery/deep_candidate_harvest_btcusdt_v4.json">BTCUSDT legacy compatibility sparse harvest</option>
+              <option value="configs/discovery/quick_smoke_btcusdt_v4.json">BTCUSDT diagnostic plumbing check</option>
             </select>
           </label>
-          <label>Editable spec path
+          <label>Internal spec path
             <input id="discovery-run-spec" type="text" value="configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json">
           </label>
           <label>Stop after trials
@@ -787,7 +967,7 @@
           </label>
           <label>Resume existing run
             <select id="discovery-resume">
-              <option value="false">Start or require clean run</option>
+              <option value="false">Start clean diagnostic run</option>
               <option value="true">Resume paused run</option>
             </select>
           </label>
@@ -799,6 +979,86 @@
         <div id="discovery-run-explainer" class="explain-grid"></div>
       </div>
     </div>
+
+    <details class="diagnostic-details" style="margin-top:16px;">
+      <summary>Optional Diagnostics And Legacy Compatibility</summary>
+      <div class="muted" style="margin-top:8px;">These controls help explain failures or reproduce older evidence. They are useful, but they are not the checklist.</div>
+      <div class="diagnostic-grid">
+        <div class="run-workspace optional-control">
+          <span class="task-tag diagnostic">diagnostic</span>
+          <h3>Provider Pipeline Diagnostics</h3>
+          <div class="muted">Legacy diagnostics for provider intake, dataset construction, and evidence plumbing. The required workflow uses the R106 Historical Data Catalog; these tools do not replace Step 0 unless their output is promoted into the same validated catalog fixture/spec contract.</div>
+          <div class="control-grid">
+            <label>Preset
+              <select id="provider-pipeline-preset" onchange="applyProviderPreset()">
+                <option value="configs/experiments/v2_btc_phase1_research_experiment.json">BTC phase 1 provider path</option>
+                <option value="configs/experiments/v2_btc_hmm_knn_current_artifact_experiments.json">HMM/KNN current artifact provider path</option>
+                <option value="configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json">HMM/KNN deterministic provider path</option>
+              </select>
+            </label>
+            <label>Internal spec path
+              <input id="provider-pipeline-spec" type="text" value="configs/experiments/v2_btc_phase1_research_experiment.json">
+            </label>
+          </div>
+          <input id="provider-pipeline-stage" type="hidden" value="intake">
+          <div id="provider-stage-picker" class="stage-picker" aria-label="Provider diagnostic stage">
+            <button type="button" class="stage-option" data-stage="intake" onclick="selectProviderStage('intake')"><strong>Intake</strong><span class="muted">Provider access, manifests, gaps, duplicates, and hashes.</span></button>
+            <button type="button" class="stage-option" data-stage="dataset" onclick="selectProviderStage('dataset')"><strong>Dataset</strong><span class="muted">Feature inputs, schemas, and constructed dataset artifacts.</span></button>
+            <button type="button" class="stage-option" data-stage="evidence" onclick="selectProviderStage('evidence')"><strong>Evidence</strong><span class="muted">Configured checks, conclusions, and rejection notes.</span></button>
+            <button type="button" class="stage-option" data-stage="all" onclick="selectProviderStage('all')"><strong>All</strong><span class="muted">Full provider diagnostic path.</span></button>
+          </div>
+          <div id="provider-stage-explainer" class="explain-grid"></div>
+          <div class="inline-buttons" style="margin-top:14px;">
+            <button onclick="queueProviderPipeline('Run Provider Diagnostic')">Run Provider Diagnostic</button>
+          </div>
+        </div>
+
+        <div class="run-workspace optional-control">
+          <span class="task-tag diagnostic">diagnostic</span>
+          <h3>Research Experiment</h3>
+          <div class="muted">Optional HMM/KNN and provider-path checks. These are not the required candidate-evidence workflow.</div>
+          <div class="control-grid">
+            <label>Preset
+              <select id="research-experiment-preset" onchange="applyExperimentPreset()">
+                <option value="configs/experiments/v2_btc_phase1_research_experiment.json">BTC phase 1 research bundle</option>
+                <option value="configs/experiments/v2_btc_hmm_knn_current_artifact_experiments.json">HMM/KNN current artifact checks</option>
+                <option value="configs/experiments/v2_btc_hmm_knn_deterministic_sweep_experiments.json">HMM/KNN deterministic sweep</option>
+              </select>
+            </label>
+            <label>Internal spec path
+              <input id="research-experiment-spec" type="text" value="configs/experiments/v2_btc_phase1_research_experiment.json">
+            </label>
+          </div>
+          <div class="explain-grid" id="experiment-explainer"></div>
+          <div class="inline-buttons" style="margin-top:14px;">
+            <button onclick="queueResearchExperiment()">Run Research Experiment</button>
+          </div>
+        </div>
+
+        <div class="run-workspace optional-control">
+          <span class="task-tag diagnostic">diagnostic</span>
+          <h3>Hardware Utilization Benchmark</h3>
+          <div class="muted">Local diagnostic probe for CPU worker saturation and optional CuPy/CUDA matrix throughput before prolonged study.</div>
+          <div class="control-grid">
+            <label>CPU workers (blank = auto)
+              <input id="hardware-cpu-workers" type="number" min="1" max="61" step="1" placeholder="physical cores">
+            </label>
+            <label>CPU seconds
+              <input id="hardware-cpu-seconds" type="number" min="0.1" max="120" step="0.1" value="3">
+            </label>
+            <label>GPU seconds
+              <input id="hardware-gpu-seconds" type="number" min="0.1" max="120" step="0.1" value="3">
+            </label>
+            <label>GPU matrix size
+              <input id="hardware-matrix-size" type="number" min="64" max="8192" step="64" value="1024">
+            </label>
+          </div>
+          <div class="inline-buttons" style="margin-top:14px;">
+            <button onclick="queueHardwareUtilizationBenchmark()">Run Hardware Benchmark</button>
+          </div>
+        </div>
+      </div>
+    </details>
   </section>
 
   <section class="research-band">
@@ -820,10 +1080,11 @@
   <section class="research-band">
     <div class="band-heading">
       <div>
-        <h3>Profitability Chart</h3>
-        <div class="muted">Read-only chart from current model metrics and historical research-cycle rankings. Positive bars are evidence to review, not a promotion claim.</div>
+        <h3>Required Evidence Profitability Chart</h3>
+        <div class="muted">Read-only chart from required durable historical-cycle rankings. Diagnostic and benchmark cycles are ignored here.</div>
       </div>
     </div>
+    <div id="profitability-chart-warning" class="chart-warning" hidden></div>
     <canvas id="profitability-chart" class="research-chart" height="220"></canvas>
     <div id="profitability-chart-note" class="chart-note muted">Waiting for profitability artifacts.</div>
   </section>
@@ -831,8 +1092,8 @@
   <section class="research-band">
     <div class="band-heading">
       <div>
-        <h3>Research Graphs</h3>
-        <div class="muted">These charts summarize the newest artifacts that the operator API can see.</div>
+        <h3>Required Evidence Graphs</h3>
+        <div class="muted">These charts summarize required durable cycle and exact discovery evidence. Optional diagnostics remain in Jobs and Artifacts.</div>
       </div>
     </div>
     <div class="viz-grid">
@@ -941,6 +1202,7 @@
   let latestArtifacts = [];
   let latestResearchJobs = [];
   let latestR104Readiness = null;
+  let latestHistoricalDataCatalog = null;
   let latestResearchProgress = null;
   const localHistoryKey = "tbs.research.localActionHistory.v1";
   const localSettingsKey = "tbs.research.settings.v1";
@@ -1008,7 +1270,7 @@
     "configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json": [
       ["What It Tests", "Exact bounded BTC sweep over 570240 real KNN entry-discovery combinations using the feature sets that pass compact durable-fixture preflight."],
       ["When To Use", "Use after the BTC deep cycle. This is the primary long durable discovery run for brute-force-scale evidence."],
-      ["Where It Writes", "operator_runs/discovery_runs/<exact-sweep>/<job>, feature matrices, trial records, snapshots, and research_only candidate ledgers."]
+      ["Where It Writes", "operator_runs/discovery_runs/<exact-sweep> for stable pause/resume, feature matrices, trial records, snapshots, and research_only candidate ledgers."]
     ],
     "configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json": [
       ["What It Tests", "Exact bounded ETH sweep over the same 570240-combination grid for mirror evidence and blocker comparison."],
@@ -1018,7 +1280,7 @@
     "configs/discovery/standard_entry_discovery_btcusdt_durable_r104_v1.json": [
       ["What It Tests", "A 720-trial sparse BTC blocker screen on durable fixtures using price/trend/vol and compact WT feature columns."],
       ["When To Use", "Use for fast feedback before committing hours to the exact sweep. It is not exhaustive."],
-      ["Where It Writes", "operator_runs/discovery_runs/<run>/<job>, feature_matrices, trial_artifacts, trial records, snapshots, and research_only candidate ledgers."]
+      ["Where It Writes", "operator_runs/discovery_runs/<run>/<job> for diagnostics, feature_matrices, trial_artifacts, trial records, snapshots, and research_only candidate ledgers."]
     ],
     "configs/discovery/standard_entry_discovery_ethusdt_durable_r104_v1.json": [
       ["What It Tests", "A 720-trial sparse ETH blocker screen on durable fixtures using the same compact feature-column scope as BTC."],
@@ -1026,13 +1288,13 @@
       ["Where It Writes", "Research-only ETH discovery artifacts under isolated operator run directories."]
     ],
     "configs/discovery/deep_candidate_harvest_btcusdt_v4.json": [
-      ["What It Tests", "Compatibility broad sparse BTC harvest over a very large declared space. It is useful for diagnostics but is not exhaustive on R104 durable fixtures."],
-      ["When To Use", "Use only when comparing against earlier V4 behavior. Prefer exact_entry_sweep_btcusdt_durable_r104_v1 for the current branch objective."],
+      ["What It Tests", "Legacy compatibility broad sparse BTC harvest over a very large declared space. It is useful for diagnostics but is not exhaustive on current durable fixtures."],
+      ["When To Use", "Use only when comparing against earlier V4 behavior. Prefer the current exact bounded BTC sweep for branch evidence."],
       ["Where It Writes", "The same research_only discovery artifacts as standard mode, with more trials and larger ledgers under a separate run id."]
     ],
     "configs/discovery/standard_entry_discovery_btcusdt_v4.json": [
       ["What It Tests", "Older BTC V4 standard screen retained for compatibility with prior stage evidence."],
-      ["When To Use", "Use only when reproducing older V4 behavior. Prefer the R104 standard or exact specs for current durable work."],
+      ["When To Use", "Use only when reproducing older V4 behavior. Prefer the current durable standard or exact specs for current work."],
       ["Where It Writes", "Research-only discovery artifacts under the configured research root."]
     ],
     "configs/discovery/quick_smoke_btcusdt_v4.json": [
@@ -1053,13 +1315,55 @@
   };
 
   const milestoneActionHandlers = {
+    historical_data_catalog: "queueHistoricalDataCatalogRefresh()",
     durable_readiness: "queuePreflightDataReadiness()",
     btc_cycle: "queueDurableCycle('BTCUSDT')",
     btc_discovery: "queueDurableDiscovery('BTCUSDT')",
     eth_cycle: "queueDurableCycle('ETHUSDT')",
     eth_discovery: "queueDurableDiscovery('ETHUSDT')",
+    research_analysis: "queueResearchAnalysis()",
+    research_analysis_delta: "queueResearchDelta()",
+    frozen_entry_exit_lab: "queueFrozenEntryExitLab()",
     candidate_eligibility: "reviewCandidateEligibility()"
   };
+
+  function readinessItem(symbol) {
+    return (latestR104Readiness?.items || []).find(item => item.symbol === symbol) || null;
+  }
+
+  function activeCycleSpec(symbol) {
+    return readinessItem(symbol)?.cycle_spec_path || durableCycleSpecs[symbol] || durableCycleSpecs.BTCUSDT;
+  }
+
+  function activeDiscoverySpec(symbol) {
+    return readinessItem(symbol)?.discovery_spec_path || durableDiscoverySpecs[symbol] || durableDiscoverySpecs.BTCUSDT;
+  }
+
+  function ensureSelectOption(select, value, label) {
+    if (!select || !value) return;
+    const text = String(value);
+    if (![...select.options].some(option => option.value === text)) {
+      const option = document.createElement("option");
+      option.value = text;
+      option.textContent = label;
+      select.insertBefore(option, select.firstChild);
+    }
+  }
+
+  function syncActiveCatalogControls() {
+    const btc = readinessItem("BTCUSDT");
+    if (!btc?.ready) return;
+    const cycleSelect = document.getElementById("historical-cycle-preset");
+    ensureSelectOption(cycleSelect, btc.cycle_spec_path, "BTCUSDT active catalog cycle");
+    if (cycleSelect && !localSettings().historicalPreset) {
+      cycleSelect.value = btc.cycle_spec_path;
+      applyHistoricalPreset();
+    }
+    const discoveryInput = document.getElementById("discovery-run-spec");
+    if (discoveryInput && !localSettings().discoveryPreset) {
+      discoveryInput.value = activeDiscoverySpec("BTCUSDT");
+    }
+  }
 
   function pickLatest(type) {
     return latestArtifacts.find(item => item.type === type) || null;
@@ -1223,15 +1527,23 @@
     renderLocalActionHistory();
   }
 
+  function setJobResponse(html) {
+    for (const id of ["job-response", "primary-job-response"]) {
+      const target = document.getElementById(id);
+      if (target) target.innerHTML = html;
+    }
+  }
+
   async function queueJob(url, payload, actionLabel = "Research job") {
+    setJobResponse(`<div class="success-box"><strong>Queueing ${window.TBS.escapeHtml(actionLabel)}</strong><br>Sending request to operator job queue.</div>`);
     try {
       const response = await window.TBS.postJson(url, payload);
-      document.getElementById("job-response").innerHTML = `<div class="success-box"><strong>Job queued</strong><br>${window.TBS.escapeHtml(response.job_id || "queued")}</div>`;
+      setJobResponse(`<div class="success-box"><strong>Job queued</strong><br>${window.TBS.escapeHtml(response.job_id || "queued")}</div>`);
       rememberLocalAction(actionLabel, "queued", payload, response);
       await refreshResearch();
       return response;
     } catch (error) {
-      document.getElementById("job-response").innerHTML = `<div class="error-box"><strong>Job rejected</strong><br>${window.TBS.escapeHtml(String(error.message || error))}</div>`;
+      setJobResponse(`<div class="error-box"><strong>Job rejected</strong><br>${window.TBS.escapeHtml(String(error.message || error))}</div>`);
       rememberLocalAction(actionLabel, "rejected", payload, {});
       await refreshResearch();
       return null;
@@ -1241,7 +1553,7 @@
   async function queueTrainLatest() {
     const dataset = pickLatest("dataset");
     if (!dataset) {
-      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No dataset found</strong><br>Build a signal dataset first.</div>';
+      setJobResponse('<div class="error-box"><strong>No dataset found</strong><br>Build a signal dataset first.</div>');
       return;
     }
     await queueJob("/api/operator/research/jobs/train-model", { dataset_path: dataset.manifest.dataset_path }, "Train signal dataset");
@@ -1250,7 +1562,7 @@
   async function queueCalibrateLatest() {
     const train = pickLatest("train_artifact");
     if (!train) {
-      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No training artifact found</strong><br>Train the signal model first.</div>';
+      setJobResponse('<div class="error-box"><strong>No training artifact found</strong><br>Train the signal model first.</div>');
       return;
     }
     await queueJob("/api/operator/research/jobs/calibrate-model", { train_manifest_path: train.path }, "Calibrate signal model");
@@ -1259,7 +1571,7 @@
   async function queueReplayLatest() {
     const artifact = pickLatest("model_artifact");
     if (!artifact) {
-      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No calibrated artifact found</strong><br>Calibrate the signal model first.</div>';
+      setJobResponse('<div class="error-box"><strong>No calibrated artifact found</strong><br>Calibrate the signal model first.</div>');
       return;
     }
     await queueJob("/api/operator/research/jobs/replay-eval", { artifact_manifest_path: artifact.path }, "Replay signal artifact");
@@ -1270,6 +1582,33 @@
       spec_path: document.getElementById("provider-pipeline-spec").value,
       stage: document.getElementById("provider-pipeline-stage").value || "intake",
     }, actionLabel);
+  }
+
+  async function queueDurableDataCollection() {
+    return await queueJob("/api/operator/research/jobs/collect-durable-data", {
+      symbols: ["BTCUSDT", "ETHUSDT"],
+      start_month: "2024-01",
+      end_month: "2024-12",
+    }, "Collect durable BTC/ETH data");
+  }
+
+  async function queueHistoricalDataCatalogRefresh() {
+    return await queueJob("/api/operator/research/jobs/refresh-historical-data-catalog", {
+      symbols: ["BTCUSDT", "ETHUSDT"],
+      start_month: "2020-01",
+    }, "Refresh Historical Data Catalog");
+  }
+
+  async function queueResearchAutopilot() {
+    return await queueJob("/api/operator/research/jobs/run-research-autopilot", {
+      symbols: ["BTCUSDT", "ETHUSDT"],
+      max_steps: 100,
+      include_catalog_refresh: true,
+      include_eligibility: true,
+      include_trade_sortino: true,
+      max_sortino_trade_files: 1000,
+      discovery_stop_after_trials: null,
+    }, "Research autopilot");
   }
 
   async function queueResearchExperiment(actionLabel = "Research experiment") {
@@ -1286,40 +1625,113 @@
   }
 
   async function queueDurableCycle(symbol) {
-    const spec = durableCycleSpecs[symbol] || durableCycleSpecs.BTCUSDT;
-    document.getElementById("historical-cycle-preset").value = spec;
-    applyHistoricalPreset();
-    focusResearchSection("r104-settings-section");
-    return await queueHistoricalCycle(`${symbol} deep durable R104 cycle`);
+    const spec = activeCycleSpec(symbol);
+    return await queueJob("/api/operator/research/jobs/run-historical-research-cycle", {
+      spec_path: spec,
+      overwrite_protection: "isolated_output_dir",
+    }, `${symbol} durable deep cycle`);
   }
 
   async function queueDiscoveryRun(actionLabel = "Discovery run", forceResume = null) {
     const stopAfter = document.getElementById("discovery-stop-after-trials").value;
     const resumeValue = forceResume === null ? document.getElementById("discovery-resume").value === "true" : Boolean(forceResume);
+    const specPath = document.getElementById("discovery-run-spec").value;
+    const stableRunId = isExactDurableDiscoverySpec(specPath);
     return await queueJob("/api/operator/research/jobs/run-discovery", {
-      spec_path: document.getElementById("discovery-run-spec").value,
+      spec_path: specPath,
       resume: resumeValue,
       stop_after_trials: stopAfter ? Number(stopAfter) : null,
-      overwrite_protection: "isolated_run_id_output_dir",
+      stable_run_id: stableRunId,
+      overwrite_protection: stableRunId ? "stable_run_id_output_dir" : "isolated_run_id_output_dir",
     }, actionLabel);
   }
 
+  function isExactDurableDiscoverySpec(specPath) {
+    const text = String(specPath || "");
+    return text.includes("exact_entry_sweep_") && (text.includes("_durable_r104_") || text.includes("_candidate_depth_"));
+  }
+
+  async function queueHardwareUtilizationBenchmark() {
+    const cpuWorkers = document.getElementById("hardware-cpu-workers").value;
+    const cpuSeconds = document.getElementById("hardware-cpu-seconds").value || "3";
+    const gpuSeconds = document.getElementById("hardware-gpu-seconds").value || "3";
+    const matrixSize = document.getElementById("hardware-matrix-size").value || "1024";
+    return await queueJob("/api/operator/research/jobs/benchmark-hardware-utilization", {
+      cpu_workers: cpuWorkers ? Number(cpuWorkers) : null,
+      cpu_seconds: Number(cpuSeconds),
+      gpu_seconds: Number(gpuSeconds),
+      matrix_size: Number(matrixSize),
+    }, "Hardware utilization benchmark");
+  }
+
   async function queueDurableDiscovery(symbol) {
-    const spec = durableDiscoverySpecs[symbol] || durableDiscoverySpecs.BTCUSDT;
-    document.getElementById("discovery-run-preset").value = spec;
-    applyDiscoveryPreset();
+    const spec = activeDiscoverySpec(symbol);
+    document.getElementById("discovery-run-spec").value = spec;
     document.getElementById("discovery-stop-after-trials").value = "";
-    document.getElementById("discovery-resume").value = "false";
-    focusResearchSection("r104-settings-section");
-    return await queueDiscoveryRun(`${symbol} exact durable R104 sweep`, false);
+    document.getElementById("discovery-resume").value = "true";
+    return await queueDiscoveryRun(`${symbol} durable exact sweep (resume latest snapshot)`, true);
   }
 
   async function queuePreflightDataReadiness() {
     await refreshResearch();
     const ready = latestR104Readiness?.ready;
-    document.getElementById("job-response").innerHTML = `<div class="${ready ? "success-box" : "error-box"}"><strong>Durable readiness</strong><br>${window.TBS.escapeHtml(latestR104Readiness?.recommended_next_action || "Readiness endpoint unavailable.")}</div>`;
+    const dataGap = latestR104Readiness?.fixture_integrity_ready && !latestR104Readiness?.candidate_evidence_ready;
+    const extra = dataGap
+      ? " Run Step 0 Refresh Historical Data Catalog to download and validate expanded BTC/ETH public archives; then run this check again."
+      : "";
+    setJobResponse(`<div class="${ready ? "success-box" : "error-box"}"><strong>Catalog readiness</strong><br>${window.TBS.escapeHtml((latestR104Readiness?.recommended_next_action || "Readiness endpoint unavailable.") + extra)}</div>`);
     focusResearchSection("r104-settings-section");
     return latestR104Readiness;
+  }
+
+  async function queueResearchAnalysis() {
+    const discovery = latestDiscoveryRun();
+    const cycle = latestCycle();
+    if (!discovery && !cycle) {
+      setJobResponse('<div class="error-box"><strong>No research evidence found</strong><br>Run a durable cycle or exact discovery before analysis.</div>');
+      focusResearchSection("artifacts-list");
+      return null;
+    }
+    return await queueJob("/api/operator/research/jobs/analyze-research-results", {
+      cycle_manifest_path: cycle ? cycle.path : null,
+      discovery_manifest_path: discovery ? discovery.path : null,
+      include_trade_sortino: true,
+      max_sortino_trade_files: 1000,
+    }, "Research analysis");
+  }
+
+  async function queueResearchDelta() {
+    const analysis = pickLatest("research_analysis");
+    if (!analysis) {
+      setJobResponse('<div class="error-box"><strong>No research analysis found</strong><br>Analyze current evidence before writing a run-to-run delta.</div>');
+      focusResearchSection("artifacts-list");
+      return null;
+    }
+    return await queueJob("/api/operator/research/jobs/analyze-research-delta", {
+      current_analysis_path: analysis.path,
+      previous_analysis_path: null,
+      symbol: analysis.summary?.symbol || null,
+    }, "Research analysis delta");
+  }
+
+  async function queueFrozenEntryExitLab() {
+    const discovery = latestDiscoveryRun();
+    if (!discovery) {
+      setJobResponse('<div class="error-box"><strong>No discovery run found</strong><br>Run durable discovery before the frozen-entry exit lab.</div>');
+      focusResearchSection("artifacts-list");
+      return null;
+    }
+    if (!pickLatest("research_analysis_delta")) {
+      setJobResponse('<div class="error-box"><strong>No run-to-run delta found</strong><br>Write the delta artifact before the frozen-entry exit lab.</div>');
+      focusResearchSection("artifacts-list");
+      return null;
+    }
+    return await queueJob("/api/operator/research/jobs/run-frozen-entry-exit-lab", {
+      discovery_manifest_path: discovery.path,
+      entry_signals_path: null,
+      market_data_path: null,
+      max_candidates: 12,
+    }, "Frozen-entry exit lab");
   }
 
   async function queueDiscoveryPreset(preset, actionLabel, stopAfterTrials = null, resume = false) {
@@ -1346,10 +1758,14 @@
     const discovery = latestDiscoveryRun();
     const summary = (discovery || {}).summary || {};
     const snapshotPath = extractSnapshotPath(summary);
+    const activeSnapshotPath = latestResearchProgress?.active_discovery_progress?.latest_snapshot_path || "";
+    const displaySnapshotPath = snapshotPath || activeSnapshotPath;
     const body = snapshotPath
       ? `Latest snapshot evidence: ${window.TBS.escapeHtml(snapshotPath)}`
-      : "No discovery snapshot is indexed yet. Run or resume discovery, then review Artifacts.";
-    document.getElementById("job-response").innerHTML = `<div class="${snapshotPath ? "success-box" : "error-box"}"><strong>Latest snapshot</strong><br>${body}</div>`;
+      : (activeSnapshotPath
+        ? `Active run snapshot evidence: ${window.TBS.escapeHtml(activeSnapshotPath)}`
+        : "No discovery snapshot is indexed yet. Run or resume discovery, then review Artifacts.");
+    setJobResponse(`<div class="${displaySnapshotPath ? "success-box" : "error-box"}"><strong>Latest snapshot</strong><br>${body}</div>`);
     focusResearchSection("artifacts-list");
   }
 
@@ -1361,7 +1777,22 @@
   async function reviewCandidateEligibility() {
     const discovery = latestDiscoveryRun();
     if (!discovery) {
-      document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>No discovery run found</strong><br>Run durable discovery before evaluating candidate-pack eligibility.</div>';
+      setJobResponse('<div class="error-box"><strong>No discovery run found</strong><br>Run durable discovery before evaluating candidate-pack eligibility.</div>');
+      focusResearchSection("artifacts-list");
+      return null;
+    }
+    if (!pickLatest("research_analysis")) {
+      setJobResponse('<div class="error-box"><strong>No research analysis found</strong><br>Analyze current evidence before eligibility review.</div>');
+      focusResearchSection("artifacts-list");
+      return null;
+    }
+    if (!pickLatest("research_analysis_delta")) {
+      setJobResponse('<div class="error-box"><strong>No run-to-run delta found</strong><br>Write the delta artifact before eligibility review.</div>');
+      focusResearchSection("artifacts-list");
+      return null;
+    }
+    if (!pickLatest("discovery_exit_lab")) {
+      setJobResponse('<div class="error-box"><strong>No frozen-entry exit lab found</strong><br>Run the frozen-entry exit lab before eligibility review.</div>');
       focusResearchSection("artifacts-list");
       return null;
     }
@@ -1378,24 +1809,27 @@
   }
 
   function openArtifactList() {
-    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Artifact list</strong><br>Showing indexed research artifacts and manifests. Server-side truth remains in Jobs and artifact files.</div>';
+    setJobResponse('<div class="success-box"><strong>Artifact list</strong><br>Showing indexed research artifacts and manifests. Server-side truth remains in Jobs and artifact files.</div>');
     focusResearchSection("artifacts-list");
   }
 
   async function queueFullResearchReview() {
-    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Queueing evidence review bundle</strong><br>BTC durable cycle and BTC durable discovery are submitted in order. Queueing stops if any step is rejected.</div>';
+    setJobResponse('<div class="success-box"><strong>Queueing evidence review bundle</strong><br>BTC durable cycle, BTC durable discovery, analysis, delta, and frozen-entry exit lab are submitted in order. Queueing stops if any step is rejected.</div>');
     const steps = [
       () => queueDurableCycle("BTCUSDT"),
       () => queueDurableDiscovery("BTCUSDT"),
+      () => queueResearchAnalysis(),
+      () => queueResearchDelta(),
+      () => queueFrozenEntryExitLab(),
     ];
     for (const step of steps) {
       const response = await step();
       if (!response) {
-        document.getElementById("job-response").innerHTML = '<div class="error-box"><strong>Evidence review stopped</strong><br>A required step was rejected or missing evidence. Review Jobs and Artifacts before continuing.</div>';
+        setJobResponse('<div class="error-box"><strong>Evidence review stopped</strong><br>A required step was rejected or missing evidence. Review Jobs and Artifacts before continuing.</div>');
         return null;
       }
     }
-    document.getElementById("job-response").innerHTML = '<div class="success-box"><strong>Evidence review queued</strong><br>When the cycle and discovery jobs succeed, use Review Candidate Eligibility to run the bridge against indexed manifests.</div>';
+    setJobResponse('<div class="success-box"><strong>Evidence review queued</strong><br>When the jobs succeed, use Review Candidate Eligibility to run the bridge against indexed manifests.</div>');
     return true;
   }
 
@@ -1409,6 +1843,25 @@
     if (value === null || value === undefined || value === "n/a") return "n/a";
     const numeric = Number(value);
     return Number.isFinite(numeric) ? `${(numeric * 100).toFixed(1)}%` : String(value);
+  }
+
+  function formatPercentNumber(value) {
+    if (value === null || value === undefined || value === "n/a") return "n/a";
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${numeric.toFixed(1)}%` : String(value);
+  }
+
+  function formatBytes(value) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || numeric < 0) return "n/a";
+    if (numeric >= 1024 * 1024 * 1024) return `${(numeric / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+    if (numeric >= 1024 * 1024) return `${(numeric / (1024 * 1024)).toFixed(2)} MB`;
+    if (numeric >= 1024) return `${(numeric / 1024).toFixed(1)} KB`;
+    return `${numeric.toFixed(0)} B`;
+  }
+
+  function hardwareCpuTargetMet(summary) {
+    return summary?.cpu_saturation_target_met === true || summary?.cpu_worker_saturation_status === "saturated";
   }
 
   function renderJobRow(job) {
@@ -1441,6 +1894,16 @@
       const eligibility = summary.eligibility || {};
       return window.TBS.pill((eligibility.eligible_count || 0) > 0 ? "eligible_rows" : "blocked", (eligibility.eligible_count || 0) > 0 ? "ok" : "warn");
     }
+    if (item.type === "research_analysis") {
+      return window.TBS.pill((summary.cycle_available || summary.discovery_available) ? "analysis_ready" : "analysis_blocked", (summary.cycle_available || summary.discovery_available) ? "ok" : "warn");
+    }
+    if (item.type === "research_analysis_delta") {
+      return window.TBS.pill(summary.compatible ? "delta_ready" : "delta_baseline", summary.compatible ? "ok" : "warn");
+    }
+    if (item.type === "research_autopilot") {
+      const status = summary.autopilot_status || "observe_only";
+      return window.TBS.pill(status, status === "completed" ? "ok" : (status === "blocked" || status === "failed" ? "warn" : "neutral"));
+    }
     if (item.type === "discovery_exit_lab" || item.type === "discovery_multiple_testing" || item.type === "discovery_validation_floors") {
       const gates = summary.candidate_gates || {};
       return window.TBS.pill((gates.status_counts || {}).passed ? "gate_passed" : "gate_review", (gates.status_counts || {}).passed ? "ok" : "warn");
@@ -1448,8 +1911,21 @@
     if (item.type === "historical_research_cycle") {
       return window.TBS.pill(summary.candidate_pack_written ? "pack_written" : "gated", summary.candidate_pack_written ? "ok" : "warn");
     }
+    if (item.type === "historical_data_catalog") {
+      return window.TBS.pill(summary.candidate_depth_ready ? "candidate_depth" : "catalog_ready", summary.candidate_depth_ready ? "ok" : "warn");
+    }
     if (item.type === "discovery_run") {
       return window.TBS.pill(summary.status || "observe_only", summary.status === "completed" ? "ok" : "warn");
+    }
+    if (item.type === "hardware_utilization") {
+      if (summary.promotion_ready === true || summary.research_only === false || summary.observe_only === false) {
+        return window.TBS.pill("boundary_review", "bad");
+      }
+      const cpuTargetMet = hardwareCpuTargetMet(summary);
+      const label = cpuTargetMet
+        ? (summary.gpu_probe_succeeded ? "cpu+gpu" : "cpu_ready")
+        : (summary.cpu_probe_succeeded ? "cpu_below_target" : "cpu_probe_failed");
+      return window.TBS.pill(label, cpuTargetMet ? "ok" : "warn");
     }
     if (summary.conclusion_status) {
       return window.TBS.pill(summary.conclusion_status, summary.conclusion_status === "supported" ? "ok" : (summary.conclusion_status === "rejected" ? "bad" : "warn"));
@@ -1477,6 +1953,77 @@
             ["Error", window.TBS.escapeHtml(String(summary.error || "n/a"))],
             ["Boundary", "research_only / observe_only / promotion_ready: false"],
           ])}
+        </div>
+      `;
+    }
+    if (item.type === "research_autopilot") {
+      const counts = summary.status_counts || {};
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>research_autopilot</strong>
+            ${artifactStatusPill(item, summary)}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Symbols", window.TBS.escapeHtml((summary.requested_symbols || []).join(", ") || "n/a")],
+            ["Steps", window.TBS.toMono(summary.step_count ?? 0)],
+            ["Executed", window.TBS.toMono(summary.executed_step_count ?? 0)],
+            ["Skipped", window.TBS.toMono(counts.skipped ?? 0)],
+            ["Blocked", window.TBS.escapeHtml(summary.blocked_reason || "none")],
+            ["Promotion Boundary", window.TBS.escapeHtml(summary.promotion_ready === true ? "unexpected true" : "promotion_ready: false")],
+          ])}
+          <details class="details">
+            <summary>Autopilot manifest</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, summary }))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "research_analysis") {
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>research_analysis</strong>
+            ${artifactStatusPill(item, summary)}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Cycle", window.TBS.escapeHtml(String(summary.cycle_id || "n/a"))],
+            ["Discovery", window.TBS.escapeHtml(String(summary.run_id || "n/a"))],
+            ["Symbol", window.TBS.escapeHtml(String(summary.symbol || "n/a"))],
+            ["Inputs", window.TBS.escapeHtml(`cycle=${summary.cycle_available ? "yes" : "no"}, discovery=${summary.discovery_available ? "yes" : "no"}`)],
+            ["Markdown", window.TBS.toMono(item.markdown_path || "n/a")],
+            ["Promotion Boundary", window.TBS.escapeHtml(summary.promotion_ready === true ? "unexpected true" : "promotion_ready: false")],
+          ])}
+          <details class="details">
+            <summary>Analysis payload</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, summary }))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "research_analysis_delta") {
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>research_analysis_delta</strong>
+            ${artifactStatusPill(item, summary)}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Symbol", window.TBS.escapeHtml(String(summary.symbol || "n/a"))],
+            ["Compatible", window.TBS.escapeHtml(summary.compatible ? "yes" : "baseline/blocked")],
+            ["Current", window.TBS.toMono(summary.current_analysis_path || "n/a")],
+            ["Previous", window.TBS.toMono(summary.previous_analysis_path || "none")],
+            ["Blockers", window.TBS.escapeHtml((summary.blocked_reasons || []).join(", ") || "none")],
+            ["Markdown", window.TBS.toMono(item.markdown_path || "n/a")],
+            ["Promotion Boundary", window.TBS.escapeHtml(summary.promotion_ready === true ? "unexpected true" : "promotion_ready: false")],
+          ])}
+          <details class="details">
+            <summary>Delta payload</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, summary }))}</pre>
+          </details>
         </div>
       `;
     }
@@ -1596,12 +2143,72 @@
         </div>
       `;
     }
+    if (item.type === "performance_utilization_study") {
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>performance_utilization_study</strong>
+            ${artifactStatusPill(item, summary)}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["Machine", window.TBS.escapeHtml(`${summary.cpu || "n/a"} / ${summary.physical_cores ?? "n/a"} physical / ${summary.logical_cpus ?? "n/a"} logical`)],
+            ["Best Hardware Profile", window.TBS.escapeHtml(String(summary.best_hardware_profile || "n/a"))],
+            ["Hardware Saturation", window.TBS.escapeHtml(`worker ${formatPercentNumber(summary.best_hardware_worker_capacity_percent)} ${summary.best_hardware_worker_saturation || "n/a"} / logical ${formatPercentNumber(summary.best_hardware_logical_capacity_percent)} ${summary.best_hardware_logical_saturation || "n/a"}`)],
+            ["GPU", window.TBS.escapeHtml(`${summary.gpu_status || "n/a"} / ${formatNumber(summary.gpu_approx_gflops_per_second)} GFLOP/s`)],
+            ["Historical Speed", window.TBS.escapeHtml(`${formatNumber(summary.historical_candidate_backtests_per_minute)} candidate backtests/min`)],
+            ["Exact Probe", window.TBS.escapeHtml(`${formatNumber(summary.exact_probe_trials_per_minute)} trials/min / ${summary.exact_probe_active_workers ?? "n/a"} workers / chunk ${summary.exact_probe_trial_chunk_size ?? "n/a"}`)],
+            ["Final Artifact Pressure", window.TBS.escapeHtml(`${summary.final_artifact_file_count ?? "n/a"} files / ${formatBytes(summary.final_artifact_bytes_written)} / ${formatRate(summary.final_artifact_write_wall_time_share)} write share`)],
+            ["UI Command", window.TBS.toMono(summary.ui_one_line_command || "n/a")],
+            ["Boundary", window.TBS.escapeHtml(summary.speed_claimed ? "unexpected speed claim" : "observe-only measurement; no speed claim")],
+          ])}
+          <details class="details">
+            <summary>Performance utilization measurement</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
+          </details>
+        </div>
+      `;
+    }
+    if (item.type === "hardware_utilization") {
+      return `
+        <div class="card alt">
+          <div class="split">
+            <strong>hardware_utilization</strong>
+            ${artifactStatusPill(item, summary)}
+          </div>
+          ${window.TBS.renderKv([
+            ["Path", window.TBS.toMono(item.path)],
+            ["CPU Workers", window.TBS.toMono(`${summary.cpu_workers ?? "n/a"} active / ${summary.physical_cpu_count ?? "n/a"} physical / ${summary.logical_cpu_count ?? "n/a"} logical`)],
+            ["Worker Capacity", window.TBS.toMono(formatPercentNumber(summary.cpu_worker_capacity_percent))],
+            ["Logical Capacity", window.TBS.toMono(formatPercentNumber(summary.cpu_logical_capacity_percent))],
+            ["Worker Status", window.TBS.escapeHtml(String(summary.cpu_worker_saturation_status || "n/a"))],
+            ["Logical Status", window.TBS.escapeHtml(String(summary.cpu_logical_saturation_status || "n/a"))],
+            ["Long CPU Study", window.TBS.escapeHtml(summary.ready_for_long_cpu_bound_research ? "ready" : "below target")],
+            ["GPU Status", window.TBS.escapeHtml(String(summary.gpu_execution_status || "n/a"))],
+            ["GPU", window.TBS.escapeHtml(String(summary.gpu_name || "n/a"))],
+            ["GPU GFLOP/s", window.TBS.toMono(formatNumber(summary.gpu_gflops))],
+            ["Best Option", window.TBS.escapeHtml(String(summary.best_option || "n/a"))],
+            ["Promotion Boundary", window.TBS.escapeHtml(summary.promotion_ready === true ? "unexpected true" : "promotion_ready: false")],
+          ])}
+          <details class="details">
+            <summary>Hardware report</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.manifest))}</pre>
+          </details>
+        </div>
+      `;
+    }
     if (item.type === "discovery_run") {
       const interesting = summary.interesting_candidates || {};
       const blocked = summary.blocked_candidates || {};
       const filterBlocked = summary.filter_blockers || {};
       const latestSnapshot = summary.latest_snapshot || {};
       const searchSpace = summary.search_space || {};
+      const performance = summary.performance || {};
+      const cacheHits = performance.cache_hit_rates || {};
+      const processChunks = performance.process_chunk_timing || {};
+      const topStages = performance.top_stage_seconds || {};
+      const topStageLabel = Object.entries(topStages).slice(0, 3).map(([key, value]) => `${key}=${formatDurationSeconds(value)}`).join(", ") || "n/a";
+      const cacheLabel = Object.entries(cacheHits).map(([key, value]) => `${key}=${formatRate(value)}`).join(", ") || "n/a";
       const ledgerRows = [
         ...(interesting.rows || []),
         ...(blocked.rows || []),
@@ -1627,6 +2234,11 @@
             ["Blocked", window.TBS.toMono(blocked.row_count ?? 0)],
             ["Filter Blocked", window.TBS.toMono(filterBlocked.row_count ?? 0)],
             ["Snapshots", window.TBS.toMono(summary.snapshot_count ?? "n/a")],
+            ["Worker Plan", window.TBS.escapeHtml(`${performance.executor || "n/a"} / ${performance.active_workers ?? "n/a"} active of ${performance.requested_workers ?? "n/a"} requested / chunk ${performance.trial_chunk_size ?? "n/a"}`)],
+            ["Cache Hits", window.TBS.escapeHtml(cacheLabel)],
+            ["Artifact Pressure", window.TBS.escapeHtml(`${performance.artifact_file_count ?? "n/a"} files / ${formatBytes(performance.artifact_bytes_written)} / write ${formatRate(performance.artifact_write_wall_time_share)} / ${performance.artifact_count_scope || "n/a"}`)],
+            ["Process Chunks", window.TBS.escapeHtml(processChunks.measured ? `${processChunks.chunk_count ?? "n/a"} chunks / ${processChunks.worker_process_count ?? "n/a"} processes / CPU ${formatPercentNumber(processChunks.chunk_process_cpu_percent_of_chunk_wall)}` : (performance.timing_note || "parent process timing"))],
+            ["Top Runtime Stages", window.TBS.escapeHtml(topStageLabel)],
             ["Promotion Boundary", window.TBS.escapeHtml(summary.promotion_ready === true ? "requires later promotion review" : "promotion_ready: false")],
           ])}
           ${ledgerRows.length ? `
@@ -1643,8 +2255,8 @@
             </table>
           ` : '<div class="empty" style="margin-top:10px;">No discovery ledger rows yet.</div>'}
           <details class="details">
-            <summary>Manifest / ledgers / latest snapshot</summary>
-            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, search_space: searchSpace, ledgers: { interesting, blocked, filter_blockers: filterBlocked }, latest_snapshot: latestSnapshot }))}</pre>
+            <summary>Manifest / ledgers / latest snapshot / performance</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty({ manifest: item.manifest, search_space: searchSpace, ledgers: { interesting, blocked, filter_blockers: filterBlocked }, latest_snapshot: latestSnapshot, performance }))}</pre>
           </details>
         </div>
       `;
@@ -1675,17 +2287,19 @@
         </div>
       `;
     }
-    if (item.type === "data_pipeline_intake" || item.type === "data_quality_report" || item.type === "market_journal_manifest" || item.type === "provider_archive_manifest") {
+    if (item.type === "historical_data_catalog" || item.type === "durable_data_collection" || item.type === "data_pipeline_intake" || item.type === "data_quality_report" || item.type === "market_journal_manifest" || item.type === "provider_archive_manifest") {
       return `
         <div class="card alt">
           <div class="split">
             <strong>${window.TBS.escapeHtml(item.type)}</strong>
-            ${window.TBS.pill("observe_only", "neutral")}
+            ${artifactStatusPill(item, summary)}
           </div>
           ${window.TBS.renderKv([
             ["Path", window.TBS.toMono(item.path)],
             ["Version", window.TBS.escapeHtml(String(summary.version || "n/a"))],
             ["Providers", window.TBS.toMono(summary.provider_count ?? "n/a")],
+            ["Catalog Ready", window.TBS.escapeHtml(summary.catalog_ready === true || summary.candidate_depth_ready === true ? "yes" : "not yet")],
+            ["Candidate Depth", window.TBS.escapeHtml(summary.candidate_depth_ready === true ? "ready" : "blocked/unknown")],
             ["Dataset", window.TBS.escapeHtml(String(summary.dataset_status || "n/a"))],
             ["Evidence", window.TBS.escapeHtml(String(summary.evidence_status || "n/a"))],
             ["Alerts", window.TBS.toMono(summary.alert_count ?? "n/a")],
@@ -1694,6 +2308,9 @@
             ["Family", window.TBS.escapeHtml(String(summary.data_family || "n/a"))],
             ["Events", window.TBS.toMono(summary.event_count ?? "n/a")],
             ["Rows", window.TBS.toMono(summary.row_count ?? "n/a")],
+            ["Symbols", window.TBS.toMono(summary.symbol_count ?? "n/a")],
+            ["Range", window.TBS.escapeHtml(summary.start_month && summary.end_month ? `${summary.start_month}..${summary.end_month}` : "n/a")],
+            ["Row Counts", window.TBS.escapeHtml(window.TBS.pretty(summary.row_counts || {}))],
           ])}
           <details class="details">
             <summary>Manifest</summary>
@@ -1828,8 +2445,8 @@
     const { ctx, width, height } = target;
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = "#9aa7b4";
-    ctx.font = "13px Segoe UI, sans-serif";
-    ctx.fillText(message, 16, height / 2);
+    ctx.font = "14px Segoe UI, sans-serif";
+    wrapCanvasText(ctx, message, 16, Math.max(36, height / 2 - 12), Math.max(180, width - 32), 19, 3);
   }
 
   function setChartState(id, noteId, hasData, message) {
@@ -1844,55 +2461,105 @@
     }
   }
 
+  function setChartWarning(id, message) {
+    const target = document.getElementById(id);
+    if (!target) return;
+    target.hidden = !message;
+    target.textContent = message || "";
+  }
+
+  function humanChartLabel(value) {
+    return String(value || "n/a").replaceAll("_", " ").replaceAll("-", " ");
+  }
+
+  function trimCanvasText(ctx, text, maxWidth) {
+    const value = String(text || "n/a");
+    if (ctx.measureText(value).width <= maxWidth) return value;
+    if (maxWidth < 36) return "";
+    let candidate = value;
+    while (candidate.length > 4 && ctx.measureText(`${candidate}...`).width > maxWidth) {
+      candidate = candidate.slice(0, -1);
+    }
+    return `${candidate}...`;
+  }
+
+  function wrapCanvasText(ctx, text, x, y, maxWidth, lineHeight, maxLines = 3) {
+    const words = String(text || "").split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = "";
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (ctx.measureText(next).width <= maxWidth || !line) {
+        line = next;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+      if (lines.length >= maxLines) break;
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    lines.slice(0, maxLines).forEach((row, index) => ctx.fillText(trimCanvasText(ctx, row, maxWidth), x, y + index * lineHeight));
+  }
+
+  function normalizeChartRows(rows, limit) {
+    return (rows || [])
+      .map(row => ({ label: humanChartLabel(row.label), value: Number(row.value) }))
+      .filter(row => Number.isFinite(row.value))
+      .sort((left, right) => Math.abs(right.value) - Math.abs(left.value))
+      .slice(0, limit);
+  }
+
   function drawBarChart(id, rows, options = {}) {
     const target = canvasContext(id);
     if (!target) return;
     const { ctx, width, height } = target;
     ctx.clearRect(0, 0, width, height);
-    if (!rows.length) {
+    const normalized = normalizeChartRows(rows, options.limit || 8);
+    if (!normalized.length) {
       drawEmptyChart(id, options.empty || "No chart data available.");
       return;
     }
-    const padding = { left: 44, right: 18, top: 20, bottom: 54 };
-    const values = rows.map(row => Number(row.value)).filter(Number.isFinite);
-    const min = Math.min(0, ...values);
-    const max = Math.max(0, ...values);
-    const span = max - min || 1;
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
-    const zeroY = padding.top + ((max - 0) / span) * chartHeight;
+    const left = Math.min(Math.max(132, width * 0.28), 260);
+    const right = 74;
+    const top = 14;
+    const rowGap = 9;
+    const rowHeight = Math.max(20, Math.min(28, (height - top * 2 - rowGap * (normalized.length - 1)) / normalized.length));
+    const maxAbs = Math.max(...normalized.map(row => Math.abs(row.value)), 1);
+    const zeroX = left + Math.max(2, (width - left - right) * 0.5);
+    const halfWidth = Math.max(42, (width - left - right) * 0.5 - 8);
     ctx.strokeStyle = "#303947";
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(padding.left, zeroY);
-    ctx.lineTo(width - padding.right, zeroY);
+    ctx.moveTo(zeroX, top - 4);
+    ctx.lineTo(zeroX, height - top + 2);
     ctx.stroke();
-    const barGap = 8;
-    const barWidth = Math.max(12, (chartWidth - barGap * (rows.length - 1)) / rows.length);
-    rows.forEach((row, index) => {
-      const value = Number(row.value);
-      const x = padding.left + index * (barWidth + barGap);
-      const y = padding.top + ((max - value) / span) * chartHeight;
-      const barTop = Math.min(y, zeroY);
-      const barHeight = Math.max(2, Math.abs(zeroY - y));
+    normalized.forEach((row, index) => {
+      const value = row.value;
+      const y = top + index * (rowHeight + rowGap);
+      const barWidth = Math.max(2, Math.abs(value) / maxAbs * halfWidth);
+      const x = value >= 0 ? zeroX : zeroX - barWidth;
       ctx.fillStyle = value >= 0 ? "#73d18a" : "#ff8f83";
-      ctx.fillRect(x, barTop, barWidth, barHeight);
+      ctx.fillRect(x, y + 4, barWidth, Math.max(8, rowHeight - 8));
       ctx.fillStyle = "#c7d0da";
-      ctx.font = "11px Segoe UI, sans-serif";
-      ctx.save();
-      ctx.translate(x + 2, height - 14);
-      ctx.rotate(-0.55);
-      ctx.fillText(String(row.label).slice(0, 18), 0, 0);
-      ctx.restore();
+      ctx.font = "13px Segoe UI, sans-serif";
+      ctx.fillText(trimCanvasText(ctx, row.label, left - 18), 10, y + rowHeight - 7);
+      ctx.fillStyle = "#9aa7b4";
+      ctx.font = "12px Segoe UI, sans-serif";
+      const valueLabel = formatNumber(value);
+      const valueX = value >= 0 ? Math.min(width - right + 8, x + barWidth + 8) : Math.max(left + 4, x - ctx.measureText(valueLabel).width - 8);
+      ctx.fillText(valueLabel, valueX, y + rowHeight - 7);
     });
     ctx.fillStyle = "#9aa7b4";
     ctx.font = "12px Segoe UI, sans-serif";
-    ctx.fillText(formatNumber(max), 8, padding.top + 8);
-    ctx.fillText(formatNumber(min), 8, padding.top + chartHeight);
+    ctx.fillText("0", zeroX + 4, height - 6);
   }
 
   function drawHorizontalCountChart(id, counts, options = {}) {
-    const rows = Object.entries(counts || {}).map(([label, value]) => ({ label, value: Number(value) })).filter(row => Number.isFinite(row.value) && row.value > 0).slice(0, 10);
+    const rows = Object.entries(counts || {})
+      .map(([label, value]) => ({ label: humanChartLabel(label), value: Number(value) }))
+      .filter(row => Number.isFinite(row.value) && row.value > 0)
+      .sort((left, right) => right.value - left.value)
+      .slice(0, options.limit || 8);
     const target = canvasContext(id);
     if (!target) return;
     const { ctx, width, height } = target;
@@ -1902,26 +2569,76 @@
       return;
     }
     const max = Math.max(...rows.map(row => row.value), 1);
-    const rowHeight = Math.max(18, Math.min(28, (height - 28) / rows.length));
+    const labelWidth = Math.min(Math.max(132, width * 0.34), 220);
+    const valueWidth = 44;
+    const availableWidth = Math.max(80, width - labelWidth - valueWidth - 26);
+    const rowHeight = Math.max(22, Math.min(30, (height - 28) / rows.length));
     rows.forEach((row, index) => {
       const y = 14 + index * rowHeight;
-      const availableWidth = Math.max(80, width - 170);
       const barWidth = availableWidth * (row.value / max);
       ctx.fillStyle = "#2f81f7";
-      ctx.fillRect(150, y, Math.max(2, barWidth), rowHeight - 6);
+      ctx.fillRect(labelWidth + 12, y + 4, Math.max(2, barWidth), rowHeight - 10);
       ctx.fillStyle = "#c7d0da";
+      ctx.font = "13px Segoe UI, sans-serif";
+      ctx.fillText(trimCanvasText(ctx, row.label, labelWidth - 12), 10, y + rowHeight - 10);
+      ctx.fillStyle = "#9aa7b4";
       ctx.font = "12px Segoe UI, sans-serif";
-      ctx.fillText(row.label.slice(0, 22), 10, y + rowHeight - 10);
-      ctx.fillText(String(row.value), 156 + barWidth, y + rowHeight - 10);
+      ctx.fillText(String(row.value), Math.min(width - valueWidth, labelWidth + 18 + barWidth), y + rowHeight - 10);
     });
   }
 
+  function historicalCycleArtifacts() {
+    return latestArtifacts.filter(item => item.type === "historical_research_cycle");
+  }
+
+  function discoveryRunArtifacts() {
+    return latestArtifacts.filter(item => item.type === "discovery_run");
+  }
+
+  function artifactText(item) {
+    const summary = (item || {}).summary || {};
+    return [
+      summary.cycle_id,
+      summary.run_id,
+      summary.spec_path,
+      item?.path,
+      item?.label,
+    ].filter(Boolean).join(" ").toLowerCase();
+  }
+
+  function isRequiredHistoricalCycle(item) {
+    const summary = (item || {}).summary || {};
+    const cycleId = String(summary.cycle_id || "").toLowerCase();
+    const symbol = String(summary.symbol || "").toUpperCase();
+    const expected = readinessItem(symbol)?.cycle_id;
+    if (expected && cycleId === String(expected).toLowerCase()) return true;
+    return cycleId === "r104-btcusdt-durable-public-archive-deep-v1"
+      || cycleId === "r104-ethusdt-durable-public-archive-deep-v1"
+      || (cycleId.startsWith("r105-") && cycleId.includes("candidate-depth"));
+  }
+
+  function isDiagnosticHistoricalCycle(item) {
+    const text = artifactText(item);
+    return text.includes("benchmark") || text.includes("smoke") || text.includes("diagnostic");
+  }
+
+  function isRequiredDiscoveryRun(item) {
+    const summary = (item || {}).summary || {};
+    const runId = String(summary.run_id || "").toLowerCase();
+    const symbol = String(summary.symbol || "").toUpperCase();
+    const expected = readinessItem(symbol)?.discovery_run_id;
+    if (expected && runId === String(expected).toLowerCase()) return true;
+    return runId === "exact_entry_sweep_btcusdt_durable_r104_v1"
+      || runId === "exact_entry_sweep_ethusdt_durable_r104_v1"
+      || (runId.startsWith("exact_entry_sweep_") && runId.includes("_candidate_depth_"));
+  }
+
   function latestCycle() {
-    return latestArtifacts.find(item => item.type === "historical_research_cycle") || null;
+    return historicalCycleArtifacts().find(isRequiredHistoricalCycle) || null;
   }
 
   function latestDiscoveryRun() {
-    return latestArtifacts.find(item => item.type === "discovery_run") || null;
+    return discoveryRunArtifacts().find(isRequiredDiscoveryRun) || null;
   }
 
   function countPositiveValues(counts) {
@@ -2034,7 +2751,7 @@
     }
     return {
       label: "Diagnostic",
-      reason: "Run durable readiness, historical cycle, discovery, and eligibility checks to establish evidence.",
+      reason: "Run catalog readiness, historical cycle, discovery, and eligibility checks to establish evidence.",
     };
   }
 
@@ -2043,23 +2760,26 @@
     const recommendation = document.getElementById("r104-recommendation");
     if (recommendation) {
       recommendation.innerHTML = payload
-        ? `${window.TBS.pill(payload.ready ? "durable_ready" : "blocked", payload.ready ? "ok" : "warn")} <span>${window.TBS.escapeHtml(payload.recommended_next_action || "Review durable readiness.")}</span>`
+        ? `${window.TBS.pill(payload.ready ? "candidate_depth_ready" : (payload.fixture_integrity_ready ? "screening_only" : "blocked"), payload.ready ? "ok" : "warn")} <span>${window.TBS.escapeHtml(payload.recommended_next_action || "Review catalog readiness.")}</span>`
         : "Readiness endpoint has not responded.";
     }
     if (!panel) return;
     if (!payload) {
-      panel.innerHTML = '<div class="empty">No R104 readiness response yet.</div>';
+      panel.innerHTML = '<div class="empty">No catalog-readiness response yet.</div>';
       return;
     }
     panel.innerHTML = (payload.items || []).map(item => `
       <div class="readiness-row">
         <div><strong>${window.TBS.escapeHtml(item.symbol || "n/a")}</strong></div>
-        <div>${window.TBS.pill(item.ready ? "ready" : "blocked", item.ready ? "ok" : "warn")}</div>
+        <div>${window.TBS.pill(item.ready ? "candidate-ready" : (item.fixture_integrity_ready ? "screening-only" : "blocked"), item.ready ? "ok" : "warn")}</div>
         <div class="muted">
           rows ${window.TBS.escapeHtml(window.TBS.pretty(item.fixture_row_counts || {}))}
+          <br>depth ${window.TBS.escapeHtml(window.TBS.pretty(item.evidence_depth || {}))}
+          ${item.catalog_path ? `<br>catalog ${window.TBS.escapeHtml(String(item.catalog_path))}` : ""}
           <br>cycle ${window.TBS.escapeHtml(String(item.cycle_spec_path || "n/a"))}
           <br>discovery ${window.TBS.escapeHtml(String(item.discovery_spec_path || "n/a"))}
-          ${item.blockers && item.blockers.length ? `<br>blockers ${window.TBS.escapeHtml(item.blockers.join(", "))}` : ""}
+          ${item.evidence_depth_blockers && item.evidence_depth_blockers.length ? `<br>depth blockers ${window.TBS.escapeHtml(item.evidence_depth_blockers.join(", "))}` : ""}
+          ${item.blockers && item.blockers.length ? `<br>integrity blockers ${window.TBS.escapeHtml(item.blockers.join(", "))}` : ""}
         </div>
       </div>
     `).join("");
@@ -2071,6 +2791,129 @@
       ? "ok"
       : (normalized === "failed" || normalized === "blocked" ? "bad" : (normalized === "ready" || normalized === "running" || normalized === "queued" ? "warn" : "neutral"));
     return window.TBS.pill(normalized, stateClass);
+  }
+
+  function milestoneActionDisabled(item) {
+    if (item.key === "durable_readiness" && item.status === "blocked") return false;
+    return item.status === "complete" || item.status === "running" || item.status === "queued" || item.status === "waiting" || item.status === "blocked";
+  }
+
+  function milestoneActionLabel(item) {
+    if (item.key === "durable_readiness" && item.status === "blocked") return "Show Data Gap";
+    if (item.status === "blocked") return "Data Required";
+    if (item.status === "waiting") return "Waiting";
+    if (item.key === "historical_data_catalog") return "Refresh";
+    return "Run";
+  }
+
+  function milestoneDetailText(item) {
+    const detail = String(item.detail || "");
+    if (item.key === "durable_readiness" && item.status === "blocked") {
+      return `${detail} Run Step 0 Refresh Historical Data Catalog to fetch checksum-verified archives, build expanded fixture packs, and update the active readiness manifests.`;
+    }
+    return detail;
+  }
+
+  function formatDurationSeconds(value) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds < 0) return "n/a";
+    const rounded = Math.round(seconds);
+    const hours = Math.floor(rounded / 3600);
+    const minutes = Math.floor((rounded % 3600) / 60);
+    const secs = rounded % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+  }
+
+  function activeProgressTarget() {
+    return document.getElementById("active-run-progress") || document.getElementById("active-discovery-progress");
+  }
+
+  function renderActiveDiscoveryProgress(progress) {
+    const target = activeProgressTarget();
+    if (!target) return;
+    if (!progress || !progress.available) {
+      target.className = "active-progress empty";
+      target.innerHTML = "No active discovery run. Exact sweeps write resumable run_state, snapshots, and trial records when running.";
+      return;
+    }
+    const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+    const performance = progress.performance || {};
+    const cacheHits = performance.cache_hit_rates || {};
+    const cacheLabel = Object.entries(cacheHits).map(([key, value]) => `${key}=${formatRate(value)}`).join(", ") || "n/a";
+    const performanceDetail = Object.keys(performance).length ? `
+      <div class="meta-row" style="margin-top:10px;">
+        <div><span class="label">Worker Plan</span><br><strong>${window.TBS.escapeHtml(`${performance.executor || "n/a"} / ${performance.active_workers ?? "n/a"} workers / chunk ${performance.trial_chunk_size ?? "n/a"}`)}</strong></div>
+        <div><span class="label">Cache Hits</span><br><strong>${window.TBS.escapeHtml(cacheLabel)}</strong></div>
+        <div><span class="label">Artifact Pressure</span><br><strong>${window.TBS.escapeHtml(`${formatBytes(performance.artifact_bytes_written)} / ${formatRate(performance.artifact_write_wall_time_share)}`)}</strong></div>
+      </div>
+      <div class="muted" style="margin-top:8px;">Timing scope: ${window.TBS.escapeHtml(performance.timing_note || "parent process timing")} / ${window.TBS.escapeHtml(performance.artifact_count_strategy || "artifact scan pending")}</div>
+    ` : "";
+    target.className = "active-progress";
+    target.innerHTML = `
+      <strong>Discovery Progress</strong>
+      <div class="muted">${window.TBS.escapeHtml(progress.run_id || "discovery")} ${window.TBS.escapeHtml(progress.job_status || progress.state_status || "indexed")}</div>
+      <div class="progress-track" aria-label="Active discovery progress"><div class="progress-fill" style="width:${percent}%"></div></div>
+      <div class="meta-row">
+        <div><span class="label">Done</span><br><strong>${window.TBS.escapeHtml(String(progress.completed_trials || 0))}/${window.TBS.escapeHtml(String(progress.total_trials || 0))}</strong></div>
+        <div><span class="label">Rate</span><br><strong>${window.TBS.escapeHtml(String(progress.trials_per_minute || "n/a"))}/min</strong></div>
+        <div><span class="label">ETA</span><br><strong>${window.TBS.escapeHtml(formatDurationSeconds(progress.eta_seconds))}</strong></div>
+      </div>
+      ${performanceDetail}
+      ${progress.latest_snapshot_path ? `<div class="muted" style="margin-top:8px;">snapshot <span class="mono">${window.TBS.escapeHtml(progress.latest_snapshot_path)}</span></div>` : ""}
+    `;
+  }
+
+  function renderActiveHistoricalCycleProgress(progress) {
+    const target = activeProgressTarget();
+    if (!target) return;
+    if (!progress || !progress.available) {
+      target.className = "active-progress empty";
+      target.innerHTML = "Historical cycle progress appears after the cycle creates its candidate-space manifest.";
+      return;
+    }
+    const percent = Math.max(0, Math.min(100, Number(progress.percent || 0)));
+    const phase = String(progress.phase || "running").replaceAll("_", " ");
+    target.className = "active-progress";
+    target.innerHTML = `
+      <strong>Historical Cycle Progress</strong>
+      <div class="muted">${window.TBS.escapeHtml(progress.symbol || "symbol")} / ${window.TBS.escapeHtml(progress.cycle_id || "cycle")} / ${window.TBS.escapeHtml(phase)}</div>
+      <div class="progress-track" aria-label="Historical cycle aggregate backtest progress"><div class="progress-fill" style="width:${percent}%"></div></div>
+      <div class="meta-row">
+        <div><span class="label">Aggregate</span><br><strong>${window.TBS.escapeHtml(String(progress.completed_candidates || 0))}/${window.TBS.escapeHtml(String(progress.total_candidates || 0))}</strong></div>
+        <div><span class="label">All evals</span><br><strong>${window.TBS.escapeHtml(String(progress.completed_backtest_evaluations || 0))}/${window.TBS.escapeHtml(String(progress.total_backtest_evaluations || 0))}</strong></div>
+        <div><span class="label">ETA</span><br><strong>${window.TBS.escapeHtml(formatDurationSeconds(progress.eta_seconds))}</strong></div>
+      </div>
+      <div class="muted" style="margin-top:8px;">Rate ${window.TBS.escapeHtml(String(progress.backtest_evaluations_per_minute || progress.candidate_backtests_per_minute || "n/a"))}/min. Scope includes aggregate candidate backtests plus split and cost-stress evaluations when those counts are known.</div>
+      ${progress.candidate_space_manifest_path ? `<div class="muted" style="margin-top:8px;">manifest <span class="mono">${window.TBS.escapeHtml(progress.candidate_space_manifest_path)}</span></div>` : ""}
+    `;
+  }
+
+  function renderActiveDataProgress(progress) {
+    const target = activeProgressTarget();
+    if (!target) return;
+    if (!progress) {
+      renderActiveDiscoveryProgress(null);
+      return;
+    }
+    const percent = Math.max(0, Math.min(100, Number(progress.percent_complete || 0)));
+    const current = progress.current || {};
+    const currentLabel = current.symbol
+      ? `${current.symbol} ${current.period || ""} ${current.data_family || ""} ${current.interval || ""}`
+      : "waiting for first archive";
+    target.className = "active-progress";
+    target.innerHTML = `
+      <strong>Historical Data Refresh</strong>
+      <div class="muted">${window.TBS.escapeHtml(progress.status || "running")} / ${window.TBS.escapeHtml(currentLabel)}</div>
+      <div class="progress-track" aria-label="Historical data refresh progress"><div class="progress-fill" style="width:${percent}%"></div></div>
+      <div class="meta-row">
+        <div><span class="label">Archives</span><br><strong>${window.TBS.escapeHtml(String(progress.completed_archive_steps || 0))}/${window.TBS.escapeHtml(String(progress.total_archive_steps || 0))}</strong></div>
+        <div><span class="label">Rate</span><br><strong>${window.TBS.escapeHtml(String(progress.archive_steps_per_minute || "n/a"))}/min</strong></div>
+        <div><span class="label">ETA</span><br><strong>${window.TBS.escapeHtml(formatDurationSeconds(progress.eta_seconds))}</strong></div>
+      </div>
+      ${progress.progress_path ? `<div class="muted" style="margin-top:8px;">journal <span class="mono">${window.TBS.escapeHtml(progress.progress_path)}</span></div>` : ""}
+    `;
   }
 
   function renderResearchProgress(payload) {
@@ -2085,6 +2928,7 @@
       fill.style.width = "0%";
       nextAction.textContent = "Refresh the page or inspect Jobs.";
       steps.innerHTML = '<div class="empty">No progress milestones loaded.</div>';
+      renderActiveDiscoveryProgress(null);
       return;
     }
     const progress = payload.progress || {};
@@ -2092,19 +2936,27 @@
     summary.innerHTML = `<strong>${window.TBS.escapeHtml(String(progress.completed ?? 0))}/${window.TBS.escapeHtml(String(progress.total ?? 0))} milestones complete</strong><div class="muted">${window.TBS.escapeHtml(progress.active_job_type ? `Active: ${progress.active_job_type} / ${progress.active_job_status}` : "No active research job.")}</div>`;
     fill.style.width = `${percent}%`;
     nextAction.innerHTML = `<strong>Next operation</strong><div class="muted">${window.TBS.escapeHtml(payload.next_action || "Inspect Jobs and Artifacts.")}</div>`;
+    if (payload.active_historical_data_progress) {
+      renderActiveDataProgress(payload.active_historical_data_progress);
+    } else if (payload.active_historical_cycle_progress) {
+      renderActiveHistoricalCycleProgress(payload.active_historical_cycle_progress);
+    } else {
+      renderActiveDiscoveryProgress(payload.active_discovery_progress);
+    }
     const milestones = payload.milestones || [];
     steps.innerHTML = milestones.length ? milestones.map(item => {
       const action = milestoneActionHandlers[item.key] || "";
-      const disabled = item.status === "complete" || item.status === "running" || item.status === "queued" || item.status === "waiting" || item.status === "blocked";
+      const disabled = milestoneActionDisabled(item);
+      const actionLabel = milestoneActionLabel(item);
       return `
         <div class="workflow-step ${window.TBS.escapeHtml(String(item.status || "waiting"))}">
           <div>
             <strong>${window.TBS.escapeHtml(item.label || "Research step")}</strong>
-            <div class="muted">${window.TBS.escapeHtml(item.symbol || "R104")}</div>
+            <div class="muted">${window.TBS.escapeHtml(item.symbol || "required workflow")}</div>
           </div>
           <div>${progressStatusPill(item.status)}</div>
-          <div class="muted">${window.TBS.escapeHtml(item.detail || "")}${item.artifact_path ? `<br><span class="mono">${window.TBS.escapeHtml(item.artifact_path)}</span>` : ""}${item.job_id ? `<br><span class="mono">${window.TBS.escapeHtml(item.job_id)}</span>` : ""}</div>
-          <div>${action ? `<button class="ghost" ${disabled ? "disabled" : ""} onclick="${action}">Run</button>` : ""}</div>
+          <div class="muted">${window.TBS.escapeHtml(milestoneDetailText(item))}${item.artifact_path ? `<br><span class="mono">${window.TBS.escapeHtml(item.artifact_path)}</span>` : ""}${item.job_id ? `<br><span class="mono">${window.TBS.escapeHtml(item.job_id)}</span>` : ""}</div>
+          <div>${action ? `<button class="ghost" ${disabled ? "disabled" : ""} onclick="${action}">${window.TBS.escapeHtml(actionLabel)}</button>` : ""}</div>
         </div>
       `;
     }).join("") : '<div class="empty">No progress milestones indexed.</div>';
@@ -2112,10 +2964,18 @@
       settings.innerHTML = Object.entries(payload.settings).map(([key, value]) => `
         <div class="settings-line">
           <strong>${window.TBS.escapeHtml(key.replaceAll("_", " "))}</strong>
-          <span class="muted">${window.TBS.escapeHtml(String(value))}</span>
+          <span class="muted">${window.TBS.escapeHtml(displayResearchSettingValue(key, value))}</span>
         </div>
       `).join("");
     }
+  }
+
+  function displayResearchSettingValue(key, value) {
+    const text = String(value);
+    if (String(key) === "default_scope" && text.toLowerCase().includes("r104")) {
+      return "current durable public-archive fixture set";
+    }
+    return text.replaceAll("R104", "internal durable spec").replaceAll("r104", "internal-durable-spec");
   }
 
   function renderOperatorBoard(jobs, stage13Readiness, r104Readiness) {
@@ -2127,6 +2987,9 @@
     const latestDataset = pickLatest("dataset");
     const latestExperiment = pickLatest("research_experiment_run");
     const latestHmm = pickLatest("hmm_knn_artifact");
+    const latestHardware = pickLatest("hardware_utilization");
+    const latestDurableCollection = pickLatest("durable_data_collection");
+    const latestCatalog = pickLatest("historical_data_catalog");
     const active = activeResearchJob(jobs);
     const latestJob = jobs[0] || null;
     const cycleSummary = (cycle || {}).summary || {};
@@ -2149,27 +3012,53 @@
     const latestQuality = pickLatest("data_quality_report");
     const latestJournal = pickLatest("market_journal_manifest");
     const latestProviderArchive = pickLatest("provider_archive_manifest");
-    const dataArtifact = latestDataset || latestIntake || latestQuality || latestProviderArchive || latestJournal || cycle || latestHmm || latestExperiment;
-    const dataValue = r104Readiness?.ready ? "Durable Ready" : "Blocked";
+    const dataArtifact = latestCatalog || latestDurableCollection || latestDataset || latestIntake || latestQuality || latestProviderArchive || latestJournal || cycle || latestHmm || latestExperiment;
+    const dataValue = r104Readiness?.ready
+      ? "Candidate Depth Ready"
+      : (r104Readiness?.fixture_integrity_ready ? "Screening Only" : "Blocked");
     const dataMeta = r104Readiness
-      ? `${window.TBS.escapeHtml(String(r104Readiness.ready_count ?? 0))}/${window.TBS.escapeHtml(String(r104Readiness.symbol_count ?? 0))} durable fixture sets ready.`
-      : (dataArtifact ? "Readiness endpoint unavailable; artifacts are indexed." : "Check Durable Readiness before deeper research.");
+      ? `${window.TBS.escapeHtml(String(r104Readiness.fixture_integrity_ready_count ?? 0))}/${window.TBS.escapeHtml(String(r104Readiness.symbol_count ?? 0))} integrity-ready; ${window.TBS.escapeHtml(String(r104Readiness.evidence_depth_ready_count ?? 0))}/${window.TBS.escapeHtml(String(r104Readiness.symbol_count ?? 0))} candidate-depth-ready.`
+      : (dataArtifact ? "Readiness endpoint unavailable; artifacts are indexed." : "Check Catalog Readiness before deeper research.");
     const runValue = active ? active.status : (latestJob ? latestJob.status : "Idle");
     const runMeta = active
       ? `${window.TBS.escapeHtml(active.job_type)} / ${window.TBS.escapeHtml(active.job_id)}`
       : (latestJob ? `${window.TBS.escapeHtml(latestJob.job_type)} / ${window.TBS.escapeHtml(latestJob.job_id)}` : "No research job indexed.");
     const progressPayload = latestResearchProgress?.progress || {};
-    const progressValue = active ? active.job_type : `${progressPayload.percent ?? 0}% complete`;
-    const progressMeta = discoverySummary.run_id
+    const activeDiscoveryProgress = latestResearchProgress?.active_discovery_progress || null;
+    const activeDataProgress = latestResearchProgress?.active_historical_data_progress || null;
+    const activeCycleProgress = latestResearchProgress?.active_historical_cycle_progress || null;
+    const progressValue = activeDataProgress
+      ? `${activeDataProgress.percent_complete ?? 0}% data`
+      : activeCycleProgress?.available
+      ? `${activeCycleProgress.percent ?? 0}% cycle`
+      : activeDiscoveryProgress?.available
+      ? `${activeDiscoveryProgress.percent ?? 0}% discovery`
+      : (active ? active.job_type : `${progressPayload.percent ?? 0}% complete`);
+    const progressMeta = activeDataProgress
+      ? `${window.TBS.escapeHtml(String(activeDataProgress.completed_archive_steps || 0))}/${window.TBS.escapeHtml(String(activeDataProgress.total_archive_steps || 0))} archives; ETA ${window.TBS.escapeHtml(formatDurationSeconds(activeDataProgress.eta_seconds))}`
+      : activeCycleProgress?.available
+      ? `${window.TBS.escapeHtml(String(activeCycleProgress.completed_backtest_evaluations || activeCycleProgress.completed_candidates || 0))}/${window.TBS.escapeHtml(String(activeCycleProgress.total_backtest_evaluations || activeCycleProgress.total_candidates || 0))} backtest evals; ETA ${window.TBS.escapeHtml(formatDurationSeconds(activeCycleProgress.eta_seconds))}`
+      : activeDiscoveryProgress?.available
+      ? `${window.TBS.escapeHtml(String(activeDiscoveryProgress.completed_trials || 0))}/${window.TBS.escapeHtml(String(activeDiscoveryProgress.total_trials || 0))} trials; ETA ${window.TBS.escapeHtml(formatDurationSeconds(activeDiscoveryProgress.eta_seconds))}`
+      : (discoverySummary.run_id
       ? `Discovery ${window.TBS.escapeHtml(discoverySummary.run_id)} / ${window.TBS.escapeHtml(String(discoverySummary.status || "indexed"))}`
-      : (latestResearchProgress?.next_action || "Progress appears after discovery or cycle artifacts are indexed.");
+      : (latestResearchProgress?.next_action || "Progress appears after discovery or cycle artifacts are indexed."));
     const snapshotValue = snapshotPath ? "Indexed" : "None";
     const snapshotMeta = snapshotPath || (discoverySummary.run_id ? `Run ${window.TBS.escapeHtml(discoverySummary.run_id)} has no snapshot path in summary.` : "No discovery snapshot artifact found.");
+    const hardwareSummary = (latestHardware || {}).summary || {};
+    const hardwareCpuReady = hardwareCpuTargetMet(hardwareSummary);
+    const hardwareValue = latestHardware
+      ? (hardwareCpuReady ? (hardwareSummary.gpu_probe_succeeded ? "CPU+GPU" : "CPU Ready") : (hardwareSummary.cpu_probe_succeeded ? "CPU Below Target" : "CPU Probe Failed"))
+      : "Not Run";
+    const hardwareMeta = latestHardware
+      ? `worker ${window.TBS.escapeHtml(formatPercentNumber(hardwareSummary.cpu_worker_capacity_percent))} (${window.TBS.escapeHtml(String(hardwareSummary.cpu_worker_saturation_status || "n/a"))}) / logical ${window.TBS.escapeHtml(formatPercentNumber(hardwareSummary.cpu_logical_capacity_percent))} / GPU ${window.TBS.escapeHtml(String(hardwareSummary.gpu_execution_status || "n/a"))}`
+      : "Run Hardware Benchmark before prolonged study.";
     const tiles = [
       ["Data Readiness", dataValue, dataMeta],
       ["Current Run", runValue, runMeta],
       ["Progress", progressValue, progressMeta],
       ["Latest Snapshot", snapshotValue, snapshotMeta],
+      ["Hardware", hardwareValue, hardwareMeta],
       ["Blockers", String(blockerCount), blockerCount ? "Review rejection, discovery-blocker, and readiness panels." : "No blocker count indexed."],
       ["Leads", String(leadCount), leadCount ? "Review top candidates and discovery ledgers." : "No screen-worthy leads indexed."],
       ["Artifacts", String(latestArtifacts.length), latestArtifacts.length ? "Artifacts are visible below." : "No research artifacts indexed."],
@@ -2187,8 +3076,8 @@
   function renderResearchCharts() {
     const cycle = latestCycle();
     const discovery = latestDiscoveryRun();
-    const model = pickLatest("model_artifact");
-    const hmm = pickLatest("hmm_knn_artifact");
+    const diagnosticCycle = historicalCycleArtifacts().find(isDiagnosticHistoricalCycle) || null;
+    const ignoredCycleId = diagnosticCycle?.summary?.cycle_id || diagnosticCycle?.path || "";
     const rows = [];
     const candidates = (((cycle || {}).summary || {}).rankings || {}).top_candidates || [];
     for (const candidate of candidates.slice(0, 10)) {
@@ -2197,36 +3086,30 @@
         value: candidate.net_return_after_fees_slippage_funding ?? candidate.costed_expectancy ?? candidate.final_score,
       });
     }
-    if (model?.summary?.v2_expectancy !== undefined && model?.summary?.v2_expectancy !== null) {
-      rows.push({ label: "signal model expectancy", value: model.summary.v2_expectancy });
-    }
-    if (model?.summary?.baseline_expectancy !== undefined && model?.summary?.baseline_expectancy !== null) {
-      rows.push({ label: "baseline expectancy", value: model.summary.baseline_expectancy });
-    }
-    if (hmm?.summary?.meta_expectancy !== undefined && hmm?.summary?.meta_expectancy !== null) {
-      rows.push({ label: "hmm/knn meta expectancy", value: hmm.summary.meta_expectancy });
-    }
     const profitRows = rows.slice(0, 12);
-    drawBarChart("profitability-chart", profitRows, { empty: "No profitability artifacts found yet." });
+    setChartWarning("profitability-chart-warning", !cycle && diagnosticCycle
+      ? `Ignoring diagnostic or benchmark cycle for required charts: ${ignoredCycleId}. Use the checklist above to produce durable BTC/ETH evidence.`
+      : "");
+    drawBarChart("profitability-chart", profitRows, { empty: "No required durable profitability artifacts found yet.", limit: 8 });
     setChartState("profitability-chart", "profitability-chart-note", Boolean(profitRows.length), cycle
-      ? `Latest cycle: ${cycle.summary?.cycle_id || "unknown"} | candidates: ${cycle.summary?.candidate_count ?? "n/a"} | acceptance: ${cycle.summary?.candidate_acceptance_scope || "n/a"}`
-      : "No historical research cycle found. Run Historical Cycle Review or copy cycle artifacts into the research output directory.");
+      ? `Required evidence cycle: ${cycle.summary?.cycle_id || "unknown"} | candidates: ${cycle.summary?.candidate_count ?? "n/a"} | acceptance: ${cycle.summary?.candidate_acceptance_scope || "n/a"}`
+      : "No required durable historical cycle found. Run BTC/ETH Deep Cycle from the checklist before reading charts.");
     const strategyCounts = (((cycle || {}).summary || {}).rankings || {}).strategy_counts || {};
     const decisionCounts = (((cycle || {}).summary || {}).rankings || {}).decision_counts || {};
     drawHorizontalCountChart("candidate-mix-chart", strategyCounts, { empty: "No candidate strategy mix yet." });
     setChartState("candidate-mix-chart", "candidate-mix-chart-note", countPositiveValues(strategyCounts) > 0,
-      countPositiveValues(strategyCounts) > 0 ? "Candidate mix from the newest historical research cycle." : "No candidate strategy mix yet. Run Historical Cycle Review.");
+      countPositiveValues(strategyCounts) > 0 ? "Candidate mix from the required durable historical research cycle." : "No required candidate strategy mix yet. Run Historical Cycle Review.");
     drawHorizontalCountChart("gate-status-chart", decisionCounts, { empty: "No gate decisions yet." });
     setChartState("gate-status-chart", "gate-status-chart-note", countPositiveValues(decisionCounts) > 0,
-      countPositiveValues(decisionCounts) > 0 ? "Gate decisions from the newest historical research cycle." : "No gate decisions yet. Run Historical Cycle Review and inspect rejection evidence.");
+      countPositiveValues(decisionCounts) > 0 ? "Gate decisions from the required durable historical research cycle." : "No required gate decisions yet. Run Historical Cycle Review and inspect rejection evidence.");
     const holdingRows = ((((cycle || {}).summary || {}).holding_windows || {}).rows || []).map(row => ({ label: row.holding_window, value: row.best_final_score ?? row.median_costed_expectancy ?? 0 }));
-    drawBarChart("holding-window-chart", holdingRows, { empty: "No holding-window metrics yet." });
+    drawBarChart("holding-window-chart", holdingRows, { empty: "No holding-window metrics yet.", limit: 8 });
     setChartState("holding-window-chart", "holding-window-chart-note", Boolean(holdingRows.length),
-      holdingRows.length ? "Holding-window metrics from the newest historical research cycle." : "No holding-window metrics yet. Run Historical Cycle Review.");
+      holdingRows.length ? "Holding-window metrics from the required durable historical research cycle." : "No required holding-window metrics yet. Run Historical Cycle Review.");
     const discoveryCounts = ((discovery || {}).summary || {}).counts || {};
     drawHorizontalCountChart("discovery-ledger-chart", discoveryCounts, { empty: "No discovery run ledgers yet." });
     setChartState("discovery-ledger-chart", "discovery-ledger-chart-note", countPositiveValues(discoveryCounts) > 0,
-      countPositiveValues(discoveryCounts) > 0 ? "Discovery ledger counts from the newest discovery run." : "No discovery run ledgers yet. Run durable discovery for real search or a quick plumbing check.");
+      countPositiveValues(discoveryCounts) > 0 ? "Discovery ledger counts from the required exact durable discovery run." : "No required discovery ledger yet. Run BTC/ETH Exact Sweep after the matching deep cycle.");
   }
 
   function renderActiveJobSummary(jobs) {
@@ -2254,15 +3137,18 @@
     if (researchRefreshInFlight) return;
     researchRefreshInFlight = true;
     try {
-      const [jobsIndex, shadowDiagnostics, stage13Readiness, r104Readiness, researchProgress] = await Promise.all([
+      const [jobsIndex, shadowDiagnostics, stage13Readiness, r104Readiness, historicalDataCatalog, researchProgress] = await Promise.all([
         window.TBS.getJson("/api/operator/research/jobs"),
         window.TBS.getJson("/api/operator/shadow/diagnostics?symbol=BTCUSDT&limit=20"),
         window.TBS.getJson("/api/operator/stage13/readiness"),
         window.TBS.getJson("/api/operator/research/r104-readiness"),
+        window.TBS.getJson("/api/operator/research/historical-data-catalog"),
         window.TBS.getJson("/api/operator/research/progress")
       ]);
       latestR104Readiness = r104Readiness;
+      latestHistoricalDataCatalog = historicalDataCatalog;
       latestResearchProgress = researchProgress;
+      syncActiveCatalogControls();
 
       const jobs = [];
       for (const job of (jobsIndex.items || []).slice(0, 8)) {
@@ -2296,8 +3182,9 @@
       const latestHistoricalCycle = pickLatest("historical_research_cycle");
       const latestDiscovery = pickLatest("discovery_run");
       const latestEligibility = pickLatest("candidate_pack_eligibility");
+      const latestHardware = pickLatest("hardware_utilization");
       document.getElementById("research-status").innerHTML = [
-        ["R104 Readiness", r104Readiness?.ready ? "durable_ready" : "blocked"],
+        ["Catalog Readiness", r104Readiness?.ready ? "candidate_depth_ready" : "blocked"],
         ["Latest Dataset Rows", latestDataset?.summary?.row_count ?? "n/a"],
         ["Latest Train Rows", latestTrain?.summary?.train_rows ?? "n/a"],
         ["Latest Model", latestModel?.summary?.model_version ?? "n/a"],
@@ -2308,6 +3195,12 @@
         ["Discovery Status", latestDiscovery?.summary?.status ?? "n/a"],
         ["Eligibility Rows", latestEligibility?.summary?.eligibility?.row_count ?? "n/a"],
         ["Eligible Candidates", latestEligibility?.summary?.eligibility?.eligible_count ?? "n/a"],
+        ["Hardware", latestHardware?.summary?.best_option ?? "n/a"],
+        ["CPU Workers %", formatPercentNumber(latestHardware?.summary?.cpu_worker_capacity_percent ?? "n/a")],
+        ["CPU Worker Status", latestHardware?.summary?.cpu_worker_saturation_status ?? "n/a"],
+        ["CPU Logical %", formatPercentNumber(latestHardware?.summary?.cpu_logical_capacity_percent ?? "n/a")],
+        ["Long CPU Study", latestHardware ? (latestHardware.summary?.ready_for_long_cpu_bound_research ? "ready" : "below target") : "n/a"],
+        ["GPU Probe", latestHardware?.summary?.gpu_execution_status ?? "n/a"],
         ["Latest HMM/KNN Rows", latestHmm?.summary?.row_count ?? "n/a"],
         ["HMM/KNN Alerts", latestHmm?.summary?.monitoring_alert_count ?? "n/a"],
         ["Latest Experiment", latestExperiment?.summary?.conclusion_status ?? "n/a"],

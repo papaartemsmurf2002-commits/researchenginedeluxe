@@ -157,8 +157,9 @@ def _write_fast_hmm_knn_config(path: Path) -> Path:
 def test_archive_provider_descriptors_cover_expected_contract_sources() -> None:
     descriptors = {descriptor["source_name"]: descriptor for descriptor in archive_provider_descriptors()}
 
-    assert set(descriptors) == {"binance_vision", "crypto_lake", "hyperliquid_archive"}
+    assert set(descriptors) == {"binance_vision", "bybit_archive", "crypto_lake", "hyperliquid_archive"}
     assert descriptors["binance_vision"]["implemented_for_ingestion"] is True
+    assert descriptors["bybit_archive"]["implemented_for_ingestion"] is False
     assert descriptors["crypto_lake"]["implemented_for_ingestion"] is True
     assert descriptors["hyperliquid_archive"]["implemented_for_ingestion"] is False
 
@@ -185,6 +186,12 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
                 },
                 {"source_name": "crypto_lake", "enabled": True, "symbol": "BTCUSDT", "data_family": "trade"},
                 {
+                    "source_name": "bybit_archive",
+                    "enabled": True,
+                    "symbol": "BTCUSDT",
+                    "data_family": "trade",
+                },
+                {
                     "source_name": "hyperliquid_archive",
                     "enabled": True,
                     "symbol": "BTCUSDT",
@@ -208,7 +215,7 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
     assert intake["observe_only"] is True
     assert intake["promotion_ready"] is False
     assert intake["stage_status"]["intake"]["status"] == "completed"
-    assert intake["stage_status"]["intake"]["archive_manifest_count"] == 2
+    assert intake["stage_status"]["intake"]["archive_manifest_count"] == 3
     assert {provider["status"] for provider in intake["providers"]} == {
         "completed",
         "no_inputs",
@@ -221,6 +228,7 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
         for path in provider["manifest_paths"]
     ]
     assert {manifest["source_name"] for manifest in unsupported_manifests} == {
+        "bybit_archive",
         "hyperliquid_archive",
     }
     assert all(manifest["ingestion_status"] == "not_implemented_for_ingestion" for manifest in unsupported_manifests)
@@ -235,9 +243,9 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
     assert quality["research_only"] is True
     assert quality["observe_only"] is True
     assert quality["promotion_ready"] is False
-    assert quality["manifest_count"] == 3
-    assert quality["zero_row_manifest_count"] == 1
-    assert quality["non_promotable_count"] == 3
+    assert quality["manifest_count"] == 4
+    assert quality["zero_row_manifest_count"] == 2
+    assert quality["non_promotable_count"] == 4
 
 
 def test_prepare_hmm_knn_research_data_intake_ingests_crypto_lake_export(tmp_path: Path) -> None:

@@ -23,7 +23,10 @@
 
 Research commands on this branch:
 
+- `analyze-research-delta`
+- `analyze-research-results`
 - `benchmark-discovery-run`
+- `benchmark-hardware-utilization`
 - `benchmark-historical-research-cycle`
 - `benchmark-research-experiment`
 - `build-historical-fixture-pack`
@@ -31,6 +34,7 @@ Research commands on this branch:
 - `calibrate-model`
 - `collect-binance-bars`
 - `collect-binance-context`
+- `collect-durable-data`
 - `evaluate-discovery-candidate-pack-eligibility`
 - `fetch-binance-vision`
 - `fetch-crypto-lake`
@@ -39,13 +43,16 @@ Research commands on this branch:
 - `plan-stage12-research`
 - `plan-stage13-readiness`
 - `prepare-hmm-knn-research-data`
+- `refresh-historical-data-catalog`
 - `replay-eval`
 - `replay-hmm-knn`
 - `research`
 - `research-hmm-knn`
 - `run-discovery`
+- `run-frozen-entry-exit-lab`
 - `run-hmm-knn-experiments`
 - `run-historical-research-cycle`
+- `run-research-autopilot`
 - `run-research-experiment`
 - `train-model`
 - `write-hmm-knn-sweep-datasets`

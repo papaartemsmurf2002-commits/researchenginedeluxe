@@ -4,15 +4,18 @@ import csv
 import hashlib
 import io
 import json
+import os
+import shutil
 import time
 import asyncio
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
-from typing import Any, Callable, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from tradingbotsuite.adapters.binance import INTERVAL_TO_MS, BinanceCandleClient
 from tradingbotsuite.core.models import Bar
@@ -31,7 +34,10 @@ COLLECTOR_VERSION = "binance-usdm-chart-bars-v1"
 BINANCE_USDM_CONTEXT_COLLECTOR_VERSION = "binance-usdm-context-rest-v1"
 BINANCE_VISION_ARCHIVE_SCHEMA_VERSION = "binance-vision-archive-jsonl-v1"
 BINANCE_VISION_ARCHIVE_INGESTOR_VERSION = "binance-vision-local-ingestor-v1"
-BINANCE_VISION_DOWNLOADER_VERSION = "binance-vision-downloader-v1"
+BINANCE_VISION_DOWNLOADER_VERSION = "binance-vision-downloader-v3"
+BINANCE_VISION_DOWNLOAD_MAX_ATTEMPTS = 360
+BINANCE_VISION_DOWNLOAD_RETRY_BACKOFF_SECONDS = 10.0
+BINANCE_VISION_DOWNLOAD_RETRY_MAX_BACKOFF_SECONDS = 60.0
 CRYPTO_LAKE_ARCHIVE_SCHEMA_VERSION = "crypto-lake-archive-jsonl-v1"
 CRYPTO_LAKE_ARCHIVE_INGESTOR_VERSION = "crypto-lake-ingestor-v1"
 RESEARCH_MARKET_DATA_ROOT = Path("data/research/market_data/binance_usdm")
@@ -204,6 +210,12 @@ class BinanceVisionDownloadResult:
     checksum_path: Path | None
     sha256: str
     verified: bool
+    archive_fetch_attempts: int = 0
+    checksum_fetch_attempts: int = 0
+    fetch_retry_count: int = 0
+    max_fetch_attempts: int = BINANCE_VISION_DOWNLOAD_MAX_ATTEMPTS
+    fetch_retry_backoff_seconds: float = BINANCE_VISION_DOWNLOAD_RETRY_BACKOFF_SECONDS
+    fetch_retry_max_backoff_seconds: float = BINANCE_VISION_DOWNLOAD_RETRY_MAX_BACKOFF_SECONDS
 
 
 def _normalize_symbol(symbol: str) -> str:
@@ -425,6 +437,57 @@ def _fetch_json(url: str, *, timeout_seconds: float = 60.0) -> Any:
     return json.loads(_fetch_bytes(url, timeout_seconds=timeout_seconds).decode("utf-8"))
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _env_nonnegative_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def _is_transient_fetch_error(exc: BaseException) -> bool:
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in {408, 409, 425, 429} or exc.code >= 500
+    return isinstance(exc, (TimeoutError, ConnectionError, OSError, urllib.error.URLError))
+
+
+def _fetch_bytes_with_retry(
+    read_url: Callable[[str], bytes],
+    url: str,
+    *,
+    max_attempts: int,
+    retry_backoff_seconds: float,
+    retry_max_backoff_seconds: float,
+) -> tuple[bytes, int, int]:
+    attempts = max(1, int(max_attempts))
+    retry_count = 0
+    for attempt in range(1, attempts + 1):
+        try:
+            return read_url(url), attempt, retry_count
+        except Exception as exc:
+            if attempt >= attempts or not _is_transient_fetch_error(exc):
+                raise
+            retry_count += 1
+            delay = max(0.0, float(retry_backoff_seconds)) * (2 ** (attempt - 1))
+            if delay > 0:
+                time.sleep(min(delay, max(0.0, float(retry_max_backoff_seconds))))
+    raise RuntimeError("unreachable_binance_vision_fetch_retry_state")
+
+
 def _parse_checksum_payload(payload: bytes) -> str | None:
     text = payload.decode("utf-8", errors="replace").strip()
     if not text:
@@ -446,6 +509,11 @@ def download_binance_vision_archive(
     market: str = "futures/um",
     verify_checksum: bool = True,
     fetcher: Callable[[str], bytes] | None = None,
+    reuse_existing: bool = False,
+    fallback_output_dirs: Sequence[Path] | None = None,
+    max_fetch_attempts: int | None = None,
+    fetch_retry_backoff_seconds: float | None = None,
+    fetch_retry_max_backoff_seconds: float | None = None,
 ) -> BinanceVisionDownloadResult:
     """Download one Binance Vision archive for research intake.
 
@@ -472,17 +540,82 @@ def download_binance_vision_archive(
     target_dir.mkdir(parents=True, exist_ok=True)
     output_path = target_dir / Path(url).name
     read_url = fetcher or _fetch_bytes
-    payload = read_url(url)
+    checksum_url: str | None = f"{url}.CHECKSUM" if verify_checksum else None
+    checksum_path: Path | None = output_path.with_name(f"{output_path.name}.CHECKSUM") if verify_checksum else None
+    resolved_max_fetch_attempts = (
+        max(1, int(max_fetch_attempts))
+        if max_fetch_attempts is not None
+        else _env_positive_int("TBS_BINANCE_VISION_DOWNLOAD_MAX_ATTEMPTS", BINANCE_VISION_DOWNLOAD_MAX_ATTEMPTS)
+    )
+    resolved_fetch_retry_backoff_seconds = (
+        max(0.0, float(fetch_retry_backoff_seconds))
+        if fetch_retry_backoff_seconds is not None
+        else _env_nonnegative_float(
+            "TBS_BINANCE_VISION_DOWNLOAD_RETRY_BACKOFF_SECONDS",
+            BINANCE_VISION_DOWNLOAD_RETRY_BACKOFF_SECONDS,
+        )
+    )
+    resolved_fetch_retry_max_backoff_seconds = (
+        max(0.0, float(fetch_retry_max_backoff_seconds))
+        if fetch_retry_max_backoff_seconds is not None
+        else _env_nonnegative_float(
+            "TBS_BINANCE_VISION_DOWNLOAD_RETRY_MAX_BACKOFF_SECONDS",
+            BINANCE_VISION_DOWNLOAD_RETRY_MAX_BACKOFF_SECONDS,
+        )
+    )
+
+    if reuse_existing:
+        _seed_existing_binance_vision_archive(
+            output_path=output_path,
+            checksum_path=checksum_path,
+            output_root=output_root,
+            fallback_output_dirs=fallback_output_dirs or (),
+        )
+        existing = _verified_existing_binance_vision_archive(
+            url=url,
+            output_path=output_path,
+            checksum_url=checksum_url,
+            checksum_path=checksum_path,
+            read_url=read_url,
+            verify_checksum=verify_checksum,
+            max_fetch_attempts=resolved_max_fetch_attempts,
+            fetch_retry_backoff_seconds=resolved_fetch_retry_backoff_seconds,
+            fetch_retry_max_backoff_seconds=resolved_fetch_retry_max_backoff_seconds,
+        )
+        if existing is not None:
+            _write_binance_vision_download_manifest(
+                result=existing,
+                symbol=normalized_symbol,
+                data_family=normalized_family,
+                interval=normalized_interval,
+                cadence=cadence,
+                period=period,
+                market=market,
+            )
+            return existing
+
+    payload, archive_attempts, archive_retries = _fetch_bytes_with_retry(
+        read_url,
+        url,
+        max_attempts=resolved_max_fetch_attempts,
+        retry_backoff_seconds=resolved_fetch_retry_backoff_seconds,
+        retry_max_backoff_seconds=resolved_fetch_retry_max_backoff_seconds,
+    )
     output_path.write_bytes(payload)
     observed_sha256 = _hash_file(output_path)
 
-    checksum_url: str | None = None
-    checksum_path: Path | None = None
     verified = False
+    checksum_attempts = 0
+    checksum_retries = 0
     if verify_checksum:
-        checksum_url = f"{url}.CHECKSUM"
-        checksum_payload = read_url(checksum_url)
-        checksum_path = output_path.with_name(f"{output_path.name}.CHECKSUM")
+        checksum_payload, checksum_attempts, checksum_retries = _fetch_bytes_with_retry(
+            read_url,
+            str(checksum_url),
+            max_attempts=resolved_max_fetch_attempts,
+            retry_backoff_seconds=resolved_fetch_retry_backoff_seconds,
+            retry_max_backoff_seconds=resolved_fetch_retry_max_backoff_seconds,
+        )
+        assert checksum_path is not None
         checksum_path.write_bytes(checksum_payload)
         expected = _parse_checksum_payload(checksum_payload)
         if expected is None:
@@ -493,6 +626,42 @@ def download_binance_vision_archive(
             )
         verified = True
 
+    result = BinanceVisionDownloadResult(
+        url=url,
+        output_path=output_path,
+        checksum_url=checksum_url,
+        checksum_path=checksum_path,
+        sha256=f"sha256:{observed_sha256}",
+        verified=verified,
+        archive_fetch_attempts=archive_attempts,
+        checksum_fetch_attempts=checksum_attempts,
+        fetch_retry_count=archive_retries + checksum_retries,
+        max_fetch_attempts=resolved_max_fetch_attempts,
+        fetch_retry_backoff_seconds=resolved_fetch_retry_backoff_seconds,
+        fetch_retry_max_backoff_seconds=resolved_fetch_retry_max_backoff_seconds,
+    )
+    _write_binance_vision_download_manifest(
+        result=result,
+        symbol=normalized_symbol,
+        data_family=normalized_family,
+        interval=normalized_interval,
+        cadence=cadence,
+        period=period,
+        market=market,
+    )
+    return result
+
+
+def _write_binance_vision_download_manifest(
+    *,
+    result: BinanceVisionDownloadResult,
+    symbol: str,
+    data_family: str,
+    interval: str | None,
+    cadence: str,
+    period: str,
+    market: str,
+) -> None:
     download_manifest = {
         "research_only": True,
         "observe_only": True,
@@ -500,27 +669,71 @@ def download_binance_vision_archive(
         **research_boundary_metadata(),
         "downloader_version": BINANCE_VISION_DOWNLOADER_VERSION,
         "source_name": "binance_vision",
-        "symbol": normalized_symbol,
-        "data_family": normalized_family,
-        "interval": normalized_interval,
+        "symbol": symbol,
+        "data_family": data_family,
+        "interval": interval,
         "cadence": cadence,
         "period": period,
         "market": market,
-        "url": url,
-        "output_path": str(output_path),
-        "sha256": f"sha256:{observed_sha256}",
-        "checksum_url": checksum_url,
-        "checksum_path": str(checksum_path) if checksum_path is not None else None,
-        "checksum_verified": verified,
+        "url": result.url,
+        "output_path": str(result.output_path),
+        "sha256": result.sha256,
+        "checksum_url": result.checksum_url,
+        "checksum_path": str(result.checksum_path) if result.checksum_path is not None else None,
+        "checksum_verified": result.verified,
+        "archive_fetch_attempts": result.archive_fetch_attempts,
+        "checksum_fetch_attempts": result.checksum_fetch_attempts,
+        "fetch_retry_count": result.fetch_retry_count,
+        "max_fetch_attempts": result.max_fetch_attempts,
+        "fetch_retry_backoff_seconds": result.fetch_retry_backoff_seconds,
+        "fetch_retry_max_backoff_seconds": result.fetch_retry_max_backoff_seconds,
         "notes": [
             "Research-only Binance Vision archive download.",
             "Downloaded files must be normalized before dataset or evidence stages consume them.",
         ],
     }
-    output_path.with_name(f"{output_path.name}.download_manifest.json").write_text(
+    result.output_path.with_name(f"{result.output_path.name}.download_manifest.json").write_text(
         json.dumps(download_manifest, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _verified_existing_binance_vision_archive(
+    *,
+    url: str,
+    output_path: Path,
+    checksum_url: str | None,
+    checksum_path: Path | None,
+    read_url: Callable[[str], bytes],
+    verify_checksum: bool,
+    max_fetch_attempts: int,
+    fetch_retry_backoff_seconds: float,
+    fetch_retry_max_backoff_seconds: float,
+) -> BinanceVisionDownloadResult | None:
+    if not output_path.exists() or not output_path.is_file():
+        return None
+    observed_sha256 = _hash_file(output_path)
+    verified = False
+    if verify_checksum:
+        if checksum_url is None or checksum_path is None:
+            return None
+        if checksum_path.exists() and checksum_path.is_file():
+            checksum_payload = checksum_path.read_bytes()
+            checksum_attempts = 0
+            checksum_retries = 0
+        else:
+            checksum_payload, checksum_attempts, checksum_retries = _fetch_bytes_with_retry(
+                read_url,
+                checksum_url,
+                max_attempts=max_fetch_attempts,
+                retry_backoff_seconds=fetch_retry_backoff_seconds,
+                retry_max_backoff_seconds=fetch_retry_max_backoff_seconds,
+            )
+            checksum_path.write_bytes(checksum_payload)
+        expected = _parse_checksum_payload(checksum_payload)
+        if expected is None or expected != observed_sha256:
+            return None
+        verified = True
     return BinanceVisionDownloadResult(
         url=url,
         output_path=output_path,
@@ -528,7 +741,57 @@ def download_binance_vision_archive(
         checksum_path=checksum_path,
         sha256=f"sha256:{observed_sha256}",
         verified=verified,
+        checksum_fetch_attempts=checksum_attempts if verify_checksum else 0,
+        fetch_retry_count=checksum_retries if verify_checksum else 0,
+        max_fetch_attempts=max_fetch_attempts,
+        fetch_retry_backoff_seconds=fetch_retry_backoff_seconds,
+        fetch_retry_max_backoff_seconds=fetch_retry_max_backoff_seconds,
     )
+
+
+def _seed_existing_binance_vision_archive(
+    *,
+    output_path: Path,
+    checksum_path: Path | None,
+    output_root: Path,
+    fallback_output_dirs: Sequence[Path],
+) -> None:
+    if output_path.exists():
+        return
+    try:
+        relative_archive = output_path.relative_to(output_root)
+    except ValueError:
+        return
+    relative_checksum = None
+    if checksum_path is not None:
+        try:
+            relative_checksum = checksum_path.relative_to(output_root)
+        except ValueError:
+            relative_checksum = None
+    for root in fallback_output_dirs:
+        fallback_root = Path(root).expanduser().resolve()
+        if fallback_root == output_root.resolve():
+            continue
+        source_archive = fallback_root / relative_archive
+        if not source_archive.exists() or not source_archive.is_file():
+            continue
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        _link_or_copy_file(source_archive, output_path)
+        if relative_checksum is not None and checksum_path is not None:
+            source_checksum = fallback_root / relative_checksum
+            if source_checksum.exists() and source_checksum.is_file():
+                _link_or_copy_file(source_checksum, checksum_path)
+        return
+
+
+def _link_or_copy_file(source: Path, destination: Path) -> None:
+    if destination.exists():
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(source, destination)
+    except OSError:
+        shutil.copy2(source, destination)
 
 
 def _field_name(value: str) -> str:

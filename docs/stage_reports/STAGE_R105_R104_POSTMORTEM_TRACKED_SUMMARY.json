@@ -1,0 +1,49 @@
+{
+  "summary_version": "r105-r104-postmortem-tracked-summary-v1",
+  "created_at_utc": "2026-05-19T16:07:25.851036Z",
+  "regenerated_at_utc": "2026-05-19",
+  "source_run_id": "exact_entry_sweep_btcusdt_durable_r104_v1",
+  "source_run_dir_local": "data/research/operator_runs/discovery_runs/exact-entry-sweep-btcusdt-durable-r104-v1/run-discovery-142f3b61b761470b8aeb105967dd9c47",
+  "local_postmortem_output_dir": "data/research/operator_runs/r105/postmortem_r104",
+  "local_postmortem_output_tracked_in_git": false,
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_written": false,
+  "order_placement_used": false,
+  "issue_status": {
+    "ISSUE-R104-001": "open_not_closed_by_this_postmortem"
+  },
+  "source_hashes": {
+    "source_discovery_manifest_sha256": "caca431fa52ab8ebce79e98050982c58491fa76d987467a258ef14cc525530c3",
+    "source_resolved_spec_sha256": "8d0060559dbbc8c03b26c53ae5ccfecaebe26dd306ff696e88553b993f196d29",
+    "source_blocked_candidates_sha256": "9ba8b24c8e6b9e6d36f51f1d7406c046779ef0c92a9877a24b1358d78a60fe34"
+  },
+  "output_hashes": {
+    "effective_trial_summary": "f68f205a3fb49e2b91151f02d3507a324e7a6a86ce2ea040d51445cd963acea2",
+    "prediction_hash_clusters": "2bea2517e1cedd6a4fdd2c16bf6f75e2cee706493b22e7c5a686692c920de8d9",
+    "top_blocked_by_cluster": "dafc7fe7ca2811d1b759e32833a7979f90168df46c00aeea502ba7ad84bc4e33",
+    "r104_postmortem": "a767ba341217b3f5bcc61ec02885db9ba4ff2d74f80ab0d3bf461e11dcffe6d1"
+  },
+  "metrics": {
+    "scheduled_trial_count": 570240,
+    "blocked_candidate_rows": 570240,
+    "effective_trial_count": 570240,
+    "prediction_hash_cluster_count": 564,
+    "entry_event_hash_cluster_count": 38
+  },
+  "blocker_distribution": {
+    "overlap_ratio_above_ceiling": 222720,
+    "independent_event_count_below_floor": 194976,
+    "signal_rate_near_ceiling": 86304,
+    "signal_rate_above_discovery_ceiling": 60480,
+    "realized_expectancy_below_discovery_floor": 5760
+  },
+  "limitations": [
+    "Compact R104 fixture evidence remains screening-only, not candidate-ready.",
+    "The local postmortem parquet/manifest outputs are ignored generated artifacts under data/research/operator_runs.",
+    "Per-bar prediction artifacts were not persisted for blocked trials under interesting_only persistence.",
+    "Prediction and entry hashes are deterministic ledger-summary signatures, not full event-vector hashes.",
+    "This summary does not close ISSUE-R104-001."
+  ]
+}

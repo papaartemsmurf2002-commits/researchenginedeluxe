@@ -387,6 +387,38 @@ SUPPORTED_ARCHIVE_SOURCES: dict[str, ArchiveSourceDescriptor] = {
             "source_caveat:crypto_lake_missing_depth_must_be_explicit",
         ),
     ),
+    "bybit_archive": ArchiveSourceDescriptor(
+        source_name="bybit_archive",
+        source_type="exchange_archive",
+        display_name="Bybit Archive",
+        asset_scope=("BTC", "ETH"),
+        symbol_scope=SUPPORTED_SYMBOLS,
+        likely_data_families=(
+            "trade",
+            "kline",
+            "funding_rate",
+            "open_interest",
+            "premium_index",
+            "book_ticker",
+            "depth_snapshot",
+            "liquidation",
+        ),
+        timestamp_requirements=(
+            "event_time_field required",
+            "receive_time_field required for promotion eligibility",
+            "public historical downloads or REST backfills must be distinguished from live receive time",
+        ),
+        promotional_eligible_by_default=False,
+        diagnostic_only_by_default=True,
+        caveats=(
+            "Bybit public historical downloads and REST history are exchange data surfaces but are not this branch's active fixture contract yet.",
+            "Downloader, parser, checksum or provenance policy, and gap/duplicate validation must be implemented before candidate-depth use.",
+        ),
+        caveat_quality_flags=(
+            "source_caveat:bybit_archive_registered_only",
+            "source_caveat:bybit_archive_requires_ingestion_contract",
+        ),
+    ),
     "hyperliquid_archive": ArchiveSourceDescriptor(
         source_name="hyperliquid_archive",
         source_type="venue_archive",

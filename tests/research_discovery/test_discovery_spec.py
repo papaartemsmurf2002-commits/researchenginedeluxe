@@ -33,6 +33,7 @@ def test_discovery_spec_defaults_and_repo_root_output_resolution(tmp_path: Path)
     assert spec.discovery_mode == "quick_smoke"
     assert spec.execution.max_workers == 1
     assert spec.execution.persist_trial_artifacts == "all"
+    assert spec.execution.executor == "thread"
     assert spec.budget.snapshot_interval_minutes == 30
     assert paths.output_dir == (tmp_path / "research" / "discovery_runs" / "quick-smoke").resolve()
     assert paths.output_dir.is_relative_to(paths.research_output_dir)
@@ -136,6 +137,8 @@ def test_real_discovery_configs_generate_non_placeholder_search_templates() -> N
     assert eth_standard.execution.max_workers == 8
     assert deep.execution.max_workers == 8
     assert exact_btc.execution.max_workers == 48
+    assert exact_btc.execution.executor == "process"
+    assert exact_eth.execution.executor == "process"
     assert deep.execution.persist_trial_artifacts == "interesting_only"
     assert len(standard_templates) == standard.budget.max_trials
     assert len(eth_templates) == eth_standard.budget.max_trials

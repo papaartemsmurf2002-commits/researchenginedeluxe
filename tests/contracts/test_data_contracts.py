@@ -82,11 +82,14 @@ def test_data_sources_include_implemented_and_registered_only_providers() -> Non
     assert set(descriptors) == {
         "binance_rest",
         "binance_vision",
+        "bybit_archive",
         "crypto_lake",
         "hyperliquid_archive",
     }
     assert descriptors["binance_rest"].implemented_for_ingestion is True
     assert descriptors["binance_vision"].implemented_for_ingestion is True
+    assert descriptors["bybit_archive"].implemented_for_ingestion is False
+    assert descriptors["bybit_archive"].diagnostic_only_by_default is True
     assert descriptors["crypto_lake"].implemented_for_ingestion is True
     assert descriptors["hyperliquid_archive"].implemented_for_ingestion is False
     assert descriptors["hyperliquid_archive"].diagnostic_only_by_default is True
@@ -102,6 +105,8 @@ def test_provider_capability_registry_separates_durable_latest_window_and_free_s
     assert capabilities[("binance_vision", "agg_trade")].exchange_native is True
     assert capabilities[("binance_usdm_rest", "funding_rate")].durability_class == "latest_window_rest"
     assert capabilities[("binance_usdm_rest", "funding_rate")].candidate_ready_default is False
+    assert capabilities[("bybit_archive", "trade")].durability_class == "registered_only"
+    assert capabilities[("bybit_archive", "trade")].candidate_ready_default is False
     assert capabilities[("crypto_lake", "liquidation")].durability_class == "local_vendor_export"
 
     free_sample = provider_capability_payload(
@@ -180,18 +185,19 @@ def test_zero_filled_protected_fields_are_rejected() -> None:
 
 
 def test_registered_only_hyperliquid_manifest_is_valid_but_diagnostic() -> None:
-    manifest = registered_only_manifest(
-        source_name="hyperliquid_archive",
-        symbol="BTCUSDT",
-        data_family="order_event",
-    )
+    for source_name, data_family in (("bybit_archive", "trade"), ("hyperliquid_archive", "order_event")):
+        manifest = registered_only_manifest(
+            source_name=source_name,
+            symbol="BTCUSDT",
+            data_family=data_family,
+        )
 
-    result = validate_data_manifest(manifest)
+        result = validate_data_manifest(manifest)
 
-    assert result.valid is True
-    assert result.promotable is False
-    assert result.point_in_time_compatible is False
-    assert "registered_only" in result.quality_flags
+        assert result.valid is True
+        assert result.promotable is False
+        assert result.point_in_time_compatible is False
+        assert "registered_only" in result.quality_flags
 
 
 def test_build_data_manifest_rejects_extra_boundary_overrides() -> None:

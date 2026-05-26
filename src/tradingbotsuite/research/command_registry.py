@@ -4,8 +4,10 @@ RESEARCH_COMMANDS = frozenset(
     {
         "benchmark-research-experiment",
         "benchmark-discovery-run",
+        "benchmark-hardware-utilization",
         "benchmark-historical-research-cycle",
         "build-historical-fixture-pack",
+        "collect-durable-data",
         "build-dataset",
         "calibrate-model",
         "collect-binance-bars",
@@ -18,6 +20,7 @@ RESEARCH_COMMANDS = frozenset(
         "plan-stage12-research",
         "plan-stage13-readiness",
         "prepare-hmm-knn-research-data",
+        "refresh-historical-data-catalog",
         "replay-eval",
         "replay-hmm-knn",
         "research",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import builtins
 import json
 import sys
+import urllib.error
 import zipfile
 from decimal import Decimal
 from pathlib import Path
@@ -11,6 +12,16 @@ import pandas as pd
 import pytest
 
 from tradingbotsuite.core.models import Bar
+from tradingbotsuite.data.durable_public_archive import collect_candidate_depth_public_archive_fixtures
+from tradingbotsuite.data.historical_data_catalog import (
+    HISTORICAL_DATA_CATALOG_VERSION,
+    refresh_historical_data_catalog,
+)
+from tradingbotsuite.data.historical_fixture_pack import (
+    assert_public_archive_fixture_ready,
+    assert_valid_historical_fixture_pack_manifest,
+)
+from tradingbotsuite.research import market_data as market_data_module
 from tradingbotsuite.research.market_data import (
     BinanceUsdMRestContextFetcher,
     MARKET_JOURNAL_SCHEMA_VERSION,
@@ -21,6 +32,7 @@ from tradingbotsuite.research.market_data import (
     MarketJournalValidationError,
     MarketJournalWriter,
     MarketDataGapError,
+    MarketDataValidationError,
     binance_vision_archive_url,
     download_and_ingest_binance_vision_archive,
     download_binance_vision_archive,
@@ -824,6 +836,609 @@ def test_download_binance_vision_archive_verifies_checksum_and_can_ingest(tmp_pa
     assert manifest["source_name"] == "binance_vision"
     assert manifest["row_count"] == 1
     assert result.row_count == 1
+
+
+def test_download_binance_vision_archive_retries_transient_fetch_errors(tmp_path: Path) -> None:
+    csv_payload = "\n".join(
+        [
+            "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,"
+            "taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+            "0,100,101,99,100.5,1,59999,100,10,0.5,50,0",
+        ]
+    )
+    zip_bytes = __import__("io").BytesIO()
+    with zipfile.ZipFile(zip_bytes, "w") as archive:
+        archive.writestr("BTCUSDT-1m-2024-01-01.csv", csv_payload)
+    payload = zip_bytes.getvalue()
+    sha256 = __import__("hashlib").sha256(payload).hexdigest()
+    attempts: dict[str, int] = {}
+
+    def fake_fetch(url: str) -> bytes:
+        attempts[url] = attempts.get(url, 0) + 1
+        if attempts[url] == 1:
+            raise urllib.error.URLError("[Errno 11001] getaddrinfo failed")
+        if url.endswith(".CHECKSUM"):
+            return f"{sha256}  BTCUSDT-1m-2024-01-01.zip\n".encode("utf-8")
+        return payload
+
+    download = download_binance_vision_archive(
+        symbol="BTCUSDT",
+        data_family="kline",
+        interval="1m",
+        period="2024-01-01",
+        output_dir=tmp_path / "downloads",
+        fetcher=fake_fetch,
+        max_fetch_attempts=3,
+        fetch_retry_backoff_seconds=0,
+    )
+
+    assert download.verified is True
+    assert download.archive_fetch_attempts == 2
+    assert download.checksum_fetch_attempts == 2
+    assert download.fetch_retry_count == 2
+    manifest = json.loads(download.output_path.with_name(f"{download.output_path.name}.download_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["fetch_retry_count"] == 2
+
+
+def test_download_binance_vision_archive_uses_env_retry_budget_with_capped_backoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csv_payload = "\n".join(
+        [
+            "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,"
+            "taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+            "0,100,101,99,100.5,1,59999,100,10,0.5,50,0",
+        ]
+    )
+    zip_bytes = __import__("io").BytesIO()
+    with zipfile.ZipFile(zip_bytes, "w") as archive:
+        archive.writestr("ETHUSDT-1m-2021-08.csv", csv_payload)
+    payload = zip_bytes.getvalue()
+    sha256 = __import__("hashlib").sha256(payload).hexdigest()
+    attempts: dict[str, int] = {}
+    sleeps: list[float] = []
+
+    monkeypatch.setenv("TBS_BINANCE_VISION_DOWNLOAD_MAX_ATTEMPTS", "4")
+    monkeypatch.setenv("TBS_BINANCE_VISION_DOWNLOAD_RETRY_BACKOFF_SECONDS", "1.5")
+    monkeypatch.setenv("TBS_BINANCE_VISION_DOWNLOAD_RETRY_MAX_BACKOFF_SECONDS", "2.5")
+    monkeypatch.setattr(market_data_module.time, "sleep", sleeps.append)
+
+    def fake_fetch(url: str) -> bytes:
+        attempts[url] = attempts.get(url, 0) + 1
+        if not url.endswith(".CHECKSUM") and attempts[url] < 4:
+            raise TimeoutError("temporary DNS outage")
+        if url.endswith(".CHECKSUM"):
+            return f"{sha256}  ETHUSDT-1m-2021-08.zip\n".encode("utf-8")
+        return payload
+
+    download = download_binance_vision_archive(
+        symbol="ETHUSDT",
+        data_family="kline",
+        interval="1m",
+        period="2021-08",
+        cadence="monthly",
+        output_dir=tmp_path / "downloads",
+        fetcher=fake_fetch,
+    )
+
+    assert download.verified is True
+    assert download.archive_fetch_attempts == 4
+    assert download.checksum_fetch_attempts == 1
+    assert download.fetch_retry_count == 3
+    assert download.max_fetch_attempts == 4
+    assert download.fetch_retry_backoff_seconds == pytest.approx(1.5)
+    assert download.fetch_retry_max_backoff_seconds == pytest.approx(2.5)
+    assert sleeps == pytest.approx([1.5, 2.5, 2.5])
+
+    manifest = json.loads(
+        download.output_path.with_name(f"{download.output_path.name}.download_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["max_fetch_attempts"] == 4
+    assert manifest["fetch_retry_backoff_seconds"] == pytest.approx(1.5)
+    assert manifest["fetch_retry_max_backoff_seconds"] == pytest.approx(2.5)
+
+
+def test_download_binance_vision_archive_does_not_retry_checksum_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    csv_payload = "\n".join(
+        [
+            "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,"
+            "taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+            "0,100,101,99,100.5,1,59999,100,10,0.5,50,0",
+        ]
+    )
+    zip_bytes = __import__("io").BytesIO()
+    with zipfile.ZipFile(zip_bytes, "w") as archive:
+        archive.writestr("BTCUSDT-1m-2024-01-01.csv", csv_payload)
+    payload = zip_bytes.getvalue()
+    attempts: dict[str, int] = {}
+    sleeps: list[float] = []
+
+    monkeypatch.setenv("TBS_BINANCE_VISION_DOWNLOAD_MAX_ATTEMPTS", "10")
+    monkeypatch.setattr(market_data_module.time, "sleep", sleeps.append)
+
+    def fake_fetch(url: str) -> bytes:
+        attempts[url] = attempts.get(url, 0) + 1
+        if url.endswith(".CHECKSUM"):
+            return ("0" * 64 + "  BTCUSDT-1m-2024-01-01.zip\n").encode("utf-8")
+        return payload
+
+    with pytest.raises(MarketDataValidationError, match="checksum mismatch"):
+        download_binance_vision_archive(
+            symbol="BTCUSDT",
+            data_family="kline",
+            interval="1m",
+            period="2024-01-01",
+            output_dir=tmp_path / "downloads",
+            fetcher=fake_fetch,
+        )
+
+    assert sum(attempts.values()) == 2
+    assert sleeps == []
+
+
+def test_collect_candidate_depth_public_archive_fixtures_writes_active_specs_with_checksum_evidence(tmp_path: Path) -> None:
+    start_ms = 1_704_067_200_000
+
+    def zip_payload(member_name: str, rows: list[str]) -> bytes:
+        buffer = __import__("io").BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(member_name, "\n".join(rows))
+        return buffer.getvalue()
+
+    payloads: dict[str, bytes] = {}
+
+    def payload_for(url: str) -> bytes:
+        if url.endswith(".CHECKSUM"):
+            data = payload_for(url.removesuffix(".CHECKSUM"))
+            digest = __import__("hashlib").sha256(data).hexdigest()
+            return f"{digest}  {Path(url.removesuffix('.CHECKSUM')).name}\n".encode("utf-8")
+        member = Path(url).name.replace(".zip", ".csv")
+        if "/15m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 899999},100,10,0.5,50,0",
+                    f"{start_ms + 900000},100.5,102,100,101.5,2,{start_ms + 1799999},203,11,1,102,0",
+                ],
+            )
+        if "/1m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 59999},100,10,0.5,50,0",
+                    f"{start_ms + 60000},100.5,102,100,101.5,2,{start_ms + 119999},203,11,1,102,0",
+                ],
+            )
+        return zip_payload(
+            member,
+            [
+                "aggregate_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker,is_best_match",
+                f"1,100,3,1,1,{start_ms},false,true",
+                f"2,100,1,2,2,{start_ms + 1000},true,true",
+                f"3,101,2,3,3,{start_ms + 60000},true,true",
+            ],
+        )
+
+    def fake_fetch(url: str) -> bytes:
+        payloads.setdefault(url, payload_for(url))
+        return payloads[url]
+
+    result = collect_candidate_depth_public_archive_fixtures(
+        output_dir=tmp_path / "durable",
+        symbols=["BTCUSDT"],
+        start_month="2024-01",
+        end_month="2024-01",
+        fetcher=fake_fetch,
+        min_primary_15m_bars=2,
+        min_context_1m_rows=2,
+        min_effective_hours=0,
+    )
+
+    manifest_path = result.fixture_manifest_paths["BTCUSDT"]
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert_valid_historical_fixture_pack_manifest(manifest, manifest_path=manifest_path)
+    assert_public_archive_fixture_ready(manifest, manifest_path=manifest_path)
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["families"]["bars"]["row_count"] == 2
+    assert manifest["families"]["lower_timeframe_bars"]["row_count"] == 2
+    assert manifest["families"]["agg_trade"]["row_count"] == 2
+    assert all(item["checksum_verified"] is True for item in manifest["source"]["source_archive_downloads"])
+    agg_frame = pd.read_parquet(manifest_path.parent / manifest["families"]["agg_trade"]["path"])
+    first_agg = agg_frame.sort_values("event_time_ms").iloc[0]
+    assert first_agg["primary_signed_imbalance_ratio"] == pytest.approx(0.5)
+    assert first_agg["primary_sqrt_signed_imbalance_ratio"] == pytest.approx(0.5**0.5)
+
+    readiness = json.loads(result.readiness_config_paths["BTCUSDT"].read_text(encoding="utf-8"))
+    assert readiness["generated_candidate_depth_fixture"] is False
+    assert readiness["fixture_manifest_sha256"].startswith("sha256:")
+    assert readiness["candidate_depth_evidence"]["candidate_depth_thresholds_met"] is False
+    assert readiness["candidate_depth_evidence"]["collection_acceptance_thresholds"]["primary_15m_bars"] == 2
+    assert readiness["cycle_spec_path"] == str(result.cycle_spec_paths["BTCUSDT"])
+    assert readiness["discovery_spec_path"] == str(result.discovery_spec_paths["BTCUSDT"])
+    cycle_spec = json.loads(result.cycle_spec_paths["BTCUSDT"].read_text(encoding="utf-8"))
+    discovery_spec = json.loads(result.discovery_spec_paths["BTCUSDT"].read_text(encoding="utf-8"))
+    assert cycle_spec["data"]["dataset_manifest_paths"] == [str(manifest_path)]
+    assert discovery_spec["data"]["dataset_manifest_paths"] == [str(manifest_path)]
+    summary = json.loads(result.summary_path.read_text(encoding="utf-8"))
+    assert summary["symbols"]["BTCUSDT"]["candidate_depth_thresholds_met"] is False
+    assert summary["symbols"]["BTCUSDT"]["collection_thresholds_met"] is True
+
+
+def test_collect_candidate_depth_public_archive_fixtures_records_agg_trade_id_order_anomalies(tmp_path: Path) -> None:
+    start_ms = 1_704_067_200_000
+
+    def zip_payload(member_name: str, rows: list[str]) -> bytes:
+        buffer = __import__("io").BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(member_name, "\n".join(rows))
+        return buffer.getvalue()
+
+    payloads: dict[str, bytes] = {}
+
+    def payload_for(url: str) -> bytes:
+        if url.endswith(".CHECKSUM"):
+            data = payload_for(url.removesuffix(".CHECKSUM"))
+            digest = __import__("hashlib").sha256(data).hexdigest()
+            return f"{digest}  {Path(url.removesuffix('.CHECKSUM')).name}\n".encode("utf-8")
+        member = Path(url).name.replace(".zip", ".csv")
+        if "/15m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 899999},100,10,0.5,50,0",
+                    f"{start_ms + 900000},100.5,102,100,101.5,2,{start_ms + 1799999},203,11,1,102,0",
+                ],
+            )
+        if "/1m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 59999},100,10,0.5,50,0",
+                    f"{start_ms + 60000},100.5,102,100,101.5,2,{start_ms + 119999},203,11,1,102,0",
+                ],
+            )
+        return zip_payload(
+            member,
+            [
+                "aggregate_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker,is_best_match",
+                f"2,100,3,1,1,{start_ms},false,true",
+                f"1,101,2,2,2,{start_ms + 60000},true,true",
+            ],
+        )
+
+    def fake_fetch(url: str) -> bytes:
+        payloads.setdefault(url, payload_for(url))
+        return payloads[url]
+
+    result = collect_candidate_depth_public_archive_fixtures(
+        output_dir=tmp_path / "durable",
+        symbols=["BTCUSDT"],
+        start_month="2024-01",
+        end_month="2024-01",
+        fetcher=fake_fetch,
+        min_primary_15m_bars=2,
+        min_context_1m_rows=2,
+        min_effective_hours=0,
+    )
+
+    manifest = json.loads(result.fixture_manifest_paths["BTCUSDT"].read_text(encoding="utf-8"))
+    agg_family = manifest["families"]["agg_trade"]
+    assert agg_family["row_count"] == 2
+    assert agg_family["source_selected_row_count"] == 2
+    assert agg_family["duplicate_count"] == 0
+    assert agg_family["duplicate_check_status"] == "not_checked_full_trade_id_set_memory_bounded"
+    assert agg_family["agg_trade_id_order_anomaly_count"] == 1
+
+    readiness = json.loads(result.readiness_config_paths["BTCUSDT"].read_text(encoding="utf-8"))
+    assert readiness["required_context"]["agg_trade"]["agg_trade_id_order_anomaly_count"] == 1
+
+
+def test_collect_candidate_depth_public_archive_fixtures_reuses_verified_cache_and_writes_progress(tmp_path: Path) -> None:
+    start_ms = 1_704_067_200_000
+
+    def zip_payload(member_name: str, rows: list[str]) -> bytes:
+        buffer = __import__("io").BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(member_name, "\n".join(rows))
+        return buffer.getvalue()
+
+    payloads: dict[str, bytes] = {}
+    fetch_counts: dict[str, int] = {}
+
+    def payload_for(url: str) -> bytes:
+        if url.endswith(".CHECKSUM"):
+            data = payload_for(url.removesuffix(".CHECKSUM"))
+            digest = __import__("hashlib").sha256(data).hexdigest()
+            return f"{digest}  {Path(url.removesuffix('.CHECKSUM')).name}\n".encode("utf-8")
+        member = Path(url).name.replace(".zip", ".csv")
+        if "/15m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 899999},100,10,0.5,50,0",
+                    f"{start_ms + 900000},100.5,102,100,101.5,2,{start_ms + 1799999},203,11,1,102,0",
+                ],
+            )
+        if "/1m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 59999},100,10,0.5,50,0",
+                    f"{start_ms + 60000},100.5,102,100,101.5,2,{start_ms + 119999},203,11,1,102,0",
+                ],
+            )
+        return zip_payload(
+            member,
+            [
+                "aggregate_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker,is_best_match",
+                f"1,100,3,1,1,{start_ms},false,true",
+                f"2,101,2,2,2,{start_ms + 60000},true,true",
+            ],
+        )
+
+    def fake_fetch(url: str) -> bytes:
+        fetch_counts[url] = fetch_counts.get(url, 0) + 1
+        payloads.setdefault(url, payload_for(url))
+        return payloads[url]
+
+    old_cache = tmp_path / "old_cache"
+    collect_candidate_depth_public_archive_fixtures(
+        output_dir=tmp_path / "first",
+        symbols=["BTCUSDT"],
+        start_month="2024-01",
+        end_month="2024-01",
+        fetcher=fake_fetch,
+        download_cache_dir=old_cache,
+        min_primary_15m_bars=2,
+        min_context_1m_rows=2,
+        min_effective_hours=0,
+    )
+    assert len(fetch_counts) == 6
+
+    def fail_fetch(url: str) -> bytes:
+        raise AssertionError(f"cache was not reused for {url}")
+
+    result = collect_candidate_depth_public_archive_fixtures(
+        output_dir=tmp_path / "second",
+        symbols=["BTCUSDT"],
+        start_month="2024-01",
+        end_month="2024-01",
+        fetcher=fail_fetch,
+        download_cache_dir=tmp_path / "new_cache",
+        download_fallback_dirs=[old_cache],
+        min_primary_15m_bars=2,
+        min_context_1m_rows=2,
+        min_effective_hours=0,
+    )
+
+    progress = json.loads((result.output_dir / "collection_progress.json").read_text(encoding="utf-8"))
+    assert progress["status"] == "complete"
+    assert progress["completed_archive_steps"] == 3
+    assert progress["total_archive_steps"] == 3
+    assert progress["percent_complete"] == 100.0
+    assert Path(progress["summary_path"]) == result.summary_path
+    manifest = json.loads(result.fixture_manifest_paths["BTCUSDT"].read_text(encoding="utf-8"))
+    assert manifest["families"]["agg_trade"]["source_selected_row_count"] == 2
+
+
+def test_collect_candidate_depth_public_archive_fixtures_reuses_completed_symbol_fixture_pack(tmp_path: Path) -> None:
+    start_ms = 1_704_067_200_000
+
+    def zip_payload(member_name: str, rows: list[str]) -> bytes:
+        buffer = __import__("io").BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(member_name, "\n".join(rows))
+        return buffer.getvalue()
+
+    def payload_for(url: str) -> bytes:
+        if url.endswith(".CHECKSUM"):
+            data = payload_for(url.removesuffix(".CHECKSUM"))
+            digest = __import__("hashlib").sha256(data).hexdigest()
+            return f"{digest}  {Path(url.removesuffix('.CHECKSUM')).name}\n".encode("utf-8")
+        member = Path(url).name.replace(".zip", ".csv")
+        if "/15m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 899999},100,10,0.5,50,0",
+                    f"{start_ms + 900000},100.5,102,100,101.5,2,{start_ms + 1799999},203,11,1,102,0",
+                ],
+            )
+        if "/1m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 59999},100,10,0.5,50,0",
+                    f"{start_ms + 60000},100.5,102,100,101.5,2,{start_ms + 119999},203,11,1,102,0",
+                ],
+            )
+        return zip_payload(
+            member,
+            [
+                "aggregate_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker,is_best_match",
+                f"1,100,3,1,1,{start_ms},false,true",
+                f"2,101,2,2,2,{start_ms + 60000},true,true",
+            ],
+        )
+
+    first = collect_candidate_depth_public_archive_fixtures(
+        output_dir=tmp_path / "first",
+        symbols=["BTCUSDT"],
+        start_month="2024-01",
+        end_month="2024-01",
+        fetcher=payload_for,
+        min_primary_15m_bars=2,
+        min_context_1m_rows=2,
+        min_effective_hours=0,
+    )
+
+    def fail_fetch(url: str) -> bytes:
+        raise AssertionError(f"completed fixture pack should have been reused before fetching {url}")
+
+    second = collect_candidate_depth_public_archive_fixtures(
+        output_dir=tmp_path / "second",
+        symbols=["BTCUSDT"],
+        start_month="2024-01",
+        end_month="2024-01",
+        fetcher=fail_fetch,
+        fixture_fallback_dirs=[first.output_dir],
+        min_primary_15m_bars=2,
+        min_context_1m_rows=2,
+        min_effective_hours=0,
+    )
+
+    payload = second.symbol_payloads["BTCUSDT"]
+    assert payload["reused_fixture_pack"] is True
+    assert Path(str(payload["reused_fixture_pack_source"])).name == "btcusdt_public_archive_candidate_depth_v1"
+    progress = json.loads((second.output_dir / "collection_progress.json").read_text(encoding="utf-8"))
+    assert progress["status"] == "complete"
+    assert progress["completed_archive_steps"] == 3
+    assert progress["current"]["reused_fixture_pack"] is True
+    assert second.fixture_manifest_paths["BTCUSDT"].read_text(encoding="utf-8") == first.fixture_manifest_paths["BTCUSDT"].read_text(encoding="utf-8")
+
+
+def test_refresh_historical_data_catalog_records_provider_states_and_active_fixture_paths(tmp_path: Path) -> None:
+    start_ms = 1_704_067_200_000
+
+    def zip_payload(member_name: str, rows: list[str]) -> bytes:
+        buffer = __import__("io").BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(member_name, "\n".join(rows))
+        return buffer.getvalue()
+
+    def payload_for(url: str) -> bytes:
+        if url.endswith(".CHECKSUM"):
+            data = payload_for(url.removesuffix(".CHECKSUM"))
+            digest = __import__("hashlib").sha256(data).hexdigest()
+            return f"{digest}  {Path(url.removesuffix('.CHECKSUM')).name}\n".encode("utf-8")
+        member = Path(url).name.replace(".zip", ".csv")
+        if "/15m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 899999},100,10,0.5,50,0",
+                    f"{start_ms + 900000},100.5,102,100,101.5,2,{start_ms + 1799999},203,11,1,102,0",
+                ],
+            )
+        if "/1m/" in url:
+            return zip_payload(
+                member,
+                [
+                    "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 59999},100,10,0.5,50,0",
+                    f"{start_ms + 60000},100.5,102,100,101.5,2,{start_ms + 119999},203,11,1,102,0",
+                ],
+            )
+        return zip_payload(
+            member,
+            [
+                "aggregate_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker,is_best_match",
+                f"1,100,3,1,1,{start_ms},false,true",
+                f"2,101,2,2,2,{start_ms + 60000},true,true",
+            ],
+        )
+
+    result = refresh_historical_data_catalog(
+        output_dir=tmp_path / "catalog",
+        symbols=["BTCUSDT"],
+        start_month="2024-01",
+        end_month="2024-01",
+        fetcher=payload_for,
+        min_primary_15m_bars=2,
+        min_context_1m_rows=2,
+        min_effective_hours=0,
+    )
+
+    catalog = json.loads(result.catalog_path.read_text(encoding="utf-8"))
+    assert catalog["historical_data_catalog_version"] == HISTORICAL_DATA_CATALOG_VERSION
+    assert catalog["stage"] == "R106"
+    assert catalog["research_only"] is True
+    assert catalog["observe_only"] is True
+    assert catalog["promotion_ready"] is False
+    assert catalog["catalog_ready"] is False
+    assert catalog["symbols"]["BTCUSDT"]["fixture_valid"] is True
+    assert catalog["symbols"]["BTCUSDT"]["candidate_depth_ready"] is False
+    assert catalog["symbols"]["BTCUSDT"]["status"] == "fixture_valid_below_candidate_depth_floor"
+    assert "fixture_manifest_path" in catalog["symbols"]["BTCUSDT"]
+    assert Path(catalog["symbols"]["BTCUSDT"]["fixture_manifest_path"]).exists()
+    provider_states = catalog["provider_states"]
+    assert provider_states["binance_vision"]["catalog_state"] == "active_implemented_primary"
+    assert provider_states["binance_vision"]["implemented_for_catalog_refresh"] is True
+    assert provider_states["crypto_lake"]["catalog_state"] == "implemented_local_export_not_auto_collected"
+    assert provider_states["bybit_archive"]["catalog_state"] == "public_archive_registered_ingestion_not_implemented"
+    assert provider_states["hyperliquid_archive"]["catalog_state"] == "archive_registered_requester_pays_ingestion_not_implemented"
+    assert result.catalog_sha256.startswith("sha256:")
+
+
+def test_collect_candidate_depth_public_archive_fixtures_rejects_duplicate_source_bars(tmp_path: Path) -> None:
+    start_ms = 1_704_067_200_000
+
+    def zip_payload(member_name: str, rows: list[str]) -> bytes:
+        buffer = __import__("io").BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr(member_name, "\n".join(rows))
+        return buffer.getvalue()
+
+    def payload_for(url: str) -> bytes:
+        if url.endswith(".CHECKSUM"):
+            data = payload_for(url.removesuffix(".CHECKSUM"))
+            digest = __import__("hashlib").sha256(data).hexdigest()
+            return f"{digest}  {Path(url.removesuffix('.CHECKSUM')).name}\n".encode("utf-8")
+        member = Path(url).name.replace(".zip", ".csv")
+        header = "open_time,open,high,low,close,volume,close_time,quote_asset_volume,number_of_trades,taker_buy_base_asset_volume,taker_buy_quote_asset_volume,ignore"
+        if "/15m/" in url:
+            return zip_payload(
+                member,
+                [
+                    header,
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 899999},100,10,0.5,50,0",
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 899999},100,10,0.5,50,0",
+                ],
+            )
+        if "/1m/" in url:
+            return zip_payload(
+                member,
+                [
+                    header,
+                    f"{start_ms},100,101,99,100.5,1,{start_ms + 59999},100,10,0.5,50,0",
+                ],
+            )
+        return zip_payload(
+            member,
+            [
+                "aggregate_trade_id,price,quantity,first_trade_id,last_trade_id,transact_time,is_buyer_maker,is_best_match",
+                f"1,100,1,1,1,{start_ms},false,true",
+            ],
+        )
+
+    with pytest.raises(ValueError, match="primary_bar_archive_quality_failed"):
+        collect_candidate_depth_public_archive_fixtures(
+            output_dir=tmp_path / "durable",
+            symbols=["BTCUSDT"],
+            start_month="2024-01",
+            end_month="2024-01",
+            fetcher=payload_for,
+            min_primary_15m_bars=1,
+            min_context_1m_rows=1,
+            min_effective_hours=0,
+        )
 
 
 def test_ingest_crypto_lake_kline_csv_writes_archive_manifest(tmp_path: Path) -> None:

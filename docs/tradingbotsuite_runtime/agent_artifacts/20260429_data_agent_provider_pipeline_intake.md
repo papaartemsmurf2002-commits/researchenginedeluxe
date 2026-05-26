@@ -15,7 +15,8 @@ Implement the provider-aware HMM/KNN research data intake path from the continua
 ## Provider Status
 
 - `binance_vision`: local CSV/ZIP ingestion implemented for `kline`, `trade`, and `agg_trade`.
-- `crypto_lake`: descriptor registered; ingestion emits `not_implemented_for_ingestion`.
+- `bybit_archive`: descriptor registered; ingestion emits `not_implemented_for_ingestion`.
+- `crypto_lake`: local-file ingestion implemented for supported exports.
 - `hyperliquid_archive`: descriptor registered; ingestion emits `not_implemented_for_ingestion`.
 
 ## Validation

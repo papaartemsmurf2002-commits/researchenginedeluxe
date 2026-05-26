@@ -1,0 +1,53 @@
+{
+  "config_version": "r105-secure-repo-export-v1",
+  "description": "Security-first source handoff config for R105 audit bundles. Data and operator artifacts are represented by manifests and hashes, not by raw generated outputs.",
+  "include": [
+    "src/**/*.py",
+    "configs/**/*.json",
+    "docs/**/*.md",
+    "tests/**/*.py",
+    "pyproject.toml",
+    "README*",
+    "AGENTS.md",
+    "START_HERE.md"
+  ],
+  "ignore": {
+    "useGitignore": true,
+    "useDotIgnore": true,
+    "useDefaultPatterns": true,
+    "customPatterns": [
+      "data/**",
+      "**/.env*",
+      "**/*secret*",
+      "**/*api_key*",
+      "**/*private_key*",
+      "**/*secret_key*",
+      "**/*credential*",
+      "**/__pycache__/**",
+      "**/.venv/**",
+      "**/venv/**",
+      "**/operator_runs/**",
+      "**/cache/**",
+      "**/*.parquet",
+      "**/*.db",
+      "**/*.sqlite",
+      "**/*.log",
+      "**/*.zip",
+      "**/*.csv"
+    ]
+  },
+  "security": {
+    "enableSecurityCheck": true,
+    "blockOnPotentialSecret": true
+  },
+  "research_boundary": {
+    "research_only": true,
+    "observe_only": true,
+    "promotion_ready": false,
+    "live_signal_input": false,
+    "position_sizing_input": false,
+    "operator_control_input": false,
+    "live_execution_input": false,
+    "runtime_control_input": false
+  }
+}

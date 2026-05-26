@@ -61,6 +61,7 @@ def test_supported_archive_descriptors_are_research_only_diagnostic_contracts() 
 
     assert {descriptor.source_name for descriptor in descriptors} == {
         "binance_vision",
+        "bybit_archive",
         "crypto_lake",
         "hyperliquid_archive",
     }

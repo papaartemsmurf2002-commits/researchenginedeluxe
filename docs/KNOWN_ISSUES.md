@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-17
+Last updated: 2026-05-26
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 1 | 0 |
-| P1 | 1 | 0 | 8 | 0 |
+| P1 | 1 | 0 | 10 | 0 |
 | P2 | 0 | 0 | 2 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
 
@@ -55,18 +55,180 @@ feature columns and independent-event accounting to fail closed.
 
 ### Required resolution
 
-Create expanded BTCUSDT and ETHUSDT durable public-archive fixture packs with
-materially more primary 15m bars across the selected regimes, preserve source
-archive hashes and provider capability metadata, rerun durable readiness, then
-rerun the R104 deep historical cycles and exact bounded discovery sweeps. Keep
-all artifacts `research_only`, `observe_only`, and `promotion_ready: false`
-until candidate gates pass.
+Run the R106 Historical Data Catalog refresh for expanded BTCUSDT and ETHUSDT
+public-archive fixture packs with materially more primary 15m bars, preserved
+source archive hashes, checksum evidence, and provider capability metadata.
+The catalog is the source of truth for active readiness, cycle, and discovery
+spec paths. Rerun catalog readiness, then rerun the required deep historical
+cycles and exact bounded discovery sweeps from the generated active specs.
+Keep all artifacts `research_only`, `observe_only`, and
+`promotion_ready: false` until candidate gates pass.
 
 ### Resolution notes
 
 Open. WPR104-04 adds truthful brute-force-scale run profiles and UI/progress
 wiring, but it does not fabricate additional durable data or claim candidate
-readiness from the compact screening fixture.
+readiness from the compact screening fixture. WPR105-104 hardens the operator
+surface so the compact BTC/ETH fixtures are reported as integrity-ready
+screening windows, not candidate-depth-ready evidence; old/simple artifacts no
+longer complete the required checklist while this issue remains open.
+WPR105-106 adds the missing runnable Step 0 collection pipeline and operator
+button, validates Binance Vision checksum sidecars plus fixture integrity, and
+wires generated candidate-depth packs into readiness, cycle, and discovery
+defaults. This issue remains open until the full collection is run and the
+resulting deep cycles, exact sweeps, and candidate eligibility review complete.
+WPR106-01 supersedes the one-off button with the Historical Data Catalog as the
+single required data source of truth and keeps Bybit, Crypto Lake, and
+Hyperliquid provider slots visible without treating unimplemented ingestion as
+candidate-depth evidence. WPR106-02 hardens the long-running catalog refresh
+after a failed five-hour partial run: verified archive downloads are reusable
+through a central cache, prior partial operator downloads can seed that cache,
+collection progress is journaled with ETA, and generated fixture Parquet files
+are streamed by archive partition to reduce memory pressure. It also hardens
+operator job-log appends against queue/worker races that can crash the API with
+duplicate log sequence inserts. WPR106-03 adds bounded transient Binance Vision
+fetch retry and completed per-symbol fixture-pack reuse after interruption.
+WPR106-04 expands that retry path for longer DNS/VPN outages with env-tunable
+attempt and backoff defaults while keeping checksum mismatches fail-fast. The
+issue remains open until the refreshed catalog, deep cycles, exact sweeps, and
+eligibility review complete on candidate-depth evidence.
+
+## ISSUE-R106-001: Exact discovery runtime is not proven under the 30-hour target
+
+Severity: P1
+Stage discovered: Stage R106 - active candidate-depth evidence runs
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `configs/discovery/**`
+
+### Problem
+
+The R106 candidate-depth exact discovery specs schedule 570240 trials per
+symbol. Prior completed R105/R104 telemetry for the same trial budget measured
+about 31.2 wall-clock hours and roughly one busy core of effective utilization
+despite nominal 48-worker execution. The current specs use process workers and
+durable snapshot/resume, but no scheduler/effective-work optimization has
+proven sub-30-hour runtime on the expanded candidate-depth fixture packs.
+
+### Evidence
+
+`STAGE_R105_DISCOVERY_PROCESSOR_UTILIZATION_TELEMETRY_REPORT.md` recorded
+570240 trials, 112216.3899596 wall seconds, 304.8966377577983 trials/minute,
+and noted that the packet did not claim a performance fix. The active R106
+exact specs still declare 570240 max trials with process executor and 48
+workers.
+
+### Required resolution
+
+Before claiming exact discovery is comfortably under 30 hours, run a measured
+candidate-depth exact-discovery probe or implement the scheduler/effective-work
+reduction recommended by R105, then record manifest telemetry showing worker
+capacity, trial rate, ETA, and durable resume behavior. Keep exact discovery
+snapshots and progress visible while this remains open.
+
+### Resolution notes
+
+Resolved by WPR106-08. The failed BTC exact-discovery process-pool run was
+recovered in place, process workers are capped safely by default, completed
+chunks are persisted as they return, and exact discovery now schedules
+production no-stop runs by cache group instead of tiny randomized chunks. KNN
+screening now reuses relaxed exact base predictions, cached threshold metric
+arrays, and no-regime baselines, and defers heavy inline artifacts for
+`interesting_only` sweeps. Bounded BTC resume probes advanced the active run
+from 128 to 512 persisted trial records. The final 64-trial probe completed in
+610.7 seconds with 8 workers, base KNN misses averaging 365.2 seconds, and
+base-hit non-artifact threshold trials averaging 0.379 seconds. With 108 cache
+groups and full cache-group chunks, the measured full-run estimate is roughly
+9 to 12 wall-clock hours on this machine, below the 30-hour target.
+
+WPR106-09 follow-up: the later full BTC run still stopped after roughly
+14 hours with 407669 durable trial files, while state lagged by 249 records
+and the manifest remained stale. The run was recovered in place without
+restarting completed work. Large resumes now avoid hydrating the full trial
+corpus before useful work, recover only lagging trial files, skip real-context
+allocation for zero-trial metadata recovery, and preserve existing ledgers
+until a full completion rebuild can be performed. WPR106-10 restores the
+default real-discovery process worker cap to 8 by operator direction because
+throughput is preferred over stability for this prolonged study; operators can
+still lower it with `TBS_DISCOVERY_REAL_PROCESS_MAX_WORKERS` if needed. The
+active BTC exact-discovery run remains incomplete at 407669/570240 trials; no
+candidate-ready claim exists until it finishes and downstream eligibility review
+passes.
+
+WPR106-11 follow-up: operator job
+`run-discovery-5b8013f779ef43c28a8c3567a14d14a4` later advanced durable BTC
+exact-discovery trial files to 531077, then failed on Windows while atomically
+replacing `run_state.json`. `atomic_write_json()` now retries transient
+`PermissionError` replace failures. A zero-trial resume reconciled state to
+531077 completed IDs/hashes with 39163 trials remaining. The active run is
+still incomplete; the failed job record remains failed, but its durable progress
+is preserved.
+
+WPR106-12 follow-up: operator job
+`run-discovery-40cb1c90d0f8487a859a23e05d21e656` completed BTC exact-discovery
+compute, then failed during final Parquet ledger materialization because absent
+numeric ledger fields were represented as empty strings and mixed with integer
+metric values such as `accepted_bar_count`. Final ledgers now normalize integer,
+float, and boolean columns to pandas nullable dtypes, and completed-run resume
+can rebuild stale, missing, row-count mismatched, or unreadable final
+ledgers/manifests from durable trial JSONs without restarting compute. The BTC
+exact-discovery output is finalized at 570240/570240 trial records with 22560
+interesting rows, 547680 blocked rows, and 0 filter-blocked rows. Candidate
+eligibility review is still required before any candidate-ready claim.
+
+## ISSUE-R106-002: Long research runs lack mandatory post-run analytics and one-button sequencing
+
+Severity: P1
+Stage discovered: Stage R106 - active candidate-depth evidence runs
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/research_cycle/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `configs/research/**`, `configs/discovery/**`, `docs/stage_reports/**`
+
+### Problem
+
+The completed BTC candidate-depth cycle and exact discovery produce durable
+evidence, but the operator still cannot run the full BTC/ETH research sequence
+as a single resumable workflow that automatically writes feature/filter/exit
+analytics, run-to-run comparisons, and candidate eligibility evidence. Without
+that layer, a 10-30 hour run can finish with artifacts that are technically
+complete but not useful enough for deciding the next research mutation.
+
+### Evidence
+
+WPR106-13 analysis of the completed BTC artifacts shows the cycle is
+fixed-holding only, no candidate is pack eligible, no non-baseline candidate has
+positive pure ROI, exact discovery has 22560 interesting KNN rows but 547680
+blocked rows, orderflow feature sets were not active in the current specs, the
+operator's requested simple runner exit policy is not implemented as a
+first-class policy, and there is no explicit modern-window holdout profile for
+the current-market concern. The Research UI also still requires manual sequencing
+instead of one master resumable autopilot.
+
+### Required resolution
+
+Add a master research workflow that reuses the central historical data catalog,
+runs missing BTC/ETH cycle and exact-discovery jobs, writes mandatory analysis
+artifacts for each symbol, compares results against previous runs, runs
+candidate eligibility, and exposes clear progress/ETA in the UI. Add a
+frozen-entry exit lab for the strongest exact-discovery rows, including the
+simple runner semantics requested by the operator or an explicit documented
+replacement. Include modern-window profiles alongside full-window evidence.
+
+### Resolution notes
+
+Resolved by WPR106-16. WPR106-13 adds the first repeatable analysis helper and
+next-agent handoff. WPR106-14 wires that helper into the operator job API,
+artifact index, progress checklist, and required UI path before candidate
+eligibility review. WPR106-15 adds a bounded master BTC/ETH operator sequencer
+that reuses current artifacts, runs missing required steps through existing
+helpers, and writes an autopilot manifest. WPR106-16 adds modern-window profile
+artifacts/spec links, run-to-run delta artifacts, `simple_runner_v1`,
+bridge-compatible frozen-entry exit-lab artifacts, and operator/API/UI/autopilot
+sequencing through eligibility. Existing exact-discovery ledgers may still
+write a blocked frozen-entry lab when per-entry timestamps are unavailable, but
+that is now explicit fail-closed evidence rather than missing workflow
+machinery. Candidate-ready evidence remains blocked by empirical gates under
+`ISSUE-R104-001`; no promotion claim is made.
 
 ## ISSUE-R101-001: Fixture source provider capability mismatch is not validated
 

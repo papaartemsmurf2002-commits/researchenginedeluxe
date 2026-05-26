@@ -871,9 +871,11 @@ def _finalize_benchmark_report(
         report["artifact_overhead"] = artifact_overhead_payload
         report["benchmark_gate"] = benchmark_gate
         _write_json(report_path, report)
+        _force_final_report_byte_count_consistency(report_path, report)
         if int(report["artifact_overhead"].get("final_report_bytes", 0)) == int(report_path.stat().st_size):
             return
     _write_json(report_path, report)
+    _force_final_report_byte_count_consistency(report_path, report)
 
 
 def _backtest_identity_repeat_consistent(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1291,6 +1293,25 @@ def _file_sha256(path: Path) -> str:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+
+
+def _force_final_report_byte_count_consistency(path: Path, report: dict[str, Any]) -> None:
+    artifact_overhead = report.get("artifact_overhead")
+    if not isinstance(artifact_overhead, dict) or not path.is_file():
+        return
+    recorded = int(artifact_overhead.get("final_report_bytes") or 0)
+    actual = int(path.stat().st_size)
+    if recorded == actual or recorded <= 0:
+        return
+    old = f'"final_report_bytes": {recorded}'
+    new = f'"final_report_bytes": {actual}'
+    if len(old) != len(new):
+        return
+    text = path.read_text(encoding="utf-8")
+    if old not in text:
+        return
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    artifact_overhead["final_report_bytes"] = actual
 
 
 def _stable_hash(payload: Any) -> str:

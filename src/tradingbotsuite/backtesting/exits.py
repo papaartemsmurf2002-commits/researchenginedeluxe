@@ -517,6 +517,24 @@ def primary_bar_research_exit(
             exit_policy_id=policy,
             exit_reason=exit_reason,
         )
+    if policy == "simple_runner_v1":
+        return _simple_runner_exit(
+            entry_time_ms=entry_time_ms,
+            entry_price=entry_price,
+            side=side,
+            path=path,
+            activation_return=_optional_positive_return(
+                _param_float(params, "activation_pct", target_return),
+                default=0.01,
+            ),
+            runner_gap_return=_optional_positive_return(
+                _param_float(params, "runner_gap_pct", stop_return),
+                default=0.005,
+            ),
+            costs_applied=costs_applied,
+            exit_policy_id=policy,
+            exit_reason=exit_reason,
+        )
     if policy == "max_mae_stop":
         return _max_mae_stop_exit(
             entry_time_ms=entry_time_ms,
@@ -1113,6 +1131,41 @@ def _trailing_after_profit_exit(
                 path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
                 exit_reason="trailing_atr_after_profit",
                 barrier_hit_type="trailing_stop",
+                costs_applied=costs_applied,
+                exit_policy_id=exit_policy_id,
+                approximate=True,
+            )
+    return _time_result(path.iloc[-1], entry_time_ms=entry_time_ms, entry_price=entry_price, side=side, path=path, costs_applied=costs_applied, exit_policy_id=exit_policy_id, exit_reason=exit_reason)
+
+
+def _simple_runner_exit(
+    *,
+    entry_time_ms: int,
+    entry_price: float,
+    side: str,
+    path: pd.DataFrame,
+    activation_return: float,
+    runner_gap_return: float,
+    costs_applied: bool,
+    exit_policy_id: str,
+    exit_reason: str,
+) -> ExitPolicyResult:
+    side_multiplier = _side_multiplier(side)
+    best_favorable = 0.0
+    active = False
+    for _, row in path.iloc[1:].iterrows():
+        realized = ((float(row["close"]) / float(entry_price)) - 1.0) * side_multiplier
+        best_favorable = max(best_favorable, realized)
+        active = active or best_favorable >= activation_return
+        if active and realized <= best_favorable - runner_gap_return:
+            return _result_from_row(
+                row,
+                entry_time_ms=entry_time_ms,
+                entry_price=entry_price,
+                side=side,
+                path=path.loc[path["bar_time_ms"] <= int(row["bar_time_ms"])],
+                exit_reason="simple_runner_v1_trailing_gap",
+                barrier_hit_type="runner_gap",
                 costs_applied=costs_applied,
                 exit_policy_id=exit_policy_id,
                 approximate=True,

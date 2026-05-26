@@ -23,6 +23,7 @@
   },
   "execution": {
     "max_workers": 48,
+    "executor": "process",
     "persist_trial_artifacts": "interesting_only"
   },
   "search": {

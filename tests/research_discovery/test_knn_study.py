@@ -17,8 +17,10 @@ from tradingbotsuite.research_discovery.knn_study import (
     KnnStudySpec,
     _TrainOnlyScaler,
     _label_horizon_bars,
+    _precompute_neighbor_records,
     _predict_precomputed_row,
     _predict_row,
+    _select_precomputed_neighbors,
     _stable_topk_distance_order,
     _validation_positions,
     materialize_regime_local_knn_predictions,
@@ -239,6 +241,83 @@ def test_stable_topk_distance_order_matches_full_stable_sort_for_random_distance
         np.testing.assert_array_equal(order, full_order)
 
 
+def test_batched_neighbor_precompute_matches_rowwise_exact_selection() -> None:
+    spec = KnnStudySpec.from_payload(
+        {
+            "feature_columns": ["x", "y"],
+            "label_column": "label_up",
+            "pnl_column": "label_return",
+            "k": 3,
+            "distance_metric": "euclidean",
+            "probability_threshold": 0.50,
+            "expected_value_threshold": -0.02,
+            "min_neighbor_count": 2,
+            "min_neighbor_agreement": 0.50,
+            "min_distance_quality": 0.0,
+            "vote_margin_threshold": 0.0,
+            "same_regime_only": False,
+            "regime_mode": "none",
+            "regime_detector_type": "none",
+            "regime_gate_enabled": False,
+            "same_regime_neighbor_pool_enabled": False,
+            "feature_column_set_id": "test_feature_set",
+            "label_horizon": "4h",
+        }
+    )
+    train_matrix = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.2],
+            [2.0, 1.3],
+            [4.0, 0.1],
+            [8.0, 3.0],
+        ],
+        dtype=float,
+    )
+    validation_matrix = np.array([[1.4, 0.8], [6.0, 1.5]], dtype=float)
+    train_source = np.array([0, 1, 2, 3, 4], dtype=int)
+    train_regimes = np.array(["all_market"] * len(train_source), dtype=object)
+    validation_source_rows = [10, 11]
+    validation_fit_ends = [4, 4]
+    validation_no_trade = np.array([False, False], dtype=bool)
+    validation_regimes = np.array(["all_market", "all_market"], dtype=object)
+
+    batched_records, engine = _precompute_neighbor_records(
+        validation_source_rows=validation_source_rows,
+        validation_fit_ends=validation_fit_ends,
+        validation_no_trade=validation_no_trade,
+        validation_regimes=validation_regimes,
+        validation_matrix=validation_matrix,
+        train_matrix=train_matrix,
+        train_source=train_source,
+        train_regimes=train_regimes,
+        spec=spec,
+        selection_k_limit=4,
+    )
+    rowwise_records = tuple(
+        _select_precomputed_neighbors(
+            source_row=validation_source_rows[offset],
+            fit_end=validation_fit_ends[offset],
+            no_trade=bool(validation_no_trade[offset]),
+            query_regime=str(validation_regimes[offset]),
+            query_matrix=validation_matrix[offset],
+            train_matrix=train_matrix,
+            train_source=train_source,
+            train_regimes=train_regimes,
+            spec=spec,
+            selection_k_limit=4,
+        )
+        for offset in range(len(validation_source_rows))
+    )
+
+    assert engine == "sklearn_nearest_neighbors_exact_batch"
+    assert [record["selected_indices"] for record in batched_records] == [
+        record["selected_indices"] for record in rowwise_records
+    ]
+    for batched, rowwise in zip(batched_records, rowwise_records, strict=True):
+        np.testing.assert_allclose(batched["selected_distances"], rowwise["selected_distances"])
+
+
 def test_neighbor_cache_identity_ignores_k_and_thresholds_but_tracks_exact_inputs() -> None:
     base = exact_neighbor_cache_identity(
         feature_column_set_id="price_trend_vol",
@@ -330,6 +409,27 @@ def test_neighbor_cache_reuse_preserves_uncached_knn_predictions() -> None:
     assert cached_second.manifest["neighbor_cache_hit_count"] > 0
     assert cache.summary()["hits"] > 0
     assert cache.summary()["misses"] > 0
+
+
+def test_knn_study_can_skip_neighbor_diagnostics_for_screening() -> None:
+    frame, splits = _hmm_frame()
+
+    with_diagnostics = materialize_regime_local_knn_predictions(frame, splits=splits, spec=_knn_spec())
+    screening = materialize_regime_local_knn_predictions(
+        frame,
+        splits=splits,
+        spec=_knn_spec(),
+        include_neighbor_diagnostics=False,
+    )
+
+    pd.testing.assert_frame_equal(
+        with_diagnostics.frame.loc[:, KNN_PREDICTION_COLUMNS].reset_index(drop=True),
+        screening.frame.loc[:, KNN_PREDICTION_COLUMNS].reset_index(drop=True),
+        check_dtype=False,
+    )
+    assert not with_diagnostics.neighbor_diagnostics.empty
+    assert screening.neighbor_diagnostics.empty
+    assert screening.manifest["neighbor_diagnostics_included"] is False
 
 
 def test_knn_expected_value_is_side_adjusted_for_short_majority() -> None:

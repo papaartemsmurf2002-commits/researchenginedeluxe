@@ -141,6 +141,13 @@ def test_volatility_scaled_barrier_short_uses_inverse_thresholds() -> None:
         ("alpha_decay_exit", {"target_return": 0.1}, "alpha_decay_exit", "alpha_decay", False),
         ("adverse_selection_exit", {"target_return": 20.0, "stop_return": 0.1}, "adverse_selection_exit", "adverse_selection", False),
         ("trailing_atr_after_profit", {"target_return": 0.02, "stop_return": 0.015}, "trailing_atr_after_profit", "trailing_stop", True),
+        (
+            "simple_runner_v1",
+            {"policy_params": {"activation_pct": 0.02, "runner_gap_pct": 0.015}},
+            "simple_runner_v1_trailing_gap",
+            "runner_gap",
+            True,
+        ),
         ("max_mae_stop", {"stop_return": 0.01}, "max_mae_stop", "stop", True),
     ],
 )
@@ -236,6 +243,45 @@ def test_funding_aware_exit_supports_short_adverse_funding() -> None:
     assert result.exit_reason == "funding_aware_exit_v1"
     assert result.barrier_hit_type == "funding_aware"
     assert result.exit_time_ms == int(frame.iloc[1]["bar_time_ms"])
+
+
+def test_simple_runner_v1_falls_back_to_time_exit_before_activation() -> None:
+    frame = _path().copy()
+    frame["close"] = [100.0, 100.5, 100.8, 100.7, 100.6, 100.4]
+
+    result = _run(
+        "simple_runner_v1",
+        path=frame,
+        policy_params={"activation_pct": 0.02, "runner_gap_pct": 0.005},
+    )
+
+    assert result.exit_reason == "holding_window"
+    assert result.barrier_hit_type == "time"
+    assert result.exit_time_ms == int(frame.iloc[-1]["bar_time_ms"])
+
+
+def test_simple_runner_v1_supports_short_runner_gap() -> None:
+    frame = _path().copy()
+    frame["close"] = [100.0, 98.0, 96.0, 97.0, 98.0, 99.0]
+
+    result = _run(
+        "simple_runner_v1",
+        side="short",
+        path=frame,
+        policy_params={"activation_pct": 0.02, "runner_gap_pct": 0.005},
+    )
+
+    assert result.exit_reason == "simple_runner_v1_trailing_gap"
+    assert result.barrier_hit_type == "runner_gap"
+    assert result.exit_time_ms == int(frame.iloc[3]["bar_time_ms"])
+
+
+def test_simple_runner_v1_rejects_non_positive_params() -> None:
+    with pytest.raises(ValueError, match="exit threshold must be positive"):
+        _run(
+            "simple_runner_v1",
+            policy_params={"activation_pct": 0.0, "runner_gap_pct": 0.005},
+        )
 
 
 def test_funding_aware_exit_accepts_registered_perp_funding_column() -> None:

@@ -54,6 +54,7 @@ SUPPORTED_RESEARCH_EXIT_POLICIES = (
     "alpha_decay_exit",
     "adverse_selection_exit",
     "trailing_atr_after_profit",
+    "simple_runner_v1",
     "max_mae_stop",
 )
 DEFAULT_EXIT_POLICIES = (

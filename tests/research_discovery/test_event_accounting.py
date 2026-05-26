@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import pandas as pd
+import numpy as np
 import pytest
 
-from tradingbotsuite.research_discovery.event_accounting import account_independent_events
+from tradingbotsuite.research_discovery.event_accounting import account_independent_events, account_independent_events_arrays
 from tradingbotsuite.research_discovery.runner import _knn_trial_metrics
 
 
@@ -39,53 +40,70 @@ def test_independent_event_accounting_suppresses_overlapping_label_windows() -> 
 
 
 def test_independent_event_accounting_skips_rows_without_reproducible_labels_or_source() -> None:
+    frame = pd.DataFrame(
+        [
+            {
+                "symbol": "BTCUSDT",
+                "source_row_index": 10,
+                "label_return": 0.02,
+                "p_up_barrier": 0.70,
+                "p_down_barrier": 0.30,
+            },
+            {
+                "symbol": "BTCUSDT",
+                "source_row_index": 11,
+                "label_return": 0.04,
+                "p_up_barrier": 0.70,
+                "p_down_barrier": 0.30,
+            },
+            {
+                "symbol": "BTCUSDT",
+                "source_row_index": 15,
+                "label_return": -0.03,
+                "p_up_barrier": 0.25,
+                "p_down_barrier": 0.75,
+            },
+            {
+                "symbol": "ETHUSDT",
+                "source_row_index": 11,
+                "label_return": -0.05,
+                "p_up_barrier": 0.25,
+                "p_down_barrier": 0.75,
+            },
+            {
+                "symbol": "BTCUSDT",
+                "source_row_index": None,
+                "label_return": 0.99,
+                "p_up_barrier": 0.70,
+                "p_down_barrier": 0.30,
+            },
+            {
+                "symbol": "BTCUSDT",
+                "source_row_index": 22,
+                "label_return": None,
+                "p_up_barrier": 0.70,
+                "p_down_barrier": 0.30,
+            },
+        ]
+    )
     accounting = account_independent_events(
-        pd.DataFrame(
-            [
-                {
-                    "symbol": "BTCUSDT",
-                    "source_row_index": 10,
-                    "label_return": 0.02,
-                    "p_up_barrier": 0.70,
-                    "p_down_barrier": 0.30,
-                },
-                {
-                    "symbol": "BTCUSDT",
-                    "source_row_index": 11,
-                    "label_return": 0.04,
-                    "p_up_barrier": 0.70,
-                    "p_down_barrier": 0.30,
-                },
-                {
-                    "symbol": "BTCUSDT",
-                    "source_row_index": 15,
-                    "label_return": -0.03,
-                    "p_up_barrier": 0.25,
-                    "p_down_barrier": 0.75,
-                },
-                {
-                    "symbol": "ETHUSDT",
-                    "source_row_index": 11,
-                    "label_return": -0.05,
-                    "p_up_barrier": 0.25,
-                    "p_down_barrier": 0.75,
-                },
-                {
-                    "symbol": "BTCUSDT",
-                    "source_row_index": None,
-                    "label_return": 0.99,
-                    "p_up_barrier": 0.70,
-                    "p_down_barrier": 0.30,
-                },
-                {
-                    "symbol": "BTCUSDT",
-                    "source_row_index": 22,
-                    "label_return": None,
-                    "p_up_barrier": 0.70,
-                    "p_down_barrier": 0.30,
-                },
-            ]
-        ),
+        frame,
+        total_row_count=100,
+        label_horizon_bars=4,
+        max_signal_rate=0.45,
+    )
+    p_up = frame["p_up_barrier"].to_numpy(dtype=float)
+    p_down = frame["p_down_barrier"].to_numpy(dtype=float)
+    label_return = pd.to_numeric(frame["label_return"], errors="coerce").to_numpy(dtype=float)
+    array_accounting = account_independent_events_arrays(
+        accepted_mask=np.ones(len(frame), dtype=bool),
+        symbol_codes=pd.factorize(frame["symbol"].astype(str), sort=True)[0],
+        source_row_index=pd.to_numeric(frame["source_row_index"], errors="coerce").to_numpy(dtype=float),
+        p_up_barrier=p_up,
+        p_down_barrier=p_down,
+        side_adjusted_return=label_return * np.where(p_down > p_up, -1.0, 1.0),
+        neighbor_distance_quality=np.full(len(frame), np.nan),
+        knn_vote_margin=np.full(len(frame), np.nan),
         total_row_count=100,
         label_horizon_bars=4,
         max_signal_rate=0.45,
@@ -97,6 +115,7 @@ def test_independent_event_accounting_skips_rows_without_reproducible_labels_or_
     assert accounting.long_independent_event_count == 1
     assert accounting.short_independent_event_count == 2
     assert accounting.gross_independent_event_return == pytest.approx(0.10)
+    assert array_accounting.to_payload() == accounting.to_payload()
 
 
 def test_knn_trial_metrics_keep_legacy_density_score_but_rank_by_score_v2() -> None:

@@ -257,7 +257,7 @@ Required files:
   - `research_only: true`
   - `observe_only: true`
   - `promotion_ready: false`
-  - provider descriptors for `binance_vision`, `crypto_lake`, and `hyperliquid_archive`
+  - provider descriptors for `binance_vision`, `bybit_archive`, `crypto_lake`, and `hyperliquid_archive`
   - per-provider status, implementation status, and manifest paths
   - stage status for `intake`, `dataset`, and `evidence`
   - `market_journal_manifest_path`
@@ -271,7 +271,8 @@ Required files:
 Provider-aware data pipeline:
 
 - Binance Vision local CSV/ZIP ingestion is implemented for `kline`, `trade`, and `agg_trade`.
-- Crypto Lake and Hyperliquid Archive are registered provider contracts only in this pass. They emit diagnostic `not_implemented_for_ingestion` manifests when enabled.
+- Bybit Archive and Hyperliquid Archive are registered provider contracts only in this pass. They emit diagnostic `not_implemented_for_ingestion` manifests when enabled.
+- Crypto Lake local-file ingestion is implemented for supported local exports.
 - No network archive downloader is implemented.
 - Archive-backed dataset rebuilding can read local kline/context manifests, but existing SQLite research signals remain the source of labeled events.
 - Missing context remains explicit missingness. Protected order-flow, book, funding, OI, premium, and execution/account fields must not be zero-filled.
@@ -300,6 +301,7 @@ Historical order-flow style archive sources are described by the offline contrac
 Supported descriptor names:
 
 - `binance_vision`
+- `bybit_archive`
 - `crypto_lake`
 - `hyperliquid_archive`
 

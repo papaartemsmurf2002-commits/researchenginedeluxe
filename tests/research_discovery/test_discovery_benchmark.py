@@ -54,6 +54,11 @@ def test_discovery_benchmark_report_contains_research_only_gate_metrics(tmp_path
     assert run["resumed"]["completed_trial_count"] == DISCOVERY_BENCHMARK_TIERS["quick"]["max_trials"]
     assert run["resumed"]["snapshot_integrity"]["passed"] is True
     assert run["resumed"]["trial_integrity"]["passed"] is True
+    assert run["resumed"]["compute_telemetry"]["telemetry_version"] == "discovery-compute-telemetry-v2"
+    assert run["resumed"]["compute_telemetry"]["active_workers"] >= 1
+    assert run["resumed"]["compute_telemetry"]["logical_cpu_count"] >= 1
+    assert run["resumed"]["compute_telemetry"]["process_cpu_percent_of_worker_capacity"] is not None
+    assert run["resumed"]["compute_telemetry"]["processor_diagnostic_reasons"]
 
 
 def test_discovery_benchmark_resume_integrity_matches_uninterrupted_run(tmp_path: Path) -> None:

@@ -1132,3 +1132,4 @@ def test_historical_research_cycle_rejects_empty_candidate_dimensions(
 def test_historical_research_cycle_is_registered_as_research_command() -> None:
     assert "run-historical-research-cycle" in RESEARCH_COMMANDS
     assert "benchmark-historical-research-cycle" in RESEARCH_COMMANDS
+    assert "benchmark-hardware-utilization" in RESEARCH_COMMANDS

@@ -45,7 +45,7 @@ Results:
 # Decisions made
 
 - Added an offline-only source contract module under `src/tradingbotsuite/research/`.
-- Defined descriptors for `binance_vision`, `crypto_lake`, and `hyperliquid_archive`, including symbol scope, likely data families, timestamp requirements, default diagnostic-only status, and caveats.
+- Defined descriptors for `binance_vision`, `bybit_archive`, `crypto_lake`, and `hyperliquid_archive`, including symbol scope, likely data families, timestamp requirements, default diagnostic-only status, and caveats.
 - Required manifest fields are enforced by `validate_archive_source_manifest()` and `assert_valid_archive_source_manifest()`.
 - Event time is mandatory. Receive time is mandatory for point-in-time compatibility; an explicit unavailable reason is valid for research manifests but marks the source non-promotable.
 - Hyperliquid archive remains diagnostic-only by default because archive rows cannot substitute for append-only local order/account/fill/funding/position journals.

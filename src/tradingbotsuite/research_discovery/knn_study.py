@@ -242,6 +242,7 @@ def materialize_regime_local_knn_predictions(
     neighbor_cache: ExactNeighborCache | None = None,
     neighbor_cache_k_limit: int | None = None,
     source_identity: Mapping[str, Any] | None = None,
+    include_neighbor_diagnostics: bool = True,
 ) -> KnnStudyResult:
     validate_knn_study_spec(spec)
     missing = [column for column in (*spec.feature_columns, spec.label_column, spec.pnl_column, *REQUIRED_HMM_COLUMNS) if column not in frame.columns]
@@ -300,6 +301,7 @@ def materialize_regime_local_knn_predictions(
         selection_k_limit = max(int(spec.k), int(neighbor_cache_k_limit or spec.k))
         neighbor_cache_key = ""
         neighbor_cache_hit = False
+        neighbor_search_engine = "rowwise_exact_numpy"
         if neighbor_cache is not None:
             identity = exact_neighbor_cache_identity(
                 feature_column_set_id=spec.feature_column_set_id,
@@ -325,44 +327,40 @@ def materialize_regime_local_knn_predictions(
             neighbor_cache_key = exact_neighbor_cache_key(identity)
             cached_neighbors = neighbor_cache.get(neighbor_cache_key)
             if cached_neighbors is None:
-                cached_neighbors = ExactNeighborCacheRecord(
-                    cache_key=neighbor_cache_key,
-                    identity=identity,
-                    row_records=tuple(
-                        _select_precomputed_neighbors(
-                            source_row=validation_source_rows[offset],
-                            fit_end=validation_fit_ends[offset],
-                            no_trade=bool(validation_no_trade[offset]),
-                            query_regime=str(validation_regimes[offset]),
-                            query_matrix=validation_matrix[offset],
-                            train_matrix=train_matrix,
-                            train_source=train_source,
-                            train_regimes=train_regimes,
-                            spec=spec,
-                            selection_k_limit=selection_k_limit,
-                        )
-                        for offset in range(len(validation_positions))
-                    ),
-                )
-                cached_neighbors = neighbor_cache.put(cached_neighbors)
-            else:
-                neighbor_cache_hit = True
-            row_neighbor_records = tuple(cached_neighbors.row_records)
-        else:
-            row_neighbor_records = tuple(
-                _select_precomputed_neighbors(
-                    source_row=validation_source_rows[offset],
-                    fit_end=validation_fit_ends[offset],
-                    no_trade=bool(validation_no_trade[offset]),
-                    query_regime=str(validation_regimes[offset]),
-                    query_matrix=validation_matrix[offset],
+                row_neighbor_records, neighbor_search_engine = _precompute_neighbor_records(
+                    validation_source_rows=validation_source_rows,
+                    validation_fit_ends=validation_fit_ends,
+                    validation_no_trade=validation_no_trade,
+                    validation_regimes=validation_regimes,
+                    validation_matrix=validation_matrix,
                     train_matrix=train_matrix,
                     train_source=train_source,
                     train_regimes=train_regimes,
                     spec=spec,
                     selection_k_limit=selection_k_limit,
                 )
-                for offset in range(len(validation_positions))
+                cached_neighbors = ExactNeighborCacheRecord(
+                    cache_key=neighbor_cache_key,
+                    identity=identity,
+                    row_records=row_neighbor_records,
+                )
+                cached_neighbors = neighbor_cache.put(cached_neighbors)
+            else:
+                neighbor_cache_hit = True
+                neighbor_search_engine = "exact_neighbor_cache"
+            row_neighbor_records = tuple(cached_neighbors.row_records)
+        else:
+            row_neighbor_records, neighbor_search_engine = _precompute_neighbor_records(
+                validation_source_rows=validation_source_rows,
+                validation_fit_ends=validation_fit_ends,
+                validation_no_trade=validation_no_trade,
+                validation_regimes=validation_regimes,
+                validation_matrix=validation_matrix,
+                train_matrix=train_matrix,
+                train_source=train_source,
+                train_regimes=train_regimes,
+                spec=spec,
+                selection_k_limit=selection_k_limit,
             )
 
         for offset, position in enumerate(validation_positions):
@@ -374,10 +372,12 @@ def materialize_regime_local_knn_predictions(
                 pnl=pnl,
                 spec=spec,
                 split_id=str(split.split_id),
+                include_diagnostics=include_neighbor_diagnostics,
             )
             for key, value in prediction.items():
                 result.loc[position, key] = value
-            diagnostics.extend(row_diagnostics)
+            if include_neighbor_diagnostics:
+                diagnostics.extend(row_diagnostics)
             if prediction["knn_skip_reason"] == "":
                 materialized_count += 1
         split_records.append(
@@ -394,6 +394,7 @@ def materialize_regime_local_knn_predictions(
                 "neighbor_cache_hit": bool(neighbor_cache_hit),
                 "neighbor_cache_key": neighbor_cache_key,
                 "neighbor_cache_selection_k_limit": int(selection_k_limit),
+                "neighbor_search_engine": neighbor_search_engine,
             }
         )
 
@@ -430,6 +431,7 @@ def materialize_regime_local_knn_predictions(
         },
         "neighbor_cache_hit_count": int(sum(1 for record in split_records if record.get("neighbor_cache_hit") is True)),
         "neighbor_cache_lookup_count": int(sum(1 for record in split_records if record.get("neighbor_cache_enabled") is True)),
+        "neighbor_diagnostics_included": bool(include_neighbor_diagnostics),
         "split_safety_rule": "neighbor_min_source_index <= neighbor_max_source_index <= hmm_fit_end_row < source_row_index",
         "label_safety_rule": "training_label_source_row_index + label_horizon_bars < validation_source_row_index",
         "label_horizon_bars": int(label_horizon_bars),
@@ -534,6 +536,7 @@ def _predict_precomputed_row(
         pnl=pnl,
         spec=spec,
         split_id=split_id,
+        include_diagnostics=True,
     )
 
 
@@ -575,6 +578,161 @@ def _select_precomputed_neighbors(
     }
 
 
+def _precompute_neighbor_records(
+    *,
+    validation_source_rows: Sequence[int | None],
+    validation_fit_ends: Sequence[int | None],
+    validation_no_trade: np.ndarray,
+    validation_regimes: np.ndarray,
+    validation_matrix: np.ndarray,
+    train_matrix: np.ndarray,
+    train_source: np.ndarray,
+    train_regimes: np.ndarray,
+    spec: KnnStudySpec,
+    selection_k_limit: int,
+) -> tuple[tuple[Mapping[str, Any], ...], str]:
+    batched = _select_precomputed_neighbors_batched(
+        validation_source_rows=validation_source_rows,
+        validation_fit_ends=validation_fit_ends,
+        validation_no_trade=validation_no_trade,
+        validation_regimes=validation_regimes,
+        validation_matrix=validation_matrix,
+        train_matrix=train_matrix,
+        train_source=train_source,
+        train_regimes=train_regimes,
+        spec=spec,
+        selection_k_limit=selection_k_limit,
+    )
+    if batched is not None:
+        return batched, "sklearn_nearest_neighbors_exact_batch"
+    return (
+        tuple(
+            _select_precomputed_neighbors(
+                source_row=validation_source_rows[offset],
+                fit_end=validation_fit_ends[offset],
+                no_trade=bool(validation_no_trade[offset]),
+                query_regime=str(validation_regimes[offset]),
+                query_matrix=validation_matrix[offset],
+                train_matrix=train_matrix,
+                train_source=train_source,
+                train_regimes=train_regimes,
+                spec=spec,
+                selection_k_limit=selection_k_limit,
+            )
+            for offset in range(len(validation_source_rows))
+        ),
+        "rowwise_exact_numpy",
+    )
+
+
+def _select_precomputed_neighbors_batched(
+    *,
+    validation_source_rows: Sequence[int | None],
+    validation_fit_ends: Sequence[int | None],
+    validation_no_trade: np.ndarray,
+    validation_regimes: np.ndarray,
+    validation_matrix: np.ndarray,
+    train_matrix: np.ndarray,
+    train_source: np.ndarray,
+    train_regimes: np.ndarray,
+    spec: KnnStudySpec,
+    selection_k_limit: int,
+) -> tuple[Mapping[str, Any], ...] | None:
+    if len(validation_source_rows) == 0:
+        return ()
+    fit_ends = [int(value) for value in validation_fit_ends if value is not None]
+    if len(fit_ends) != len(validation_fit_ends) or len(set(fit_ends)) != 1:
+        return None
+    fit_end = fit_ends[0]
+    if fit_end < 0:
+        return None
+    try:
+        from sklearn.neighbors import NearestNeighbors
+    except Exception:
+        return None
+
+    records: list[Mapping[str, Any] | None] = [None] * len(validation_source_rows)
+    eligible_offsets: list[int] = []
+    for offset, source_row in enumerate(validation_source_rows):
+        query_regime = str(validation_regimes[offset])
+        if source_row is None or fit_end >= int(source_row):
+            records[offset] = _neighbor_skip_record(
+                source_row=source_row,
+                query_regime=query_regime,
+                reason="unsafe_hmm_split_row",
+            )
+            continue
+        if spec.regime_gate_enabled and bool(validation_no_trade[offset]):
+            records[offset] = _neighbor_skip_record(
+                source_row=source_row,
+                query_regime=query_regime,
+                reason="hmm_regime_no_trade",
+            )
+            continue
+        eligible_offsets.append(offset)
+
+    candidate_base = train_source <= fit_end
+    if not np.any(candidate_base):
+        for offset in eligible_offsets:
+            records[offset] = _neighbor_skip_record(
+                source_row=validation_source_rows[offset],
+                query_regime=str(validation_regimes[offset]),
+                reason="insufficient_neighbors",
+            )
+        return tuple(record for record in records if record is not None)
+
+    if spec.same_regime_neighbor_pool_enabled:
+        groups: dict[str, list[int]] = {}
+        for offset in eligible_offsets:
+            groups.setdefault(str(validation_regimes[offset]), []).append(offset)
+    else:
+        groups = {"": eligible_offsets}
+
+    for query_regime, offsets in groups.items():
+        if not offsets:
+            continue
+        candidate_mask = candidate_base
+        if spec.same_regime_neighbor_pool_enabled:
+            candidate_mask = candidate_mask & (train_regimes == query_regime)
+        candidate_indices = np.flatnonzero(candidate_mask)
+        if len(candidate_indices) == 0:
+            reason = "insufficient_regime_neighbors" if spec.same_regime_neighbor_pool_enabled else "insufficient_neighbors"
+            for offset in offsets:
+                records[offset] = _neighbor_skip_record(
+                    source_row=validation_source_rows[offset],
+                    query_regime=str(validation_regimes[offset]),
+                    reason=reason,
+                )
+            continue
+
+        n_neighbors = min(max(1, int(selection_k_limit)), len(candidate_indices))
+        estimator = NearestNeighbors(
+            n_neighbors=n_neighbors,
+            metric=spec.distance_metric,
+            algorithm="auto",
+            n_jobs=1,
+        )
+        estimator.fit(train_matrix[candidate_indices])
+        distances, neighbor_positions = estimator.kneighbors(validation_matrix[offsets], return_distance=True)
+        for row_index, offset in enumerate(offsets):
+            selected_indices = candidate_indices[neighbor_positions[row_index]]
+            selected_distances = distances[row_index]
+            order = np.lexsort((selected_indices, selected_distances))
+            ordered_indices = selected_indices[order][:selection_k_limit]
+            ordered_distances = selected_distances[order][:selection_k_limit]
+            records[offset] = {
+                "source_row": int(validation_source_rows[offset]),
+                "query_regime": str(validation_regimes[offset]),
+                "skip_reason": "",
+                "selected_indices": [int(index) for index in ordered_indices],
+                "selected_distances": [float(distance) for distance in ordered_distances],
+            }
+
+    if any(record is None for record in records):
+        return None
+    return tuple(record for record in records if record is not None)
+
+
 def _neighbor_skip_record(*, source_row: int | None, query_regime: str, reason: str) -> dict[str, Any]:
     return {
         "source_row": source_row,
@@ -594,6 +752,7 @@ def _predict_from_selected_neighbors(
     pnl: np.ndarray,
     spec: KnnStudySpec,
     split_id: str,
+    include_diagnostics: bool = True,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     skip_reason = str(selected_record.get("skip_reason") or "")
     if skip_reason:
@@ -647,22 +806,24 @@ def _predict_from_selected_neighbors(
         "accepted_by_knn": bool(accepted),
         "knn_skip_reason": skip_reason,
     }
-    diagnostics = [
-        {
-            "split_id": split_id,
-            "source_row_index": int(selected_record["source_row"]),
-            "neighbor_source_index": int(train_source[index]),
-            "neighbor_rank": int(rank + 1),
-            "neighbor_distance": float(selected_distances[rank]),
-            "neighbor_regime": str(train_regimes[index]),
-            "query_regime": str(selected_record.get("query_regime") or ""),
-            "label_value": float(labels[index]),
-            "pnl_value": float(pnl[index]),
-            "feature_column_set_id": spec.feature_column_set_id,
-            "distance_metric": spec.distance_metric,
-        }
-        for rank, index in enumerate(selected)
-    ]
+    diagnostics = []
+    if include_diagnostics:
+        diagnostics = [
+            {
+                "split_id": split_id,
+                "source_row_index": int(selected_record["source_row"]),
+                "neighbor_source_index": int(train_source[index]),
+                "neighbor_rank": int(rank + 1),
+                "neighbor_distance": float(selected_distances[rank]),
+                "neighbor_regime": str(train_regimes[index]),
+                "query_regime": str(selected_record.get("query_regime") or ""),
+                "label_value": float(labels[index]),
+                "pnl_value": float(pnl[index]),
+                "feature_column_set_id": spec.feature_column_set_id,
+                "distance_metric": spec.distance_metric,
+            }
+            for rank, index in enumerate(selected)
+        ]
     return prediction, diagnostics
 
 

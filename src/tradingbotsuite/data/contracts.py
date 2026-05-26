@@ -21,6 +21,7 @@ DATA_PROVIDER_CAPABILITY_REGISTRY_VERSION = "provider-capability-registry-v1"
 SUPPORTED_SOURCE_NAMES = (
     "binance_rest",
     "binance_vision",
+    "bybit_archive",
     "crypto_lake",
     "hyperliquid_archive",
 )
@@ -28,6 +29,7 @@ SUPPORTED_SOURCE_NAMES = (
 SOURCE_TYPES_BY_NAME = {
     "binance_rest": "rest",
     "binance_vision": "archive",
+    "bybit_archive": "local_file",
     "crypto_lake": "local_file",
     "hyperliquid_archive": "local_file",
 }
@@ -147,6 +149,18 @@ DATA_SOURCE_DESCRIPTORS: dict[str, DataSourceDescriptor] = {
         diagnostic_only_by_default=True,
         notes=("Vendor-normalized rows must preserve explicit missingness.",),
     ),
+    "bybit_archive": DataSourceDescriptor(
+        source_name="bybit_archive",
+        source_type="local_file",
+        display_name="Bybit Archive",
+        data_families=("trade", "kline", "funding_rate", "open_interest", "premium_index", "book_ticker", "depth_snapshot", "liquidation"),
+        implemented_for_ingestion=False,
+        diagnostic_only_by_default=True,
+        notes=(
+            "Registered-only until Bybit archive download/local export ingestion is normalized and validated.",
+            "Historical downloads or REST backfills must not be treated as live receive-time evidence.",
+        ),
+    ),
     "hyperliquid_archive": DataSourceDescriptor(
         source_name="hyperliquid_archive",
         source_type="local_file",
@@ -260,6 +274,30 @@ DATA_PROVIDER_CAPABILITIES: dict[tuple[str, str], DataProviderCapability] = {
             "kline",
             "funding_rate",
             "open_interest",
+            "liquidation",
+        )
+    },
+    **{
+        ("bybit_archive", family): _capability(
+            "bybit_archive",
+            family,
+            durability_class="registered_only",
+            retention_limit="ingestion_not_implemented",
+            history_start=None,
+            exchange_native=True,
+            normalized=False,
+            health_policy="registered_only_no_claims",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+        for family in (
+            "trade",
+            "kline",
+            "funding_rate",
+            "open_interest",
+            "premium_index",
+            "book_ticker",
+            "depth_snapshot",
             "liquidation",
         )
     },

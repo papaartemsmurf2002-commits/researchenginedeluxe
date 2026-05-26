@@ -1,14 +1,75 @@
 # Orchestrator Stage Ledger
 
-Current stage: Stage R104 candidate validation on durable evidence
+Current stage: Stage R106 centralized historical data catalog
 Current stage owner: Codex Research Agent
-Stage status: in progress - WPR104-06 closed; durable UI/control path, gap-aware durable cycles, brute-force-scale exact discovery profiles, truthful progress evidence, exact search crosschecks, KNN payload hardening, compact-fixture effective feature pruning, completed BTC exact-sweep postmortem, and exit/entry/orderflow research handoff are wired; expanded durable data remains required for candidate-ready evidence
-Last updated: 2026-05-19
+Stage status: in progress - WPR106-01 through WPR106-20 closed. The one-off durable data collection button is replaced by an R106 Historical Data Catalog source of truth. The completed catalog under `refresh-historical-data-catalog-4dfa2700192f4b6fa1fa8fe833668cfb` is candidate-depth ready for BTCUSDT and ETHUSDT, with active generated readiness, full-window cycle/exact-discovery specs, and modern-window profile specs. Historical-data refresh uses a central verified archive cache, reports progress with ETA, reuses partial downloads and completed per-symbol fixture packs after interruption, tolerates longer Binance Vision DNS/VPN outages through env-tunable retry/backoff, and records Binance aggTrade source-order anomalies without discarding event-time bucketed data. Operator progress now reports active historical-cycle backtest-evaluation completion, rate, and ETA before final cycle manifests exist, and completed refresh journals no longer mask the active compute panel. The completed BTC R106 cycle is accepted as current required evidence. BTC exact discovery is complete at 570240/570240 durable trial records; WPR106-12 repaired final ledger schema normalization and rebuilt stale final ledgers/manifests from immutable trial JSONs. WPR106-13 adds a repeatable research analysis artifact step and next-agent handoff for feature/filter/KNN/exit interpretation; WPR106-14 wires that analysis step into the operator job API, artifact index, progress checklist, and required UI path; WPR106-15 adds a bounded one-button operator autopilot sequencer; WPR106-16 adds run-to-run deltas, bridge-compatible frozen-entry exit-lab artifacts with `simple_runner_v1`, modern-window profile indexing, and extends autopilot/UI sequencing through eligibility; WPR106-17 hardens frozen-entry exit-lab and candidate-eligibility fail-closed behavior and ensures autopilot runs all requested symbol cycle/discovery prerequisites before downstream analysis and eligibility; WPR106-18 adds bounded automatic autopilot step retries and one-time stale-autopilot restart requeueing; WPR106-19 records the second long performance/utilization study and identifies exact-discovery KNN/materialization plus final artifact rebuild/I/O as the largest safe speedup targets; WPR106-20 implements observed artifact accounting, finalization/process timing visibility, placeholder process-context avoidance, and operator UI/API performance wiring. Exact discovery remains resumable from persisted trial records, large resumes no longer hydrate the full trial corpus before useful work, and default real-discovery process concurrency remains performance-first at 8 workers unless a future measured worker-count packet changes it. Next required work is empirical rather than workflow implementation: ETH brute-force cycle, ETH exact discovery, current-output analysis/delta/exit-lab/eligibility review across current exact outputs, and candidate-ready gate evidence. No candidate-ready trading claim exists until those gates pass.
+Last updated: 2026-05-26
 
 ## Stage entry decision
 
 - Prior stage completed: yes
 - Evidence links:
+  - `docs/stage_reports/STAGE_R106_COMPLETED_CATALOG_WIRING_VALIDATION_REPORT.md`
+  - `docs/work_packets/WPR106-05-completed-catalog-wiring-validation.md`
+  - `docs/stage_reports/STAGE_R106_ACTIVE_CYCLE_PROGRESS_AND_RUNTIME_VISIBILITY_REPORT.md`
+  - `docs/work_packets/WPR106-06-active-cycle-progress-and-runtime-visibility.md`
+  - `docs/stage_reports/STAGE_R106_PROGRESS_STALE_REFRESH_AND_CYCLE_GATE_ALIGNMENT_REPORT.md`
+  - `docs/work_packets/WPR106-07-progress-stale-refresh-and-cycle-gate-alignment.md`
+  - `docs/stage_reports/STAGE_R106_EXACT_DISCOVERY_PROCESS_WORKER_GUARD_AND_RUNTIME_PROBE_REPORT.md`
+  - `docs/work_packets/WPR106-08-exact-discovery-process-worker-guard-and-runtime-probe.md`
+  - `docs/stage_reports/STAGE_R106_EXACT_DISCOVERY_FULL_RUN_PROCESS_POOL_CRASH_FOLLOWUP_REPORT.md`
+  - `docs/work_packets/WPR106-09-exact-discovery-full-run-process-pool-crash-followup.md`
+  - `docs/work_packets/WPR106-10-exact-discovery-performance-first-worker-cap.md`
+  - `docs/work_packets/WPR106-11-windows-run-state-atomic-replace-retry.md`
+  - `docs/work_packets/WPR106-12-final-ledger-schema-repair.md`
+  - `docs/stage_reports/STAGE_R106_RESEARCH_ANALYTICS_NEXT_AGENT_HANDOFF.md`
+  - `docs/work_packets/WPR106-13-research-analysis-handoff-and-analytics-step.md`
+  - `docs/stage_reports/STAGE_R106_OPERATOR_ANALYSIS_JOB_REQUIRED_WORKFLOW_REPORT.md`
+  - `docs/work_packets/WPR106-14-operator-analysis-job-and-required-workflow.md`
+  - `docs/stage_reports/STAGE_R106_OPERATOR_RESEARCH_AUTOPILOT_SEQUENCER_REPORT.md`
+  - `docs/work_packets/WPR106-15-operator-research-autopilot-sequencer.md`
+  - `docs/stage_reports/STAGE_R106_RESEARCH_WORKFLOW_COMPLETION_REPORT.md`
+  - `docs/work_packets/WPR106-16-research-workflow-completion.md`
+  - `docs/stage_reports/STAGE_R106_FINAL_CROSSCHECK_ROBUSTNESS_REPORT.md`
+  - `docs/work_packets/WPR106-17-final-crosscheck-robustness.md`
+  - `docs/stage_reports/STAGE_R106_OPERATOR_AUTOPILOT_CRASH_RETRY_HARDENING_REPORT.md`
+  - `docs/work_packets/WPR106-18-operator-autopilot-crash-retry-hardening.md`
+  - `docs/stage_reports/STAGE_R106_LONG_PERFORMANCE_UTILIZATION_STUDY_REPORT.md`
+  - `docs/work_packets/WPR106-19-long-performance-utilization-study.md`
+  - `docs/stage_reports/STAGE_R106_PERFORMANCE_SPEEDUPS_AND_UI_WIRING_REPORT.md`
+  - `docs/work_packets/WPR106-20-performance-speedups-and-ui-wiring.md`
+  - `docs/stage_reports/STAGE_R106_HISTORICAL_REFRESH_LONG_NETWORK_OUTAGE_TOLERANCE_REPORT.md`
+  - `docs/work_packets/WPR106-04-historical-refresh-long-network-outage-tolerance.md`
+  - `docs/stage_reports/STAGE_R106_CENTRAL_HISTORICAL_DATA_CATALOG_REPORT.md`
+  - `docs/work_packets/WPR106-01-central-historical-data-catalog.md`
+  - `docs/stage_reports/STAGE_R105_BYBIT_HYPERLIQUID_PROVIDER_SURFACE_AUDIT_REPORT.md`
+  - `docs/work_packets/WPR105-107-bybit-hyperliquid-provider-surface-audit.md`
+  - `docs/stage_reports/STAGE_R105_DURABLE_DATA_ACQUISITION_STEP0_REPORT.md`
+  - `docs/work_packets/WPR105-106-durable-data-acquisition-step0.md`
+  - `docs/stage_reports/STAGE_R105_DURABLE_DEPTH_BLOCKER_UI_CLARITY_REPORT.md`
+  - `docs/work_packets/WPR105-105-durable-depth-blocker-ui-clarity.md`
+  - `docs/stage_reports/STAGE_R105_REQUIRED_DISCOVERY_WIRING_SNAPSHOT_AND_UTILIZATION_REPORT.md`
+  - `docs/work_packets/WPR105-104-required-discovery-wiring-snapshot-and-utilization.md`
+  - `docs/stage_reports/STAGE_R105_RESEARCH_CHART_READABILITY_AND_NEXT_ACTION_REPORT.md`
+  - `docs/work_packets/WPR105-103-research-chart-readability-and-next-action.md`
+  - `docs/stage_reports/STAGE_R105_RESEARCH_UI_REQUIRED_WORKFLOW_CLARITY_REPORT.md`
+  - `docs/work_packets/WPR105-102-research-ui-required-workflow-clarity.md`
+  - `docs/stage_reports/STAGE_R105_FINAL_CODE_AUDIT_HARDWARE_UI_POLISH_REPORT.md`
+  - `docs/work_packets/WPR105-101-final-code-audit-hardware-ui-polish.md`
+  - `docs/stage_reports/STAGE_R105_HARDWARE_UTILIZATION_STUDY_READINESS_REPORT.md`
+  - `docs/work_packets/WPR105-100-hardware-utilization-study-readiness.md`
+  - `docs/stage_reports/STAGE_R105_FINAL_CROSSCHECK_PERFORMANCE_VALIDATION_REPORT.md`
+  - `docs/work_packets/WPR105-99-final-crosscheck-performance-validation.md`
+  - `docs/stage_reports/STAGE_R105_BLOCKED_ARTIFACT_DIRECTORY_SUPPRESSION_REPORT.md`
+  - `docs/work_packets/WPR105-04-blocked-artifact-directory-suppression.md`
+  - `docs/stage_reports/STAGE_R105_DISCOVERY_PROCESSOR_UTILIZATION_TELEMETRY_REPORT.md`
+  - `docs/work_packets/WPR105-03-discovery-processor-utilization-telemetry.md`
+  - `docs/stage_reports/STAGE_R105_SECURE_HANDOFF_EXPORT_HYGIENE_REPORT.md`
+  - `docs/work_packets/WPR105-02-secure-handoff-export-hygiene.md`
+  - `configs/handoff/r105_secure_repo_export.json`
+  - `docs/stage_reports/STAGE_R105_R104_POSTMORTEM_EFFECTIVE_TRIAL_DEDUPE_REPORT.md`
+  - `docs/stage_reports/STAGE_R105_R104_POSTMORTEM_TRACKED_SUMMARY.json`
+  - `docs/work_packets/WPR105-01-latest-sweep-postmortem-effective-trials.md`
   - `docs/stage_reports/STAGE_R104_EXIT_ENTRY_ORDERFLOW_RESEARCH_HANDOFF.md`
   - `docs/work_packets/WPR104-06-exit-entry-orderflow-research-handoff.md`
   - `docs/stage_reports/STAGE_R104_DISCOVERY_SEARCH_FEATURE_CROSSCHECK_REPORT.md`
@@ -46,11 +107,28 @@ Last updated: 2026-05-19
   - `ISSUE-R104-001` is open. Compact checksum-verified BTCUSDT/ETHUSDT
     Binance Vision multi-window fixture packs are valid for screening, but
     expanded durable primary-bar fixtures are still required for
-    candidate-ready brute-force evidence.
+    candidate-ready brute-force evidence. WPR105-106 provides the required
+    collection pipeline; the issue remains open until the collection and
+    downstream evidence runs complete.
+  - `ISSUE-R106-001` is resolved by WPR106-08 through WPR106-12. Exact discovery
+    has durable progress and snapshot/resume support. WPR106-09 recovered the
+    latest interrupted BTC run in place to 407669/570240 completed trials,
+    repaired state/manifest lag, and added large-resume recovery. WPR106-10
+    keeps the default process cap performance-first at 8 workers per operator
+    direction, accepting higher instability risk because checkpoint recovery is
+    now durable. WPR106-11 repaired a later Windows checkpoint replace failure
+    and reconciled state to 531077/570240 completed trials. WPR106-12 repaired
+    final ledger schema normalization after the BTC exact run completed and
+    rebuilt the final manifest/Parquet ledgers to 570240/570240 trials.
+  - `ISSUE-R106-002` is resolved by WPR106-16. Long research runs now have the
+    mandatory analysis, run-to-run delta, bridge-compatible frozen-entry
+    exit-lab, candidate eligibility, modern-window profile, and one-button
+    operator sequencing machinery. Remaining blockers are empirical evidence
+    gates, tracked by `ISSUE-R104-001` and the stage notes.
   - `ISSUE-R95-001` remains resolved by WPR96 with optional
     `cuda_fixed_holding` backend evidence and diagnostic-only status.
 
-## Completion roadmap after WPR104-01
+## Completion roadmap after WPR105-01
 
 The branch is not empirically complete. Infrastructure is strong, but
 candidate-ready completion still depends on proving candidates through
@@ -58,17 +136,18 @@ falsification on durable evidence rather than latest-window screening.
 
 Recommended next stages:
 
-1. Continue Stage R104 empirical candidate validation on durable evidence.
-   Use the Research UI to run durable BTC/ETH cycles and discovery against the
-   R103 fixture packs, then run candidate eligibility review after completed
-   manifests are indexed. Preserve `research_only`, `observe_only`, and
-   `promotion_ready: false`; accept candidate-pack absence when gates block
-   weak evidence.
-2. Stage R105 empirical falsification matrix.
+1. Continue Stage R105 empirical falsification matrix.
    Test no-regime versus GMM and optional true-HMM variants, independent-event
    scoring, signal-density penalties, matched feature/filter/exit ablations,
    side/split/regime evidence, cost/funding stress, stability neighborhoods,
-   and multiple-testing controls.
+   and multiple-testing controls. Use the R105 postmortem signatures to avoid
+   expensive component combinations before simple matched baselines survive.
+2. Stage R105 expanded durable evidence path.
+   Run the Step 0 durable data collection pipeline to build materially larger
+   BTC/ETH durable public-archive or vendor-backed fixture packs before
+   candidate-ready claims. Preserve `research_only`, `observe_only`, and
+   `promotion_ready: false`; accept candidate-pack absence when gates block
+   weak evidence.
 3. Stage R106 maintainability polish.
    Refresh docs after durable-data work and plan narrow extraction of oversized
    orchestration modules without broad rewrites.
@@ -77,6 +156,305 @@ Recommended next stages:
    and all research gates passing. This branch must still not start live
    execution, live config changes, runtime-mode changes, order placement, or
    sizing behavior.
+
+WPR106-01 implementation note:
+
+- `WPR106-01-central-historical-data-catalog` introduces
+  `historical_data_catalog.json` as the required operator data source of truth.
+  The catalog wraps the implemented Binance Vision public-archive fixture
+  collector, records active readiness/cycle/discovery spec paths, indexes
+  provider states for Binance Vision, Crypto Lake, Bybit, and Hyperliquid, and
+  keeps unimplemented provider ingestion explicit instead of marking it ready.
+  The operator checklist now starts with `refresh-historical-data-catalog`;
+  `collect-durable-data` remains compatibility-only.
+
+WPR106-02 implementation note:
+
+- `WPR106-02-historical-data-refresh-resume-hardening` investigated a failed
+  long R106 catalog refresh and found a partial BTCUSDT run with 228
+  checksum-verified monthly archive downloads, about 42 GB, but no generated
+  catalog. The refresh path now uses a central checksum-verified Binance Vision
+  archive cache, seeds that cache from prior partial operator runs, writes a
+  `collection_progress.json` journal with archive-step progress and ETA, and
+  streams generated Parquet fixture outputs by archive partition to reduce
+  memory pressure. Operator progress diagnostics and the Research UI now expose
+  historical-data refresh progress. Operator job-log appends now use an
+  immediate SQLite write lock plus retry so the background worker cannot race a
+  queue request into a duplicate log sequence. All generated data remains
+  research-only, observe-only, and `promotion_ready: false`.
+
+WPR106-03 implementation note:
+
+- `WPR106-03-historical-refresh-transient-network-continuation` investigated
+  the follow-up failed refresh
+  `refresh-historical-data-catalog-500f7d78e7fa458eb3b7077ecbb7e242` and found
+  a transient Binance Vision TLS handshake timeout after `241/456` archive
+  steps. The refresh path now retries transient archive/checksum fetch failures,
+  records fetch attempt/retry counts in download manifests, and reuses completed
+  prior symbol fixture packs so a retry does not rebuild BTCUSDT from the
+  beginning. Operator research-server runs can set
+  `TBS_BINANCE_MARKET_STREAMS_ENABLED=false` to avoid unrelated Binance
+  websocket startup noise during long catalog refreshes. All generated data
+  remains research-only, observe-only, and `promotion_ready: false`.
+
+WPR106-04 implementation note:
+
+- `WPR106-04-historical-refresh-long-network-outage-tolerance` investigated
+  refresh job `refresh-historical-data-catalog-c209bf0dbdb04ab6be9fa9306525b423`
+  and found a longer DNS outage (`getaddrinfo failed`) after `286/456` archive
+  steps while collecting ETHUSDT `1m` `2021-08`. The WPR106-03 resume path had
+  loaded and reused BTCUSDT/partial ETHUSDT work, but the transient retry window
+  was too short for the outage. Binance Vision archive/checksum fetches now
+  default to 360 attempts, 10 second base backoff, and 60 second max backoff,
+  with operator overrides through
+  `TBS_BINANCE_VISION_DOWNLOAD_MAX_ATTEMPTS`,
+  `TBS_BINANCE_VISION_DOWNLOAD_RETRY_BACKOFF_SECONDS`, and
+  `TBS_BINANCE_VISION_DOWNLOAD_RETRY_MAX_BACKOFF_SECONDS`. Download manifests
+  record the resolved retry budget, DNS-shaped transient failures retry, and
+  checksum mismatches still fail fast. All generated data remains research-only,
+  observe-only, and `promotion_ready: false`.
+
+WPR106-05 implementation note:
+
+- `WPR106-05-completed-catalog-wiring-validation` validated completed catalog
+  `refresh-historical-data-catalog-4dfa2700192f4b6fa1fa8fe833668cfb` as the
+  active source of truth. BTCUSDT and ETHUSDT each have 76 months of 15m klines,
+  1m klines, and aggTrades from Binance Vision, 228 checksum-verified archives
+  per symbol, generated active readiness files, generated active cycle specs,
+  and generated active exact-discovery specs. Stale R104-only operator progress
+  gates were replaced with catalog-derived expected cycle/discovery IDs,
+  generated candidate-depth exact specs are treated as stable resumable sweeps,
+  the Research UI recognizes generated candidate-depth artifacts as required,
+  and interrupted DB jobs left in `running` state are recovered at operator
+  startup. Provider-quality review keeps Binance Vision as the implemented
+  active source while Crypto Lake, Bybit, and Hyperliquid remain visible
+  expansion sources until their credential/parser/checksum/gap-validation
+  contracts are implemented. All generated data remains research-only,
+  observe-only, and `promotion_ready: false`.
+
+WPR106-06 implementation note:
+
+- `WPR106-06-active-cycle-progress-and-runtime-visibility` adds active
+  historical-cycle progress to `/api/operator/research/progress` and the
+  Research UI. The progress payload is read from the isolated operator run
+  directory while a cycle is still running, using `candidate_space_manifest.json`,
+  `split_manifest.json`, and backtest-manifest counts. It reports aggregate
+  candidate completion, total backtest-evaluation completion, rate, ETA, output
+  path, and compute policy, and clearly labels the scope before final ranking,
+  gate, and manifest outputs exist. The packet also records that the R106 exact discovery
+  specs still schedule 570240 trials per symbol; prior R105 telemetry shows the
+  comparable exact sweep took about 31.2 wall-clock hours, so no sub-30-hour
+  discovery runtime claim is made.
+
+WPR106-07 implementation note:
+
+- `WPR106-07-progress-stale-refresh-and-cycle-gate-alignment` fixes the
+  misleading checklist state after the completed BTC R106 cycle. Completed
+  historical-data refresh journals are no longer returned as active progress
+  when no refresh job is active, so they do not mask cycle/discovery progress.
+  Historical-cycle checklist validation now accepts the current
+  `candidate_gate_report` output key and accepts the generated R106
+  candidate-depth cycle evidence of 63 materialized candidates when the
+  manifest records 2048 brute-force-equivalent coverage. The completed BTC
+  cycle now advances the checklist to BTC exact discovery.
+
+WPR106-08 implementation note:
+
+- `WPR106-08-exact-discovery-process-worker-guard-and-runtime-probe`
+  investigated the failed BTC exact-discovery process-pool run and recovered
+  the active output in place. Real-discovery process workers are now capped at
+  8 by default while preserving the configured 48-worker request in telemetry,
+  completed chunks are persisted as futures return, broken process pools report
+  the worker plan, and no-stop exact-discovery runs schedule full KNN cache
+  groups rather than tiny randomized chunks. KNN screening reuses relaxed exact
+  base predictions, cached threshold metric arrays, cached no-regime baselines,
+  and deferred heavy inline artifacts for `interesting_only` sweeps. Bounded
+  resume probes advanced the active BTC run from 128 to 512 persisted trial
+  records; the final 64-trial probe completed in 610.7 seconds and estimates
+  the full BTC exact sweep at roughly 9 to 12 wall-clock hours on this machine.
+  The run is still research-only and incomplete until all exact-discovery trials
+  finish and downstream eligibility review passes.
+
+WPR106-09 implementation note:
+
+- `WPR106-09-exact-discovery-full-run-process-pool-crash-followup`
+  investigated the latest BTC exact-discovery full run after roughly 14 hours.
+  Durable trial files reached 407669 while `run_state.json` lagged at 407420
+  and the manifest was stale at 512. A zero-trial recovery resume merged the
+  249 lagging trial files without restarting discovery compute, leaving the
+  run paused at 407669/570240 completed trials with 162571 remaining. The
+  stopped run left one partial cache group,
+  `price_trend_vol / none / 2h / cosine / hmm_state=3 / posterior=0.55 /
+  entropy=0.78 / k=8`, 4469/5760 complete, consistent with process-pool memory
+  pressure rather than lost artifacts. Large resumes now validate state-backed
+  trial files, hydrate only lagging records, skip context preparation for
+  zero-trial recovery, and avoid overwriting ledgers from a partial loaded
+  subset. Full ledgers rebuild from trial JSON records only when the run
+  completes. The default real-discovery process-worker cap is now 8 unless the
+  operator explicitly overrides `TBS_DISCOVERY_REAL_PROCESS_MAX_WORKERS`.
+
+WPR106-10 implementation note:
+
+- `WPR106-10-exact-discovery-performance-first-worker-cap` restores the
+  default exact-discovery process-worker cap to 8 after operator direction that
+  throughput outweighs instability risk for the current study. The WPR106-09
+  large-resume recovery behavior remains intact, so a later process-pool crash
+  should recover completed trial JSONs instead of restarting the sweep.
+
+WPR106-11 implementation note:
+
+- `WPR106-11-windows-run-state-atomic-replace-retry` investigated failed job
+  `run-discovery-5b8013f779ef43c28a8c3567a14d14a4`. The job advanced durable
+  BTC exact-discovery trial files to 531077, but Windows denied the atomic
+  temp-file replace into `run_state.json`. `atomic_write_json()` now retries
+  transient `PermissionError` replace failures with env-tunable attempts and
+  backoff. A zero-trial resume reconciled the active run to 531077 completed
+  IDs, 531077 hashes, 531077 trial files, and 39163 remaining trials. The
+  failed operator job remains failed as a truthful historical job record, but
+  its durable progress is preserved.
+
+WPR106-12 implementation note:
+
+- `WPR106-12-final-ledger-schema-repair` investigated failed job
+  `run-discovery-40cb1c90d0f8487a859a23e05d21e656`. The BTC exact-discovery
+  compute had finished with 570240 durable trial JSON records, but final
+  Parquet ledger materialization failed because absent numeric ledger fields
+  were emitted as empty strings and mixed with integer metrics such as
+  `accepted_bar_count`. Final ledger frames now coerce integer, float, and
+  boolean ledger fields to pandas nullable dtypes before Parquet writes.
+  Completed-run resume can now rebuild missing, stale, row-count mismatched, or
+  unreadable final ledgers/manifests from immutable trial JSONs while still
+  refusing clean completed-run overwrite. The active BTC exact-discovery output
+  now has 570240 completed state IDs, 570240 completed trial hashes, 570240
+  trial JSON records, and final manifest counts of 22560 interesting, 547680
+  blocked, and 0 filter-blocked trials. Operator progress now lets this
+  repaired complete artifact override the stale failed job row for checklist
+  status, while preserving the failed job in history. These outputs are
+  research-only leads, not promotion-ready candidates.
+
+WPR106-13 implementation note:
+
+- `WPR106-13-research-analysis-handoff-and-analytics-step` adds
+  `tradingbotsuite.research_discovery.analysis_report`, a deterministic
+  research-only post-run analysis helper. It reads completed historical-cycle
+  and exact-discovery artifacts, summarizes feature-set, strategy, exit-policy,
+  holding-window, KNN/filter-setting, blocker, pure-ROI, and trade-level
+  Sortino evidence, and writes JSON plus Markdown analysis artifacts without
+  rerunning compute or changing evidence. The current BTC analysis output is
+  under `data/research/operator_runs/analysis/r106_btc_current_analysis`.
+  `STAGE_R106_RESEARCH_ANALYTICS_NEXT_AGENT_HANDOFF.md` records the operator's
+  desired next direction: a one-button resumable BTC/ETH research autopilot,
+  mandatory post-run analytics, modern-window profiles, frozen-entry exit labs,
+  run-to-run deltas, and eventual UI progress/ETA polish. This packet also
+  registers `ISSUE-R106-002`; no candidate-ready trading claim exists.
+
+WPR106-14 implementation note:
+
+- `WPR106-14-operator-analysis-job-and-required-workflow` wires the
+  WPR106-13 analysis helper into the operator workflow. The new
+  `analyze-research-results` operator job validates cycle/discovery manifest
+  inputs under the configured research output root, writes isolated
+  `research_analysis.json` and `research_analysis.md` artifacts under
+  `operator_runs/analysis`, and keeps outputs research-only, observe-only, and
+  `promotion_ready: false`. Research artifacts and progress diagnostics now
+  index `research_analysis`; the required Research UI checklist places
+  analysis before candidate eligibility review. This is a workflow/visibility
+  slice only: it does not run a master BTC/ETH autopilot, create modern-window
+  specs, run frozen-entry exit labs, write candidate packs, alter live runtime,
+  place orders, or claim candidate readiness.
+
+WPR106-15 implementation note:
+
+- `WPR106-15-operator-research-autopilot-sequencer` adds the bounded
+  `run-research-autopilot` operator job and primary Research UI action. The
+  job sequences the existing Historical Data Catalog, historical-cycle,
+  exact-discovery, research-analysis, and candidate-eligibility helpers
+  directly rather than queueing child jobs, so it avoids single-worker job-loop
+  deadlock. It skips current completed artifacts, executes missing required
+  steps up to a bounded `max_steps`, stops on blocked prerequisites, and writes
+  `research_autopilot_manifest.json` under `operator_runs/research_autopilot`
+  with executed/skipped/blocked step evidence. This packet does not generate
+  modern-window specs, write run-to-run deltas, simulate frozen-entry
+  alternative exits, write candidate packs, alter live runtime, place orders, or
+  claim candidate readiness.
+
+WPR106-16 implementation note:
+
+- `WPR106-16-research-workflow-completion` closes the remaining workflow
+  engineering gaps from `ISSUE-R106-002`. The Historical Data Catalog now emits
+  modern-window profile manifests/spec links alongside the full-window active
+  specs. `simple_runner_v1` is a supported primary-bar research exit policy and
+  the frozen-entry exit lab writes bridge-compatible
+  `discovery_exit_lab_manifest.json` artifacts, including a fail-closed blocked
+  manifest when existing discovery outputs lack per-entry timestamps. The
+  operator API, progress checklist, artifact index, Research UI, and autopilot
+  now sequence research analysis, run-to-run deltas, frozen-entry exit lab, and
+  candidate eligibility before any candidate-pack review. All new artifacts are
+  research-only, observe-only, and `promotion_ready: false`; no live runtime,
+  order-placement, sizing, candidate-pack-write, or promotion behavior was
+  added.
+
+WPR106-17 implementation note:
+
+- `WPR106-17-final-crosscheck-robustness` hardens the completed workflow surface
+  without adding new research claims. Frozen-entry exit-lab malformed inputs now
+  produce blocked research artifacts instead of uncaught operator failures.
+  Candidate-eligibility service execution now enforces research-root path
+  allowlisting, nested required-output containment, same-symbol evidence, and
+  stricter bridge-manifest completion validation. Research autopilot now runs
+  all requested symbol cycle/discovery prerequisites before downstream
+  analysis, deltas, frozen-entry exit labs, and eligibility. Focused tests,
+  contracts, and full pytest passed; no live runtime, order-placement, sizing,
+  candidate-pack-write, or promotion behavior was added.
+
+WPR106-18 implementation note:
+
+- `WPR106-18-operator-autopilot-crash-retry-hardening` adds bounded automatic
+  retry behavior for long operator autopilot runs. Direct helper steps retry by
+  default once with attempt-specific helper job IDs so partial failed output
+  directories do not poison the retry. Exact-discovery retries retain the
+  stable-run-id output directory and therefore keep resume-from-`run_state.json`
+  behavior. If the operator process restarts with a stale running autopilot job,
+  the interrupted job is marked failed for auditability and one restart-retry
+  autopilot job is queued automatically. Attempt numbers, max attempts, helper
+  job IDs, and error details are written to the autopilot manifest and job logs.
+  Focused tests, operator UI tests, contracts, and full pytest passed; no live
+  runtime, order-placement, sizing, candidate-pack-write, or promotion behavior
+  was added.
+
+WPR106-19 implementation note:
+
+- `WPR106-19-long-performance-utilization-study` records the second
+  performance/utilization pass for the R106 research workflow. Hardware probes
+  on the Ryzen 7 7700 showed that 16 CPU workers can saturate logical capacity
+  better than 8 workers, and the CuPy matrix probe can drive the GPU, but the
+  BTC candidate-depth exact-discovery probe remains dominated by
+  KNN/materialization and memory/process-shape behavior rather than generic
+  CPU/GPU saturation. A bounded 16-trial BTC candidate-depth exact probe over
+  the active `221952` row fixture took `1033.65s`, with `105.95s` in context
+  preparation and `927.50s` in trial execution. The completed BTC exact final
+  manifest also shows finalization/artifact accounting as a low-CPU phase:
+  `570555` files, about `7.08GB`, and `86.37%` artifact-write wall-time share.
+  No runtime defaults were changed; the next safe optimization work is finer
+  child-process/KNN timing, controlled 8/12/16 worker probes on BTC/ETH
+  candidate-depth data, and chunked artifact finalization that preserves
+  durable trial records and atomic state.
+
+WPR106-20 implementation note:
+
+- `WPR106-20-performance-speedups-and-ui-wiring` implements the safe immediate
+  speed improvements from the performance study. Discovery telemetry now uses
+  observed parent-process artifact write counters instead of a recursive
+  output-directory scan when counters are available, exposes finalization timing
+  buckets, and records process-executor chunk timing plus the child-CPU
+  accounting limitation. Placeholder process-executor discovery runs avoid
+  unnecessary real-discovery context initialization. The operator API/UI now
+  surfaces discovery worker plan, cache hit rates, ETA/runtime fields, artifact
+  pressure, process timing, top runtime stages, and the WPR106-19 performance
+  study artifact without requiring raw manifest JSON. Compile, contracts, full
+  research-discovery tests, and full operator UI tests passed. No live runtime,
+  order-placement, sizing, candidate-pack-write, promotion behavior, or speed/
+  profit claim was added.
 
 R103 implementation note:
 
@@ -155,10 +533,217 @@ WPR104-06 implementation note:
   deduplication, and multiple-testing controls. No candidate-ready performance
   claim is made; `ISSUE-R104-001` remains open.
 
+WPR105-01 implementation note:
+
+- `WPR105-01-latest-sweep-postmortem-effective-trials` started the R105
+  candidate-factory falsification matrix by deriving postmortem artifacts from
+  the completed BTCUSDT exact sweep without modifying the source R104 run. The
+  postmortem records 570240 scheduled trials, 570240 blocked rows, 570240
+  effective parameter keys, 564 ledger-level prediction signature clusters,
+  and 38 entry signature clusters. It explicitly records that per-bar
+  prediction hashes are unavailable because the R104 run persisted only
+  `interesting_only` trial artifacts and all trials were blocked. All outputs
+  remain research-only, observe-only, and `promotion_ready: false`;
+  `ISSUE-R104-001` remains open for expanded durable BTC/ETH primary-bar
+  evidence before candidate-ready claims.
+
+WPR105-02 implementation note:
+
+- `WPR105-02-secure-handoff-export-hygiene` added
+  `configs/handoff/r105_secure_repo_export.json` as a conservative source
+  handoff/export config with source/docs/tests/config include patterns,
+  gitignore/dotignore/default ignore support, explicit security checks, and
+  exclusion patterns for generated data, operator runs, caches, credentials,
+  `.env` files, logs, databases, Parquet outputs, archives, CSVs, virtual
+  environments, and Python caches. A contract test locks the security settings
+  and critical exclusions. No research execution, candidate evidence,
+  promotion behavior, live config, runtime mode, order placement, or sizing
+  behavior was changed.
+
+WPR105-03 implementation note:
+
+- `WPR105-03-discovery-processor-utilization-telemetry` upgraded discovery
+  compute telemetry to `discovery-compute-telemetry-v2`, preserving legacy raw
+  process CPU fields while adding logical CPU count, worker/logical capacity
+  utilization, active-worker-to-logical-CPU ratio, artifact-write wall-share,
+  and processor diagnostic reasons. The discovery runner now measures
+  parent-side writes for resolved specs, run state, trial records, ledgers, and
+  snapshots with a truthful scope that excludes the final manifest write. This
+  addresses the reported processor-utilization concern by making future
+  underuse visible; it does not change execution semantics or claim a speedup.
+
+WPR105-04 implementation note:
+
+- `WPR105-04-blocked-artifact-directory-suppression` reduced filesystem
+  pressure for no-candidate `interesting_only` discovery sweeps by stopping
+  eager creation of empty `trial_artifacts/<trial_id>/<attempt_id>`
+  directories before real-discovery trial evaluation. Durable JSON trial
+  records, ledgers, scoring, gates, and persisted artifact behavior for
+  `persist_trial_artifacts: all` or interesting candidates are unchanged. This
+  is a bounded artifact-pressure cleanup, not a processor-parallel speedup
+  claim.
+
+WPR105-99 implementation note:
+
+- `WPR105-99-final-crosscheck-performance-validation` fixed final crosscheck
+  findings and ran full validation. Historical benchmark report byte
+  self-accounting now reconciles to the final file size, R105 component
+  factory hashing now uses the shared artifact-key helpers consistently, secure
+  handoff excludes no longer omit normal `artifact_keys.py` source/test files,
+  a tracked sanitized postmortem summary records ignored local generated
+  evidence, and discovery benchmark run payloads expose compact
+  `discovery-compute-telemetry-v2` utilization diagnostics. Full pytest passed
+  with `1374 passed, 1 skipped`; discovery and historical benchmark gates both
+  passed with complete evidence. `ISSUE-R104-001` remains open.
+
+WPR105-100 implementation note:
+
+- `WPR105-100-hardware-utilization-study-readiness` added a research-only
+  `benchmark-hardware-utilization` CLI command, local CPU process-pool
+  saturation probe, optional CuPy/CUDA matrix-throughput probe, live-rejected
+  command registry entry, operator job route, artifact indexing, and Research
+  UI controls/status cards. The local RTX 5070 Ti CUDA probe executed
+  successfully; the CPU auto path selected the detected physical-core count
+  and reached worker-capacity saturation while explicit logical-worker
+  oversubscription stayed below target. This is diagnostic prolonged-study
+  readiness evidence, not a production speedup, live-readiness, profitability,
+  or candidate-ready claim. `ISSUE-R104-001` remains open.
+
+WPR105-101 implementation note:
+
+- `WPR105-101-final-code-audit-hardware-ui-polish` closed final audit findings
+  for the hardware-utilization path. Windows spawned process-pool workers no
+  longer build the ASGI app through `__mp_main__`, direct CLI inputs now share
+  bounded duration/matrix-size guardrails with the operator route, prolonged
+  CPU-study readiness is tied to worker-capacity saturation rather than probe
+  completion alone, CuPy failure paths release memory pools best-effort, and
+  the Research tab shows worker-capacity versus logical-capacity status
+  separately. Artifact indexing now uses one pruned manifest walk instead of
+  repeated broad recursive scans through trial artifacts, snapshots, raw data,
+  and caches. Full pytest passed with `1388 passed, 1 skipped`; the local
+  hardware audit run reached `93.453006%` worker-capacity CPU utilization and
+  executed the CUDA probe. No live, promotion, candidate-ready, or speedup
+  claim is made. `ISSUE-R104-001` remains open.
+
+WPR105-102 implementation note:
+
+- `WPR105-102-research-ui-required-workflow-clarity` reworked the operator
+  Research tab so the Required Evidence Checklist is explicitly the only
+  required run path. Required action buttons now sit at the top, manual
+  required presets are separated from optional diagnostics, and provider
+  pipeline diagnostics, HMM/KNN experiments, hardware probes, and legacy
+  compatibility controls are secondary. Stale operator-facing R104 headings
+  were removed while internal R104 spec paths remain reference-only. Browser
+  smoke covered desktop and 390px mobile layout with diagnostics open and no
+  page-level horizontal overflow. No live, promotion, candidate-ready,
+  scoring, or execution-semantic behavior changed. `ISSUE-R104-001` remains
+  open.
+
+WPR105-103 implementation note:
+
+- `WPR105-103-research-chart-readability-and-next-action` fixed the Research
+  tab graph section after operator review. Required evidence charts now prefer
+  required durable historical-cycle and exact durable discovery artifacts and
+  exclude diagnostic, smoke, compatibility, and benchmark cycles from the
+  primary chart view. Canvas charts now use readable horizontal labels and
+  values instead of tiny rotated axis labels. Browser smoke confirmed desktop
+  and 390px mobile rendering with no console errors or page-level horizontal
+  overflow, and the required profitability chart selected
+  `r104-btcusdt-durable-public-archive-deep-v1` instead of the benchmark-small
+  cycle. No live, promotion, candidate-ready, scoring, or execution-semantic
+  behavior changed. `ISSUE-R104-001` remains open.
+
+WPR105-104 implementation note:
+
+- `WPR105-104-required-discovery-wiring-snapshot-and-utilization` hardened the
+  required discovery workflow after operator review. Durable readiness is now
+  split into fixture-integrity readiness and candidate-depth readiness, so the
+  checked BTC/ETH 32-bar compact fixture packs show as screening-only instead
+  of completing required evidence. Required progress no longer completes from
+  stale/minimal/simple artifacts, exact durable discovery jobs use a stable
+  run-id output directory with auto-resume from existing `run_state.json`, and
+  the Research UI exposes active discovery completed-trial count, rate, ETA,
+  run_state, and latest snapshot. Exact BTC/ETH discovery configs now request
+  the new process-pool executor so prolonged exact sweeps can use multiple CPU
+  cores rather than the prior thread-only path. No live, promotion,
+  candidate-pack-write, runtime-mode, order-placement, or sizing behavior was
+  added. `ISSUE-R104-001` remains open for expanded durable data before any
+  candidate-ready claim.
+
+WPR105-105 implementation note:
+
+- `WPR105-105-durable-depth-blocker-ui-clarity` clarified the operator-visible
+  durable data-depth block. The Required Evidence Checklist now states that a
+  data-depth block cannot be unblocked by a compute run, the blocked readiness
+  milestone uses `Show Data Gap` instead of a dead-looking disabled `Run`
+  button, and blocked/waiting milestone actions render as `Data Required` or
+  `Waiting`. Readiness feedback points the operator to the real unblock path:
+  add expanded BTC/ETH durable historical fixture packs and updated readiness
+  hashes, then rerun readiness. No gates were weakened and no live, promotion,
+  candidate-pack-write, runtime-mode, order-placement, or sizing behavior was
+  added. `ISSUE-R104-001` remains open.
+
+WPR105-106 implementation note:
+
+- `WPR105-106-durable-data-acquisition-step0` adds the missing runnable data
+  acquisition path before durable readiness. The new `collect-durable-data`
+  CLI/operator job downloads Binance Vision BTCUSDT/ETHUSDT monthly 15m, 1m,
+  and aggTrades archives, verifies `.CHECKSUM` sidecars, rejects source gaps or
+  duplicate bars, preserves compact checked fixtures, writes generated
+  research-only candidate-depth fixture packs, and emits active readiness,
+  historical-cycle, exact-discovery, and collection-summary manifests. The
+  Research UI required checklist now starts with Step 0 and downstream BTC/ETH
+  buttons use active generated specs when present. Step 0 is the default
+  public-archive route, not the only possible provider route: Crypto Lake/local
+  vendor exports and registered Hyperliquid archive surfaces remain provider
+  diagnostics until their outputs are converted into the same validated
+  fixture/spec contract. No live, promotion, candidate-pack-write,
+  runtime-mode, order-placement, or sizing behavior was added.
+  `ISSUE-R104-001` remains open until full collection plus downstream cycles,
+  exact sweeps, and eligibility review complete.
+
+WPR105-107 implementation note:
+
+- `WPR105-107-bybit-hyperliquid-provider-surface-audit` registers
+  `bybit_archive` as a diagnostic-only, registered-only provider surface and
+  keeps `hyperliquid_archive` explicitly registered-only until local archive
+  ingestion plus account-journal reconciliation are implemented. Provider
+  diagnostics and docs now distinguish implementation states: Binance Vision
+  Step 0 is the default implemented public-archive route, Crypto Lake local
+  export ingestion is implemented for supported exports, and Bybit/Hyperliquid
+  archives are visible but not candidate-depth fixture sources yet. No live,
+  promotion, candidate-pack-write, runtime-mode, order-placement, or sizing
+  behavior was added.
+
 ## Open work packets
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR106-20-performance-speedups-and-ui-wiring | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | Observed artifact accounting, finalization/process timing telemetry, placeholder process-context avoidance, performance-study artifact indexing, operator UI performance wiring, compile, contracts, full research-discovery tests, and full operator UI tests recorded in `docs/stage_reports/STAGE_R106_PERFORMANCE_SPEEDUPS_AND_UI_WIRING_REPORT.md`. |
+| WPR106-19-long-performance-utilization-study | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `data/research/operator_runs/performance_utilization_wpr106_19/**` | Second long performance/utilization study, hardware utilization evidence, historical-cycle provider latest-month benchmark, BTC candidate-depth exact-discovery probe, final artifact rebuild evidence, and safe speedup targets recorded in `docs/stage_reports/STAGE_R106_LONG_PERFORMANCE_UTILIZATION_STUDY_REPORT.md`. |
+| WPR106-18-operator-autopilot-crash-retry-hardening | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/operator_console.py`, `tests/tradingbotsuite/test_operator_ui.py` | Bounded autopilot step retries, attempt-specific helper job IDs, exact-discovery resume-preserving retries, one-time stale-autopilot restart requeueing, focused tests, operator UI tests, contracts, and full pytest recorded in `docs/stage_reports/STAGE_R106_OPERATOR_AUTOPILOT_CRASH_RETRY_HARDENING_REPORT.md`. |
+| WPR106-17-final-crosscheck-robustness | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/boundary_contract.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research_discovery/frozen_entry_exit_lab.py`, `src/tradingbotsuite/web/**`, `tests/research_discovery/test_frozen_entry_exit_lab.py`, `tests/tradingbotsuite/test_operator_ui.py` | Final robustness crosscheck, frozen-entry exit-lab fail-closed malformed input handling, candidate-eligibility service path/root/symbol/manifest validation, two-phase autopilot prerequisite ordering, focused tests, contracts, and full pytest recorded in `docs/stage_reports/STAGE_R106_FINAL_CROSSCHECK_ROBUSTNESS_REPORT.md`. |
+| WPR106-16-research-workflow-completion | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/backtesting/**`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/web/**`, `tests/backtesting/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | Modern-window profile artifacts, `simple_runner_v1`, run-to-run delta artifacts, bridge-compatible frozen-entry exit lab, operator/autopilot/UI sequencing through eligibility, focused tests, contracts, and full pytest recorded in `docs/stage_reports/STAGE_R106_RESEARCH_WORKFLOW_COMPLETION_REPORT.md`. |
+| WPR106-15-operator-research-autopilot-sequencer | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py` | One-button operator research autopilot sequencer, reusable artifact skipping, bounded direct helper execution, autopilot manifest indexing, blocked-prerequisite reporting, focused UI/operator tests, compile, and contracts recorded in `docs/stage_reports/STAGE_R106_OPERATOR_RESEARCH_AUTOPILOT_SEQUENCER_REPORT.md`. |
+| WPR106-14-operator-analysis-job-and-required-workflow | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py` | Operator analysis job route, research-analysis artifact indexing, required checklist analysis milestone before eligibility, path allowlist/job/artifact/progress tests, focused analysis tests, compile, and contracts recorded in `docs/stage_reports/STAGE_R106_OPERATOR_ANALYSIS_JOB_REQUIRED_WORKFLOW_REPORT.md`. |
+| WPR106-05-completed-catalog-wiring-validation | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/persistence/sqlite_store.py`, `src/tradingbotsuite/web/**`, `tests/tradingbotsuite/test_operator_ui.py` | Completed catalog validation, active catalog spec wiring, generated candidate-depth ID recognition, stale running job recovery, provider-quality review, focused tests, contracts, and full pytest recorded in `docs/stage_reports/STAGE_R106_COMPLETED_CATALOG_WIRING_VALIDATION_REPORT.md`. |
+| WPR106-04-historical-refresh-long-network-outage-tolerance | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/research/market_data.py`, `tests/tradingbotsuite/test_market_data_collection.py` | Long DNS/VPN outage tolerance for Binance Vision refreshes, env-tunable retry/backoff defaults, retry-budget manifest evidence, DNS-shaped retry and checksum fail-fast tests, contracts, and full pytest recorded in `docs/stage_reports/STAGE_R106_HISTORICAL_REFRESH_LONG_NETWORK_OUTAGE_TOLERANCE_REPORT.md`. |
+| WPR106-03-historical-refresh-transient-network-continuation | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/config.py`, `src/tradingbotsuite/core/engine.py`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research/market_data.py`, `tests/tradingbotsuite/**` | Transient Binance Vision fetch retry, completed per-symbol fixture-pack reuse, retry manifest evidence, optional market-stream suppression for research server runs, focused tests, contracts, and full pytest recorded in `docs/stage_reports/STAGE_R106_HISTORICAL_REFRESH_TRANSIENT_NETWORK_CONTINUATION_REPORT.md`. |
+| WPR106-02-historical-data-refresh-resume-hardening | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/persistence/sqlite_store.py`, `src/tradingbotsuite/research/market_data.py`, `src/tradingbotsuite/web/**`, `tests/tradingbotsuite/**` | Central verified archive cache, prior partial-download fallback, progress/ETA journal, streamed Parquet generation, SQLite job-log race hardening, aggTrade order-anomaly handling, focused tests, contracts, and full pytest recorded in `docs/stage_reports/STAGE_R106_HISTORICAL_DATA_REFRESH_RESUME_HARDENING_REPORT.md`. |
+| WPR106-01-central-historical-data-catalog | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research/**`, `src/tradingbotsuite/web/**`, `tests/**` | R106 historical-data catalog source of truth, provider state registry, active fixture/spec path wiring, UI checklist Step 0 replacement, and validation recorded in `docs/stage_reports/STAGE_R106_CENTRAL_HISTORICAL_DATA_CATALOG_REPORT.md`. |
+| WPR105-107-bybit-hyperliquid-provider-surface-audit | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/**`, `docs/tradingbotsuite_runtime/**`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/research/archive_sources.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/contracts/**`, `tests/tradingbotsuite/**` | Bybit registered-only provider surface, Hyperliquid registered-only status clarified, provider diagnostics/docs wording, focused validation, and no ingestion or promotion claim recorded in `docs/stage_reports/STAGE_R105_BYBIT_HYPERLIQUID_PROVIDER_SURFACE_AUDIT_REPORT.md`. |
+| WPR105-106-durable-data-acquisition-step0 | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/contracts/boundary_contract.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/data/**`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/**` | Runnable Step 0 durable data collection pipeline, checksum/source-quality validation, generated candidate-depth fixture packs and active specs, Research UI required-checklist wiring, focused validation, and no live or promotion claim recorded in `docs/stage_reports/STAGE_R105_DURABLE_DATA_ACQUISITION_STEP0_REPORT.md`. |
+| WPR105-105-durable-depth-blocker-ui-clarity | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py` | Durable data-depth blocked UX now says this is a data-acquisition requirement, not a runnable compute step; blocked action labels clarified; focused UI tests recorded in `docs/stage_reports/STAGE_R105_DURABLE_DEPTH_BLOCKER_UI_CLARITY_REPORT.md`. |
+| WPR105-104-required-discovery-wiring-snapshot-and-utilization | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/discovery/**`, `configs/research/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `src/tradingbotsuite/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/research_discovery/**`, `tests/contracts/**` | Candidate-depth readiness split, stale artifact completion blocking, stable exact-discovery run-id output, auto-resume, progress/ETA UI, process-pool exact sweep executor, focused tests, and validation recorded in `docs/stage_reports/STAGE_R105_REQUIRED_DISCOVERY_WIRING_SNAPSHOT_AND_UTILIZATION_REPORT.md`. |
+| WPR105-103-research-chart-readability-and-next-action | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py` | Required evidence chart readability, benchmark/diagnostic cycle exclusion from primary graphs, focused UI test, contracts, browser smoke, and validation recorded in `docs/stage_reports/STAGE_R105_RESEARCH_CHART_READABILITY_AND_NEXT_ACTION_REPORT.md`. |
+| WPR105-102-research-ui-required-workflow-clarity | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py` | Research UI required-checklist clarity, secondary diagnostics/legacy separation, stale operator-facing R104 heading removal, mobile overflow polish, focused UI test, contracts, browser smoke, and validation recorded in `docs/stage_reports/STAGE_R105_RESEARCH_UI_REQUIRED_WORKFLOW_CLARITY_REPORT.md`. |
+| WPR105-101-final-code-audit-hardware-ui-polish | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/**`, `tests/**` | Final hardware/UI audit fixes, bounded direct CLI validation, Windows process-pool app-construction guard, worker/logical CPU status separation, pruned artifact index scan, browser UI smoke, focused tests, contracts, full pytest, and hardware audit benchmark recorded in `docs/stage_reports/STAGE_R105_FINAL_CODE_AUDIT_HARDWARE_UI_POLISH_REPORT.md`. |
+| WPR105-100-hardware-utilization-study-readiness | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/contracts/**`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/**`, `tests/**` | Research-only hardware benchmark command, CPU process-pool saturation diagnostics, CuPy/CUDA matrix probe, operator route/job/artifact/UI wiring, local RTX 5070 Ti evidence, full pytest, discovery and historical benchmark gates, and no live or promotion claim recorded in `docs/stage_reports/STAGE_R105_HARDWARE_UTILIZATION_STUDY_READINESS_REPORT.md`. |
+| WPR105-99-final-crosscheck-performance-validation | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/**`, `src/tradingbotsuite/**`, `tests/**` | Final R105 crosscheck fixes, full pytest, discovery benchmark gate, historical-cycle benchmark gate, tracked postmortem summary, benchmark telemetry exposure, and no candidate-ready claim recorded in `docs/stage_reports/STAGE_R105_FINAL_CROSSCHECK_PERFORMANCE_VALIDATION_REPORT.md`. |
+| WPR105-04-blocked-artifact-directory-suppression | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/research_discovery/runner.py`, `tests/research_discovery/**`, `tests/contracts/**` | Blocked `interesting_only` real-discovery trials no longer leave empty trial artifact directories; focused and broad validation passed; no scoring, ledger, candidate-gate, or live behavior changes recorded in `docs/stage_reports/STAGE_R105_BLOCKED_ARTIFACT_DIRECTORY_SUPPRESSION_REPORT.md`. |
+| WPR105-03-discovery-processor-utilization-telemetry | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/research_discovery/runner.py`, `src/tradingbotsuite/research_discovery/telemetry.py`, `tests/research_discovery/**`, `tests/contracts/**` | Discovery compute telemetry v2 with worker/logical CPU capacity utilization, nested processor diagnostics, parent-side artifact write timing for resolved spec/state/trial/ledger/snapshot writes, focused and broad validation, and no execution-semantic or speedup claim recorded in `docs/stage_reports/STAGE_R105_DISCOVERY_PROCESSOR_UTILIZATION_TELEMETRY_REPORT.md`. |
+| WPR105-02-secure-handoff-export-hygiene | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/handoff/**`, `tests/contracts/**` | Secure R105 handoff/export config with security checks, conservative include/exclude patterns, research-only metadata, contract coverage, and validation recorded in `docs/stage_reports/STAGE_R105_SECURE_HANDOFF_EXPORT_HYGIENE_REPORT.md`. |
+| WPR105-01-latest-sweep-postmortem-effective-trials | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `src/tradingbotsuite/research_discovery/**`, `tests/research_discovery/**`, `tests/contracts/**`, `data/research/operator_runs/r105/**` | R105 artifact keys and postmortem command, completed R104 exact-sweep derived postmortem artifacts, effective-trial and ledger-signature clustering, no-candidate/no-promotion issue status, and validation recorded in `docs/stage_reports/STAGE_R105_R104_POSTMORTEM_EFFECTIVE_TRIAL_DEDUPE_REPORT.md`. |
 | WPR104-06-exit-entry-orderflow-research-handoff | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `docs/KNOWN_ISSUES.md` | Completed BTCUSDT exact-sweep postmortem, zero-lead interpretation, exit/entry/orderflow/KNN/regime/filter falsification plan, separate research-model handoff prompt, and validation recorded in `docs/stage_reports/STAGE_R104_EXIT_ENTRY_ORDERFLOW_RESEARCH_HANDOFF.md`. |
 | WPR104-05-discovery-search-feature-crosscheck | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/discovery/**`, `src/tradingbotsuite/research_discovery/**`, `tests/contracts/**`, `tests/features/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | Exact R104 sweep dimension and uniqueness regressions, duplicate dimension fail-closed validation, parameter-stable discovery candidate IDs, compact-fixture effective feature pruning, score-policy versioning for changed feature semantics, KNN payload/failure audit coverage, durable feature preflight checks, and validation recorded in `docs/stage_reports/STAGE_R104_DISCOVERY_SEARCH_FEATURE_CROSSCHECK_REPORT.md`. |
 | WPR104-04-durable-bruteforce-run-hardening | Codex Research Agent | closed | `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `docs/work_packets/**`, `docs/stage_reports/**`, `configs/discovery/**`, `configs/research/**`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/contracts/**`, `tests/research_discovery/**`, `tests/tradingbotsuite/test_operator_ui.py` | R104 exact bounded discovery profiles, deeper durable cycle configs, manifest search-space coverage metadata, bounded disk-artifact progress indexing, UI deep/exact operation path, compact-fixture blocker issue, browser layout checks, and validation recorded in `docs/stage_reports/STAGE_R104_DURABLE_BRUTEFORCE_RUN_HARDENING_REPORT.md`. |

@@ -123,6 +123,7 @@ class DiscoveryBudgetSpec:
 class DiscoveryExecutionSpec:
     max_workers: int = 1
     persist_trial_artifacts: str = "all"
+    executor: str = "thread"
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None) -> "DiscoveryExecutionSpec":
@@ -130,6 +131,7 @@ class DiscoveryExecutionSpec:
         spec = cls(
             max_workers=int(payload.get("max_workers", 1)),
             persist_trial_artifacts=str(payload.get("persist_trial_artifacts", "all")).strip().lower() or "all",
+            executor=str(payload.get("executor", "thread")).strip().lower() or "thread",
         )
         spec.validate()
         return spec
@@ -141,11 +143,14 @@ class DiscoveryExecutionSpec:
             raise ValueError("execution.max_workers must be <= 64")
         if self.persist_trial_artifacts not in {"all", "interesting_only"}:
             raise ValueError("execution.persist_trial_artifacts must be one of all, interesting_only")
+        if self.executor not in {"thread", "process"}:
+            raise ValueError("execution.executor must be one of thread, process")
 
     def to_payload(self) -> dict[str, Any]:
         return {
             "max_workers": self.max_workers,
             "persist_trial_artifacts": self.persist_trial_artifacts,
+            "executor": self.executor,
         }
 
 
