@@ -11,6 +11,7 @@ import pytest
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.main import _run_discovery_candidate_pack_bridge_command
+import tradingbotsuite.research_artifacts.candidate_pack as candidate_pack_module
 from tradingbotsuite.research_discovery import candidate_pack_bridge
 from tradingbotsuite.research_discovery.candidate_pack_bridge import (
     DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION,
@@ -261,6 +262,118 @@ def test_bridge_blocks_missing_exit_lab_even_when_cycle_gate_passes(tmp_path: Pa
     assert result.eligibility.loc[0, "bridge_status"] == "blocked"
     assert "exit_lab_manifest_required" in result.eligibility.loc[0, "bridge_reasons"]
     assert result.eligibility.loc[0, "research_candidate_gate_status"] == "passed"
+
+
+def test_bridge_rebases_migrated_discovery_manifest_required_outputs(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    manifest = json.loads(discovery.manifest_path.read_text(encoding="utf-8"))
+    current_run_dir = discovery.manifest_path.parent.resolve()
+    stale_run_dir = (
+        Path(r"C:\Users\papaa\Music\tradingbotsuite\data\research\operator_runs\discovery_runs")
+        / current_run_dir.name
+    )
+    migrated_outputs = {}
+    for key, raw_path in dict(manifest["required_outputs"]).items():
+        current_path = Path(str(raw_path)).resolve()
+        try:
+            relative = current_path.relative_to(current_run_dir)
+        except ValueError:
+            migrated_outputs[key] = raw_path
+        else:
+            migrated_outputs[key] = str(stale_run_dir / relative)
+    manifest["required_outputs"] = migrated_outputs
+    discovery.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(discovery_manifest_path=discovery.manifest_path)
+
+    reasons = "|".join(str(item) for item in result.eligibility["bridge_reasons"].tolist())
+    assert "run_state_path_missing" not in reasons
+    assert "interesting_candidates_path_missing" not in reasons
+    assert "blocked_candidates_path_missing" not in reasons
+    assert "filter_blockers_path_missing" not in reasons
+    assert "discovery_trials_dir_missing" not in reasons
+    assert len(result.eligibility) == 1
+
+
+def test_bridge_does_not_run_full_cycle_gate_for_each_unranked_discovery_candidate(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    interesting = pd.read_parquet(discovery.interesting_candidates_path)
+    template = interesting.iloc[0].to_dict()
+    rows = []
+    for index in range(260):
+        row = dict(template)
+        row["candidate_id"] = f"unranked-discovery-candidate-{index:03d}"
+        rows.append(row)
+    pd.DataFrame(rows, columns=interesting.columns).to_parquet(discovery.interesting_candidates_path, index=False)
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+
+    def fail_full_gate(*, cycle_manifest_path: Path, candidate_id: str):
+        raise AssertionError("full candidate gate should not run for unranked discovery candidates")
+
+    monkeypatch.setattr(candidate_pack_module, "evaluate_research_candidate_gate", fail_full_gate)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+    )
+
+    assert len(result.eligibility) == 260
+    assert result.eligibility["research_candidate_gate_status"].eq("blocked").all()
+    assert result.eligibility["research_candidate_gate_reasons"].str.contains("candidate_missing_from_rankings").all()
+    assert result.manifest["reason_counts"]["research_candidate_gate:candidate_missing_from_rankings"] == 260
+    assert result.manifest["summary"]["ranking_overlap_count"] == 0
+    assert result.manifest["summary"]["candidate_universe_status"] == "no_mapped_discovery_candidates_in_cycle_rankings"
+    assert result.manifest["candidate_universe_alignment"] == {
+        "status": "no_mapped_discovery_candidates_in_cycle_rankings",
+        "discovery_candidate_count": 260,
+        "research_candidate_count": 260,
+        "cycle_ranking_candidate_count": 1,
+        "candidate_id_map_count": 0,
+        "mapped_discovery_candidate_count": 0,
+        "mapped_research_candidate_overlap_count": 0,
+        "unmapped_discovery_candidate_count": 260,
+    }
+    assert "Showing first 250 of 260 blocked rows" in result.rejections_markdown
+    assert "unranked-discovery-candidate-249" in result.rejections_markdown
+    assert "unranked-discovery-candidate-250" not in result.rejections_markdown
+
+
+def test_bridge_samples_trial_record_audit_for_large_completed_discovery(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    monkeypatch.setattr(candidate_pack_bridge, "FULL_TRIAL_RECORD_AUDIT_LIMIT", 1)
+    monkeypatch.setattr(candidate_pack_bridge, "TRIAL_RECORD_AUDIT_SAMPLE_SIZE", 1)
+    calls: list[Path] = []
+    original_read_trial_record = candidate_pack_bridge.read_trial_record
+
+    def counting_read_trial_record(path: Path):
+        calls.append(path)
+        return original_read_trial_record(path)
+
+    monkeypatch.setattr(candidate_pack_bridge, "read_trial_record", counting_read_trial_record)
+
+    result = evaluate_discovery_candidate_pack_eligibility(discovery_manifest_path=discovery.manifest_path)
+
+    assert len(calls) == 2
+    assert len(result.eligibility) == 1
+    assert result.manifest["summary"]["eligible_count"] == 0
 
 
 def test_bridge_blocks_missing_multiple_testing_even_when_exit_and_cycle_pass(tmp_path: Path) -> None:

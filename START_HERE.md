@@ -17,6 +17,13 @@ Use this branch for research platform work only. The live runtime branch is `liv
 5. `docs/contracts/README.md`
 6. `docs/repo_cartography/REPO_INVENTORY.md`
 
+## Research knowledge
+
+Reference material that can help design future falsification packets lives in
+`docs/research_knowledge/`. These documents are hypothesis catalogs only; they
+are not implementation queues, candidate evidence, promotion evidence, or live
+trading instructions.
+
 ## Current rule
 
 Follow the active stage in `docs/ORCHESTRATOR_STAGE_LEDGER.md`. Open a work

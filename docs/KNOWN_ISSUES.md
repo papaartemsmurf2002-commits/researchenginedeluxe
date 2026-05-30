@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-26
+Last updated: 2026-05-30
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 1 | 0 |
-| P1 | 1 | 0 | 10 | 0 |
+| P1 | 1 | 0 | 15 | 0 |
 | P2 | 0 | 0 | 2 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
 
@@ -92,6 +92,255 @@ WPR106-04 expands that retry path for longer DNS/VPN outages with env-tunable
 attempt and backoff defaults while keeping checksum mismatches fail-fast. The
 issue remains open until the refreshed catalog, deep cycles, exact sweeps, and
 eligibility review complete on candidate-depth evidence.
+
+## ISSUE-R106-007: Large exact-discovery eligibility can stall before writing output
+
+Severity: P1
+Stage discovered: Stage R106 - candidate eligibility large-run stall
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_discovery/candidate_pack_bridge.py`, `src/tradingbotsuite/research_artifacts/candidate_pack.py`, `tests/research_discovery/test_candidate_pack_bridge.py`
+
+### Problem
+
+The latest autopilot run remained `running` for about 16 hours after skipping
+completed BTC/ETH prerequisite artifacts. It stopped logging immediately after
+BTCUSDT `frozen_entry_exit_lab` and never created a
+`candidate_pack_eligibility` output directory. The BTC exact-discovery run has
+570,240 completed trial JSON records and 22,560 interesting candidates. The
+eligibility bridge opened every completed trial JSON twice before candidate
+evaluation, then called the historical-cycle candidate gate once per discovery
+candidate.
+
+### Evidence
+
+Operator job
+`run-research-autopilot-9a4ce549dd1c4ffba99ab54449ef2a0b` was still marked
+`running`, with its last log at `2026-05-29T17:47:55Z`. Direct profiling showed
+the large-run bridge path could be reduced to seconds by avoiding exhaustive
+trial rereads and by caching historical-cycle ranking membership. With the
+fixed checkout and `$env:PYTHONPATH='src'`, real BTC eligibility evaluation
+completed in `9.234` seconds, produced 22,560 rows, and found 0 eligible
+candidates because all BTC discovery candidate IDs were missing from the
+63-row historical-cycle ranking table.
+
+### Required resolution
+
+Keep exhaustive trial-record validation for small discovery runs. For large
+completed discovery runs, use count checks, completed-trial ID coverage,
+vectorized ledger `record_sha256` checks against run-state hashes, and a
+deterministic sample of trial JSON records. Reuse a historical-cycle gate
+context across all discovery candidates so unranked candidates are blocked
+from cached ranking evidence instead of reloading cycle evidence per row.
+
+### Resolution notes
+
+Resolved by WPR106-27. The eligibility bridge now uses targeted
+`required_outputs` normalization for huge discovery manifests, sampled
+large-run trial-record auditing, and a reusable candidate-gate context. Focused
+regressions cover sampled large-run auditing and avoiding full cycle-gate calls
+for unranked discovery candidates. Generated artifacts and runtime DB rows were
+not rewritten. The existing running server must be stopped and restarted with
+`PYTHONPATH=src` for this fix to take effect.
+
+## ISSUE-R106-006: Nested migrated artifact metadata can still point at old checkout paths
+
+Severity: P1
+Stage discovered: Stage R106 - full repo mismatch and bug audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/operator_runs/**`, `src/tradingbotsuite/data/historical_data_catalog.py`, `tests/tradingbotsuite/test_market_data_collection.py`
+
+### Problem
+
+WPR106-24 and WPR106-25 made active `required_outputs` portable, but a broader
+audit found nested metadata fields in generated manifests that still carried
+old checkout paths after read-time normalization. Examples included
+`data_source.*`, archive download paths, `cycle.data_window.dataset_path`,
+`feature_column_set_evidence.manifest_path`, and
+`resolved_paths.repo_root`. These fields are not always used by the immediate
+operator root guard, but they are part of artifact provenance and can become
+the next handoff mismatch when downstream code reads source evidence,
+feature-column metadata, or repo-root metadata.
+
+### Evidence
+
+The WPR106-26 targeted operator-run manifest audit checked 22 current
+operator-run JSON manifests across catalog, cycle, discovery, analysis, delta,
+exit-lab, eligibility, and autopilot outputs. Before this fix, 16 manifests
+contained raw old-root strings, and 15 normalized payloads still retained at
+least one `C:\Users\papaa\Music\tradingbotsuite` string outside
+`required_outputs`. Required outputs were already portable, but nested
+provenance and resolved-path fields were not fully rebased.
+
+### Required resolution
+
+Broaden read-time operator-run normalization so old-checkout absolute strings
+that point to repo-root-relative locations such as `data/...`, `configs/...`,
+`docs/...`, `src/...`, or `tests/...` are rebased to the current checkout when
+the mirrored path or parent exists. Rebase `repo_root` metadata to the current
+checkout root. Preserve generated artifacts unchanged.
+
+### Resolution notes
+
+Resolved by WPR106-26. The shared normalizer now rebases repo-root-relative
+old paths and `repo_root` metadata in addition to same-run artifact paths. The
+post-fix manifest audit reports 22 manifests checked, 16 raw old-root
+manifests, 0 normalized old-root manifests, 0 missing required outputs, 0
+outside required outputs, and 0 read errors. Regression coverage proves
+`data/...`, `configs/...`, and `repo_root` old-checkout strings are rebased to
+the current repo without rewriting generated artifacts.
+
+## ISSUE-R106-005: Migrated historical-cycle evidence outputs block candidate eligibility
+
+Severity: P1
+Stage discovered: Stage R106 - cycle manifest evidence portability
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/operator_runs/historical_cycles/**`, `src/tradingbotsuite/data/historical_data_catalog.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research_artifacts/candidate_pack.py`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/research_artifacts/test_candidate_pack.py`
+
+### Problem
+
+After WPR106-24 resolved migrated discovery-manifest handoff paths, the next
+autopilot run got further and failed during BTC candidate eligibility on the
+completed BTC historical-cycle manifest. Its generated `required_outputs`
+fields such as `ablation_report` still pointed at the old checkout root
+`C:\Users\papaa\Music\tradingbotsuite`, even though mirrored evidence files
+exist under `C:\Users\papaa\Music\researchenginedeluxe`.
+
+### Evidence
+
+Operator job `run-research-autopilot-d77072dd939744e296edbddac253e29b` failed
+at `2026-05-29T15:13:41Z` with
+`research manifest required output must stay inside the configured research output directory: ablation_report`.
+The job skipped completed historical catalog, BTC/ETH cycle, BTC/ETH exact
+discovery, BTC analysis, BTC analysis delta, and BTC frozen-entry exit-lab
+artifacts before failing in BTC `candidate_eligibility`. That proves the prior
+`blocked_candidates` discovery-manifest portability failure was cleared and the
+remaining blocker moved to historical-cycle evidence outputs.
+
+### Required resolution
+
+Normalize migrated absolute operator-run paths in historical-cycle manifests
+at read time before operator candidate-eligibility root checks and before
+candidate-pack gate evaluation resolves `required_outputs`. Preserve generated
+artifacts unchanged, and keep genuinely outside output paths fail-closed.
+
+### Resolution notes
+
+Resolved by WPR106-25. The shared operator-run artifact normalizer now rebases
+any exact absolute local path string when it matches a mirrored operator-run
+anchor in the current checkout, instead of relying only on narrow path-like key
+names. Candidate-pack gate manifest reads use the same normalizer, so
+historical-cycle evidence such as `ablation_report`, rankings, split/cost
+metrics, stability regions, and overfit/trial-budget reports resolve under the
+current checkout. Regression coverage keeps non-mirrored outside paths
+rejected.
+
+## ISSUE-R106-004: Migrated discovery manifests block candidate eligibility
+
+Severity: P1
+Stage discovered: Stage R106 - discovery manifest handoff portability
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/operator_runs/discovery_runs/**`, `src/tradingbotsuite/data/historical_data_catalog.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research_discovery/candidate_pack_bridge.py`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/research_discovery/test_candidate_pack_bridge.py`
+
+### Problem
+
+The latest autopilot retry completed the expensive ETH exact discovery run, but
+then failed during BTC candidate eligibility. The completed BTC discovery
+manifest exists in the current checkout, while its generated `required_outputs`
+still point at the old checkout root
+`C:\Users\papaa\Music\tradingbotsuite`. The operator candidate-eligibility
+guard correctly rejected those stale paths as outside the configured research
+output root, but that prevented downstream eligibility review from consuming
+mirrored discovery evidence.
+
+### Evidence
+
+Operator job
+`run-research-autopilot-52719942d4604874a51a67489bbbe98a-restart-retry-1`
+failed at `2026-05-28T22:15:17Z` with
+`research manifest required output must stay inside the configured research output directory: blocked_candidates`.
+The same run completed ETH exact discovery to `570240/570240` trials. The BTC
+manifest's `required_outputs.blocked_candidates` pointed to
+`C:\Users\papaa\Music\tradingbotsuite\...`, while the mirrored
+`blocked_candidates.parquet` file exists under
+`C:\Users\papaa\Music\researchenginedeluxe\...`.
+
+### Required resolution
+
+Rebase migrated operator-run paths from discovery manifests at read time for
+operator candidate-eligibility validation and for discovery candidate-pack
+bridge ledger loading. Preserve generated artifacts unchanged, and keep truly
+outside paths rejected.
+
+### Resolution notes
+
+Resolved by WPR106-24. The shared operator-run path normalizer now recognizes
+discovery manifest `required_outputs` keys such as `run_state`,
+`blocked_candidates`, `interesting_candidates`, `filter_blockers`, `snapshots`,
+and `trials`. Operator candidate eligibility and the discovery candidate-pack
+bridge normalize migrated operator-run paths from discovery manifests before
+validating/reading `required_outputs`. Regression coverage keeps non-mirrored
+outside paths fail-closed and proves mirrored migrated discovery manifests can
+be consumed without rewriting generated artifacts.
+
+## ISSUE-R106-003: Active R106 catalog handoff metadata is not portable after repo migration
+
+Severity: P1
+Stage discovered: Stage R106 - full repo data/code crosscheck
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/operator_runs/historical_data/**`, `src/tradingbotsuite/data/historical_data_catalog.py`, `src/tradingbotsuite/data/durable_public_archive.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`
+
+### Problem
+
+The current `main` checkout is being treated as the migrated R106 branch, but
+the active completed catalog
+`refresh-historical-data-catalog-4dfa2700192f4b6fa1fa8fe833668cfb` records
+absolute artifact paths under `C:\Users\papaa\Music\tradingbotsuite` instead
+of the current checkout root `C:\Users\papaa\Music\researchenginedeluxe`.
+The mirrored fixture packs, readiness configs, cycle specs, discovery specs,
+and source summary exist under the current checkout and validate, but the
+catalog's source-of-truth path fields still point outside the current repo.
+The same local operator-run tree also has no discovered
+`modern_window_profile.json` artifacts, despite later R106 workflow docs
+describing modern-window profile artifacts/spec links as part of the completed
+workflow.
+
+### Evidence
+
+WPR106-21 validated the current checkout mirror of the active catalog and found
+BTCUSDT/ETHUSDT candidate-depth fixture manifests valid and durable-public-
+archive ready. It also found every catalog symbol path field
+(`fixture_manifest_path`, `readiness_config_path`, `cycle_spec_path`,
+`discovery_spec_path`, and `source_summary_path`) declared outside the current
+repo root. A recursive search under `data/research/operator_runs` found no
+`modern_window_profile.json` artifacts in the current local operator data tree.
+
+### Required resolution
+
+Resolved by WPR106-22. Active historical-data catalog reads now rebase stale
+absolute operator-run artifact paths to the current mirrored catalog run
+directory when the local mirrored path exists. Operator artifact indexing and
+R104 readiness diagnostics use the rebased catalog payload, and isolated
+historical-cycle/discovery job specs are written from rebased source specs so
+embedded dataset/readiness paths no longer point at the old checkout.
+
+WPR106-22 does not mutate generated fixture packs, catalog artifacts, cycle
+outputs, discovery ledgers, or generated active specs. The migrated pre-profile
+catalog remains truthful when it reports no local modern-window profile
+artifacts; future refreshed catalogs still write/index profile paths when they
+are produced, and the same read-time rebase covers nested profile path fields.
+
+### Resolution notes
+
+Resolved by WPR106-22. Regression coverage proves migrated catalog path fields
+are rebased at read time and migrated active cycle/discovery specs are rebased
+before operator isolated specs are written. `ISSUE-R104-001` remains open as an
+empirical evidence gate; WPR106-22 makes no candidate-ready, promotion-ready,
+profitability, or live-readiness claim.
 
 ## ISSUE-R106-001: Exact discovery runtime is not proven under the 30-hour target
 

@@ -10,8 +10,12 @@ from uuid import uuid4
 
 import pandas as pd
 
+from tradingbotsuite.data.historical_data_catalog import normalize_operator_run_artifact_paths
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
-from tradingbotsuite.research_artifacts.candidate_pack import evaluate_research_candidate_gate
+from tradingbotsuite.research_artifacts.candidate_pack import (
+    build_research_candidate_gate_context,
+    evaluate_research_candidate_gate_from_context,
+)
 from tradingbotsuite.research_discovery.exit_lab import (
     DISCOVERY_EXIT_LAB_MANIFEST_VERSION,
     discovery_entry_lead_evidence_sha256,
@@ -29,6 +33,9 @@ from tradingbotsuite.research_discovery.validation_floors import (
 
 DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION = "discovery-candidate-pack-bridge-v1"
 DISCOVERY_CANDIDATE_PACK_ELIGIBILITY_VERSION = "discovery-candidate-pack-eligibility-v1"
+REJECTION_MARKDOWN_MAX_BLOCKED_ROWS = 250
+FULL_TRIAL_RECORD_AUDIT_LIMIT = 10_000
+TRIAL_RECORD_AUDIT_SAMPLE_SIZE = 256
 
 LIVE_ADJACENT_VERSION_FIELDS = frozenset(
     {
@@ -127,7 +134,7 @@ def evaluate_discovery_candidate_pack_eligibility(
         Path(validation_floors_manifest_path).expanduser().resolve() if validation_floors_manifest_path is not None else None
     )
     candidate_map = {str(key): str(value) for key, value in dict(candidate_id_map or {}).items()}
-    manifest = _read_json(discovery_manifest_path)
+    manifest = _read_discovery_manifest(discovery_manifest_path)
     global_reasons = _discovery_manifest_reasons(manifest, discovery_manifest_path)
     exit_lab_manifest, exit_lab_candidate_gates, exit_lab_reasons = _exit_lab_evidence(exit_lab_manifest_resolved)
     multiple_testing_manifest, multiple_testing_gates, multiple_testing_reasons = _multiple_testing_evidence(
@@ -139,7 +146,7 @@ def evaluate_discovery_candidate_pack_eligibility(
         discovery_manifest_path=discovery_manifest_path,
     )
     required_outputs = manifest.get("required_outputs") if isinstance(manifest.get("required_outputs"), Mapping) else {}
-    state_payload = _read_required_json(required_outputs.get("run_state"), global_reasons, "run_state")
+    state_payload = _read_required_json(required_outputs.get("run_state"), global_reasons, "run_state", normalize=False)
     if state_payload is not None:
         global_reasons.extend(_run_state_reasons(state_payload, required_outputs, manifest))
     interesting = _read_required_frame(required_outputs.get("interesting_candidates"), global_reasons, "interesting_candidates")
@@ -157,9 +164,18 @@ def evaluate_discovery_candidate_pack_eligibility(
         )
 
     rows: list[dict[str, Any]] = []
+    gate_context = None
     if interesting is not None and not interesting.empty:
         blocked_ids = _candidate_ids(blocked)
         filter_blocked_ids = _candidate_ids(filter_blockers)
+        exit_lab_entry_gate_lookup, exit_lab_candidate_gate_lookup = _exit_lab_gate_lookups(exit_lab_candidate_gates)
+        multiple_testing_gate_lookup = _candidate_gate_lookup(multiple_testing_gates)
+        validation_floor_gate_lookup = _candidate_gate_lookup(validation_floor_gates)
+        gate_context = (
+            build_research_candidate_gate_context(cycle_manifest_path=cycle_manifest_resolved)
+            if cycle_manifest_resolved is not None and cycle_manifest_resolved.exists()
+            else None
+        )
         for record in interesting.to_dict("records"):
             discovery_candidate_id = str(record.get("candidate_id") or "")
             research_candidate_id = candidate_map.get(discovery_candidate_id, discovery_candidate_id)
@@ -170,21 +186,22 @@ def evaluate_discovery_candidate_pack_eligibility(
                 reasons.append("candidate_present_in_blocked_candidates")
             if discovery_candidate_id in filter_blocked_ids:
                 reasons.append("candidate_present_in_filter_blockers")
-            exit_lab_gate = _exit_lab_gate_row(
-                exit_lab_candidate_gates,
+            exit_lab_gate = _exit_lab_gate_row_from_lookup(
+                entry_candidate_lookup=exit_lab_entry_gate_lookup,
+                candidate_lookup=exit_lab_candidate_gate_lookup,
                 discovery_candidate_id=discovery_candidate_id,
                 research_candidate_id=research_candidate_id,
             )
             reasons.extend(exit_lab_reasons)
             reasons.extend(_exit_lab_gate_reasons(record, exit_lab_gate))
-            multiple_testing_gate = _multiple_testing_gate_row(
-                multiple_testing_gates,
+            multiple_testing_gate = _candidate_gate_row_from_lookup(
+                multiple_testing_gate_lookup,
                 discovery_candidate_id=discovery_candidate_id,
             )
             reasons.extend(multiple_testing_reasons)
             reasons.extend(_multiple_testing_gate_reasons(record, multiple_testing_gate))
-            validation_floor_gate = _validation_floor_gate_row(
-                validation_floor_gates,
+            validation_floor_gate = _candidate_gate_row_from_lookup(
+                validation_floor_gate_lookup,
                 discovery_candidate_id=discovery_candidate_id,
             )
             reasons.extend(validation_floor_reasons)
@@ -195,9 +212,11 @@ def evaluate_discovery_candidate_pack_eligibility(
                 reasons.append("historical_cycle_manifest_required")
             elif not cycle_manifest_resolved.exists():
                 reasons.append("historical_cycle_manifest_missing")
+            elif gate_context is None:
+                reasons.append("historical_cycle_manifest_missing")
             else:
-                gate = evaluate_research_candidate_gate(
-                    cycle_manifest_path=cycle_manifest_resolved,
+                gate = evaluate_research_candidate_gate_from_context(
+                    context=gate_context,
                     candidate_id=research_candidate_id,
                 )
                 gate_status = gate.status
@@ -261,7 +280,18 @@ def evaluate_discovery_candidate_pack_eligibility(
                 }
             )
     eligibility = pd.DataFrame(rows, columns=_eligibility_columns())
-    summary = _summary(eligibility, global_reasons)
+    reason_counts = _reason_counts(eligibility)
+    candidate_universe_alignment = _candidate_universe_alignment(
+        eligibility,
+        gate_context=gate_context,
+        candidate_id_map=candidate_map,
+    )
+    summary = _summary(
+        eligibility,
+        global_reasons,
+        reason_counts=reason_counts,
+        candidate_universe_alignment=candidate_universe_alignment,
+    )
     bridge_manifest = {
         "discovery_candidate_pack_bridge_version": DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION,
         "research_only": True,
@@ -332,6 +362,8 @@ def evaluate_discovery_candidate_pack_eligibility(
             else {}
         ),
         "candidate_id_map": candidate_map,
+        "candidate_universe_alignment": candidate_universe_alignment,
+        "reason_counts": reason_counts,
         "summary": summary,
         "global_reasons": list(dict.fromkeys(global_reasons)),
         "candidate_pack_written": False,
@@ -474,7 +506,7 @@ def _run_state_reasons(
         reasons.append("discovery_trials_dir_missing")
         return reasons
     hashes = dict(state_payload.get("completed_trial_hashes") or {})
-    for trial_id in completed_ids:
+    for trial_id in _trial_ids_for_integrity_audit(completed_ids):
         trial_path = trials_dir / f"{trial_id}.json"
         if not trial_path.exists():
             reasons.append(f"discovery_trial_record_missing:{trial_id}")
@@ -512,6 +544,16 @@ def _ledger_integrity_reasons(
     if not trials_dir_raw:
         return reasons
     trials_dir = Path(str(trials_dir_raw))
+    completed_ids = [str(item) for item in state_payload.get("completed_trial_ids") or []]
+    if len(completed_ids) > FULL_TRIAL_RECORD_AUDIT_LIMIT:
+        return _sampled_ledger_integrity_reasons(
+            state_payload=state_payload,
+            trials_dir=trials_dir,
+            completed_ids=completed_ids,
+            interesting=interesting,
+            blocked=blocked,
+            filter_blockers=filter_blockers,
+        )
     expected_by_name = {
         "interesting_candidates": [],
         "blocked_candidates": [],
@@ -522,7 +564,7 @@ def _ledger_integrity_reasons(
         "blocked": "blocked_candidates",
         "filter_blocked": "filter_blockers",
     }
-    for trial_id in [str(item) for item in state_payload.get("completed_trial_ids") or []]:
+    for trial_id in completed_ids:
         trial_path = trials_dir / f"{trial_id}.json"
         if not trial_path.exists():
             continue
@@ -556,6 +598,106 @@ def _ledger_integrity_reasons(
     return reasons
 
 
+def _sampled_ledger_integrity_reasons(
+    *,
+    state_payload: Mapping[str, Any],
+    trials_dir: Path,
+    completed_ids: list[str],
+    interesting: pd.DataFrame | None,
+    blocked: pd.DataFrame | None,
+    filter_blockers: pd.DataFrame | None,
+) -> list[str]:
+    reasons: list[str] = []
+    frames: list[pd.DataFrame] = []
+    for name, frame in {
+        "interesting_candidates": interesting,
+        "blocked_candidates": blocked,
+        "filter_blockers": filter_blockers,
+    }.items():
+        if frame is None:
+            continue
+        if list(frame.columns) != list(DISCOVERY_LEDGER_COLUMNS):
+            reasons.append(f"discovery_ledger_schema_mismatch:{name}")
+            continue
+        if not frame.empty:
+            frames.append(frame.loc[:, list(DISCOVERY_LEDGER_COLUMNS)])
+    if not frames:
+        if completed_ids:
+            reasons.append("discovery_ledger_records_missing")
+        return reasons
+
+    combined = pd.concat(frames, ignore_index=True)
+    trial_ids = combined["trial_id"].astype(str)
+    if len(combined) != len(completed_ids):
+        reasons.append("discovery_ledger_record_count_mismatch")
+    if trial_ids.duplicated().any():
+        reasons.append("discovery_ledger_trial_id_duplicates")
+    completed_id_set = set(completed_ids)
+    ledger_id_set = set(trial_ids.tolist())
+    if ledger_id_set - completed_id_set:
+        reasons.append("discovery_ledger_unknown_completed_trial_ids")
+    if completed_id_set - ledger_id_set:
+        reasons.append("discovery_ledger_missing_completed_trial_ids")
+
+    state_hashes = {str(key): str(value) for key, value in dict(state_payload.get("completed_trial_hashes") or {}).items()}
+    expected_hashes = trial_ids.map(state_hashes).fillna("")
+    actual_hashes = combined["record_sha256"].astype(str)
+    if bool((expected_hashes == "").any()):
+        reasons.append("discovery_ledger_state_hashes_missing")
+    if bool((actual_hashes != expected_hashes).any()):
+        reasons.append("discovery_ledger_record_state_hash_mismatch")
+
+    sample_ids = _trial_ids_for_integrity_audit(completed_ids)
+    sample = combined.loc[trial_ids.isin(set(sample_ids))].copy()
+    for trial_id in sample_ids:
+        trial_path = trials_dir / f"{trial_id}.json"
+        if not trial_path.exists():
+            reasons.append(f"discovery_trial_record_missing:{trial_id}")
+            continue
+        try:
+            record = read_trial_record(trial_path)
+        except ValueError as exc:
+            message = str(exc)
+            if "boundary violation" in message:
+                reasons.append(f"discovery_trial_record_boundary_violation:{trial_id}")
+            else:
+                reasons.append(f"discovery_trial_record_hash_mismatch:{trial_id}")
+            continue
+        expected = _normalized_ledger_rows(
+            pd.DataFrame([_ledger_row_from_trial_record(record)], columns=list(DISCOVERY_LEDGER_COLUMNS))
+        )
+        actual_rows = sample.loc[sample["trial_id"].astype(str) == trial_id]
+        actual = _normalized_ledger_rows(actual_rows)
+        if actual != expected:
+            reasons.append(f"discovery_ledger_sample_record_mismatch:{trial_id}")
+    return list(dict.fromkeys(reasons))
+
+
+def _ledger_row_from_trial_record(record: Any) -> dict[str, Any]:
+    payload = record.to_payload()
+    trial_payload = payload.get("payload") if isinstance(payload.get("payload"), Mapping) else {}
+    return {column: payload.get(column, trial_payload.get(column, "")) for column in DISCOVERY_LEDGER_COLUMNS}
+
+
+def _trial_ids_for_integrity_audit(completed_ids: list[str]) -> list[str]:
+    if len(completed_ids) <= FULL_TRIAL_RECORD_AUDIT_LIMIT:
+        return completed_ids
+    if not completed_ids:
+        return []
+    if TRIAL_RECORD_AUDIT_SAMPLE_SIZE <= 0:
+        return []
+    sample_size = min(TRIAL_RECORD_AUDIT_SAMPLE_SIZE, len(completed_ids))
+    if sample_size == len(completed_ids):
+        return completed_ids
+    if sample_size == 1:
+        return [completed_ids[0]]
+    indexes = {
+        round(index * (len(completed_ids) - 1) / (sample_size - 1))
+        for index in range(sample_size)
+    }
+    return [completed_ids[index] for index in sorted(indexes)]
+
+
 def _expected_trial_count(required_outputs: Mapping[str, Any], reasons: list[str]) -> int | None:
     resolved_spec_raw = required_outputs.get("discovery_spec_resolved")
     if not resolved_spec_raw:
@@ -576,7 +718,7 @@ def _expected_trial_count(required_outputs: Mapping[str, Any], reasons: list[str
     return min(max_trials, len(templates)) if templates else max_trials
 
 
-def _read_required_json(raw_path: Any, reasons: list[str], name: str) -> dict[str, Any] | None:
+def _read_required_json(raw_path: Any, reasons: list[str], name: str, *, normalize: bool = True) -> dict[str, Any] | None:
     if not raw_path:
         reasons.append(f"{name}_path_required")
         return None
@@ -585,7 +727,7 @@ def _read_required_json(raw_path: Any, reasons: list[str], name: str) -> dict[st
         reasons.append(f"{name}_path_missing")
         return None
     try:
-        payload = _read_json(path)
+        payload = _read_json(path) if normalize else _read_json_raw(path)
     except ValueError:
         reasons.append(f"{name}_invalid_json")
         return None
@@ -810,26 +952,67 @@ def _exit_lab_candidate_gate_reasons(frame: pd.DataFrame) -> list[str]:
     return reasons
 
 
+def _exit_lab_gate_lookups(
+    gates: pd.DataFrame | None,
+) -> tuple[dict[str, Mapping[str, Any]], dict[str, Mapping[str, Any]]]:
+    if gates is None or gates.empty:
+        return {}, {}
+    entry_lookup = _candidate_gate_lookup(gates, candidate_id_column="entry_candidate_id")
+    candidate_lookup = _candidate_gate_lookup(gates, candidate_id_column="candidate_id")
+    return entry_lookup, candidate_lookup
+
+
+def _candidate_gate_lookup(
+    gates: pd.DataFrame | None,
+    *,
+    candidate_id_column: str = "candidate_id",
+) -> dict[str, Mapping[str, Any]]:
+    if gates is None or gates.empty or candidate_id_column not in gates.columns:
+        return {}
+    frame = gates.copy()
+    if candidate_id_column == "entry_candidate_id":
+        sort_columns = [column for column in ("exit_lab_gate_status", "fixed_holding_score_delta") if column in frame.columns]
+        if sort_columns:
+            frame = frame.sort_values(sort_columns, ascending=[False] * len(sort_columns), kind="mergesort")
+    rows: dict[str, Mapping[str, Any]] = {}
+    for record in frame.to_dict("records"):
+        candidate_id = str(record.get(candidate_id_column) or "")
+        if candidate_id and candidate_id not in rows:
+            rows[candidate_id] = record
+    return rows
+
+
+def _exit_lab_gate_row_from_lookup(
+    *,
+    entry_candidate_lookup: Mapping[str, Mapping[str, Any]],
+    candidate_lookup: Mapping[str, Mapping[str, Any]],
+    discovery_candidate_id: str,
+    research_candidate_id: str,
+) -> Mapping[str, Any] | None:
+    return entry_candidate_lookup.get(discovery_candidate_id) or candidate_lookup.get(research_candidate_id)
+
+
+def _candidate_gate_row_from_lookup(
+    gate_lookup: Mapping[str, Mapping[str, Any]],
+    *,
+    discovery_candidate_id: str,
+) -> Mapping[str, Any] | None:
+    return gate_lookup.get(discovery_candidate_id)
+
+
 def _exit_lab_gate_row(
     gates: pd.DataFrame | None,
     *,
     discovery_candidate_id: str,
     research_candidate_id: str,
 ) -> Mapping[str, Any] | None:
-    if gates is None or gates.empty:
-        return None
-    matches = pd.DataFrame()
-    if "entry_candidate_id" in gates.columns:
-        matches = gates.loc[gates["entry_candidate_id"].astype(str).eq(discovery_candidate_id)].copy()
-    if matches.empty and "candidate_id" in gates.columns:
-        matches = gates.loc[gates["candidate_id"].astype(str).eq(research_candidate_id)].copy()
-    if matches.empty:
-        return None
-    sort_columns = [column for column in ("exit_lab_gate_status", "fixed_holding_score_delta") if column in matches.columns]
-    if sort_columns:
-        ascending = [False if column == "exit_lab_gate_status" else False for column in sort_columns]
-        matches = matches.sort_values(sort_columns, ascending=ascending, kind="mergesort")
-    return matches.iloc[0].to_dict()
+    entry_lookup, candidate_lookup = _exit_lab_gate_lookups(gates)
+    return _exit_lab_gate_row_from_lookup(
+        entry_candidate_lookup=entry_lookup,
+        candidate_lookup=candidate_lookup,
+        discovery_candidate_id=discovery_candidate_id,
+        research_candidate_id=research_candidate_id,
+    )
 
 
 def _exit_lab_gate_reasons(record: Mapping[str, Any], gate: Mapping[str, Any] | None) -> list[str]:
@@ -1047,7 +1230,13 @@ def _normalized_ledger_value(value: Any) -> Any:
     return str(value)
 
 
-def _summary(eligibility: pd.DataFrame, global_reasons: list[str]) -> dict[str, Any]:
+def _summary(
+    eligibility: pd.DataFrame,
+    global_reasons: list[str],
+    *,
+    reason_counts: Mapping[str, int],
+    candidate_universe_alignment: Mapping[str, Any],
+) -> dict[str, Any]:
     eligible_count = int(eligibility["eligible_for_existing_candidate_pack_validator"].sum()) if not eligibility.empty else 0
     blocked_count = int(len(eligibility) - eligible_count)
     return {
@@ -1055,9 +1244,63 @@ def _summary(eligibility: pd.DataFrame, global_reasons: list[str]) -> dict[str, 
         "eligible_count": eligible_count,
         "blocked_count": blocked_count,
         "global_reason_count": int(len(dict.fromkeys(global_reasons))),
+        "top_reason_counts": dict(sorted(reason_counts.items(), key=lambda item: (-item[1], item[0]))[:12]),
+        "ranking_overlap_count": int(candidate_universe_alignment.get("mapped_research_candidate_overlap_count") or 0),
+        "cycle_ranking_candidate_count": int(candidate_universe_alignment.get("cycle_ranking_candidate_count") or 0),
+        "candidate_universe_status": candidate_universe_alignment.get("status"),
         "candidate_pack_written": False,
         "promotion_ready": False,
     }
+
+
+def _reason_counts(eligibility: pd.DataFrame) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    if eligibility.empty or "bridge_reasons" not in eligibility.columns:
+        return counts
+    for raw_reasons in eligibility["bridge_reasons"].fillna("").astype(str).tolist():
+        for reason in raw_reasons.split("|"):
+            normalized = reason.strip()
+            if not normalized:
+                continue
+            counts[normalized] = counts.get(normalized, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def _candidate_universe_alignment(
+    eligibility: pd.DataFrame,
+    *,
+    gate_context: Any,
+    candidate_id_map: Mapping[str, str],
+) -> dict[str, Any]:
+    discovery_ids = _column_ids(eligibility, "discovery_candidate_id")
+    research_ids = _column_ids(eligibility, "research_candidate_id")
+    ranking_ids = set(getattr(gate_context, "ranking_candidate_ids", frozenset()) or frozenset())
+    overlap = research_ids & ranking_ids
+    mapped_count = sum(1 for discovery_id in discovery_ids if discovery_id in candidate_id_map)
+    if not ranking_ids:
+        status = "cycle_ranking_candidates_missing"
+    elif not overlap:
+        status = "no_mapped_discovery_candidates_in_cycle_rankings"
+    elif len(overlap) < len(research_ids):
+        status = "partial_discovery_to_cycle_ranking_overlap"
+    else:
+        status = "all_discovery_candidates_mapped_to_cycle_rankings"
+    return {
+        "status": status,
+        "discovery_candidate_count": int(len(discovery_ids)),
+        "research_candidate_count": int(len(research_ids)),
+        "cycle_ranking_candidate_count": int(len(ranking_ids)),
+        "candidate_id_map_count": int(len(candidate_id_map)),
+        "mapped_discovery_candidate_count": int(mapped_count),
+        "mapped_research_candidate_overlap_count": int(len(overlap)),
+        "unmapped_discovery_candidate_count": int(max(0, len(discovery_ids) - mapped_count)),
+    }
+
+
+def _column_ids(frame: pd.DataFrame, column: str) -> set[str]:
+    if frame.empty or column not in frame.columns:
+        return set()
+    return {str(value) for value in frame[column].dropna().tolist() if str(value)}
 
 
 def _rejections_markdown(eligibility: pd.DataFrame, global_reasons: list[str]) -> str:
@@ -1072,11 +1315,22 @@ def _rejections_markdown(eligibility: pd.DataFrame, global_reasons: list[str]) -
         lines.extend(f"- {reason}" for reason in dict.fromkeys(global_reasons))
         lines.append("")
     blocked = eligibility.loc[~eligibility["eligible_for_existing_candidate_pack_validator"]] if not eligibility.empty else eligibility
+    reason_counts = _reason_counts(eligibility)
+    if reason_counts:
+        lines.extend(["## Reason Counts", ""])
+        for reason, count in list(reason_counts.items())[:25]:
+            lines.append(f"- {reason}: {count}")
+        lines.append("")
     lines.extend(["## Blocked Candidates", ""])
     if blocked.empty:
         lines.append("- None")
     else:
-        for row in blocked.to_dict("records"):
+        if len(blocked) > REJECTION_MARKDOWN_MAX_BLOCKED_ROWS:
+            lines.append(
+                f"- Showing first {REJECTION_MARKDOWN_MAX_BLOCKED_ROWS} of {len(blocked)} blocked rows; "
+                "the Parquet eligibility table contains every row."
+            )
+        for row in blocked.head(REJECTION_MARKDOWN_MAX_BLOCKED_ROWS).to_dict("records"):
             reasons = str(row.get("bridge_reasons") or "blocked").replace("|", ", ")
             lines.append(f"- {row.get('discovery_candidate_id')} -> {row.get('research_candidate_id')}: {reasons}")
     lines.append("")
@@ -1127,14 +1381,36 @@ def _eligibility_columns() -> list[str]:
     ]
 
 
-def _read_json(path: Path) -> dict[str, Any]:
+def _read_discovery_manifest(path: Path) -> dict[str, Any]:
+    resolved_path = Path(path).expanduser().resolve()
+    payload = _read_json_raw(resolved_path)
+    normalized = dict(payload)
+    required_outputs = payload.get("required_outputs")
+    if isinstance(required_outputs, Mapping):
+        scoped = normalize_operator_run_artifact_paths(
+            {"required_outputs": dict(required_outputs)},
+            artifact_path=resolved_path,
+            anchor_root=resolved_path.parent,
+        )
+        normalized["required_outputs"] = dict(scoped.get("required_outputs") or {})
+    return normalized
+
+
+def _read_json_raw(path: Path) -> dict[str, Any]:
+    resolved_path = Path(path).expanduser().resolve()
     try:
-        payload = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+        payload = json.loads(resolved_path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid JSON at {path}") from exc
+        raise ValueError(f"invalid JSON at {resolved_path}") from exc
     if not isinstance(payload, dict):
-        raise ValueError(f"expected JSON object at {path}")
+        raise ValueError(f"expected JSON object at {resolved_path}")
     return payload
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    resolved_path = Path(path).expanduser().resolve()
+    payload = _read_json_raw(resolved_path)
+    return normalize_operator_run_artifact_paths(payload, artifact_path=resolved_path, anchor_root=resolved_path.parent)
 
 
 def _file_sha256(path: Path) -> str:

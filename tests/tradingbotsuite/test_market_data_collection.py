@@ -15,6 +15,8 @@ from tradingbotsuite.core.models import Bar
 from tradingbotsuite.data.durable_public_archive import collect_candidate_depth_public_archive_fixtures
 from tradingbotsuite.data.historical_data_catalog import (
     HISTORICAL_DATA_CATALOG_VERSION,
+    normalize_operator_run_artifact_paths,
+    read_historical_data_catalog,
     refresh_historical_data_catalog,
 )
 from tradingbotsuite.data.historical_fixture_pack import (
@@ -1385,6 +1387,100 @@ def test_refresh_historical_data_catalog_records_provider_states_and_active_fixt
     assert provider_states["bybit_archive"]["catalog_state"] == "public_archive_registered_ingestion_not_implemented"
     assert provider_states["hyperliquid_archive"]["catalog_state"] == "archive_registered_requester_pays_ingestion_not_implemented"
     assert result.catalog_sha256.startswith("sha256:")
+
+
+def test_read_historical_data_catalog_rebases_migrated_operator_run_paths(tmp_path: Path) -> None:
+    run_root = tmp_path / "research" / "operator_runs" / "historical_data" / "refresh-historical-data-catalog-test"
+    source_root = run_root / "sources" / "binance_vision_public_archive"
+    manifest_path = source_root / "fixture_packs" / "btcusdt_public_archive_candidate_depth_v1" / "fixture_pack_manifest.json"
+    readiness_path = source_root / "active_readiness" / "durable_public_archive_fixture_readiness_btcusdt_candidate_depth_v1.json"
+    cycle_spec_path = source_root / "active_specs" / "r105-btcusdt-durable-public-archive-candidate-depth-v1.json"
+    discovery_spec_path = source_root / "active_specs" / "exact_entry_sweep_btcusdt_candidate_depth_v1.json"
+    summary_path = source_root / "durable_fixture_collection_summary.json"
+    profile_path = source_root / "modern_window_profiles" / "btcusdt_modern" / "modern_window_profile.json"
+    dataset_path = profile_path.parent / "cycle_dataset.parquet"
+    for path in (manifest_path, readiness_path, cycle_spec_path, discovery_spec_path, summary_path, profile_path, dataset_path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}", encoding="utf-8")
+
+    stale_run_root = Path(r"C:\Users\papaa\Music\tradingbotsuite\data\research\operator_runs\historical_data") / run_root.name
+
+    def stale(path: Path) -> str:
+        return str(stale_run_root / path.relative_to(run_root))
+
+    catalog_path = run_root / "historical_data_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "historical_data_catalog_version": HISTORICAL_DATA_CATALOG_VERSION,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "active_source": {"source_summary_path": stale(summary_path)},
+                "symbols": {
+                    "BTCUSDT": {
+                        "candidate_depth_ready": True,
+                        "source_summary_path": stale(summary_path),
+                        "fixture_manifest_path": stale(manifest_path),
+                        "readiness_config_path": stale(readiness_path),
+                        "cycle_spec_path": stale(cycle_spec_path),
+                        "discovery_spec_path": stale(discovery_spec_path),
+                        "modern_window_profile_count": 1,
+                        "modern_window_profiles": {
+                            "modern": {
+                                "profile_manifest_path": stale(profile_path),
+                                "dataset_path": stale(dataset_path),
+                            }
+                        },
+                        "research_only": True,
+                        "observe_only": True,
+                        "promotion_ready": False,
+                    }
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    catalog = read_historical_data_catalog(catalog_path)
+
+    assert catalog["path_portability"]["migrated_absolute_paths_rebased"] is True
+    assert catalog["active_source"]["source_summary_path"] == str(summary_path.resolve())
+    symbol_payload = catalog["symbols"]["BTCUSDT"]
+    assert symbol_payload["fixture_manifest_path"] == str(manifest_path.resolve())
+    assert symbol_payload["cycle_spec_path"] == str(cycle_spec_path.resolve())
+    assert symbol_payload["discovery_spec_path"] == str(discovery_spec_path.resolve())
+    assert symbol_payload["modern_window_profiles"]["modern"]["profile_manifest_path"] == str(profile_path.resolve())
+    assert symbol_payload["modern_window_profiles"]["modern"]["dataset_path"] == str(dataset_path.resolve())
+
+
+def test_operator_run_path_normalizer_rebases_repo_relative_old_root_paths() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    artifact_path = repo_root / "data" / "research" / "operator_runs" / "analysis" / "unit" / "research_analysis.json"
+    payload = {
+        "cycle": {
+            "data_window": {
+                "dataset_path": r"C:\Users\papaa\Music\tradingbotsuite\data\research\fixtures\btcusdt_public_archive_multi_window_v1\cycle_dataset.parquet",
+            }
+        },
+        "feature_column_set_evidence": {
+            "manifest_path": r"C:\Users\papaa\Music\tradingbotsuite\configs\discovery\feature_column_sets_v4.json",
+        },
+        "resolved_paths": {
+            "repo_root": r"C:\Users\papaa\Music\tradingbotsuite",
+        },
+    }
+
+    normalized = normalize_operator_run_artifact_paths(payload, artifact_path=artifact_path, anchor_root=artifact_path.parent)
+
+    assert normalized["cycle"]["data_window"]["dataset_path"] == str(
+        (repo_root / "data" / "research" / "fixtures" / "btcusdt_public_archive_multi_window_v1" / "cycle_dataset.parquet").resolve()
+    )
+    assert normalized["feature_column_set_evidence"]["manifest_path"] == str(
+        (repo_root / "configs" / "discovery" / "feature_column_sets_v4.json").resolve()
+    )
+    assert normalized["resolved_paths"]["repo_root"] == str(repo_root.resolve())
 
 
 def test_collect_candidate_depth_public_archive_fixtures_rejects_duplicate_source_bars(tmp_path: Path) -> None:

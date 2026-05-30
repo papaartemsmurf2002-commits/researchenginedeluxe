@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass
 from dataclasses import replace
 from hashlib import sha256
@@ -168,11 +169,19 @@ def _candidate_gates(candidates: pd.DataFrame, *, spec: DiscoveryMultipleTesting
     sampled_fraction = float(sampled_count / declared) if declared else 0.0
     effective_trial_count = int(_effective_trial_count(candidates, sampled_count))
     total_positive_score = max(_positive_score_sum(candidates), 1e-12)
-    for record in candidates.to_dict("records"):
+    stability_neighborhood_sizes = _stability_neighborhood_sizes(candidates)
+    for index, record in enumerate(candidates.to_dict("records")):
         candidate_id = str(record.get("candidate_id") or "")
         score = _score(record)
         best_concentration = max(0.0, score) / total_positive_score
-        stability_neighborhood_size = _stability_neighborhood_size(record, candidates)
+        configured_stability = _optional_int(record.get("stability_neighborhood_size"))
+        stability_neighborhood_size = (
+            configured_stability
+            if configured_stability is not None
+            else stability_neighborhood_sizes[index]
+            if index < len(stability_neighborhood_sizes)
+            else 0
+        )
         split_concentration = _float_value(record, "split_window_concentration", _float_value(record, "max_single_split_pnl_share", 0.0))
         side_concentration = _float_value(record, "side_concentration", _float_value(record, "side_collapse_ratio", 0.0))
         reasons = _gate_reasons(
@@ -295,6 +304,22 @@ def _stability_neighborhood_size(record: Mapping[str, Any], candidates: pd.DataF
     return int(mask.sum())
 
 
+def _stability_neighborhood_sizes(candidates: pd.DataFrame) -> list[int]:
+    if candidates.empty:
+        return []
+    keys = [
+        column
+        for column in ("feature_column_set_id", "regime_mode", "label_horizon", "distance_metric", "exit_policy_id")
+        if column in candidates.columns
+    ]
+    if not keys:
+        return [1] * len(candidates)
+    key_frame = candidates.loc[:, keys].fillna("").astype(str)
+    key_tuples = [tuple(values) for values in key_frame.itertuples(index=False, name=None)]
+    counts = Counter(key_tuples)
+    return [int(counts[key]) for key in key_tuples]
+
+
 def _positive_score_sum(candidates: pd.DataFrame) -> float:
     if candidates.empty:
         return 0.0
@@ -364,6 +389,14 @@ def _declared_search_space_from_discovery(
         values = pd.to_numeric(candidates["search_space_total_combinations"], errors="coerce").dropna()
         if not values.empty:
             return int(max(0, values.max()))
+    budget = manifest.get("budget") if isinstance(manifest.get("budget"), Mapping) else {}
+    max_trials = int(budget.get("max_trials") or 0)
+    if max_trials:
+        return int(max_trials)
+    counts = manifest.get("counts") if isinstance(manifest.get("counts"), Mapping) else {}
+    completed = int(counts.get("completed_trials") or 0)
+    if completed:
+        return int(max(completed, len(candidates)))
     trials_dir_raw = required_outputs.get("trials")
     if trials_dir_raw:
         totals: list[int] = []
@@ -381,15 +414,13 @@ def _declared_search_space_from_discovery(
     if resolved_spec_raw and Path(str(resolved_spec_raw)).exists():
         payload = _read_json(Path(str(resolved_spec_raw)))
         templates = payload.get("trial_templates") if isinstance(payload.get("trial_templates"), list) else []
-        budget = payload.get("budget") if isinstance(payload.get("budget"), Mapping) else {}
-        max_trials = int(budget.get("max_trials") or 0)
+        spec_budget = payload.get("budget") if isinstance(payload.get("budget"), Mapping) else {}
+        spec_max_trials = int(spec_budget.get("max_trials") or 0)
         if templates:
             return int(max(1, len(templates)))
-        if max_trials:
-            return int(max_trials)
-    counts = manifest.get("counts") if isinstance(manifest.get("counts"), Mapping) else {}
-    completed = int(counts.get("completed_trials") or 0)
-    return int(max(completed, len(candidates)))
+        if spec_max_trials:
+            return int(spec_max_trials)
+    return int(len(candidates))
 
 
 def _manifest_latest_window_only(manifest: Mapping[str, Any]) -> bool:

@@ -141,8 +141,8 @@ class DiscoveryExecutionSpec:
             raise ValueError("execution.max_workers must be positive")
         if self.max_workers > 64:
             raise ValueError("execution.max_workers must be <= 64")
-        if self.persist_trial_artifacts not in {"all", "interesting_only"}:
-            raise ValueError("execution.persist_trial_artifacts must be one of all, interesting_only")
+        if self.persist_trial_artifacts not in {"all", "interesting_only", "predictions_only"}:
+            raise ValueError("execution.persist_trial_artifacts must be one of all, interesting_only, predictions_only")
         if self.executor not in {"thread", "process"}:
             raise ValueError("execution.executor must be one of thread, process")
 

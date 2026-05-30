@@ -276,6 +276,8 @@ def test_cache_affinity_order_round_robins_base_knn_groups() -> None:
 def test_interesting_only_policy_defers_heavy_trial_artifacts() -> None:
     assert discovery_runner._persist_trial_artifacts("all", ledger_kind="interesting") is True
     assert discovery_runner._persist_trial_artifacts("all", ledger_kind="blocked") is True
+    assert discovery_runner._persist_trial_artifacts("predictions_only", ledger_kind="interesting") is True
+    assert discovery_runner._persist_trial_artifacts("predictions_only", ledger_kind="blocked") is True
     assert discovery_runner._persist_trial_artifacts("interesting_only", ledger_kind="interesting") is False
     assert discovery_runner._persist_trial_artifacts("interesting_only", ledger_kind="blocked") is False
 

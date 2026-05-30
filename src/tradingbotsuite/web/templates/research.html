@@ -1902,6 +1902,9 @@
     }
     if (item.type === "research_autopilot") {
       const status = summary.autopilot_status || "observe_only";
+      if (summary.stale_review) {
+        return window.TBS.pill("stale_review", "warn");
+      }
       return window.TBS.pill(status, status === "completed" ? "ok" : (status === "blocked" || status === "failed" ? "warn" : "neutral"));
     }
     if (item.type === "discovery_exit_lab" || item.type === "discovery_multiple_testing" || item.type === "discovery_validation_floors") {
@@ -1958,6 +1961,8 @@
     }
     if (item.type === "research_autopilot") {
       const counts = summary.status_counts || {};
+      const activeStep = summary.active_step || {};
+      const latestStep = summary.latest_step || {};
       return `
         <div class="card alt">
           <div class="split">
@@ -1970,6 +1975,10 @@
             ["Steps", window.TBS.toMono(summary.step_count ?? 0)],
             ["Executed", window.TBS.toMono(summary.executed_step_count ?? 0)],
             ["Skipped", window.TBS.toMono(counts.skipped ?? 0)],
+            ["State Detail", window.TBS.escapeHtml(summary.stale_review ? "stale running manifest; no active process telemetry" : (summary.telemetry_status || "n/a"))],
+            ["Active Step", window.TBS.escapeHtml(activeStep.key ? `${activeStep.key}${activeStep.symbol ? ` / ${activeStep.symbol}` : ""}` : "none")],
+            ["Latest Step", window.TBS.escapeHtml(latestStep.key ? `${latestStep.key} / ${latestStep.status || "unknown"}` : "none")],
+            ["Last Update Age", window.TBS.escapeHtml(formatDurationSeconds(summary.last_update_age_seconds))],
             ["Blocked", window.TBS.escapeHtml(summary.blocked_reason || "none")],
             ["Promotion Boundary", window.TBS.escapeHtml(summary.promotion_ready === true ? "unexpected true" : "promotion_ready: false")],
           ])}
@@ -2916,6 +2925,42 @@
     `;
   }
 
+  function renderActiveAutopilotProgress(progress) {
+    const target = activeProgressTarget();
+    if (!target) return;
+    if (!progress || !progress.available) {
+      target.className = "active-progress empty";
+      target.innerHTML = "Autopilot telemetry appears after the autopilot manifest is created.";
+      return;
+    }
+    const current = progress.current_step || {};
+    const latest = progress.latest_step || {};
+    const hasCurrent = Boolean(current.key);
+    const percent = progress.max_steps
+      ? Math.max(0, Math.min(100, Number(progress.executed_step_count || 0) / Math.max(Number(progress.max_steps || 1), 1) * 100))
+      : 0;
+    const currentLabel = hasCurrent
+      ? `${current.key || "step"}${current.symbol ? ` / ${current.symbol}` : ""}`
+      : `waiting for next recorded helper${latest.key ? ` after ${latest.key}` : ""}`;
+    const latestLabel = latest.key
+      ? `${latest.key} / ${latest.status || "unknown"}${latest.symbol ? ` / ${latest.symbol}` : ""}`
+      : "none";
+    target.className = "active-progress";
+    target.innerHTML = `
+      <strong>Autopilot Step</strong>
+      <div class="muted">${window.TBS.escapeHtml(currentLabel)} / ${window.TBS.escapeHtml(progress.telemetry_status || "running")}</div>
+      <div class="progress-track" aria-label="Autopilot step progress"><div class="progress-fill" style="width:${percent}%"></div></div>
+      <div class="meta-row">
+        <div><span class="label">Attempt</span><br><strong>${window.TBS.escapeHtml(hasCurrent ? `${current.attempt ?? "n/a"}/${current.max_attempts ?? "n/a"}` : "n/a")}</strong></div>
+        <div><span class="label">Elapsed</span><br><strong>${window.TBS.escapeHtml(formatDurationSeconds(progress.elapsed_seconds))}</strong></div>
+        <div><span class="label">ETA</span><br><strong>${window.TBS.escapeHtml(formatDurationSeconds(progress.eta_seconds))}</strong></div>
+      </div>
+      <div class="muted" style="margin-top:8px;">${window.TBS.escapeHtml(current.detail || progress.note || "Autopilot is running.")}</div>
+      <div class="muted" style="margin-top:8px;">Latest step ${window.TBS.escapeHtml(latestLabel)}. Scope ${window.TBS.escapeHtml(current.progress_scope || "autopilot")} / ETA ${window.TBS.escapeHtml(progress.eta_basis || "n/a")}.</div>
+      ${progress.manifest_path ? `<div class="muted" style="margin-top:8px;">manifest <span class="mono">${window.TBS.escapeHtml(progress.manifest_path)}</span></div>` : ""}
+    `;
+  }
+
   function renderResearchProgress(payload) {
     const summary = document.getElementById("research-progress-summary");
     const fill = document.getElementById("research-progress-fill");
@@ -2936,7 +2981,9 @@
     summary.innerHTML = `<strong>${window.TBS.escapeHtml(String(progress.completed ?? 0))}/${window.TBS.escapeHtml(String(progress.total ?? 0))} milestones complete</strong><div class="muted">${window.TBS.escapeHtml(progress.active_job_type ? `Active: ${progress.active_job_type} / ${progress.active_job_status}` : "No active research job.")}</div>`;
     fill.style.width = `${percent}%`;
     nextAction.innerHTML = `<strong>Next operation</strong><div class="muted">${window.TBS.escapeHtml(payload.next_action || "Inspect Jobs and Artifacts.")}</div>`;
-    if (payload.active_historical_data_progress) {
+    if (payload.active_autopilot_progress) {
+      renderActiveAutopilotProgress(payload.active_autopilot_progress);
+    } else if (payload.active_historical_data_progress) {
       renderActiveDataProgress(payload.active_historical_data_progress);
     } else if (payload.active_historical_cycle_progress) {
       renderActiveHistoricalCycleProgress(payload.active_historical_cycle_progress);
@@ -3024,17 +3071,22 @@
       ? `${window.TBS.escapeHtml(active.job_type)} / ${window.TBS.escapeHtml(active.job_id)}`
       : (latestJob ? `${window.TBS.escapeHtml(latestJob.job_type)} / ${window.TBS.escapeHtml(latestJob.job_id)}` : "No research job indexed.");
     const progressPayload = latestResearchProgress?.progress || {};
+    const activeAutopilotProgress = latestResearchProgress?.active_autopilot_progress || null;
     const activeDiscoveryProgress = latestResearchProgress?.active_discovery_progress || null;
     const activeDataProgress = latestResearchProgress?.active_historical_data_progress || null;
     const activeCycleProgress = latestResearchProgress?.active_historical_cycle_progress || null;
-    const progressValue = activeDataProgress
+    const progressValue = activeAutopilotProgress?.available
+      ? `autopilot ${activeAutopilotProgress.current_step?.key || activeAutopilotProgress.telemetry_status || "running"}`
+      : activeDataProgress
       ? `${activeDataProgress.percent_complete ?? 0}% data`
       : activeCycleProgress?.available
       ? `${activeCycleProgress.percent ?? 0}% cycle`
       : activeDiscoveryProgress?.available
       ? `${activeDiscoveryProgress.percent ?? 0}% discovery`
       : (active ? active.job_type : `${progressPayload.percent ?? 0}% complete`);
-    const progressMeta = activeDataProgress
+    const progressMeta = activeAutopilotProgress?.available
+      ? `${window.TBS.escapeHtml(activeAutopilotProgress.current_step?.symbol || "workflow")} / elapsed ${window.TBS.escapeHtml(formatDurationSeconds(activeAutopilotProgress.elapsed_seconds))}; ETA ${window.TBS.escapeHtml(formatDurationSeconds(activeAutopilotProgress.eta_seconds))}`
+      : activeDataProgress
       ? `${window.TBS.escapeHtml(String(activeDataProgress.completed_archive_steps || 0))}/${window.TBS.escapeHtml(String(activeDataProgress.total_archive_steps || 0))} archives; ETA ${window.TBS.escapeHtml(formatDurationSeconds(activeDataProgress.eta_seconds))}`
       : activeCycleProgress?.available
       ? `${window.TBS.escapeHtml(String(activeCycleProgress.completed_backtest_evaluations || activeCycleProgress.completed_candidates || 0))}/${window.TBS.escapeHtml(String(activeCycleProgress.total_backtest_evaluations || activeCycleProgress.total_candidates || 0))} backtest evals; ETA ${window.TBS.escapeHtml(formatDurationSeconds(activeCycleProgress.eta_seconds))}`

@@ -34,6 +34,8 @@ from tradingbotsuite.data.historical_data_catalog import (
     DEFAULT_HISTORICAL_CATALOG_START_MONTH,
     default_historical_catalog_end_month,
     historical_data_provider_states,
+    normalize_operator_run_artifact_paths,
+    read_historical_data_catalog,
     refresh_historical_data_catalog,
 )
 from tradingbotsuite.promotion.stage13_readiness import build_stage13_readiness_report
@@ -68,6 +70,16 @@ RESEARCH_AUTOPILOT_VERSION = "r106-research-autopilot-v1"
 RESEARCH_AUTOPILOT_DEFAULT_STEP_ATTEMPTS = 2
 RESEARCH_AUTOPILOT_MAX_STEP_ATTEMPTS = 5
 RESEARCH_AUTOPILOT_MAX_STALE_RECOVERY_ATTEMPTS = 1
+RESEARCH_AUTOPILOT_STEP_ESTIMATES_SECONDS = {
+    "historical_data_catalog": 3600,
+    "historical_cycle": 7200,
+    "exact_discovery": 86400,
+    "research_analysis": 90,
+    "research_analysis_delta": 45,
+    "frozen_entry_exit_lab": 180,
+    "candidate_eligibility": 30,
+}
+RESEARCH_AUTOPILOT_STALE_MANIFEST_SECONDS = 900
 
 AMBIGUOUS_SAFETY_REASONS = {
     SafeModeReason.POSITION_AMBIGUITY,
@@ -673,7 +685,7 @@ class OperatorConsoleService:
             reverse=True,
         )
         for catalog_path in catalogs:
-            payload = self._read_json_path(catalog_path)
+            payload = self._read_historical_data_catalog_path(catalog_path)
             if isinstance(payload, dict):
                 payload.setdefault("catalog_path", str(catalog_path))
                 return payload
@@ -794,6 +806,11 @@ class OperatorConsoleService:
         active_historical_cycle_progress = (
             self._active_historical_cycle_progress(active_job)
             if active_job is not None and active_job.get("job_type") == "run-historical-research-cycle"
+            else None
+        )
+        active_autopilot_progress = (
+            self._active_research_autopilot_progress(active_job, artifacts)
+            if active_job is not None and active_job.get("job_type") == "run-research-autopilot"
             else None
         )
         expected_btc_cycle_id = self._expected_cycle_id(readiness, "BTCUSDT")
@@ -967,6 +984,7 @@ class OperatorConsoleService:
                 "active_job_type": active_job.get("job_type") if active_job else None,
                 "active_job_status": active_job.get("status") if active_job else None,
             },
+            "active_autopilot_progress": active_autopilot_progress,
             "active_discovery_progress": active_discovery_progress,
             "active_historical_data_progress": active_historical_data_progress,
             "active_historical_cycle_progress": active_historical_cycle_progress,
@@ -1500,17 +1518,203 @@ class OperatorConsoleService:
                 continue
             status = str(step.get("status") or "unknown")
             status_counts[status] = status_counts.get(status, 0) + 1
+        active_step = dict(payload.get("active_step") or {}) if isinstance(payload.get("active_step"), Mapping) else None
+        updated_at = self._parse_utc_datetime(str(payload.get("updated_at_utc") or payload.get("started_at_utc") or ""))
+        last_update_age_seconds = None
+        if updated_at is not None:
+            last_update_age_seconds = round(max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds()))
+        autopilot_status = payload.get("autopilot_status")
+        telemetry_status = "active_step_recorded" if active_step else "inactive"
+        if autopilot_status == "running" and not active_step:
+            telemetry_status = "running_without_active_step_telemetry"
+        stale_review = (
+            autopilot_status == "running"
+            and not active_step
+            and last_update_age_seconds is not None
+            and last_update_age_seconds > RESEARCH_AUTOPILOT_STALE_MANIFEST_SECONDS
+        )
         return {
             "autopilot_version": payload.get("autopilot_version"),
-            "autopilot_status": payload.get("autopilot_status"),
+            "autopilot_status": autopilot_status,
             "requested_symbols": payload.get("requested_symbols") if isinstance(payload.get("requested_symbols"), list) else [],
             "step_count": len(steps),
             "status_counts": status_counts,
             "executed_step_count": int(payload.get("executed_step_count") or 0),
+            "latest_step": dict(steps[-1]) if steps else None,
+            "active_step": active_step,
+            "telemetry_status": telemetry_status,
+            "stale_review": stale_review,
+            "stale_review_reason": (
+                "manifest_status_running_without_recent_active_step_update"
+                if stale_review
+                else None
+            ),
+            "last_update_age_seconds": last_update_age_seconds,
             "blocked_reason": payload.get("blocked_reason"),
             "research_only": payload.get("research_only"),
             "observe_only": payload.get("observe_only"),
             "promotion_ready": payload.get("promotion_ready"),
+        }
+
+    def _active_research_autopilot_progress(
+        self,
+        job: Mapping[str, Any],
+        artifacts: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        job_id = str(job.get("job_id") or "")
+        manifest_path: Path | None = None
+        manifest: Mapping[str, Any] | None = None
+        for artifact in artifacts:
+            if artifact.get("type") != "research_autopilot":
+                continue
+            payload = artifact.get("manifest") if isinstance(artifact.get("manifest"), Mapping) else {}
+            if str(payload.get("job_id") or "") != job_id:
+                continue
+            path = self._existing_path(artifact.get("path"))
+            if path is not None:
+                manifest_path = path
+            manifest = payload
+            break
+        if manifest is None:
+            candidate = self._research_root() / "operator_runs" / "research_autopilot" / _safe_operator_path_part(job_id) / "research_autopilot_manifest.json"
+            payload = self._read_json_path(candidate)
+            if isinstance(payload, Mapping):
+                manifest = payload
+                manifest_path = candidate
+        if manifest is None:
+            return {
+                "available": False,
+                "job_id": job_id,
+                "job_status": job.get("status"),
+                "telemetry_status": "autopilot_manifest_missing",
+            }
+
+        steps = [step for step in manifest.get("steps") or [] if isinstance(step, Mapping)]
+        latest_step = dict(steps[-1]) if steps else None
+        active_step = dict(manifest.get("active_step") or {}) if isinstance(manifest.get("active_step"), Mapping) else None
+        started_at = self._parse_utc_datetime(str(active_step.get("started_at_utc") or "")) if active_step else None
+        if started_at is None:
+            started_at = self._progress_started_at(job, manifest)
+        now = datetime.now(timezone.utc)
+        elapsed_seconds = max(0.0, (now - started_at).total_seconds()) if started_at is not None else None
+        estimated_duration = self._positive_int_or_none(
+            active_step.get("estimated_duration_seconds") if active_step else None,
+            field_name="estimated_duration_seconds",
+        )
+        eta_seconds = None
+        if elapsed_seconds is not None and estimated_duration is not None:
+            eta_seconds = round(max(0.0, float(estimated_duration) - elapsed_seconds))
+        telemetry_status = "active_step_recorded" if active_step else "running_without_active_step_telemetry"
+        return {
+            "available": True,
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "job_id": job_id,
+            "job_status": job.get("status"),
+            "manifest_path": str(manifest_path) if manifest_path is not None else None,
+            "autopilot_status": manifest.get("autopilot_status"),
+            "telemetry_status": telemetry_status,
+            "current_step": active_step,
+            "latest_step": latest_step,
+            "step_count": len(steps),
+            "executed_step_count": int(manifest.get("executed_step_count") or 0),
+            "max_steps": int(manifest.get("max_steps") or 0),
+            "elapsed_seconds": round(elapsed_seconds, 1) if elapsed_seconds is not None else None,
+            "eta_seconds": eta_seconds,
+            "estimated_duration_seconds": estimated_duration,
+            "eta_basis": active_step.get("eta_basis") if active_step else None,
+            "note": (
+                "Current helper step is recorded before it starts."
+                if active_step
+                else "This running autopilot was started before active-step telemetry or has not entered a helper step yet."
+            ),
+        }
+
+    @staticmethod
+    def _parse_utc_datetime(value: str) -> datetime | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).astimezone(timezone.utc)
+        except ValueError:
+            return None
+
+    def _research_autopilot_active_step_payload(
+        self,
+        *,
+        key: str,
+        symbol: str | None,
+        attempt: int,
+        max_attempts: int,
+        attempt_job_id: str,
+        helper_args: list[Any],
+    ) -> dict[str, Any]:
+        estimate = self._research_autopilot_step_estimate(key=key, helper_args=helper_args)
+        return {
+            "key": key,
+            "status": "running",
+            "symbol": symbol,
+            "attempt": attempt,
+            "max_attempts": max_attempts,
+            "attempt_job_id": attempt_job_id,
+            "started_at_utc": datetime.now(timezone.utc).isoformat(),
+            "estimated_duration_seconds": estimate["estimated_duration_seconds"],
+            "eta_basis": estimate["eta_basis"],
+            "progress_scope": estimate["progress_scope"],
+            "detail": estimate["detail"],
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+
+    def _research_autopilot_step_estimate(self, *, key: str, helper_args: list[Any]) -> dict[str, Any]:
+        default_seconds = RESEARCH_AUTOPILOT_STEP_ESTIMATES_SECONDS.get(key, 300)
+        detail = "Helper is running inside the autopilot worker."
+        progress_scope = "helper_step"
+        eta_basis = "rough_static_step_estimate"
+        estimated_duration_seconds = default_seconds
+
+        request = helper_args[0] if helper_args and isinstance(helper_args[0], Mapping) else {}
+        if key == "candidate_eligibility" and isinstance(request, Mapping):
+            manifest_path = self._resolve_repo_path(request.get("discovery_manifest_path"))
+            manifest = self._read_optional_json(manifest_path) if manifest_path is not None and manifest_path.is_file() else None
+            counts = manifest.get("counts") if isinstance((manifest or {}).get("counts"), Mapping) else {}
+            interesting = self._nonnegative_int(counts.get("interesting_candidates"))
+            completed = self._nonnegative_int(counts.get("completed_trials"))
+            if interesting or completed:
+                estimated_duration_seconds = max(10, min(900, round(8 + interesting / 1800 + completed / 250000)))
+                eta_basis = "discovery_counts_candidate_eligibility_estimate"
+                detail = (
+                    f"Evaluating candidate-pack eligibility for {interesting} interesting discovery rows "
+                    f"from {completed} completed trials."
+                )
+                progress_scope = "discovery_candidate_pack_eligibility"
+        elif key == "exact_discovery":
+            detail = "Running exact discovery; durable run_state and snapshots provide the detailed trial ETA when available."
+            progress_scope = "exact_discovery"
+        elif key == "historical_cycle":
+            detail = "Running historical research cycle; candidate-space and backtest artifacts provide detailed ETA when available."
+            progress_scope = "historical_research_cycle"
+        elif key == "historical_data_catalog":
+            detail = "Refreshing catalog fixtures; collection_progress.json provides archive-level ETA when available."
+            progress_scope = "historical_data_catalog"
+        elif key == "research_analysis":
+            detail = "Writing analysis from current cycle/discovery evidence."
+            progress_scope = "research_analysis"
+        elif key == "research_analysis_delta":
+            detail = "Writing run-to-run analysis delta."
+            progress_scope = "research_analysis_delta"
+        elif key == "frozen_entry_exit_lab":
+            detail = "Running frozen-entry exit-lab comparisons."
+            progress_scope = "frozen_entry_exit_lab"
+
+        return {
+            "estimated_duration_seconds": estimated_duration_seconds,
+            "eta_basis": eta_basis,
+            "progress_scope": progress_scope,
+            "detail": detail,
         }
 
     def _dedupe_research_progress_artifacts(self, artifacts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2940,7 +3144,10 @@ class OperatorConsoleService:
 
     def _read_json_artifact(self, artifacts: list[dict[str, Any]], path: Path, artifact_type: str) -> dict[str, Any] | None:
         try:
-            payload = json.loads(path.read_text(encoding="utf-8-sig"))
+            if artifact_type == "historical_data_catalog":
+                payload = read_historical_data_catalog(path)
+            else:
+                payload = json.loads(path.read_text(encoding="utf-8-sig"))
         except Exception as exc:
             artifacts.append(self._artifact_read_error(path, artifact_type, exc))
             return None
@@ -2974,6 +3181,18 @@ class OperatorConsoleService:
 
     def _read_json_path(self, path: Path) -> dict[str, Any] | None:
         return self._read_optional_json(path) if path.exists() else None
+
+    def _read_historical_data_catalog_path(self, path: Path) -> dict[str, Any] | None:
+        try:
+            return read_historical_data_catalog(path)
+        except Exception:
+            return None
+
+    def _read_operator_run_artifact_payload(self, path: Path) -> dict[str, Any]:
+        payload = self._read_optional_json(path)
+        if not isinstance(payload, dict):
+            raise ValueError(f"{path.name} must be a JSON object")
+        return normalize_operator_run_artifact_paths(payload, artifact_path=path)
 
     def _resolve_repo_path(self, raw_path: object) -> Path | None:
         if raw_path is None or str(raw_path).strip() == "":
@@ -3448,7 +3667,8 @@ class OperatorConsoleService:
 
     def _run_isolated_historical_research_cycle(self, spec_path: Path, job_id: str) -> dict[str, Any]:
         resolved_spec_path = Path(spec_path).expanduser().resolve()
-        spec = HistoricalResearchCycleSpec.from_path(resolved_spec_path)
+        spec_payload = self._read_operator_run_artifact_payload(resolved_spec_path)
+        spec = HistoricalResearchCycleSpec.from_payload(spec_payload, spec_path=resolved_spec_path)
         research_root = self._research_root()
         safe_job_id = _safe_operator_path_part(job_id)
         safe_cycle_id = _safe_operator_path_part(spec.cycle_id)
@@ -3613,7 +3833,8 @@ class OperatorConsoleService:
         stable_run_id: bool = False,
     ) -> dict[str, Any]:
         resolved_spec_path = Path(spec_path).expanduser().resolve()
-        spec = DiscoveryRunSpec.from_path(resolved_spec_path)
+        spec_payload = self._read_operator_run_artifact_payload(resolved_spec_path)
+        spec = DiscoveryRunSpec.from_payload(spec_payload, spec_path=resolved_spec_path)
         research_root = self._research_root()
         safe_job_id = _safe_operator_path_part(job_id)
         safe_run_id = _safe_operator_path_part(spec.run_id)
@@ -3865,6 +4086,11 @@ class OperatorConsoleService:
         manifest = self._read_optional_json(manifest_path)
         if not isinstance(manifest, Mapping):
             return
+        manifest = normalize_operator_run_artifact_paths(
+            manifest,
+            artifact_path=manifest_path,
+            anchor_root=manifest_path.parent,
+        )
         required_outputs = manifest.get("required_outputs") if isinstance(manifest.get("required_outputs"), Mapping) else {}
         for output_key, raw_path in required_outputs.items():
             if raw_path is None or str(raw_path).strip() == "":
@@ -3956,6 +4182,7 @@ class OperatorConsoleService:
             "steps": [],
             "executed_step_count": 0,
             "blocked_reason": None,
+            "active_step": None,
             "research_only": True,
             "observe_only": True,
             "promotion_ready": False,
@@ -4019,6 +4246,7 @@ class OperatorConsoleService:
             return int(manifest["executed_step_count"]) < max_steps
 
         async def blocked(key: str, reason: str, *, symbol: str | None = None) -> dict[str, Any]:
+            manifest["active_step"] = None
             await add_step(key, "blocked", symbol=symbol, detail=reason, blocker=reason)
             write_manifest("blocked", reason)
             return {
@@ -4069,10 +4297,28 @@ class OperatorConsoleService:
                 attempt_job_id = base_attempt_job_id if attempt == 1 else f"{base_attempt_job_id}-retry-{attempt}"
                 attempt_args[job_id_arg_index] = attempt_job_id
                 manifest["executed_step_count"] = int(manifest["executed_step_count"]) + 1
+                active_step = self._research_autopilot_active_step_payload(
+                    key=key,
+                    symbol=symbol,
+                    attempt=attempt,
+                    max_attempts=max_step_attempts,
+                    attempt_job_id=attempt_job_id,
+                    helper_args=attempt_args,
+                )
+                manifest["active_step"] = active_step
+                write_manifest()
+                await self.store.append_operator_job_log(
+                    job_id=job_id,
+                    time_ms=self.engine.clock(),
+                    level="info",
+                    message=f"autopilot running: {key}",
+                    payload={key: active_step},
+                )
                 try:
                     result = await asyncio.to_thread(func, *attempt_args)
                 except Exception as exc:
                     detail = str(exc)
+                    manifest["active_step"] = None
                     if attempt < max_step_attempts:
                         await add_step(
                             key,
@@ -4099,6 +4345,7 @@ class OperatorConsoleService:
                     )
                     write_manifest("failed", detail)
                     raise
+                manifest["active_step"] = None
                 result_payload = dict(result) if isinstance(result, Mapping) else {}
                 result_payload.update(
                     {
@@ -4326,6 +4573,7 @@ class OperatorConsoleService:
             )
             _, artifacts, readiness = await context()
 
+        manifest["active_step"] = None
         write_manifest("completed")
         return {
             "output_dir": str(output_dir),

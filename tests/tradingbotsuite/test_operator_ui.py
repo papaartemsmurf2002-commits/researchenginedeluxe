@@ -7,8 +7,10 @@ import os
 import re
 import time
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 
 import pandas as pd
@@ -177,7 +179,12 @@ def _operator_config(app_config: AppConfig, *, mode: RuntimeMode = RuntimeMode.P
     )
 
 
-def _write_completed_catalog_fixture(research_dir: Path, *, write_artifacts: bool = False) -> dict[str, Path]:
+def _write_completed_catalog_fixture(
+    research_dir: Path,
+    *,
+    write_artifacts: bool = False,
+    stale_run_root: Path | None = None,
+) -> dict[str, Path]:
     run_root = research_dir / "operator_runs" / "historical_data" / "refresh-historical-data-catalog-test"
     source_root = run_root / "sources" / "binance_vision_public_archive"
     fixture_root = source_root / "fixture_packs"
@@ -186,6 +193,12 @@ def _write_completed_catalog_fixture(research_dir: Path, *, write_artifacts: boo
     readiness_root.mkdir(parents=True, exist_ok=True)
     specs_root.mkdir(parents=True, exist_ok=True)
     paths: dict[str, Path] = {}
+
+    def recorded_path(path: Path) -> str:
+        if stale_run_root is None:
+            return str(path)
+        return str(stale_run_root / path.relative_to(run_root))
+
     symbols = {
         "BTCUSDT": {
             "cycle_id": "r105-btcusdt-durable-public-archive-candidate-depth-v1",
@@ -227,7 +240,7 @@ def _write_completed_catalog_fixture(research_dir: Path, *, write_artifacts: boo
                     "research_only": True,
                     "observe_only": True,
                     "promotion_ready": False,
-                    "fixture_manifest_path": str(manifest_path),
+                    "fixture_manifest_path": recorded_path(manifest_path),
                     "fixture_manifest_sha256": manifest_sha,
                     "fixture_row_counts": {
                         "bars": 221_952,
@@ -248,7 +261,7 @@ def _write_completed_catalog_fixture(research_dir: Path, *, write_artifacts: boo
                     "research_only": True,
                     "observe_only": True,
                     "promotion_ready": False,
-                    "data": {"dataset_manifest_paths": [str(manifest_path)]},
+                    "data": {"dataset_manifest_paths": [recorded_path(manifest_path)]},
                 },
                 sort_keys=True,
             ),
@@ -261,8 +274,8 @@ def _write_completed_catalog_fixture(research_dir: Path, *, write_artifacts: boo
                     "run_id": ids["discovery_run_id"],
                     "symbol": symbol,
                     "timeframe": "15m",
-                    "research_output_dir": str(source_root),
-                    "data": {"dataset_manifest_paths": [str(manifest_path)]},
+                    "research_output_dir": recorded_path(source_root),
+                    "data": {"dataset_manifest_paths": [recorded_path(manifest_path)]},
                     "budget": {"max_trials": 570_240},
                     "execution": {"max_workers": 2},
                     "search": {
@@ -282,12 +295,12 @@ def _write_completed_catalog_fixture(research_dir: Path, *, write_artifacts: boo
             "candidate_depth_ready": True,
             "candidate_depth_thresholds_met": True,
             "collection_thresholds_met": True,
-            "source_summary_path": str(source_root / "durable_fixture_collection_summary.json"),
-            "fixture_manifest_path": str(manifest_path),
+            "source_summary_path": recorded_path(source_root / "durable_fixture_collection_summary.json"),
+            "fixture_manifest_path": recorded_path(manifest_path),
             "fixture_manifest_sha256": manifest_sha,
-            "readiness_config_path": str(readiness_path),
-            "cycle_spec_path": str(cycle_spec_path),
-            "discovery_spec_path": str(discovery_spec_path),
+            "readiness_config_path": recorded_path(readiness_path),
+            "cycle_spec_path": recorded_path(cycle_spec_path),
+            "discovery_spec_path": recorded_path(discovery_spec_path),
             "cycle_id": ids["cycle_id"],
             "discovery_run_id": ids["discovery_run_id"],
             "row_counts": {
@@ -304,6 +317,7 @@ def _write_completed_catalog_fixture(research_dir: Path, *, write_artifacts: boo
         }
         paths[f"{symbol}_cycle_spec"] = cycle_spec_path
         paths[f"{symbol}_discovery_spec"] = discovery_spec_path
+        paths[f"{symbol}_fixture_manifest"] = manifest_path
 
         if write_artifacts and symbol == "BTCUSDT":
             cycle_manifest = (
@@ -1386,6 +1400,53 @@ def test_operator_research_job_routes_default_to_active_catalog_specs(app_config
     assert observed[1][1]["overwrite_protection"] == "stable_run_id_output_dir"
 
 
+def test_operator_research_job_routes_rebase_migrated_active_catalog_specs(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    stale_run_root = (
+        Path(r"C:\Users\papaa\Music\tradingbotsuite\data\research\operator_runs\historical_data")
+        / "refresh-historical-data-catalog-test"
+    )
+    active_paths = _write_completed_catalog_fixture(research_dir, stale_run_root=stale_run_root)
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_ui_migrated_catalog_specs.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    observed: list[tuple[str, dict[str, object]]] = []
+
+    async def fake_queue_job(job_type: str, payload: dict[str, object]) -> dict[str, object]:
+        observed.append((job_type, payload))
+        return {"job_id": f"job-{len(observed)}", "status": "queued", "job_type": job_type}
+
+    app.state.operator_service.queue_job = fake_queue_job
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        cycle_response = client.post(
+            "/api/operator/research/jobs/run-historical-research-cycle",
+            json={},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        discovery_response = client.post(
+            "/api/operator/research/jobs/run-discovery",
+            json={},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert cycle_response.status_code == 200
+    assert discovery_response.status_code == 200
+    assert observed[0][1]["spec_path"] == str(active_paths["BTCUSDT_cycle_spec"])
+    assert observed[1][1]["spec_path"] == str(active_paths["BTCUSDT_discovery_spec"])
+
+
 def test_operator_start_recovers_interrupted_running_jobs(app_config, sample_bars, tmp_path) -> None:
     db_path = tmp_path / "operator_ui_recover_running.sqlite3"
     config = _operator_config(
@@ -2303,6 +2364,141 @@ def test_operator_candidate_eligibility_service_rejects_manifest_outputs_outside
         )
 
 
+def test_operator_candidate_eligibility_service_rebases_migrated_manifest_outputs(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    research_dir = tmp_path / "research"
+    run_name = "exact-entry-sweep-btcusdt-candidate-depth-v1"
+    current_run_dir = research_dir / "operator_runs" / "discovery_runs" / run_name
+    stale_run_dir = Path(r"C:\Users\papaa\Music\tradingbotsuite\data\research\operator_runs\discovery_runs") / run_name
+    ledger_dir = current_run_dir / "candidate_ledgers"
+    trials_dir = current_run_dir / "trials"
+    snapshots_dir = current_run_dir / "snapshots"
+    ledger_dir.mkdir(parents=True)
+    trials_dir.mkdir()
+    snapshots_dir.mkdir()
+    discovery_manifest = current_run_dir / "discovery_run_manifest.json"
+    run_state = current_run_dir / "run_state.json"
+    interesting = ledger_dir / "interesting_candidates.parquet"
+    blocked = ledger_dir / "blocked_candidates.parquet"
+    filter_blockers = ledger_dir / "filter_blockers.parquet"
+    for path in (run_state, interesting, blocked, filter_blockers):
+        path.write_text("{}", encoding="utf-8")
+    discovery_manifest.write_text(
+        json.dumps(
+            {
+                "run_id": "exact_entry_sweep_btcusdt_candidate_depth_v1",
+                "symbol": "BTCUSDT",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "required_outputs": {
+                    "run_state": str(stale_run_dir / "run_state.json"),
+                    "interesting_candidates": str(stale_run_dir / "candidate_ledgers" / "interesting_candidates.parquet"),
+                    "blocked_candidates": str(stale_run_dir / "candidate_ledgers" / "blocked_candidates.parquet"),
+                    "filter_blockers": str(stale_run_dir / "candidate_ledgers" / "filter_blockers.parquet"),
+                    "trials": str(stale_run_dir / "trials"),
+                    "snapshots": str(stale_run_dir / "snapshots"),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    cycle_run_name = "r105-btcusdt-durable-public-archive-candidate-depth-v1"
+    current_cycle_dir = (
+        research_dir
+        / "operator_runs"
+        / "historical_cycles"
+        / cycle_run_name
+        / "run-historical-research-cycle-migrated"
+    )
+    stale_cycle_dir = (
+        Path(r"C:\Users\papaa\Music\tradingbotsuite\data\research\operator_runs\historical_cycles")
+        / cycle_run_name
+        / current_cycle_dir.name
+    )
+    current_cycle_dir.mkdir(parents=True)
+    ablation_report = current_cycle_dir / "ablation_report.json"
+    ablation_report.write_text(
+        json.dumps({"research_only": True, "observe_only": True, "promotion_ready": False}),
+        encoding="utf-8",
+    )
+    cycle_manifest = current_cycle_dir / "research_cycle_manifest.json"
+    cycle_manifest.write_text(
+        json.dumps(
+            {
+                "cycle_id": cycle_run_name,
+                "symbol": "BTCUSDT",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "required_outputs": {
+                    "ablation_report": str(stale_cycle_dir / "ablation_report.json"),
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    observed: dict[str, object] = {}
+
+    def fake_evaluate_discovery_candidate_pack_eligibility(**kwargs):
+        observed.update(kwargs)
+        return SimpleNamespace(
+            eligibility=pd.DataFrame([{"eligible_for_existing_candidate_pack_validator": False}]),
+        )
+
+    def fake_write_discovery_candidate_pack_eligibility(*, output_dir, result):
+        output = Path(output_dir)
+        output.mkdir(parents=True)
+        manifest_path = output / "candidate_pack_eligibility_manifest.json"
+        eligibility_path = output / "candidate_pack_eligibility.parquet"
+        rejections_path = output / "candidate_pack_bridge_rejections.md"
+        manifest_path.write_text("{}", encoding="utf-8")
+        result.eligibility.to_parquet(eligibility_path)
+        rejections_path.write_text("", encoding="utf-8")
+        return SimpleNamespace(
+            output_dir=output,
+            manifest_path=manifest_path,
+            eligibility_path=eligibility_path,
+            rejections_path=rejections_path,
+        )
+
+    monkeypatch.setattr(
+        "tradingbotsuite.operator_console.evaluate_discovery_candidate_pack_eligibility",
+        fake_evaluate_discovery_candidate_pack_eligibility,
+    )
+    monkeypatch.setattr(
+        "tradingbotsuite.operator_console.write_discovery_candidate_pack_eligibility",
+        fake_write_discovery_candidate_pack_eligibility,
+    )
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_candidate_eligibility_migrated_outputs.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    result = app.state.operator_service._run_isolated_discovery_candidate_pack_eligibility(
+        {"discovery_manifest_path": str(discovery_manifest), "cycle_manifest_path": str(cycle_manifest)},
+        "candidate-eligibility-migrated-output",
+    )
+
+    assert result["row_count"] == 1
+    assert observed["discovery_manifest_path"] == discovery_manifest.resolve()
+    assert observed["cycle_manifest_path"] == cycle_manifest.resolve()
+
+
 def test_operator_candidate_eligibility_service_rejects_mixed_symbol_inputs(
     app_config,
     sample_bars,
@@ -2684,6 +2880,165 @@ def test_operator_research_autopilot_blocks_when_catalog_missing_without_refresh
     assert manifest["autopilot_status"] == "blocked"
     autopilot = next(item for item in artifacts if item["type"] == "research_autopilot")
     assert autopilot["summary"]["autopilot_status"] == "blocked"
+
+
+def test_operator_research_artifacts_marks_stale_running_autopilot_manifest(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    manifest_dir = research_dir / "operator_runs" / "research_autopilot" / "run-research-autopilot-stale"
+    manifest_dir.mkdir(parents=True)
+    updated_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    (manifest_dir / "research_autopilot_manifest.json").write_text(
+        json.dumps(
+            {
+                "autopilot_version": "r106-research-autopilot-v1",
+                "autopilot_status": "running",
+                "job_id": "run-research-autopilot-stale",
+                "requested_symbols": ["BTCUSDT", "ETHUSDT"],
+                "executed_step_count": 0,
+                "max_steps": 100,
+                "steps": [
+                    {
+                        "key": "historical_data_catalog",
+                        "status": "skipped",
+                        "detail": "candidate-depth catalog already ready",
+                        "time_utc": updated_at.isoformat(),
+                    }
+                ],
+                "updated_at_utc": updated_at.isoformat(),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_stale_manifest.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    with TestClient(app) as client:
+        _login(client, "operator-secret")
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
+
+    autopilot = next(item for item in artifacts if item["type"] == "research_autopilot")
+    assert autopilot["summary"]["autopilot_status"] == "running"
+    assert autopilot["summary"]["telemetry_status"] == "running_without_active_step_telemetry"
+    assert autopilot["summary"]["stale_review"] is True
+    assert autopilot["summary"]["stale_review_reason"] == "manifest_status_running_without_recent_active_step_update"
+    assert autopilot["summary"]["latest_step"]["key"] == "historical_data_catalog"
+    assert autopilot["summary"]["last_update_age_seconds"] >= 900
+
+
+def test_operator_research_progress_reports_active_autopilot_step(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    _write_completed_catalog_fixture(research_dir, write_artifacts=True)
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_active_step.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    analysis_started = Event()
+    release_analysis = Event()
+
+    def slow_analysis(request: dict[str, object], job_id: str) -> dict[str, object]:
+        analysis_started.set()
+        if not release_analysis.wait(10):
+            raise RuntimeError("test timed out waiting to release analysis")
+        output_dir = research_dir / "operator_runs" / "analysis" / job_id
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "research_analysis.json"
+        markdown_path = output_dir / "research_analysis.md"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "analysis_version": "research-analysis-v1",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "cycle": {"available": True, "manifest": {"symbol": "BTCUSDT", "cycle_id": "cycle-btcusdt"}},
+                    "discovery": {
+                        "available": True,
+                        "symbol": "BTCUSDT",
+                        "run_id": "exact_entry_sweep_btcusdt_candidate_depth_v1",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        markdown_path.write_text("analysis\n", encoding="utf-8")
+        return {"research_analysis_path": str(manifest_path), "research_analysis_markdown_path": str(markdown_path)}
+
+    app.state.operator_service._run_isolated_research_analysis = slow_analysis
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"symbols": ["BTCUSDT"], "include_catalog_refresh": False, "include_eligibility": False, "max_steps": 1},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job_id = response.json()["job_id"]
+        assert analysis_started.wait(10)
+        progress = None
+        for _ in range(50):
+            payload = client.get("/api/operator/research/progress").json()
+            active = payload.get("active_autopilot_progress") or {}
+            current = active.get("current_step") or {}
+            if current.get("key") == "research_analysis":
+                progress = active
+                break
+            time.sleep(0.05)
+        assert progress is not None
+        assert progress["telemetry_status"] == "active_step_recorded"
+        assert progress["current_step"]["symbol"] == "BTCUSDT"
+        assert progress["current_step"]["attempt"] == 1
+        assert progress["eta_seconds"] is not None
+        assert progress["manifest_path"]
+
+        manifest = json.loads(Path(str(progress["manifest_path"])).read_text(encoding="utf-8"))
+        assert manifest["active_step"]["key"] == "research_analysis"
+        release_analysis.set()
+        job = _wait_for_job(client, job_id)
+
+    assert response.status_code == 200
+    assert job["status"] == "succeeded"
+    assert job["result"]["autopilot_status"] == "blocked"
+    assert job["result"]["blocked_reason"] == "autopilot_step_limit_reached"
+    manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["active_step"] is None
+    assert ("research_analysis", "executed") in {(step["key"], step["status"]) for step in manifest["steps"]}
 
 
 def test_operator_research_autopilot_reuses_completed_outputs_and_runs_analysis_and_eligibility(
@@ -4153,6 +4508,122 @@ def test_operator_historical_cycle_job_writes_isolated_output(app_config, sample
     assert not original_output_dir.exists()
     assert Path(str(job["result"]["isolated_spec_path"])).exists()
     assert Path(str(job["result"]["research_cycle_manifest_path"])).exists()
+
+
+def test_operator_isolated_research_jobs_rebase_migrated_spec_payload_paths(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    stale_run_root = (
+        Path(r"C:\Users\papaa\Music\tradingbotsuite\data\research\operator_runs\historical_data")
+        / "refresh-historical-data-catalog-test"
+    )
+    active_paths = _write_completed_catalog_fixture(research_dir, stale_run_root=stale_run_root)
+    observed: dict[str, dict[str, object]] = {}
+
+    def fake_run_historical_research_cycle(*, spec_path, app_config):
+        payload = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+        output_dir = Path(str(payload["output_dir"]))
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "research_cycle_manifest.json"
+        rankings_path = output_dir / "candidate_rankings.parquet"
+        backtest_index_path = output_dir / "backtest_index.parquet"
+        rejection_report_path = output_dir / "rejection_report.md"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "cycle_id": payload["cycle_id"],
+                    "output_dir": str(output_dir),
+                }
+            ),
+            encoding="utf-8",
+        )
+        rankings_path.write_text("fake", encoding="utf-8")
+        backtest_index_path.write_text("fake", encoding="utf-8")
+        rejection_report_path.write_text("fake", encoding="utf-8")
+        observed["cycle"] = payload
+        return SimpleNamespace(
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            candidate_rankings_path=rankings_path,
+            backtest_index_path=backtest_index_path,
+            rejection_report_path=rejection_report_path,
+        )
+
+    def fake_run_discovery(*, spec_path, app_config, resume, stop_after_trials):
+        payload = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+        output_dir = Path(str(payload["output_dir"]))
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "discovery_run_manifest.json"
+        run_state_path = output_dir / "run_state.json"
+        interesting_path = output_dir / "interesting_candidates.json"
+        blocked_path = output_dir / "blocked_candidates.json"
+        filter_blockers_path = output_dir / "filter_blockers.json"
+        for path in (manifest_path, run_state_path, interesting_path, blocked_path, filter_blockers_path):
+            path.write_text(
+                json.dumps({"research_only": True, "observe_only": True, "promotion_ready": False}),
+                encoding="utf-8",
+            )
+        observed["discovery"] = payload
+        return SimpleNamespace(
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            run_state_path=run_state_path,
+            interesting_candidates_path=interesting_path,
+            blocked_candidates_path=blocked_path,
+            filter_blockers_path=filter_blockers_path,
+            snapshot_paths=[],
+        )
+
+    monkeypatch.setattr(
+        "tradingbotsuite.operator_console.run_historical_research_cycle",
+        fake_run_historical_research_cycle,
+    )
+    monkeypatch.setattr("tradingbotsuite.operator_console.run_discovery", fake_run_discovery)
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_migrated_specs.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        cycle_response = client.post(
+            "/api/operator/research/jobs/run-historical-research-cycle",
+            json={"spec_path": str(active_paths["BTCUSDT_cycle_spec"])},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        discovery_response = client.post(
+            "/api/operator/research/jobs/run-discovery",
+            json={"spec_path": str(active_paths["BTCUSDT_discovery_spec"])},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        cycle_job = _wait_for_job(client, cycle_response.json()["job_id"])
+        discovery_job = _wait_for_job(client, discovery_response.json()["job_id"])
+
+    assert cycle_response.status_code == 200
+    assert discovery_response.status_code == 200
+    assert cycle_job["status"] == "succeeded"
+    assert discovery_job["status"] == "succeeded"
+    expected_manifest = str(active_paths["BTCUSDT_fixture_manifest"].resolve())
+    assert observed["cycle"]["data"]["dataset_manifest_paths"] == [expected_manifest]
+    assert observed["discovery"]["data"]["dataset_manifest_paths"] == [expected_manifest]
+    assert observed["discovery"]["research_output_dir"] == str(research_dir.resolve())
+    assert "tradingbotsuite" not in json.dumps(observed, sort_keys=True).lower()
 
 
 def test_operator_historical_cycle_rejects_unallowlisted_spec_path(app_config, sample_bars, tmp_path) -> None:

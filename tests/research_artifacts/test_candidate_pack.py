@@ -683,6 +683,24 @@ def test_research_candidate_pack_is_research_only_and_rejected_for_live_input(tm
     assert "research_only_artifact_rejected_for_live_input" in live_validation.reasons
 
 
+def test_research_candidate_gate_rebases_migrated_cycle_required_outputs(tmp_path: Path) -> None:
+    cycle_manifest = _cycle_outputs(tmp_path)
+    manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+    cycle_root = cycle_manifest.parent.resolve()
+    stale_root = Path(r"C:\Users\papaa\Music\tradingbotsuite\unit-test-cycle-portability") / cycle_root.name
+    migrated_outputs: dict[str, str] = {}
+    for key, raw_path in dict(manifest["required_outputs"]).items():
+        current_path = Path(str(raw_path)).resolve()
+        migrated_outputs[key] = str(stale_root / current_path.relative_to(cycle_root))
+    manifest["required_outputs"] = migrated_outputs
+    cycle_manifest.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+    assert gate.passed
+    assert not any("required_output_path_missing" in reason for reason in gate.reasons)
+
+
 def test_research_candidate_pack_treats_overfit_reports_as_diagnostics(tmp_path: Path) -> None:
     cycle_manifest = _cycle_outputs(tmp_path)
     manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))

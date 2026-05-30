@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Callable, Mapping, Sequence
 
 from tradingbotsuite.data.contracts import data_provider_capabilities, data_source_descriptors
@@ -223,12 +223,50 @@ def historical_data_provider_states(
 
 
 def read_historical_data_catalog(path: Path | str) -> dict[str, Any]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    catalog_path = Path(path).expanduser().resolve()
+    payload = json.loads(catalog_path.read_text(encoding="utf-8-sig"))
     if not isinstance(payload, dict):
         raise ValueError("historical_data_catalog_must_be_json_object")
     if payload.get("historical_data_catalog_version") != HISTORICAL_DATA_CATALOG_VERSION:
         raise ValueError("historical_data_catalog_version_mismatch")
-    return payload
+    normalized = normalize_operator_run_artifact_paths(payload, artifact_path=catalog_path, anchor_root=catalog_path.parent)
+    if normalized != payload:
+        portability = dict(normalized.get("path_portability") or {})
+        portability.update(
+            {
+                "migrated_absolute_paths_rebased": True,
+                "catalog_run_dir": str(catalog_path.parent),
+            }
+        )
+        normalized["path_portability"] = portability
+    return normalized
+
+
+def normalize_operator_run_artifact_paths(
+    payload: Mapping[str, Any],
+    *,
+    artifact_path: Path | str,
+    anchor_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Rebase migrated operator-run paths when a mirrored path exists locally.
+
+    Historical R106 artifacts can be copied between checkouts while preserving
+    absolute paths from the original repo. This keeps generated artifacts
+    immutable and fixes the handoff at read time.
+    """
+
+    if not isinstance(payload, Mapping):
+        raise ValueError("operator_run_artifact_payload_must_be_mapping")
+    resolved_artifact = Path(artifact_path).expanduser().resolve()
+    context_dir = resolved_artifact if resolved_artifact.is_dir() else resolved_artifact.parent
+    resolved_anchor = Path(anchor_root).expanduser().resolve() if anchor_root is not None else _operator_run_anchor_root(context_dir)
+    normalized = _normalize_operator_run_node(
+        dict(payload),
+        key="",
+        anchor_root=resolved_anchor,
+        context_dir=context_dir,
+    )
+    return normalized if isinstance(normalized, dict) else dict(payload)
 
 
 def _catalog_symbol_payload(
@@ -411,3 +449,104 @@ def _canonical_json(payload: Any, *, indent: int | None = None) -> str:
         ensure_ascii=True,
         default=str,
     )
+
+
+def _normalize_operator_run_node(
+    value: Any,
+    *,
+    key: str,
+    anchor_root: Path,
+    context_dir: Path,
+) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(child_key): _normalize_operator_run_node(
+                child_value,
+                key=str(child_key),
+                anchor_root=anchor_root,
+                context_dir=context_dir,
+            )
+            for child_key, child_value in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _normalize_operator_run_node(
+                item,
+                key=key,
+                anchor_root=anchor_root,
+                context_dir=context_dir,
+            )
+            for item in value
+        ]
+    if isinstance(value, str):
+        rebased = _rebase_operator_run_path(value, key=key, anchor_root=anchor_root, context_dir=context_dir)
+        if rebased is not None:
+            return str(rebased)
+    return value
+
+
+def _operator_run_anchor_root(context_dir: Path) -> Path:
+    current = context_dir.resolve()
+    for ancestor in (current, *current.parents):
+        if ancestor.name.startswith("refresh-historical-data-catalog-"):
+            return ancestor
+    return current
+
+
+def _operator_run_rebase_anchors(*, anchor_root: Path, context_dir: Path) -> list[Path]:
+    root = anchor_root.resolve()
+    current = context_dir.resolve()
+    try:
+        current.relative_to(root)
+    except ValueError:
+        return [root]
+    anchors = [current]
+    while anchors[-1] != root:
+        anchors.append(anchors[-1].parent)
+    return anchors
+
+
+def _operator_run_repo_root(context_dir: Path) -> Path | None:
+    current = context_dir.resolve()
+    for ancestor in (current, *current.parents):
+        if (ancestor / "pyproject.toml").is_file() and (ancestor / "src" / "tradingbotsuite").is_dir():
+            return ancestor
+    return None
+
+
+def _rebase_operator_run_path(raw_path: str, *, key: str, anchor_root: Path, context_dir: Path) -> Path | None:
+    text = raw_path.strip()
+    if not text:
+        return None
+    candidate_parts = _absolute_path_parts(text)
+    if not candidate_parts:
+        return None
+    anchors_by_name: dict[str, list[Path]] = {}
+    for anchor in _operator_run_rebase_anchors(anchor_root=anchor_root, context_dir=context_dir):
+        if anchor.name:
+            anchors_by_name.setdefault(anchor.name.lower(), []).append(anchor)
+    for index, part in enumerate(candidate_parts):
+        for anchor in anchors_by_name.get(part.lower(), []):
+            rebased = anchor.joinpath(*candidate_parts[index + 1 :]).resolve()
+            if rebased.exists() or rebased.parent.exists():
+                return rebased
+    repo_root = _operator_run_repo_root(context_dir)
+    if repo_root is not None:
+        if key.strip().lower() in {"repo_root", "repository_root"}:
+            return repo_root.resolve()
+        for index, part in enumerate(candidate_parts):
+            if part.lower() in {"configs", "data", "docs", "src", "tests"}:
+                rebased = repo_root.joinpath(*candidate_parts[index:]).resolve()
+                if rebased.exists() or rebased.parent.exists():
+                    return rebased
+    return None
+
+
+def _absolute_path_parts(text: str) -> tuple[str, ...]:
+    candidate = Path(text).expanduser()
+    if candidate.is_absolute():
+        return candidate.parts
+    windows_candidate = PureWindowsPath(text)
+    if windows_candidate.is_absolute():
+        return windows_candidate.parts
+    return ()

@@ -59,6 +59,31 @@ def test_multiple_testing_report_passes_stable_non_concentrated_leads(tmp_path) 
     assert gates.loc[gates["candidate_id"].eq("candidate-1"), "sampled_fraction"].iloc[0] == 0.04
 
 
+def test_multiple_testing_derives_stability_neighborhoods_without_quadratic_scan() -> None:
+    candidates = _candidates().drop(columns=["stability_neighborhood_size"])
+    candidates.loc[3, "distance_metric"] = "cosine"
+    spec = DiscoveryMultipleTestingSpec(
+        declared_search_space=100,
+        min_stability_neighborhood_size=1,
+    )
+
+    result = build_discovery_multiple_testing_report(candidates, spec=spec)
+    sizes = dict(
+        zip(
+            result.candidate_gates["candidate_id"].astype(str),
+            result.candidate_gates["stability_neighborhood_size"].astype(int),
+            strict=True,
+        )
+    )
+
+    assert sizes == {
+        "candidate-1": 3,
+        "candidate-2": 3,
+        "candidate-3": 3,
+        "candidate-4": 1,
+    }
+
+
 def test_multiple_testing_report_derives_search_space_from_discovery_manifest(tmp_path) -> None:
     interesting_path = tmp_path / "interesting.parquet"
     spec_path = tmp_path / "resolved_spec.json"
@@ -105,6 +130,55 @@ def test_multiple_testing_report_derives_search_space_from_discovery_manifest(tm
     assert row["declared_search_space"] == 10
     assert row["sampled_fraction"] == 0.1
     assert row["record_sha256"] == "record-1"
+
+
+def test_multiple_testing_prefers_manifest_budget_before_trial_record_scan(tmp_path, monkeypatch) -> None:
+    interesting_path = tmp_path / "interesting.parquet"
+    trials_dir = tmp_path / "trials"
+    trials_dir.mkdir()
+    (trials_dir / "trial-000001.json").write_text("{}", encoding="utf-8")
+    manifest_path = tmp_path / "discovery_run_manifest.json"
+    pd.DataFrame(
+        [
+            {
+                "candidate_id": "candidate-1",
+                "record_sha256": "record-1",
+                "discovery_screen_score_v2": 0.20,
+                "split_window_concentration": 0.25,
+                "side_concentration": 0.55,
+            }
+        ]
+    ).to_parquet(interesting_path, index=False)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "budget": {"max_trials": 570240},
+                "counts": {"completed_trials": 570240},
+                "required_outputs": {
+                    "interesting_candidates": str(interesting_path),
+                    "trials": str(trials_dir),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_read_trial_record(path):
+        raise AssertionError("trial records should not be scanned when manifest budget is present")
+
+    monkeypatch.setattr(
+        "tradingbotsuite.research_discovery.multiple_testing.read_trial_record",
+        fail_read_trial_record,
+    )
+
+    result = build_discovery_multiple_testing_report_from_manifest(manifest_path)
+
+    assert result.candidate_gates.loc[0, "declared_search_space"] == 570240
 
 
 def test_multiple_testing_manifest_candidates_without_concentration_evidence_are_blocked(tmp_path) -> None:

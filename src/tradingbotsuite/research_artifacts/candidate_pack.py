@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
 
+from tradingbotsuite.data.historical_data_catalog import normalize_operator_run_artifact_paths
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
 
 
@@ -88,11 +89,104 @@ class ResearchCandidateGate:
         return self.status == "passed"
 
 
+@dataclass(slots=True)
+class ResearchCandidateGateContext:
+    cycle_manifest_path: Path
+    manifest_reasons: tuple[str, ...]
+    required_outputs_error: str | None
+    output_reasons: tuple[str, ...]
+    rankings_loaded: bool
+    ranking_candidate_ids: frozenset[str]
+    gate_cache: dict[str, ResearchCandidateGate] = field(default_factory=dict)
+
+
 @dataclass(frozen=True, slots=True)
 class ResearchCandidatePackResult:
     output_dir: Path
     manifest_path: Path
     evidence_index_path: Path
+
+
+def build_research_candidate_gate_context(*, cycle_manifest_path: Path) -> ResearchCandidateGateContext:
+    cycle_manifest_path = Path(cycle_manifest_path).expanduser().resolve()
+    cycle_manifest = _read_json(cycle_manifest_path)
+    manifest_reasons: list[str] = []
+    try:
+        _reject_live_adjacent_json(cycle_manifest_path)
+    except ValueError:
+        manifest_reasons.append("cycle_manifest_live_adjacent_or_invalid")
+    manifest_reasons.extend(_cycle_manifest_gate_reasons(cycle_manifest))
+    try:
+        required_outputs = _required_outputs(cycle_manifest)
+    except ValueError as exc:
+        return ResearchCandidateGateContext(
+            cycle_manifest_path=cycle_manifest_path,
+            manifest_reasons=tuple(manifest_reasons),
+            required_outputs_error=str(exc),
+            output_reasons=(),
+            rankings_loaded=False,
+            ranking_candidate_ids=frozenset(),
+        )
+    output_reasons = tuple(_required_output_reasons(required_outputs))
+    rankings_path = required_outputs.get("candidate_rankings")
+    if rankings_path is None or not rankings_path.exists():
+        return ResearchCandidateGateContext(
+            cycle_manifest_path=cycle_manifest_path,
+            manifest_reasons=tuple(manifest_reasons),
+            required_outputs_error=None,
+            output_reasons=output_reasons,
+            rankings_loaded=False,
+            ranking_candidate_ids=frozenset(),
+        )
+    rankings = pd.read_parquet(rankings_path)
+    if "candidate_id" not in rankings.columns:
+        ranking_candidate_ids = frozenset()
+    else:
+        ranking_candidate_ids = frozenset(rankings["candidate_id"].astype(str).tolist())
+    return ResearchCandidateGateContext(
+        cycle_manifest_path=cycle_manifest_path,
+        manifest_reasons=tuple(manifest_reasons),
+        required_outputs_error=None,
+        output_reasons=output_reasons,
+        rankings_loaded=True,
+        ranking_candidate_ids=ranking_candidate_ids,
+    )
+
+
+def evaluate_research_candidate_gate_from_context(
+    *,
+    context: ResearchCandidateGateContext,
+    candidate_id: str,
+) -> ResearchCandidateGate:
+    normalized_candidate_id = str(candidate_id)
+    cached = context.gate_cache.get(normalized_candidate_id)
+    if cached is not None:
+        return cached
+    if context.required_outputs_error is not None:
+        gate = ResearchCandidateGate(
+            normalized_candidate_id,
+            "blocked",
+            tuple([*context.manifest_reasons, context.required_outputs_error]),
+        )
+    elif not context.rankings_loaded:
+        gate = ResearchCandidateGate(
+            normalized_candidate_id,
+            "blocked",
+            tuple(dict.fromkeys([*context.manifest_reasons, *context.output_reasons, "candidate_rankings_required"])),
+        )
+    elif normalized_candidate_id not in context.ranking_candidate_ids:
+        gate = ResearchCandidateGate(
+            normalized_candidate_id,
+            "blocked",
+            tuple(dict.fromkeys([*context.manifest_reasons, *context.output_reasons, "candidate_missing_from_rankings"])),
+        )
+    else:
+        gate = evaluate_research_candidate_gate(
+            cycle_manifest_path=context.cycle_manifest_path,
+            candidate_id=normalized_candidate_id,
+        )
+    context.gate_cache[normalized_candidate_id] = gate
+    return gate
 
 
 def evaluate_research_candidate_gate(
@@ -1299,10 +1393,11 @@ def _safe_name(value: str) -> str:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    resolved_path = Path(path).expanduser().resolve()
+    payload = json.loads(resolved_path.read_text(encoding="utf-8-sig"))
     if not isinstance(payload, dict):
-        raise ValueError(f"expected JSON object at {path}")
-    return payload
+        raise ValueError(f"expected JSON object at {resolved_path}")
+    return normalize_operator_run_artifact_paths(payload, artifact_path=resolved_path, anchor_root=resolved_path.parent)
 
 
 def _optional_float(value: Any) -> float | None:

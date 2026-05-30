@@ -71,6 +71,20 @@ def test_discovery_spec_rejects_invalid_budget(tmp_path: Path) -> None:
         DiscoveryRunSpec.from_path(spec_path)
 
 
+def test_discovery_spec_accepts_prediction_only_artifact_policy(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "predictions-only.json",
+        {
+            "run_id": "predictions-only",
+            "execution": {"persist_trial_artifacts": "predictions_only"},
+        },
+    )
+
+    spec = DiscoveryRunSpec.from_path(spec_path)
+
+    assert spec.execution.persist_trial_artifacts == "predictions_only"
+
+
 def test_discovery_spec_rejects_unsafe_trial_id(tmp_path: Path) -> None:
     spec_path = _write_json(
         tmp_path / "bad-trial.json",

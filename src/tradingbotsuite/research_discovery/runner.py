@@ -745,6 +745,8 @@ def run_discovery(
         "policy_version": "discovery-trial-artifact-policy-v2",
         "configured_persist_trial_artifacts": spec.execution.persist_trial_artifacts,
         "persist_full_artifacts_inline": spec.execution.persist_trial_artifacts == "all",
+        "persist_prediction_artifacts_without_neighbor_diagnostics": spec.execution.persist_trial_artifacts
+        == "predictions_only",
         "interesting_only_defers_heavy_artifacts": spec.execution.persist_trial_artifacts == "interesting_only",
         "trial_records_and_candidate_ledgers_remain_durable": True,
     }
@@ -1892,7 +1894,7 @@ def _normalized_hmm_cache_identity(manifest: Mapping[str, Any]) -> dict[str, Any
 
 
 def _persist_trial_artifacts(policy: str, *, ledger_kind: str) -> bool:
-    return policy == "all"
+    return policy in {"all", "predictions_only"}
 
 
 def _labeled_splits_with_cache(
@@ -2142,13 +2144,19 @@ def _evaluate_hmm_knn_trial(
             knn_manifest["threshold_metrics_from_base_knn"] = True
         if knn is None:
             raise RuntimeError("knn artifacts requested before KNN predictions were materialized")
-        hmm_artifacts = write_hmm_materialization_artifacts(trial_dir / "hmm", hmm)
         knn_artifacts = write_knn_study_artifacts(trial_dir / "knn", knn)
-        hmm_artifact_payload = {
-            "hmm_artifact_persisted": True,
-            "hmm_manifest_path": str(hmm_artifacts.manifest_path),
-            "hmm_regime_posteriors_path": str(hmm_artifacts.regime_posteriors_path),
-        }
+        if spec.execution.persist_trial_artifacts == "all":
+            hmm_artifacts = write_hmm_materialization_artifacts(trial_dir / "hmm", hmm)
+            hmm_artifact_payload = {
+                "hmm_artifact_persisted": True,
+                "hmm_manifest_path": str(hmm_artifacts.manifest_path),
+                "hmm_regime_posteriors_path": str(hmm_artifacts.regime_posteriors_path),
+            }
+        else:
+            hmm_artifact_payload = {
+                "hmm_artifact_persisted": False,
+                "hmm_artifact_deferred_reason": "predictions_only_policy_persists_knn_predictions_without_hmm_posteriors",
+            }
         knn_artifact_payload = {
             "knn_artifact_persisted": True,
             "knn_manifest_path": str(knn_artifacts.manifest_path),
