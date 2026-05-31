@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -107,7 +108,7 @@ class ResearchUiService:
             for path in sorted(self.research_root.rglob("neighbor_diagnostics.csv"))
         ]
 
-    def promotion_candidates(self) -> list[dict[str, Any]]:
+    def boundary_review_manifests(self) -> list[dict[str, Any]]:
         return [
             item
             for item in self.list_manifests()
@@ -227,6 +228,19 @@ def create_research_app(config: AppConfig | None = None, service: ResearchUiServ
             payload.update(extra)
         return payload
 
+    def require_write_api(request: Request) -> None:
+        secret = config.operator_ui.secret
+        if not secret:
+            raise HTTPException(status_code=403, detail="research_ui_write_api_disabled")
+        origin = request.headers.get("origin")
+        if origin is not None and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+            raise HTTPException(status_code=403, detail="cross-origin request blocked")
+        token = request.headers.get("X-Research-UI-Token")
+        if token is None:
+            raise HTTPException(status_code=403, detail="missing research ui token")
+        if not secrets.compare_digest(token, str(secret)):
+            raise HTTPException(status_code=403, detail="invalid research ui token")
+
     @app.get("/research", response_class=HTMLResponse)
     async def research_home(request: Request):
         return templates.TemplateResponse(request, "index.html", context(request, "dashboard", "Research Dashboard"))
@@ -268,8 +282,17 @@ def create_research_app(config: AppConfig | None = None, service: ResearchUiServ
         return templates.TemplateResponse(request, "artifacts.html", context(request, "knn_neighbors", "KNN Neighbor Diagnostics", {"items": service.knn_neighbor_diagnostics()}))
 
     @app.get("/research/promotion-candidates", response_class=HTMLResponse)
-    async def promotion_candidates(request: Request):
-        return templates.TemplateResponse(request, "artifacts.html", context(request, "promotion", "Promotion Candidate Review", {"items": service.promotion_candidates()}))
+    async def promotion_review(request: Request):
+        return templates.TemplateResponse(
+            request,
+            "artifacts.html",
+            context(
+                request,
+                "promotion",
+                "Research Boundary Review",
+                {"items": service.boundary_review_manifests()},
+            ),
+        )
 
     @app.get("/research/jobs", response_class=HTMLResponse)
     async def jobs(request: Request):
@@ -289,6 +312,7 @@ def create_research_app(config: AppConfig | None = None, service: ResearchUiServ
 
     @app.post("/research/api/jobs/run-research-experiment")
     async def api_run_research_experiment(request: Request):
+        require_write_api(request)
         payload = await request.json()
         spec_path = payload.get("spec_path")
         if not spec_path:

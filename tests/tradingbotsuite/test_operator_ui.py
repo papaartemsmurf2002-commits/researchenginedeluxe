@@ -1960,6 +1960,34 @@ def test_operator_research_artifacts_survives_corrupt_json(app_config, sample_ba
     assert "Expecting property name" in errors[0]["summary"]["error"]
 
 
+def test_operator_artifact_index_skips_trials_directory(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    included = research_dir / "cycle" / "research_cycle_manifest.json"
+    skipped = research_dir / "trials" / "trial-a" / "research_cycle_manifest.json"
+    included.parent.mkdir(parents=True)
+    skipped.parent.mkdir(parents=True)
+    included.write_text("{}", encoding="utf-8")
+    skipped.write_text("{}", encoding="utf-8")
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_artifact_trials.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    index = app.state.operator_service._artifact_path_index(research_dir)
+
+    assert index["research_cycle_manifest.json"] == [included]
+
+
 def test_operator_research_artifacts_include_hardware_utilization_summary(
     app_config,
     sample_bars,

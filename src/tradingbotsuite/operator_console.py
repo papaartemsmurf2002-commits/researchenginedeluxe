@@ -168,6 +168,7 @@ class OperatorConsoleService:
         "snapshots",
         "split_backtests",
         "trial_artifacts",
+        "trials",
     }
     _ARTIFACT_SCAN_MAX_MATCHES_PER_PATTERN = 500
 

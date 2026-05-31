@@ -726,6 +726,22 @@ def test_full_cycle_resolves_relative_dataset_manifest_paths(tmp_path: Path) -> 
     assert manifest["data_source"]["source_selection"]["records"][-1]["status"] == "selected"
 
 
+def test_full_cycle_rejects_output_outside_research_root(tmp_path: Path) -> None:
+    spec_path = _write_cycle_spec(tmp_path)
+    payload = json.loads(spec_path.read_text(encoding="utf-8"))
+    outside = tmp_path / "outside" / "historical_cycle"
+    payload["output_dir"] = str(outside)
+    spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="historical cycle output_dir must be inside"):
+        run_historical_research_cycle(
+            spec_path=spec_path,
+            app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+        )
+
+    assert not outside.exists()
+
+
 def test_full_cycle_rejects_no_source_without_explicit_synthetic_fixture(tmp_path: Path) -> None:
     spec = HistoricalResearchCycleSpec.from_payload(
         {
@@ -1353,8 +1369,9 @@ def test_triple_barrier_cycle_rejects_bad_explicit_lower_timeframe_dataset(tmp_p
         )
 
 
-def test_historical_research_cycle_cli_command_runs(tmp_path: Path) -> None:
+def test_historical_research_cycle_cli_command_runs(tmp_path: Path, monkeypatch) -> None:
     spec_path = _write_cycle_spec(tmp_path)
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path / "research"))
     args = argparse.Namespace(spec=str(spec_path))
 
     payload = main._run_historical_research_cycle_command(args)

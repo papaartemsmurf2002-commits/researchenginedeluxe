@@ -586,6 +586,7 @@ def _shuffled_label_summary(frame: pd.DataFrame, *, seed: int) -> dict[str, Any]
         }
     labels = [str(value) for value in frame[label_column].fillna("").tolist()]
     reasons: list[str] = []
+    distinct_labels = set(labels)
     if len(labels) <= 1:
         reasons.append("shuffled_label_source_too_small")
         order = list(range(len(labels)))
@@ -594,22 +595,28 @@ def _shuffled_label_summary(frame: pd.DataFrame, *, seed: int) -> dict[str, Any]
         if order == list(range(len(labels))):
             order = order[1:] + order[:1]
     shuffled = [labels[index] for index in order]
+    source_hash = _stable_hash(labels)
+    shuffled_hash = _stable_hash(shuffled)
     derangement_rate = (
         sum(1 for position, source_index in enumerate(order) if position != source_index) / len(order)
         if order
         else 0.0
     )
     distribution_match = _value_counts(labels) == _value_counts(shuffled)
+    if len(distinct_labels) < 2:
+        reasons.append("shuffled_label_no_effect")
+    if source_hash == shuffled_hash:
+        reasons.append("shuffled_label_hash_unchanged")
     if not distribution_match:
         reasons.append("shuffled_label_distribution_mismatch")
     if len(labels) > 1 and derangement_rate <= 0.0:
         reasons.append("shuffled_label_derangement_missing")
     return {
-        "source_label_hash": _stable_hash(labels),
-        "shuffled_label_hash": _stable_hash(shuffled),
+        "source_label_hash": source_hash,
+        "shuffled_label_hash": shuffled_hash,
         "label_distribution_match": distribution_match,
         "derangement_rate": derangement_rate,
-        "reasons": reasons,
+        "reasons": list(dict.fromkeys(reasons)),
     }
 
 
@@ -624,9 +631,12 @@ def _shifted_context_summary(frame: pd.DataFrame, *, shift_size: int) -> dict[st
         monotonic = False
     else:
         timestamps = pd.to_numeric(frame[timestamp_column], errors="coerce")
-        monotonic = bool(timestamps.notna().all() and timestamps.is_monotonic_increasing)
+        timestamps_unique = bool(timestamps.is_unique)
+        monotonic = bool(timestamps.notna().all() and timestamps.is_monotonic_increasing and timestamps_unique)
         if not monotonic:
             reasons.append("source_timestamp_not_monotonic")
+        if not timestamps_unique:
+            reasons.append("source_timestamp_not_unique")
     shift = max(1, int(shift_size))
     if len(frame) <= shift:
         reasons.append("shifted_context_source_too_small")
@@ -645,16 +655,20 @@ def _shifted_context_summary(frame: pd.DataFrame, *, shift_size: int) -> dict[st
         }
     ]
     if not context_columns:
-        context_columns = [column for column in ("candidate_id", "materialized_candidate_id", "source_trial_id") if column in frame.columns]
+        reasons.append("shifted_context_columns_missing")
     source_payload = frame.loc[:, context_columns].fillna("").astype(str).to_dict("records") if context_columns else []
     shifted_payload = (
         frame.loc[:, context_columns].shift(shift).dropna(how="all").fillna("").astype(str).to_dict("records")
         if context_columns and len(frame) > shift
         else []
     )
+    source_hash = _stable_hash(source_payload) if source_payload else ""
+    output_hash = _stable_hash(shifted_payload) if shifted_payload else ""
+    if context_columns and source_hash == output_hash:
+        reasons.append("shifted_context_no_effect")
     return {
-        "source_hash": _stable_hash(source_payload) if source_payload else "",
-        "output_hash": _stable_hash(shifted_payload) if shifted_payload else "",
+        "source_hash": source_hash,
+        "output_hash": output_hash,
         "edge_row_drop_count": min(shift, len(frame)),
         "monotonic_timestamp_validation": monotonic,
         "reasons": list(dict.fromkeys(reasons)),

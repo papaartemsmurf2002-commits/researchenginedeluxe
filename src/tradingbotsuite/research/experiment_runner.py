@@ -337,7 +337,7 @@ class ResearchExperimentSpec:
                 else None
             ),
             output_dir=(
-                _resolve_path(payload["output_dir"], base_path=spec_path.parent)
+                _resolve_output_path(payload["output_dir"], base_path=spec_path.parent)
                 if payload.get("output_dir")
                 else None
             ),
@@ -415,11 +415,19 @@ def run_research_experiment(
     spec_path: Path,
     app_config: AppConfig | None = None,
 ) -> ResearchExperimentRunResult:
-    spec_path = Path(spec_path).expanduser()
+    spec_path = Path(spec_path).expanduser().resolve()
     spec = ResearchExperimentSpec.from_payload(_read_json(spec_path), spec_path=spec_path)
     app_config = app_config or AppConfig.from_env()
     run_id = _run_id(spec.name)
-    output_dir = spec.output_dir or (app_config.research.output_dir / "experiments" / run_id)
+    repo_root = _repo_root_from_path(spec_path)
+    research_root = _resolve_path(app_config.research.output_dir, base_path=repo_root)
+    output_dir = spec.output_dir or (research_root / "experiments" / run_id)
+    output_dir = output_dir.resolve()
+    _ensure_inside_research_root(
+        output_dir,
+        research_root=research_root,
+        field_name="experiment output_dir",
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     specs_dir = output_dir / "specs"
     specs_dir.mkdir(parents=True, exist_ok=True)
@@ -2252,9 +2260,45 @@ def _git_metadata() -> dict[str, Any]:
 
 def _resolve_path(path: Any, *, base_path: Path) -> Path:
     candidate = Path(str(path)).expanduser()
-    if candidate.is_absolute() or candidate.exists():
-        return candidate
+    if candidate.is_absolute():
+        return candidate.resolve()
+    base_candidate = (base_path / candidate).resolve()
+    if base_candidate.exists():
+        return base_candidate
+    repo_candidate = (_repo_root_from_path(base_path) / candidate).resolve()
+    if repo_candidate.exists():
+        return repo_candidate
+    return base_candidate
+
+
+def _resolve_output_path(path: Any, *, base_path: Path) -> Path:
+    candidate = Path(str(path)).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
     return (base_path / candidate).resolve()
+
+
+def _repo_root_from_path(path: Path) -> Path:
+    start = path if path.is_dir() else path.parent
+    for parent in [start, *start.parents]:
+        if (parent / "pyproject.toml").is_file():
+            return parent.resolve()
+    return Path.cwd().resolve()
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _ensure_inside_research_root(path: Path, *, research_root: Path, field_name: str) -> None:
+    resolved_path = path.resolve()
+    resolved_root = research_root.resolve()
+    if not _is_relative_to(resolved_path, resolved_root):
+        raise ValueError(f"{field_name} must be inside the configured research output directory")
 
 
 def _run_id(name: str) -> str:

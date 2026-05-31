@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from tradingbotsuite.config import AppConfig, ResearchConfig
+from tradingbotsuite.config import AppConfig, OperatorUIConfig, ResearchConfig
 from tradingbotsuite.core.models import RuntimeMode
 from tradingbotsuite.ui import research_app
 from tradingbotsuite.ui.research_app import ResearchUiService, create_research_app
@@ -60,12 +60,15 @@ def test_research_ui_pages_are_passive_and_manifest_linked(tmp_path: Path) -> No
         home = client.get("/research")
         experiments = client.get("/research/experiments")
         knn = client.get("/research/knn-neighbors")
+        boundary = client.get("/research/promotion-candidates")
         api = client.get("/research/api/experiments")
 
     assert home.status_code == 200
     assert experiments.status_code == 200
     assert knn.status_code == 200
     assert str(manifest_path) in experiments.text
+    assert "Research Boundary Review" in boundary.text
+    assert "Promotion Candidate Review" not in boundary.text
     assert api.json()["items"][0]["manifest_path"] == str(manifest_path)
     assert "neighbor_diagnostics.csv" in knn.text
 
@@ -73,10 +76,18 @@ def test_research_ui_pages_are_passive_and_manifest_linked(tmp_path: Path) -> No
 def test_research_ui_queues_explicit_research_jobs(tmp_path: Path) -> None:
     research_root = tmp_path / "research"
     spec_path = _write_research_run_spec(research_root)
-    app = create_research_app(service=ResearchUiService(research_root=research_root))
+    config = AppConfig(
+        research=ResearchConfig(output_dir=research_root),
+        operator_ui=OperatorUIConfig(secret="research-secret"),
+    )
+    app = create_research_app(config=config)
 
     with TestClient(app) as client:
-        response = client.post("/research/api/jobs/run-research-experiment", json={"spec_path": str(spec_path)})
+        response = client.post(
+            "/research/api/jobs/run-research-experiment",
+            json={"spec_path": str(spec_path)},
+            headers={"X-Research-UI-Token": "research-secret"},
+        )
         jobs = client.get("/research/api/jobs")
 
     assert response.status_code == 200
@@ -84,14 +95,49 @@ def test_research_ui_queues_explicit_research_jobs(tmp_path: Path) -> None:
     assert jobs.json()["items"][0]["spec_path"] == str(spec_path.resolve())
 
 
+def test_research_ui_write_api_requires_token(tmp_path: Path) -> None:
+    research_root = tmp_path / "research"
+    spec_path = _write_research_run_spec(research_root)
+    config = AppConfig(
+        research=ResearchConfig(output_dir=research_root),
+        operator_ui=OperatorUIConfig(secret="research-secret"),
+    )
+    app = create_research_app(config=config)
+
+    with TestClient(app) as client:
+        missing = client.post("/research/api/jobs/run-research-experiment", json={"spec_path": str(spec_path)})
+        invalid = client.post(
+            "/research/api/jobs/run-research-experiment",
+            json={"spec_path": str(spec_path)},
+            headers={"X-Research-UI-Token": "wrong"},
+        )
+        disabled = client.post(
+            "/research/api/jobs/run-research-experiment",
+            json={"spec_path": str(spec_path)},
+            headers={"X-Research-UI-Token": "research-secret", "Origin": "http://evil.test"},
+        )
+
+    assert missing.status_code == 403
+    assert invalid.status_code == 403
+    assert disabled.status_code == 403
+
+
 def test_research_ui_rejects_unallowlisted_spec_path(tmp_path: Path) -> None:
     research_root = tmp_path / "research"
     outside_root = tmp_path / "outside"
     spec_path = _write_research_run_spec(outside_root)
-    app = create_research_app(service=ResearchUiService(research_root=research_root))
+    config = AppConfig(
+        research=ResearchConfig(output_dir=research_root),
+        operator_ui=OperatorUIConfig(secret="research-secret"),
+    )
+    app = create_research_app(config=config)
 
     with TestClient(app) as client:
-        response = client.post("/research/api/jobs/run-research-experiment", json={"spec_path": str(spec_path)})
+        response = client.post(
+            "/research/api/jobs/run-research-experiment",
+            json={"spec_path": str(spec_path)},
+            headers={"X-Research-UI-Token": "research-secret"},
+        )
 
     assert response.status_code == 400
     assert "spec_path must be inside" in response.json()["detail"]
@@ -100,10 +146,18 @@ def test_research_ui_rejects_unallowlisted_spec_path(tmp_path: Path) -> None:
 def test_research_ui_rejects_external_output_dir(tmp_path: Path) -> None:
     research_root = tmp_path / "research"
     spec_path = _write_research_run_spec(research_root, output_dir=tmp_path / "outside-output")
-    app = create_research_app(service=ResearchUiService(research_root=research_root))
+    config = AppConfig(
+        research=ResearchConfig(output_dir=research_root),
+        operator_ui=OperatorUIConfig(secret="research-secret"),
+    )
+    app = create_research_app(config=config)
 
     with TestClient(app) as client:
-        response = client.post("/research/api/jobs/run-research-experiment", json={"spec_path": str(spec_path)})
+        response = client.post(
+            "/research/api/jobs/run-research-experiment",
+            json={"spec_path": str(spec_path)},
+            headers={"X-Research-UI-Token": "research-secret"},
+        )
 
     assert response.status_code == 400
     assert "output_dir must be inside" in response.json()["detail"]
@@ -115,6 +169,7 @@ def test_research_ui_rejects_live_mode_execution(tmp_path: Path) -> None:
     config = AppConfig(
         runtime_mode=RuntimeMode.LIVE,
         research=ResearchConfig(output_dir=research_root),
+        operator_ui=OperatorUIConfig(secret="research-secret"),
     )
     app = create_research_app(config=config)
 
@@ -122,6 +177,7 @@ def test_research_ui_rejects_live_mode_execution(tmp_path: Path) -> None:
         response = client.post(
             "/research/api/jobs/run-research-experiment",
             json={"spec_path": str(spec_path), "execute": True},
+            headers={"X-Research-UI-Token": "research-secret"},
         )
 
     assert response.status_code == 400

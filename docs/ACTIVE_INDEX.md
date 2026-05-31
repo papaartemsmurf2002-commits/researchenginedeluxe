@@ -1,6 +1,6 @@
 # Active Index
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 This is the first file to read after `AGENTS.md`.
 
@@ -32,6 +32,10 @@ facts.
 
 - Current stage: Stage R106 centralized historical data catalog.
 - Current stage owner: Codex Research Agent.
+- Latest WPR106-52 GitHub CLI/UI connector review and optimization packet:
+  `docs/work_packets/WPR106-52-github-cli-ui-connector-review-and-optimization.md`.
+- Latest WPR106-52 connector review report:
+  `docs/stage_reports/STAGE_R106_GITHUB_CLI_UI_CONNECTOR_REVIEW_AND_OPTIMIZATION_REPORT.md`.
 - Latest WPR106-51 complete review hardening and publish packet:
   `docs/work_packets/WPR106-51-complete-review-hardening-and-publish.md`.
 - Latest WPR106-50 full-codebase validation/performance audit packet:
@@ -87,6 +91,19 @@ resolution, and Lorentzian warning cleanup; tightens the known-issue template
 so naive counters do not report a fake open template issue; and preserves zero
 eligible candidates with no candidate pack, live, paper, order-placement,
 sizing, runtime, or promotion claim.
+WPR106-52 installs GitHub CLI 2.93.0, confirms local `gh` is available but not
+authenticated, records the desktop GitHub connector MCP startup timeout as an
+external connector limitation, and hardens UI/research connector paths. The
+standalone research UI mutating API now requires a configured operator secret
+token and rejects cross-origin writes; generic non-promotable manifests are
+shown as research boundary review rather than promotion candidates; operator
+artifact indexing skips `trials/`; provider pipeline, research experiment, and
+historical-cycle output dirs fail closed outside the configured research output
+root; data-pipeline stage paths prefer the owning spec directory over launch
+CWD; and negative-control availability blocks no-effect shuffled-label and
+weak shifted-context evidence. Final validation reports 1552 passed, 1 skipped,
+and 2 warnings. No candidate pack, live/paper/order/sizing/runtime/promotion
+behavior is introduced.
 
 ## Current Gate State
 
@@ -267,6 +284,11 @@ benchmark nested path resolution, and Lorentzian warning cleanup are fixed;
 the known-issue template no longer resembles a real open issue to naive
 counters; `.pytest_cache` and root-level handoff prompts remain unstaged; no
 candidate pack or live/paper/promotion behavior is introduced.
+WPR106-52 follows with a connector/review/optimization hardening pass. GitHub
+CLI is installed but unauthenticated, the desktop GitHub connector still times
+out externally, UI/research write surfaces and output-root boundaries are
+hardened, negative controls reject no-effect evidence, and the final full suite
+passes at 1552 passed, 1 skipped, 2 warnings.
 
 ## Non-Negotiable Research Boundary
 

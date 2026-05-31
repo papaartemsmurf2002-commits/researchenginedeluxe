@@ -137,6 +137,76 @@ def test_wpr10648_negative_control_artifacts_are_control_only_not_candidate_evid
     assert no_regime["regime_model_backend"].eq("none").all()
 
 
+def test_wpr10648_shuffled_label_control_blocks_no_effect_labels(tmp_path: Path) -> None:
+    source = _write_control_source(
+        tmp_path,
+        include_label=True,
+        include_timestamp=True,
+        labels=[1, 1],
+    )
+    replay_profile = _write_json(tmp_path / "modern_window_profile.json", {"research_only": True})
+    validation_manifest = _write_json(tmp_path / "validation_manifest.json", {"research_only": True})
+    modern_profile = _write_json(tmp_path / "modern_profile.json", {"research_only": True})
+
+    result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="BTCUSDT",
+                source_manifest_path=source["manifest"],
+                source_rows_path=source["rows"],
+                replay_profile_path=replay_profile,
+                validation_manifest_path=validation_manifest,
+                modern_window_profile_path=modern_profile,
+                require_modern_window_evidence=True,
+                deterministic_seed=7,
+                shift_size=1,
+            )
+        ]
+    )
+
+    shuffled = result.control_rows.loc[result.control_rows["control_family"].eq("shuffled_labels")]
+    assert shuffled["control_status"].eq("blocked").all()
+    reasons = "|".join(shuffled["control_reasons"].astype(str))
+    assert "shuffled_label_no_effect" in reasons
+    assert "shuffled_label_hash_unchanged" in reasons
+
+
+def test_wpr10648_shifted_context_control_requires_unique_timestamps_and_context_columns(tmp_path: Path) -> None:
+    source = _write_control_source(
+        tmp_path,
+        include_label=True,
+        include_timestamp=True,
+        timestamps=[1000, 1000],
+        include_context=False,
+    )
+    replay_profile = _write_json(tmp_path / "modern_window_profile.json", {"research_only": True})
+    validation_manifest = _write_json(tmp_path / "validation_manifest.json", {"research_only": True})
+    modern_profile = _write_json(tmp_path / "modern_profile.json", {"research_only": True})
+
+    result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="BTCUSDT",
+                source_manifest_path=source["manifest"],
+                source_rows_path=source["rows"],
+                replay_profile_path=replay_profile,
+                validation_manifest_path=validation_manifest,
+                modern_window_profile_path=modern_profile,
+                require_modern_window_evidence=True,
+                deterministic_seed=7,
+                shift_size=1,
+            )
+        ]
+    )
+
+    shifted = result.control_rows.loc[result.control_rows["control_family"].eq("shifted_context")]
+    assert shifted["control_status"].eq("blocked").all()
+    reasons = "|".join(shifted["control_reasons"].astype(str))
+    assert "source_timestamp_not_monotonic" in reasons
+    assert "source_timestamp_not_unique" in reasons
+    assert "shifted_context_columns_missing" in reasons
+
+
 def test_wpr10648_negative_control_artifacts_fail_closed_when_profile_and_validation_are_missing(
     tmp_path: Path,
 ) -> None:
@@ -412,7 +482,15 @@ def _write_symbol_input(tmp_path: Path) -> WPR10647SymbolEvidenceInput:
     )
 
 
-def _write_control_source(tmp_path: Path, *, include_label: bool, include_timestamp: bool) -> dict[str, Path]:
+def _write_control_source(
+    tmp_path: Path,
+    *,
+    include_label: bool,
+    include_timestamp: bool,
+    labels: list[int] | None = None,
+    timestamps: list[int] | None = None,
+    include_context: bool = True,
+) -> dict[str, Path]:
     source_dir = tmp_path / f"control-source-{include_label}-{include_timestamp}"
     source_dir.mkdir(parents=True)
     replay_spec = _write_json(source_dir / "replay_spec.json", {"research_only": True})
@@ -439,21 +517,21 @@ def _write_control_source(tmp_path: Path, *, include_label: bool, include_timest
                 "materialized_candidate_id": "mat-a",
                 "source_trial_id": "trial-a",
                 "source_record_sha256": "record-a",
-                "context_bucket": "trend",
+                **({"context_bucket": "trend"} if include_context else {}),
             },
             {
                 "candidate_id": "candidate-b",
                 "materialized_candidate_id": "mat-b",
                 "source_trial_id": "trial-b",
                 "source_record_sha256": "record-b",
-                "context_bucket": "range",
+                **({"context_bucket": "range"} if include_context else {}),
             },
         ]
     )
     if include_label:
-        rows["label"] = [1, -1]
+        rows["label"] = labels or [1, -1]
     if include_timestamp:
-        rows["timestamp_ms"] = [1000, 2000]
+        rows["timestamp_ms"] = timestamps or [1000, 2000]
     rows_path = source_dir / "source_rows.parquet"
     rows.to_parquet(rows_path, index=False)
     return {"manifest": manifest, "rows": rows_path}

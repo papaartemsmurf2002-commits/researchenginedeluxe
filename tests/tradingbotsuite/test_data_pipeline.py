@@ -128,13 +128,17 @@ def _base_spec(tmp_path: Path, **updates: object) -> dict[str, object]:
     payload: dict[str, object] = {
         "version": "test-provider-pipeline",
         "asset_scope": ["BTCUSDT"],
-        "output_dir": str(tmp_path / "pipeline_out"),
+        "output_dir": str(tmp_path / "research" / "pipeline_out"),
         "providers": [],
         "dataset_stage": {"enabled": False},
         "evidence_stage": {"enabled": False},
     }
     payload.update(updates)
     return payload
+
+
+def _pipeline_app_config(tmp_path: Path) -> AppConfig:
+    return AppConfig(research=ResearchConfig(output_dir=tmp_path / "research"))
 
 
 def _write_fast_hmm_knn_config(path: Path) -> Path:
@@ -201,7 +205,11 @@ def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_qualit
         ),
     )
 
-    result = prepare_hmm_knn_research_data(spec_path=spec_path, stage="intake")
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="intake",
+        app_config=_pipeline_app_config(tmp_path),
+    )
 
     intake = json.loads(result.intake_manifest_path.read_text(encoding="utf-8"))
     quality = json.loads(result.data_quality_report_path.read_text(encoding="utf-8"))
@@ -281,7 +289,11 @@ def test_prepare_hmm_knn_research_data_intake_ingests_crypto_lake_export(tmp_pat
         ),
     )
 
-    result = prepare_hmm_knn_research_data(spec_path=spec_path, stage="intake")
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="intake",
+        app_config=_pipeline_app_config(tmp_path),
+    )
     intake = json.loads(result.intake_manifest_path.read_text(encoding="utf-8"))
     quality = json.loads(result.data_quality_report_path.read_text(encoding="utf-8"))
     journal_manifest = json.loads(result.market_journal_manifest_path.read_text(encoding="utf-8"))
@@ -318,7 +330,11 @@ def test_archive_backed_research_client_excludes_future_bars_and_preserves_missi
             ],
         ),
     )
-    result = prepare_hmm_knn_research_data(spec_path=spec_path, stage="intake")
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="intake",
+        app_config=_pipeline_app_config(tmp_path),
+    )
     intake = json.loads(result.intake_manifest_path.read_text(encoding="utf-8"))
     archive_manifests = [
         json.loads(Path(path).read_text(encoding="utf-8"))
@@ -379,7 +395,11 @@ def test_prepare_hmm_knn_research_data_evidence_stage_skips_without_dataset(tmp_
         ),
     )
 
-    result = prepare_hmm_knn_research_data(spec_path=spec_path, stage="evidence")
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="evidence",
+        app_config=_pipeline_app_config(tmp_path),
+    )
     intake = json.loads(result.intake_manifest_path.read_text(encoding="utf-8"))
 
     assert result.evidence_manifest_path is None
@@ -476,7 +496,11 @@ def test_prepare_hmm_knn_research_data_stage_all_runs_relative_evidence_matrix(t
         ),
     )
 
-    result = prepare_hmm_knn_research_data(spec_path=spec_path, stage="all")
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="all",
+        app_config=_pipeline_app_config(tmp_path),
+    )
     intake = json.loads(result.intake_manifest_path.read_text(encoding="utf-8"))
     summary = json.loads(result.pipeline_summary_path.read_text(encoding="utf-8"))
     evidence = json.loads(Path(str(summary["artifact_links"]["evidence_manifest_path"])).read_text(encoding="utf-8"))
@@ -498,6 +522,61 @@ def test_prepare_hmm_knn_research_data_stage_all_runs_relative_evidence_matrix(t
     assert evidence["dataset_path"] == str(dataset.parquet_path.resolve())
     assert Path(evidence["summary_path"]).exists()
     assert Path(evidence["experiments"][0]["monitoring_report_path"]).exists()
+
+
+def test_prepare_hmm_knn_research_data_resolves_stage_paths_relative_to_spec_before_cwd(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    spec_dir = tmp_path / "fixtures"
+    cwd_dir = tmp_path / "cwd"
+    spec_dataset = write_hmm_knn_sweep_dataset(output_dir=spec_dir / "datasets", row_count=120)
+    write_hmm_knn_sweep_dataset(output_dir=cwd_dir / "datasets", row_count=150)
+    config_path = _write_fast_hmm_knn_config(spec_dir / "hmm_knn_config.json")
+    experiment_spec_path = _write_spec(
+        spec_dir / "experiment_spec.json",
+        {
+            "name": "pipeline fixture matrix",
+            "base_config_path": config_path.name,
+            "experiments": [
+                {
+                    "name": "small k softmax",
+                    "slug": "small-k-softmax",
+                    "owning_agent": "KNN",
+                    "run_order": 1,
+                    "requires_new_data": False,
+                    "can_run_on_current_artifacts": True,
+                    "mutations": {"knn.primary_k": 8, "knn.k_values": [8, 12]},
+                }
+            ],
+        },
+    )
+    spec_path = _write_spec(
+        spec_dir / "pipeline_spec.json",
+        _base_spec(
+            tmp_path,
+            providers=[],
+            dataset_stage={"enabled": False},
+            evidence_stage={
+                "enabled": True,
+                "dataset_path": str(Path("datasets") / spec_dataset.parquet_path.name),
+                "experiment_spec": experiment_spec_path.name,
+                "workers": 1,
+                "write_monitoring": True,
+            },
+        ),
+    )
+    monkeypatch.chdir(cwd_dir)
+
+    result = prepare_hmm_knn_research_data(
+        spec_path=spec_path,
+        stage="all",
+        app_config=_pipeline_app_config(tmp_path),
+    )
+    summary = json.loads(result.pipeline_summary_path.read_text(encoding="utf-8"))
+    evidence = json.loads(Path(str(summary["artifact_links"]["evidence_manifest_path"])).read_text(encoding="utf-8"))
+
+    assert evidence["dataset_path"] == str(spec_dataset.parquet_path.resolve())
 
 
 def test_prepare_hmm_knn_research_data_stage_all_builds_dataset_from_sqlite_signals_and_archive_bars(tmp_path: Path) -> None:
@@ -602,11 +681,33 @@ def test_prepare_hmm_knn_research_data_rejects_invalid_typed_provider_spec(tmp_p
     )
 
     with pytest.raises(ValueError, match="data_family is required"):
-        prepare_hmm_knn_research_data(spec_path=spec_path, stage="intake")
+        prepare_hmm_knn_research_data(
+            spec_path=spec_path,
+            stage="intake",
+            app_config=_pipeline_app_config(tmp_path),
+        )
+
+
+def test_prepare_hmm_knn_research_data_rejects_output_outside_research_root(tmp_path: Path) -> None:
+    outside = tmp_path / "outside" / "pipeline_out"
+    spec_path = _write_spec(
+        tmp_path / "pipeline_spec.json",
+        _base_spec(tmp_path, output_dir=str(outside)),
+    )
+
+    with pytest.raises(ValueError, match="pipeline output_dir must be inside"):
+        prepare_hmm_knn_research_data(
+            spec_path=spec_path,
+            stage="intake",
+            app_config=_pipeline_app_config(tmp_path),
+        )
+
+    assert not outside.exists()
 
 
 def test_prepare_hmm_knn_research_data_cli_command_runs_intake(tmp_path: Path, monkeypatch) -> None:
     spec_path = _write_spec(tmp_path / "pipeline_spec.json", _base_spec(tmp_path))
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path / "research"))
     monkeypatch.setattr(
         sys,
         "argv",
@@ -623,7 +724,7 @@ def test_prepare_hmm_knn_research_data_cli_command_runs_intake(tmp_path: Path, m
     args = main.parse_args()
     payload = main._run_prepare_hmm_knn_research_data_command(args)
 
-    assert payload["output_dir"] == str(tmp_path / "pipeline_out")
+    assert payload["output_dir"] == str(tmp_path / "research" / "pipeline_out")
     assert Path(str(payload["data_intake_manifest_path"])).exists()
     assert Path(str(payload["data_quality_report_path"])).exists()
     assert Path(str(payload["market_journal_manifest_path"])).exists()

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from tradingbotsuite import main
 from tradingbotsuite.config import AppConfig, ResearchConfig
@@ -238,6 +239,26 @@ def test_run_research_experiment_writes_bundle_and_conclusion(tmp_path: Path) ->
     assert "generic_real_backtest_not_acceptance_evidence" in experiment_manifest["orchestrator_decision"]["failure_reasons"]
     assert "validation_method_not_executed:nested_validation" in experiment_manifest["orchestrator_decision"]["failure_reasons"]
     assert "research_only_not_promotable" in experiment_manifest["orchestrator_decision"]["failure_reasons"]
+
+
+def test_run_research_experiment_rejects_output_outside_research_root(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120)
+    pipeline_spec = _write_pipeline_spec(tmp_path, dataset.parquet_path, tmp_path / "research" / "pipeline")
+    outside = tmp_path / "outside" / "experiment"
+    spec_path = _write_research_experiment_spec(
+        tmp_path,
+        pipeline_spec=pipeline_spec,
+        experiment_spec=None,
+        output_dir=outside,
+    )
+
+    with pytest.raises(ValueError, match="experiment output_dir must be inside"):
+        run_research_experiment(
+            spec_path=spec_path,
+            app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+        )
+
+    assert not outside.exists()
 
 
 def test_run_research_experiment_executes_supplied_generic_experiment_spec(tmp_path: Path) -> None:
@@ -736,6 +757,7 @@ def test_research_experiment_cli_command_runs(tmp_path: Path, monkeypatch) -> No
         experiment_spec=experiment_spec,
         output_dir=output_dir,
     )
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path / "research"))
     monkeypatch.setattr(sys, "argv", ["tradingbot", "run-research-experiment", "--spec", str(spec_path)])
 
     args = main.parse_args()
