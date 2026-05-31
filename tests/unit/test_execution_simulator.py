@@ -113,6 +113,136 @@ def test_lower_timeframe_entry_source_requires_lower_frame() -> None:
         )
 
 
+def test_lower_timeframe_entry_source_uses_lower_open_at_latency_fill_time() -> None:
+    market = _market()
+    decision_time = int(market.iloc[0]["bar_time_ms"])
+    lower = pd.DataFrame(
+        {
+            "symbol": ["BTCUSDT", "BTCUSDT", "BTCUSDT"],
+            "bar_time_ms": [decision_time + 30_000, decision_time + 60_000, decision_time + 120_000],
+            "open": [190.0, 200.0, 210.0],
+            "high": [191.0, 201.0, 211.0],
+            "low": [189.0, 199.0, 209.0],
+            "close": [190.5, 200.5, 210.5],
+        }
+    )
+
+    trades, _ = ExecutionSimulator().simulate(
+        pd.DataFrame(
+            {
+                "signal_id": ["s1"],
+                "symbol": ["BTCUSDT"],
+                "decision_time_ms": [decision_time],
+                "side": ["long"],
+                "signal_bar_close": [100.5],
+            }
+        ),
+        market,
+        costs=CostModel(),
+        assumptions=ExecutionAssumptions(
+            interval_ms=900_000,
+            entry_latency_ms=60_000,
+            entry_price_source="lower_timeframe_execution_path",
+            min_holding_ms=3_600_000,
+            max_holding_ms=7 * 24 * 60 * 60 * 1000,
+            holding_period_ms=3_600_000,
+        ),
+        initial_equity=10_000.0,
+        lower_timeframe_market_data=lower,
+    )
+
+    row = trades.iloc[0]
+    assert row["entry_target_time_ms"] == decision_time + 60_000
+    assert row["entry_time_ms"] == decision_time + 60_000
+    assert row["entry_primary_bar_time_ms"] == decision_time
+    assert row["entry_bar_index"] == 0
+    assert row["entry_price"] == pytest.approx(200.0)
+    assert row["entry_sequence_proof"] == "lower_timeframe_open"
+    assert row["entry_price_source"] == "lower_timeframe_execution_path"
+    assert row["holding_ms"] == int(row["exit_time_ms"]) - int(row["entry_time_ms"])
+
+
+def test_lower_timeframe_entry_source_uses_next_lower_open_after_unaligned_latency() -> None:
+    market = _market()
+    decision_time = int(market.iloc[0]["bar_time_ms"])
+    lower = pd.DataFrame(
+        {
+            "bar_time_ms": [decision_time + 60_000, decision_time + 120_000],
+            "open": [200.0, 210.0],
+        }
+    )
+
+    trades, _ = ExecutionSimulator().simulate(
+        pd.DataFrame(
+            {
+                "signal_id": ["s1"],
+                "symbol": ["BTCUSDT"],
+                "decision_time_ms": [decision_time],
+                "side": ["long"],
+                "signal_bar_close": [100.5],
+            }
+        ),
+        market,
+        costs=CostModel(),
+        assumptions=ExecutionAssumptions(
+            interval_ms=900_000,
+            entry_latency_ms=90_000,
+            entry_price_source="lower_timeframe_execution_path",
+            min_holding_ms=3_600_000,
+            max_holding_ms=7 * 24 * 60 * 60 * 1000,
+            holding_period_ms=3_600_000,
+        ),
+        initial_equity=10_000.0,
+        lower_timeframe_market_data=lower,
+    )
+
+    assert trades.iloc[0]["entry_target_time_ms"] == decision_time + 90_000
+    assert trades.iloc[0]["entry_time_ms"] == decision_time + 120_000
+    assert trades.iloc[0]["entry_price"] == pytest.approx(210.0)
+
+
+def test_lower_timeframe_entry_source_fails_closed_without_open_or_coverage() -> None:
+    market = _market()
+    decision_time = int(market.iloc[0]["bar_time_ms"])
+    assumptions = ExecutionAssumptions(
+        interval_ms=900_000,
+        entry_latency_ms=60_000,
+        entry_price_source="lower_timeframe_execution_path",
+        min_holding_ms=3_600_000,
+        max_holding_ms=7 * 24 * 60 * 60 * 1000,
+        holding_period_ms=3_600_000,
+    )
+    signals = pd.DataFrame(
+        {
+            "signal_id": ["s1"],
+            "symbol": ["BTCUSDT"],
+            "decision_time_ms": [decision_time],
+            "side": ["long"],
+            "signal_bar_close": [100.5],
+        }
+    )
+
+    with pytest.raises(ValueError, match="missing required columns: open"):
+        ExecutionSimulator().simulate(
+            signals,
+            market,
+            costs=CostModel(),
+            assumptions=assumptions,
+            initial_equity=10_000.0,
+            lower_timeframe_market_data=pd.DataFrame({"bar_time_ms": [decision_time + 60_000], "close": [200.0]}),
+        )
+
+    with pytest.raises(ValueError, match="entry sequence coverage missing"):
+        ExecutionSimulator().simulate(
+            signals,
+            market,
+            costs=CostModel(),
+            assumptions=assumptions,
+            initial_equity=10_000.0,
+            lower_timeframe_market_data=pd.DataFrame({"bar_time_ms": [decision_time + 30_000], "open": [200.0]}),
+        )
+
+
 def test_same_primary_bar_exit_requires_lower_timeframe_sequence_proof() -> None:
     market = _market()
     entry_time = int(market.iloc[0]["bar_time_ms"])

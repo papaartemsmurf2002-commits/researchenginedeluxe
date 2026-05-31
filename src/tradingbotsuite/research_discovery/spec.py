@@ -10,6 +10,14 @@ from tradingbotsuite.config import AppConfig
 
 
 DISCOVERY_SPEC_VERSION = "discovery-run-spec-v1"
+DISCOVERY_LEAD_REPLAY_SPEC_VERSION = "discovery-lead-replay-spec-v1"
+DISCOVERY_RUN_ACCEPTED_SPEC_VERSIONS = frozenset(
+    {
+        DISCOVERY_SPEC_VERSION,
+        DISCOVERY_LEAD_REPLAY_SPEC_VERSION,
+    }
+)
+DISCOVERY_RUN_CONFIG_SCHEMA_VERSION = "discovery-run-config-schema-v1"
 SUPPORTED_DISCOVERY_MODES = (
     "quick_smoke",
     "entry_discovery_standard",
@@ -26,14 +34,83 @@ SUPPORTED_REGIME_MODES = (
     "gmm_same_regime_neighbors",
     "gmm_all_regime_neighbors_with_gate",
 )
+GMM_REGIME_MODEL_BACKEND = "sklearn.mixture.GaussianMixture"
+NO_REGIME_MODEL_BACKEND = "none"
 REAL_DISCOVERY_MODES = frozenset({"entry_discovery_standard", "hmm_regime_knn_lab", "deep_candidate_harvest"})
 SAFE_RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+DISCOVERY_RUN_TOP_LEVEL_SCHEMA_KEYS = frozenset(
+    {
+        "spec_version",
+        "run_id",
+        "symbol",
+        "timeframe",
+        "discovery_mode",
+        "research_output_dir",
+        "output_dir",
+        "feature_column_sets_path",
+        "feature_column_set_ids",
+        "data",
+        "search",
+        "execution",
+        "budget",
+        "trial_templates",
+        "replay_metadata",
+        "operator_job_id",
+        "operator_original_spec_path",
+        "operator_overwrite_protection",
+        "operator_stable_run_id",
+        "operator_requested_resume",
+        "operator_effective_resume",
+    }
+)
+DISCOVERY_RUN_SECTION_SCHEMA_KEYS = {
+    "data": frozenset({"dataset_path", "dataset_manifest_paths"}),
+    "search": frozenset(
+        {
+            "hmm_state_counts",
+            "hmm_posterior_thresholds",
+            "hmm_entropy_thresholds",
+            "label_horizons",
+            "k_values",
+            "min_neighbor_counts",
+            "distance_metrics",
+            "probability_thresholds",
+            "expected_value_thresholds",
+            "min_neighbor_agreements",
+            "min_distance_qualities",
+            "vote_margin_thresholds",
+            "same_regime_only_values",
+            "regime_modes",
+            "min_splits",
+            "purge_embargo_bars",
+            "min_trade_count",
+            "min_signal_rate",
+            "max_signal_rate",
+            "min_realized_expectancy",
+        }
+    ),
+    "execution": frozenset({"max_workers", "persist_trial_artifacts", "executor"}),
+    "budget": frozenset({"max_trials", "trial_batch_size", "snapshot_interval_minutes", "rng_seed"}),
+}
+DISCOVERY_TRIAL_TEMPLATE_SCHEMA_KEYS = frozenset(
+    {
+        "trial_id",
+        "candidate_id",
+        "ledger_kind",
+        "candidate_family",
+        "score",
+        "blocker_code",
+        "filter_blocker_code",
+        "payload",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
 class DiscoveryRegimeModeSettings:
     regime_mode: str
     regime_detector_type: str
+    regime_model_backend: str
     regime_gate_enabled: bool
     same_regime_neighbor_pool_enabled: bool
     true_hmm_backend_used: bool = False
@@ -46,6 +123,7 @@ class DiscoveryRegimeModeSettings:
         return {
             "regime_mode": self.regime_mode,
             "regime_detector_type": self.regime_detector_type,
+            "regime_model_backend": self.regime_model_backend,
             "regime_gate_enabled": self.regime_gate_enabled,
             "same_regime_neighbor_pool_enabled": self.same_regime_neighbor_pool_enabled,
             "same_regime_only": self.same_regime_only,
@@ -59,6 +137,7 @@ def regime_mode_settings(regime_mode: str) -> DiscoveryRegimeModeSettings:
         return DiscoveryRegimeModeSettings(
             regime_mode="none",
             regime_detector_type="none",
+            regime_model_backend=NO_REGIME_MODEL_BACKEND,
             regime_gate_enabled=False,
             same_regime_neighbor_pool_enabled=False,
         )
@@ -66,6 +145,7 @@ def regime_mode_settings(regime_mode: str) -> DiscoveryRegimeModeSettings:
         return DiscoveryRegimeModeSettings(
             regime_mode="gmm_gate_only",
             regime_detector_type="gmm",
+            regime_model_backend=GMM_REGIME_MODEL_BACKEND,
             regime_gate_enabled=True,
             same_regime_neighbor_pool_enabled=False,
         )
@@ -73,6 +153,7 @@ def regime_mode_settings(regime_mode: str) -> DiscoveryRegimeModeSettings:
         return DiscoveryRegimeModeSettings(
             regime_mode="gmm_same_regime_neighbors",
             regime_detector_type="gmm",
+            regime_model_backend=GMM_REGIME_MODEL_BACKEND,
             regime_gate_enabled=True,
             same_regime_neighbor_pool_enabled=True,
         )
@@ -80,6 +161,7 @@ def regime_mode_settings(regime_mode: str) -> DiscoveryRegimeModeSettings:
         return DiscoveryRegimeModeSettings(
             regime_mode="gmm_all_regime_neighbors_with_gate",
             regime_detector_type="gmm",
+            regime_model_backend=GMM_REGIME_MODEL_BACKEND,
             regime_gate_enabled=True,
             same_regime_neighbor_pool_enabled=False,
         )
@@ -383,6 +465,7 @@ class DiscoveryRunSpec:
     ) -> "DiscoveryRunSpec":
         if not isinstance(payload, Mapping):
             raise ValueError("discovery run spec must be a JSON object")
+        validate_discovery_run_schema(payload)
         run_id = str(payload.get("run_id") or "").strip()
         if not run_id:
             raise ValueError("run_id is required")
@@ -443,6 +526,49 @@ class DiscoveryRunSpec:
             "budget": self.budget.to_payload(),
             "trial_templates": [template.to_payload() for template in self.trial_templates],
         }
+
+
+def discovery_run_schema() -> dict[str, Any]:
+    return {
+        "schema_version": DISCOVERY_RUN_CONFIG_SCHEMA_VERSION,
+        "spec_version": DISCOVERY_SPEC_VERSION,
+        "accepted_spec_versions": sorted(DISCOVERY_RUN_ACCEPTED_SPEC_VERSIONS),
+        "top_level_keys": sorted(DISCOVERY_RUN_TOP_LEVEL_SCHEMA_KEYS),
+        "section_keys": {
+            section: sorted(keys)
+            for section, keys in sorted(DISCOVERY_RUN_SECTION_SCHEMA_KEYS.items())
+        },
+        "trial_template_keys": sorted(DISCOVERY_TRIAL_TEMPLATE_SCHEMA_KEYS),
+        "metadata_policy": "active_discovery_run_parser_fields_fail_closed",
+    }
+
+
+def validate_discovery_run_schema(payload: Mapping[str, Any]) -> None:
+    spec_version = payload.get("spec_version")
+    if spec_version is not None and str(spec_version) not in DISCOVERY_RUN_ACCEPTED_SPEC_VERSIONS:
+        raise ValueError(
+            "discovery_run.spec_version must be one of: "
+            + ", ".join(sorted(DISCOVERY_RUN_ACCEPTED_SPEC_VERSIONS))
+        )
+    _reject_unknown_keys(payload, allowed=DISCOVERY_RUN_TOP_LEVEL_SCHEMA_KEYS, context="discovery_run")
+    for section, allowed in DISCOVERY_RUN_SECTION_SCHEMA_KEYS.items():
+        value = payload.get(section)
+        if value is None:
+            continue
+        if not isinstance(value, Mapping):
+            raise ValueError(f"{section} must be a JSON object")
+        _reject_unknown_keys(value, allowed=allowed, context=f"discovery_run.{section}")
+    templates = payload.get("trial_templates") or ()
+    if isinstance(templates, Mapping) or isinstance(templates, str):
+        raise ValueError("trial_templates must be a JSON array")
+    for index, item in enumerate(templates, start=1):
+        if not isinstance(item, Mapping):
+            raise ValueError("trial_templates entries must be JSON objects")
+        _reject_unknown_keys(
+            item,
+            allowed=DISCOVERY_TRIAL_TEMPLATE_SCHEMA_KEYS,
+            context=f"discovery_run.trial_templates[{index}]",
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -688,6 +814,12 @@ def _json_safe_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         raise ValueError("payload must be a JSON object")
     return json.loads(json.dumps(dict(value), sort_keys=True, default=str, allow_nan=False))
+
+
+def _reject_unknown_keys(payload: Mapping[str, Any], *, allowed: frozenset[str], context: str) -> None:
+    unknown = sorted(str(key) for key in payload if str(key) not in allowed)
+    if unknown:
+        raise ValueError(f"{context} unknown schema keys: {', '.join(unknown)}")
 
 
 def _assert_unique_values(field_name: str, values: tuple[Any, ...]) -> None:

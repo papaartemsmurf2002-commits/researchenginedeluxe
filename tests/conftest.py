@@ -29,6 +29,8 @@ class FakeBinanceCandleClient:
 @pytest.fixture
 def sample_bars() -> list[Bar]:
     fixture_path = Path(__file__).parent / "fixtures" / "btc_15m_fixture.json"
+    if not fixture_path.exists():
+        fixture_path = Path(__file__).parent / "tradingbotsuite" / "fixtures" / "btc_15m_fixture.json"
     rows = json.loads(fixture_path.read_text(encoding="utf-8"))
     return [
         Bar(

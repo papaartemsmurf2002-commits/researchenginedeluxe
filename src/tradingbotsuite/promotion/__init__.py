@@ -7,6 +7,7 @@ from tradingbotsuite.promotion.artifact_validator import (
     load_artifact_manifest,
     load_promotion_candidate_manifest,
     validate_artifact_for_live_input,
+    validate_artifact_for_runtime_mode,
     validate_promotion_candidate_for_live_input,
     validate_promotion_candidate_for_shadow,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "load_artifact_manifest",
     "load_promotion_candidate_manifest",
     "validate_artifact_for_live_input",
+    "validate_artifact_for_runtime_mode",
     "validate_promotion_candidate_for_live_input",
     "validate_promotion_candidate_for_shadow",
     "PaperRunManifest",

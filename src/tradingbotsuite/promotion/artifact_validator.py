@@ -74,26 +74,93 @@ def validate_artifact_for_live_input(
 ) -> ArtifactValidationResult:
     reasons: list[str] = []
     artifact_type = _artifact_type(manifest)
+    if artifact_type == "unknown":
+        reasons.append("unknown_artifact_type")
     if _is_promotion_candidate_manifest(manifest):
         reasons.append("promotion_candidate_rejected_for_live_input")
     if manifest.get("research_only") is True:
         reasons.append("research_only_artifact_rejected_for_live_input")
     if manifest.get("observe_only") is True:
         reasons.append("observe_only_artifact_rejected_for_live_input")
+    if manifest.get("shadow_only") is True:
+        reasons.append("shadow_only_artifact_rejected_for_live_input")
     if manifest.get("promotion_ready") is not True:
         reasons.append("promotion_ready_false_or_missing")
     intended_use = str(manifest.get("intended_use") or "").strip().lower()
     if intended_use in {"research", "research_only", "observe_only", "research_observe_only"}:
         reasons.append(f"research_intended_use_rejected:{intended_use}")
-    if manifest.get("live_signal_input") is False:
-        reasons.append("manifest_declares_not_live_signal_input")
-    if manifest.get("position_sizing_input") is False:
-        reasons.append("manifest_declares_not_position_sizing_input")
-    if manifest.get("live_execution_input") is False:
-        reasons.append("manifest_declares_not_live_execution_input")
+    if intended_use in SHADOW_ONLY_INTENDED_USES:
+        reasons.append(f"shadow_intended_use_rejected_for_live_input:{intended_use}")
+    for field in ("live_signal_input", "position_sizing_input", "live_execution_input"):
+        if field not in manifest:
+            reasons.append(f"{field}_required_for_live_input")
+        elif manifest.get(field) is not True:
+            reasons.append(f"manifest_declares_not_{field}")
+    if "operator_control_input" in manifest and manifest.get("operator_control_input") is not True:
+        reasons.append("manifest_declares_not_operator_control_input")
+    if "runtime_control_input" in manifest and manifest.get("runtime_control_input") is not True:
+        reasons.append("manifest_declares_not_runtime_control_input")
+    _require_runtime_mode_allowed(manifest, "live", reasons)
     return ArtifactValidationResult(
         allowed=not reasons,
         reasons=tuple(reasons),
+        manifest_path=manifest_path,
+        artifact_type=artifact_type,
+    )
+
+
+def validate_artifact_for_runtime_mode(
+    manifest: Mapping[str, Any],
+    *,
+    runtime_mode: Any,
+    manifest_path: Path | None = None,
+) -> ArtifactValidationResult:
+    mode = _normalize_runtime_mode(runtime_mode)
+    artifact_type = _artifact_type(manifest)
+    if mode not in {"shadow", "paper", "live"}:
+        return ArtifactValidationResult(
+            allowed=False,
+            reasons=(f"unknown_runtime_mode:{runtime_mode}",),
+            manifest_path=manifest_path,
+            artifact_type=artifact_type,
+        )
+
+    if mode == "live":
+        return validate_artifact_for_live_input(manifest, manifest_path=manifest_path)
+
+    reasons: list[str] = []
+    if artifact_type == "unknown":
+        reasons.append("unknown_artifact_type")
+
+    if mode == "paper":
+        reasons.append("paper_runtime_artifact_loading_not_supported")
+        if _is_promotion_candidate_manifest(manifest):
+            reasons.append("promotion_candidate_rejected_for_paper_runtime")
+        _append_research_boundary_reasons(manifest, reasons, suffix="paper_runtime")
+        _append_shadow_boundary_reasons(manifest, reasons, suffix="paper_runtime")
+        return ArtifactValidationResult(
+            allowed=False,
+            reasons=tuple(dict.fromkeys(reasons)),
+            manifest_path=manifest_path,
+            artifact_type=artifact_type,
+        )
+
+    if not _is_promotion_candidate_manifest(manifest):
+        reasons.append("shadow_runtime_requires_promotion_candidate")
+        _append_research_boundary_reasons(manifest, reasons, suffix="shadow_runtime")
+        return ArtifactValidationResult(
+            allowed=False,
+            reasons=tuple(dict.fromkeys(reasons)),
+            manifest_path=manifest_path,
+            artifact_type=artifact_type,
+        )
+
+    _require_runtime_mode_allowed(manifest, "shadow", reasons)
+    candidate_result = validate_promotion_candidate_for_shadow(manifest, manifest_path=manifest_path)
+    reasons.extend(candidate_result.reasons)
+    return ArtifactValidationResult(
+        allowed=not reasons,
+        reasons=tuple(dict.fromkeys(reasons)),
         manifest_path=manifest_path,
         artifact_type=artifact_type,
     )
@@ -197,6 +264,56 @@ def _is_promotion_candidate_manifest(manifest: Mapping[str, Any]) -> bool:
         if "promotion_candidate" in value or "promotion-candidate" in value:
             return True
     return False
+
+
+def _normalize_runtime_mode(runtime_mode: Any) -> str:
+    value = getattr(runtime_mode, "value", runtime_mode)
+    return str(value or "").strip().lower()
+
+
+def _declared_runtime_modes(manifest: Mapping[str, Any]) -> set[str]:
+    raw_modes = manifest.get("runtime_modes") or manifest.get("allowed_runtime_modes")
+    modes: set[str] = set()
+    if raw_modes is not None and not isinstance(raw_modes, (str, bytes)):
+        try:
+            modes = {_normalize_runtime_mode(item) for item in raw_modes if _normalize_runtime_mode(item)}
+        except TypeError:
+            modes = set()
+    raw_mode = manifest.get("runtime_mode") or manifest.get("allowed_runtime_mode")
+    if raw_mode is not None:
+        normalized = _normalize_runtime_mode(raw_mode)
+        if normalized:
+            modes.add(normalized)
+    return modes
+
+
+def _require_runtime_mode_allowed(manifest: Mapping[str, Any], mode: str, reasons: list[str]) -> None:
+    declared_modes = _declared_runtime_modes(manifest)
+    if not declared_modes:
+        reasons.append("runtime_mode_missing_or_ambiguous")
+        return
+    if mode not in declared_modes:
+        reasons.append(f"runtime_mode_not_allowed:{mode}")
+
+
+def _append_research_boundary_reasons(manifest: Mapping[str, Any], reasons: list[str], *, suffix: str) -> None:
+    if manifest.get("research_only") is True:
+        reasons.append(f"research_only_artifact_rejected_for_{suffix}")
+    if manifest.get("observe_only") is True:
+        reasons.append(f"observe_only_artifact_rejected_for_{suffix}")
+    intended_use = str(manifest.get("intended_use") or "").strip().lower()
+    if intended_use in {"research", "research_only", "observe_only", "research_observe_only"}:
+        reasons.append(f"research_intended_use_rejected_for_{suffix}:{intended_use}")
+    if manifest.get("promotion_ready") is not True:
+        reasons.append(f"promotion_ready_false_or_missing_for_{suffix}")
+
+
+def _append_shadow_boundary_reasons(manifest: Mapping[str, Any], reasons: list[str], *, suffix: str) -> None:
+    if manifest.get("shadow_only") is True:
+        reasons.append(f"shadow_only_artifact_rejected_for_{suffix}")
+    intended_use = str(manifest.get("intended_use") or "").strip().lower()
+    if intended_use in SHADOW_ONLY_INTENDED_USES:
+        reasons.append(f"shadow_intended_use_rejected_for_{suffix}:{intended_use}")
 
 
 def _candidate_payload_and_path(

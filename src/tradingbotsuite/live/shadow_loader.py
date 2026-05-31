@@ -177,7 +177,7 @@ def _manifest_permits_shadow_runtime(manifest: Mapping[str, Any]) -> bool:
         return RuntimeMode.SHADOW.value in declared_modes
     declared_mode = manifest.get("runtime_mode") or manifest.get("allowed_runtime_mode")
     if declared_mode is None:
-        return True
+        return False
     return str(declared_mode).strip().lower() == RuntimeMode.SHADOW.value
 
 

@@ -65,6 +65,7 @@ DISCOVERY_LEDGER_COLUMNS = (
     "hmm_state_count",
     "regime_mode",
     "regime_detector_type",
+    "regime_model_backend",
     "regime_gate_enabled",
     "same_regime_neighbor_pool_enabled",
     "true_hmm_backend_used",
@@ -168,7 +169,7 @@ def evaluate_discovery_candidate_pack_eligibility(
     if interesting is not None and not interesting.empty:
         blocked_ids = _candidate_ids(blocked)
         filter_blocked_ids = _candidate_ids(filter_blockers)
-        exit_lab_entry_gate_lookup, exit_lab_candidate_gate_lookup = _exit_lab_gate_lookups(exit_lab_candidate_gates)
+        exit_lab_entry_lookup, exit_lab_candidate_gate_lookup = _exit_lab_gate_lookups(exit_lab_candidate_gates)
         multiple_testing_gate_lookup = _candidate_gate_lookup(multiple_testing_gates)
         validation_floor_gate_lookup = _candidate_gate_lookup(validation_floor_gates)
         gate_context = (
@@ -187,7 +188,7 @@ def evaluate_discovery_candidate_pack_eligibility(
             if discovery_candidate_id in filter_blocked_ids:
                 reasons.append("candidate_present_in_filter_blockers")
             exit_lab_gate = _exit_lab_gate_row_from_lookup(
-                entry_candidate_lookup=exit_lab_entry_gate_lookup,
+                entry_candidate_lookup=exit_lab_entry_lookup,
                 candidate_lookup=exit_lab_candidate_gate_lookup,
                 discovery_candidate_id=discovery_candidate_id,
                 research_candidate_id=research_candidate_id,

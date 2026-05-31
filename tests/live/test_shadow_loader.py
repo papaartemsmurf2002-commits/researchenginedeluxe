@@ -28,6 +28,7 @@ def _promotion_candidate(path: Path, overrides: dict | None = None) -> Path:
         "observe_only": True,
         "promotion_ready": False,
         "shadow_only": True,
+        "allowed_runtime_modes": ["shadow"],
         "intended_use": "shadow_only_promotion_candidate",
         "live_signal_input": False,
         "position_sizing_input": False,
@@ -171,6 +172,15 @@ def test_shadow_loader_rejects_non_shadow_runtime_without_changing_mode(tmp_path
     assert report.permitted is False
     assert report.runtime_mode_changed is False
     assert config.runtime_mode == RuntimeMode.PAPER
+
+
+def test_shadow_loader_rejects_candidate_without_explicit_shadow_runtime(tmp_path: Path) -> None:
+    manifest_path = _promotion_candidate(tmp_path / "candidate.json", {"allowed_runtime_modes": []})
+
+    report = build_shadow_loader_report(_shadow_config(), manifest_path)
+
+    assert not report.permitted
+    assert "candidate_manifest_does_not_permit_shadow_runtime" in report.blockers
 
 
 def test_shadow_loader_reads_candidate_through_validator_and_rejects_research_artifacts(tmp_path: Path) -> None:

@@ -7,7 +7,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tradingbotsuite.promotion.artifact_validator import validate_artifact_for_live_input
+from tradingbotsuite.core.models import RuntimeMode
+from tradingbotsuite.promotion.artifact_validator import validate_artifact_for_live_input, validate_artifact_for_runtime_mode
 from tradingbotsuite.research_artifacts import (
     RESEARCH_CANDIDATE_PACK_VERSION,
     evaluate_research_candidate_gate,
@@ -638,6 +639,11 @@ def test_research_candidate_pack_is_research_only_and_rejected_for_live_input(tm
     result = write_research_candidate_pack(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     live_validation = validate_artifact_for_live_input(manifest, manifest_path=result.manifest_path)
+    runtime_validation = validate_artifact_for_runtime_mode(
+        manifest,
+        runtime_mode=RuntimeMode.LIVE,
+        manifest_path=result.manifest_path,
+    )
 
     assert manifest["research_candidate_pack_manifest_version"] == RESEARCH_CANDIDATE_PACK_VERSION
     assert "promotion_candidate_manifest_version" not in manifest
@@ -680,7 +686,9 @@ def test_research_candidate_pack_is_research_only_and_rejected_for_live_input(tm
     assert manifest["evidence_summary"]["artifact_count"] == len(manifest["evidence"])
     assert "candidate_backtest_manifest:aggregate" in manifest["evidence_summary"]["artifact_names"]
     assert live_validation.allowed is False
+    assert runtime_validation.allowed is False
     assert "research_only_artifact_rejected_for_live_input" in live_validation.reasons
+    assert "research_only_artifact_rejected_for_live_input" in runtime_validation.reasons
 
 
 def test_research_candidate_gate_rebases_migrated_cycle_required_outputs(tmp_path: Path) -> None:

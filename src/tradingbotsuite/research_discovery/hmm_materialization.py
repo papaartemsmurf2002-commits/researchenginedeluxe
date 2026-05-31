@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from sklearn.mixture import GaussianMixture
 
-from tradingbotsuite.backtesting.splits import WalkForwardSplit
+from tradingbotsuite.backtesting.splits import WalkForwardSplit, training_positions_for_split
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
 from tradingbotsuite.research_discovery.snapshots import atomic_write_json
 
@@ -34,6 +34,10 @@ HMM_POSTERIOR_COLUMNS = (
     "hmm_model_id",
     "hmm_feature_pack_id",
     "hmm_split_id",
+    "regime_fit_end_row",
+    "regime_model_id",
+    "regime_feature_pack_id",
+    "regime_split_id",
 )
 SEMANTIC_REGIME_LABELS = ("range_chop", "bull_trend", "bear_trend", "shock_transition")
 
@@ -209,11 +213,12 @@ def materialize_split_safe_hmm_regimes(
         validation_positions = _validation_positions(split, row_count=len(ordered))
         if not validation_positions:
             continue
-        fit_end_position = int(split.train_end_index)
-        if fit_end_position < int(split.train_start_index) or fit_end_position < 0:
+        train_positions = training_positions_for_split(split, row_count=len(ordered))
+        if not train_positions:
             split_records.append(_blocked_split_record(split, reason="no_training_rows", validation_count=len(validation_positions)))
             continue
-        train = ordered.iloc[int(split.train_start_index) : fit_end_position + 1].copy()
+        fit_end_position = int(max(train_positions))
+        train = ordered.iloc[train_positions].copy()
         train = train.dropna(subset=list(spec.feature_columns), how="all")
         if len(train) < spec.min_training_rows:
             split_records.append(
@@ -274,6 +279,8 @@ def materialize_split_safe_hmm_regimes(
                 "validation_row_count": int(len(safe_positions)),
                 "hmm_fit_end_row": train_source_max,
                 "hmm_model_id": model_id,
+                "regime_fit_end_row": train_source_max,
+                "regime_model_id": model_id,
                 "scaler": scaler.to_payload(),
                 "state_labels": {str(key): value for key, value in labels.items()},
             }
@@ -321,10 +328,11 @@ def materialize_no_regime_baseline(
         validation_positions = _validation_positions(split, row_count=len(ordered))
         if not validation_positions:
             continue
-        fit_end_position = int(split.train_end_index)
-        if fit_end_position < int(split.train_start_index) or fit_end_position < 0:
+        train_positions = training_positions_for_split(split, row_count=len(ordered))
+        if not train_positions:
             split_records.append(_blocked_split_record(split, reason="no_training_rows", validation_count=len(validation_positions)))
             continue
+        fit_end_position = int(max(train_positions))
         train_source_max = int(source_index.iloc[fit_end_position])
         safe_positions = [position for position in validation_positions if int(source_index.iloc[position]) > train_source_max]
         if len(safe_positions) != len(validation_positions):
@@ -333,7 +341,7 @@ def materialize_no_regime_baseline(
                     split,
                     reason="validation_source_rows_not_after_fit_end",
                     validation_count=len(validation_positions),
-                    train_row_count=max(0, fit_end_position - int(split.train_start_index) + 1),
+                    train_row_count=len(train_positions),
                 )
             )
             continue
@@ -358,10 +366,12 @@ def materialize_no_regime_baseline(
                 "regime_detector_type": NO_REGIME_DETECTOR_TYPE,
                 "regime_model_backend": "none",
                 "true_hmm_backend_used": False,
-                "train_row_count": int(max(0, fit_end_position - int(split.train_start_index) + 1)),
+                "train_row_count": int(len(train_positions)),
                 "validation_row_count": int(len(safe_positions)),
                 "hmm_fit_end_row": train_source_max,
                 "hmm_model_id": model_id,
+                "regime_fit_end_row": train_source_max,
+                "regime_model_id": model_id,
                 "state_labels": {"0": "all_market"},
             }
         )
@@ -455,6 +465,10 @@ def _empty_result(frame: pd.DataFrame, *, source_index: pd.Series, spec: HmmMate
     result["hmm_model_id"] = ""
     result["hmm_feature_pack_id"] = spec.hmm_feature_pack_id
     result["hmm_split_id"] = ""
+    result["regime_fit_end_row"] = -1
+    result["regime_model_id"] = ""
+    result["regime_feature_pack_id"] = spec.hmm_feature_pack_id
+    result["regime_split_id"] = ""
     return result
 
 
@@ -471,6 +485,10 @@ def _empty_no_regime_result(frame: pd.DataFrame, *, source_index: pd.Series, fea
     result["hmm_model_id"] = ""
     result["hmm_feature_pack_id"] = feature_pack_id
     result["hmm_split_id"] = ""
+    result["regime_fit_end_row"] = -1
+    result["regime_model_id"] = ""
+    result["regime_feature_pack_id"] = feature_pack_id
+    result["regime_split_id"] = ""
     return result
 
 
@@ -515,6 +533,10 @@ def _assign_posterior_rows(
     result.loc[row_positions, "hmm_model_id"] = model_id
     result.loc[row_positions, "hmm_feature_pack_id"] = spec.hmm_feature_pack_id
     result.loc[row_positions, "hmm_split_id"] = split_id
+    result.loc[row_positions, "regime_fit_end_row"] = int(fit_end_row)
+    result.loc[row_positions, "regime_model_id"] = model_id
+    result.loc[row_positions, "regime_feature_pack_id"] = spec.hmm_feature_pack_id
+    result.loc[row_positions, "regime_split_id"] = split_id
 
 
 def _assign_no_regime_rows(
@@ -541,6 +563,10 @@ def _assign_no_regime_rows(
     result.loc[row_positions, "hmm_model_id"] = model_id
     result.loc[row_positions, "hmm_feature_pack_id"] = feature_pack_id
     result.loc[row_positions, "hmm_split_id"] = split_id
+    result.loc[row_positions, "regime_fit_end_row"] = int(fit_end_row)
+    result.loc[row_positions, "regime_model_id"] = model_id
+    result.loc[row_positions, "regime_feature_pack_id"] = feature_pack_id
+    result.loc[row_positions, "regime_split_id"] = split_id
 
 
 def _fit_gaussian_regime_model(matrix: np.ndarray, *, spec: HmmMaterializationSpec) -> GaussianMixture:
@@ -643,6 +669,8 @@ def _blocked_split_record(
         "validation_row_count": int(validation_count),
         "hmm_fit_end_row": None,
         "hmm_model_id": "",
+        "regime_fit_end_row": None,
+        "regime_model_id": "",
     }
 
 

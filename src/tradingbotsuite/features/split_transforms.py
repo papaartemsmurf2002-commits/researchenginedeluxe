@@ -5,7 +5,11 @@ from typing import Sequence
 
 import pandas as pd
 
-from tradingbotsuite.backtesting.splits import WalkForwardSplit
+from tradingbotsuite.backtesting.splits import (
+    WalkForwardSplit,
+    training_positions_for_split,
+    validation_positions_for_split,
+)
 from tradingbotsuite.features.preprocessing import TrainOnlyFeaturePreprocessor, fit_train_only_preprocessor
 
 
@@ -36,11 +40,13 @@ def fit_transform_split_train_only(
     feature_columns: Sequence[str],
 ) -> SplitTransformResult:
     ordered = feature_frame.reset_index(drop=True)
-    if split.train_end_index < split.train_start_index:
+    train_positions = training_positions_for_split(split, row_count=len(ordered))
+    validation_positions = validation_positions_for_split(split, row_count=len(ordered))
+    if not train_positions:
         train = ordered.iloc[0:0].copy()
     else:
-        train = ordered.iloc[split.train_start_index : split.train_end_index + 1].copy()
-    validation = ordered.iloc[split.validation_start_index : split.validation_end_index + 1].copy()
+        train = ordered.iloc[train_positions].copy()
+    validation = ordered.iloc[validation_positions].copy()
     preprocessor = fit_train_only_preprocessor(train, feature_columns)
     return SplitTransformResult(
         split_id=split.split_id,

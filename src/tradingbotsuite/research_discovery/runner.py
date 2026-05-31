@@ -17,7 +17,7 @@ from typing import Any, Callable, Mapping
 import pandas as pd
 import numpy as np
 
-from tradingbotsuite.backtesting.splits import build_purged_walk_forward_splits
+from tradingbotsuite.backtesting.splits import LabelSpec, build_purged_walk_forward_splits
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.data.historical_fixture_pack import (
     assert_valid_historical_fixture_pack_manifest,
@@ -89,6 +89,7 @@ LEDGER_COLUMNS = (
     "hmm_state_count",
     "regime_mode",
     "regime_detector_type",
+    "regime_model_backend",
     "regime_gate_enabled",
     "same_regime_neighbor_pool_enabled",
     "true_hmm_backend_used",
@@ -240,6 +241,7 @@ class _LedgerSummary:
     counts: dict[str, int]
     observed_trial_regime_modes: tuple[str, ...] = ()
     observed_trial_regime_detector_types: tuple[str, ...] = ()
+    observed_trial_regime_model_backends: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -786,6 +788,9 @@ def run_discovery(
     manifest["regime_truthfulness"]["observed_trial_regime_modes"] = list(ledger_summary.observed_trial_regime_modes)
     manifest["regime_truthfulness"]["observed_trial_regime_detector_types"] = list(
         ledger_summary.observed_trial_regime_detector_types
+    )
+    manifest["regime_truthfulness"]["observed_trial_regime_model_backends"] = list(
+        ledger_summary.observed_trial_regime_model_backends
     )
     manifest["regime_truthfulness"]["observed_trial_regime_values_complete"] = bool(ledgers_complete)
     stage_wall_seconds["manifest_assembly_pre_telemetry"] = time.perf_counter() - stage_started
@@ -1797,6 +1802,7 @@ def _hmm_cache_key(
     *,
     column_set: DiscoveryFeatureColumnSet,
     hmm_spec: HmmMaterializationSpec,
+    label_horizon: str,
     min_splits: int,
     purge_embargo_bars: int,
 ) -> str:
@@ -1806,6 +1812,7 @@ def _hmm_cache_key(
                 "feature_column_set_id": column_set.feature_column_set_id,
                 "registered_feature_set_id": column_set.registered_feature_set_id,
                 "hmm_spec": hmm_spec.to_payload(),
+                "label_horizon": str(label_horizon),
                 "min_splits": int(min_splits),
                 "purge_embargo_bars": int(purge_embargo_bars),
             },
@@ -1929,6 +1936,13 @@ def _labeled_splits_with_cache(
             time_column="bar_time_ms",
             validation_method="purged_embargoed_walk_forward",
             split_mode="anchored",
+            label_spec=LabelSpec(
+                event_end_time_column="label_event_end_time_ms",
+                event_start_time_column="bar_time_ms",
+                interval_ms=interval_ms,
+                require_event_end_time=True,
+                label_id=f"directional:{label_horizon}",
+            ),
         )
     )
     entry = _LabelSplitCacheEntry(labeled=labeled, splits=splits)
@@ -2050,6 +2064,7 @@ def _evaluate_hmm_knn_trial(
             cache_key=_hmm_cache_key(
                 column_set=column_set,
                 hmm_spec=hmm_spec,
+                label_horizon=label_horizon,
                 min_splits=spec.search.min_splits,
                 purge_embargo_bars=spec.search.purge_embargo_bars,
             ),
@@ -2071,6 +2086,7 @@ def _evaluate_hmm_knn_trial(
         same_regime_only=regime_settings.same_regime_only,
         regime_mode=regime_settings.regime_mode,
         regime_detector_type=regime_settings.regime_detector_type,
+        regime_model_backend=regime_settings.regime_model_backend,
         regime_gate_enabled=regime_settings.regime_gate_enabled,
         same_regime_neighbor_pool_enabled=regime_settings.same_regime_neighbor_pool_enabled,
         true_hmm_backend_used=regime_settings.true_hmm_backend_used,
@@ -2129,7 +2145,7 @@ def _evaluate_hmm_knn_trial(
     ledger_kind = "interesting" if metrics["passed"] else "blocked"
     blocker_code = "" if metrics["passed"] else str(metrics["primary_blocker"])
     persist_artifacts = _persist_trial_artifacts(spec.execution.persist_trial_artifacts, ledger_kind=ledger_kind)
-    hmm_artifact_payload: dict[str, Any] = {"hmm_artifact_persisted": False}
+    hmm_artifact_payload: dict[str, Any] = {"hmm_artifact_persisted": False, "regime_artifact_persisted": False}
     knn_artifact_payload: dict[str, Any] = {"knn_artifact_persisted": False}
     if spec.execution.persist_trial_artifacts == "interesting_only" and ledger_kind == "interesting":
         hmm_artifact_payload["trial_artifacts_deferred"] = True
@@ -2151,11 +2167,18 @@ def _evaluate_hmm_knn_trial(
                 "hmm_artifact_persisted": True,
                 "hmm_manifest_path": str(hmm_artifacts.manifest_path),
                 "hmm_regime_posteriors_path": str(hmm_artifacts.regime_posteriors_path),
+                "hmm_split_summary_path": str(hmm_artifacts.split_summary_path),
+                "regime_artifact_persisted": True,
+                "regime_manifest_path": str(hmm_artifacts.manifest_path),
+                "regime_posteriors_path": str(hmm_artifacts.regime_posteriors_path),
+                "regime_split_summary_path": str(hmm_artifacts.split_summary_path),
             }
         else:
             hmm_artifact_payload = {
                 "hmm_artifact_persisted": False,
                 "hmm_artifact_deferred_reason": "predictions_only_policy_persists_knn_predictions_without_hmm_posteriors",
+                "regime_artifact_persisted": False,
+                "regime_artifact_deferred_reason": "predictions_only_policy_persists_knn_predictions_without_regime_posteriors",
             }
         knn_artifact_payload = {
             "knn_artifact_persisted": True,
@@ -2209,8 +2232,12 @@ def _evaluate_hmm_knn_trial(
         "hmm_state_count": int(hmm_spec.n_states) if hmm_spec is not None else 0,
         "hmm_posterior_threshold": float(hmm_spec.posterior_threshold) if hmm_spec is not None else None,
         "hmm_entropy_threshold": float(hmm_spec.entropy_threshold) if hmm_spec is not None else None,
+        "regime_state_count": int(hmm_spec.n_states) if hmm_spec is not None else 0,
+        "regime_posterior_threshold": float(hmm_spec.posterior_threshold) if hmm_spec is not None else None,
+        "regime_entropy_threshold": float(hmm_spec.entropy_threshold) if hmm_spec is not None else None,
         "regime_mode": regime_settings.regime_mode,
         "regime_detector_type": regime_settings.regime_detector_type,
+        "regime_model_backend": regime_settings.regime_model_backend,
         "regime_gate_enabled": regime_settings.regime_gate_enabled,
         "same_regime_neighbor_pool_enabled": regime_settings.same_regime_neighbor_pool_enabled,
         "same_regime_only": regime_settings.same_regime_only,
@@ -2218,6 +2245,7 @@ def _evaluate_hmm_knn_trial(
         "label_horizon": label_horizon,
         "label_split_cache_hit": bool(label_split_cache_hit),
         "hmm_cache_hit": bool(hmm_cache_hit),
+        "regime_cache_hit": bool(hmm_cache_hit),
         "neighbor_cache_hit": bool(int(knn_manifest.get("neighbor_cache_hit_count") or 0) > 0),
         "neighbor_cache_lookup_count": int(knn_manifest.get("neighbor_cache_lookup_count") or 0),
         "neighbor_cache_hit_count": int(knn_manifest.get("neighbor_cache_hit_count") or 0),
@@ -2407,9 +2435,12 @@ def _with_directional_labels(frame: pd.DataFrame, *, label_horizon: str, interva
     result = frame.copy().reset_index(drop=True)
     close = pd.to_numeric(result["close"], errors="coerce")
     future_close = close.shift(-horizon_bars)
+    event_end_time = pd.to_numeric(result["bar_time_ms"], errors="coerce").shift(-horizon_bars)
     label_return = (future_close / close) - 1.0
     result["label_return"] = label_return
     result["label_up"] = (label_return > 0.0).astype(float)
+    result["label_event_end_time_ms"] = event_end_time
+    result["label_horizon_bars"] = int(horizon_bars)
     if "source_row_index" not in result.columns:
         result["source_row_index"] = range(len(result))
     source = pd.to_numeric(result["source_row_index"], errors="coerce")
@@ -2721,7 +2752,7 @@ def _side_adjusted_label_returns(frame: pd.DataFrame) -> pd.Series:
 
 def _holding_window_from_label_horizon(label_horizon: str) -> str:
     normalized = str(label_horizon).strip().lower()
-    if normalized in {"4h", "12h", "24h", "72h"}:
+    if normalized in {"1h", "4h", "12h", "24h", "72h"}:
         return normalized
     if normalized in {"1d", "24 hours", "24hour", "24hours"}:
         return "24h"
@@ -2974,6 +3005,7 @@ def _write_ledgers_from_trial_dir(
     }
     observed_modes: set[str] = set()
     observed_detectors: set[str] = set()
+    observed_backends: set[str] = set()
     for path in sorted(Path(trial_dir).glob("*.json"), key=lambda item: _trial_id_sort_key(item.stem)):
         record = read_trial_record(path)
         if record.run_id != run_id:
@@ -2984,10 +3016,13 @@ def _write_ledgers_from_trial_dir(
             rows_by_kind[record.ledger_kind].append(row)
         mode = str(record.payload.get("regime_mode") or "").strip()
         detector = str(record.payload.get("regime_detector_type") or "").strip()
+        backend = str(record.payload.get("regime_model_backend") or "").strip()
         if mode:
             observed_modes.add(mode)
         if detector:
             observed_detectors.add(detector)
+        if backend:
+            observed_backends.add(backend)
     _ledger_frame_from_rows(rows_by_kind["interesting"]).to_parquet(interesting_path, index=False)
     _ledger_frame_from_rows(rows_by_kind["blocked"]).to_parquet(blocked_path, index=False)
     _ledger_frame_from_rows(rows_by_kind["filter_blocked"]).to_parquet(filter_blockers_path, index=False)
@@ -3000,6 +3035,7 @@ def _write_ledgers_from_trial_dir(
         },
         observed_trial_regime_modes=tuple(sorted(observed_modes)),
         observed_trial_regime_detector_types=tuple(sorted(observed_detectors)),
+        observed_trial_regime_model_backends=tuple(sorted(observed_backends)),
     )
 
 
@@ -3166,6 +3202,15 @@ def _ledger_summary_from_records(
                     str(record.payload.get("regime_detector_type")).strip()
                     for record in records.values()
                     if str(record.payload.get("regime_detector_type") or "").strip()
+                }
+            )
+        ),
+        observed_trial_regime_model_backends=tuple(
+            sorted(
+                {
+                    str(record.payload.get("regime_model_backend")).strip()
+                    for record in records.values()
+                    if str(record.payload.get("regime_model_backend") or "").strip()
                 }
             )
         ),

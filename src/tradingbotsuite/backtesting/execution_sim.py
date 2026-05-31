@@ -70,6 +70,15 @@ class ExitResult:
         return self.primary_exit_index
 
 
+@dataclass(frozen=True, slots=True)
+class EntryResult:
+    primary_entry_index: int
+    entry_time_ms: int
+    target_entry_time_ms: int
+    entry_price: float
+    sequence_proof: str
+
+
 class ExecutionSimulator:
     """Event overlay for deterministic bar-based entries and holding-window exits."""
 
@@ -91,20 +100,27 @@ class ExecutionSimulator:
         candidate_rows: list[dict[str, object]] = []
         next_available_entry_time = -1
         for signal in signals.sort_values("decision_time_ms", kind="mergesort").to_dict("records"):
-            entry_index = self._entry_index(signal, market, assumptions)
-            if entry_index is None:
+            entry_result = self._entry_result(
+                signal,
+                market,
+                assumptions,
+                lower_timeframe_market_data=lower_timeframe_market_data,
+            )
+            if entry_result is None:
                 continue
+            entry_index = int(entry_result.primary_entry_index)
             entry_row = market.iloc[entry_index]
-            entry_time = int(entry_row["bar_time_ms"])
+            entry_time = int(entry_result.entry_time_ms)
             if entry_time < next_available_entry_time:
                 continue
-            entry_price = self._entry_price(signal, entry_row, assumptions)
+            entry_price = float(entry_result.entry_price)
             side = str(signal["side"]).lower()
             exit_result = self._exit_result(
                 entry_index,
                 market,
                 assumptions,
                 entry_price=entry_price,
+                entry_time_ms=entry_time,
                 side=side,
                 symbol=str(signal.get("symbol", "")),
                 lower_timeframe_market_data=lower_timeframe_market_data,
@@ -122,7 +138,7 @@ class ExecutionSimulator:
             ):
                 raise ValueError("same-bar entry/exit is forbidden without lower-timeframe sequence proof")
             exit_price = float(exit_result.policy_result.exit_price)
-            holding_ms = int(exit_result.policy_result.exit_time_ms) - int(entry_row["bar_time_ms"])
+            holding_ms = int(exit_result.policy_result.exit_time_ms) - int(entry_time)
             funding_rate = _optional_float(entry_row.get("funding_rate"))
             spread_bps = _optional_float(entry_row.get("spread_bps"))
             cost = costs.estimate(
@@ -139,13 +155,16 @@ class ExecutionSimulator:
                     "signal_id": str(signal.get("signal_id", f"signal-{len(candidate_rows):06d}")),
                     "symbol": str(signal.get("symbol", "")),
                     "side": side,
-                    "entry_time_ms": int(entry_row["bar_time_ms"]),
+                    "entry_time_ms": int(entry_time),
                     "exit_time_ms": int(exit_result.policy_result.exit_time_ms),
                     "entry_bar_index": int(entry_index),
                     "exit_bar_index": int(exit_index),
                     "entry_price": float(entry_price),
                     "exit_price": float(exit_price),
                     "holding_ms": int(holding_ms),
+                    "entry_target_time_ms": int(entry_result.target_entry_time_ms),
+                    "entry_primary_bar_time_ms": int(entry_row["bar_time_ms"]),
+                    "entry_sequence_proof": entry_result.sequence_proof,
                     "exit_target_time_ms": int(exit_result.target_exit_time_ms),
                     "exit_target_holding_ms": int(exit_result.target_holding_ms),
                     "exit_used_fallback": bool(exit_result.used_end_of_data_fallback),
@@ -234,6 +253,7 @@ class ExecutionSimulator:
             market,
             assumptions,
             entry_price=float(market.iloc[entry_index]["open"]),
+            entry_time_ms=int(market.iloc[entry_index]["bar_time_ms"]),
             side="long",
             symbol=None,
             lower_timeframe_market_data=None,
@@ -247,11 +267,12 @@ class ExecutionSimulator:
         assumptions: ExecutionAssumptions,
         *,
         entry_price: float,
+        entry_time_ms: int,
         side: str,
         symbol: str | None,
         lower_timeframe_market_data: pd.DataFrame | None,
     ) -> ExitResult | None:
-        entry_time = int(market.iloc[entry_index]["bar_time_ms"])
+        entry_time = int(entry_time_ms)
         target_exit = entry_time + int(assumptions.holding_period_ms)
         candidates = market.index[market["bar_time_ms"] >= target_exit]
         if len(candidates) > 0:
@@ -264,6 +285,7 @@ class ExecutionSimulator:
                 market=market,
                 assumptions=assumptions,
                 entry_price=entry_price,
+                entry_time_ms=entry_time,
                 side=side,
                 symbol=symbol,
                 lower_timeframe_market_data=lower_timeframe_market_data,
@@ -290,6 +312,7 @@ class ExecutionSimulator:
                 market=market,
                 assumptions=assumptions,
                 entry_price=entry_price,
+                entry_time_ms=entry_time,
                 side=side,
                 symbol=symbol,
                 lower_timeframe_market_data=lower_timeframe_market_data,
@@ -317,12 +340,13 @@ class ExecutionSimulator:
         market: pd.DataFrame,
         assumptions: ExecutionAssumptions,
         entry_price: float,
+        entry_time_ms: int,
         side: str,
         symbol: str | None,
         lower_timeframe_market_data: pd.DataFrame | None,
         exit_reason: str,
     ) -> ExitPolicyResult:
-        entry_time = int(market.iloc[entry_index]["bar_time_ms"])
+        entry_time = int(entry_time_ms)
         time_exit = int(market.iloc[exit_index]["bar_time_ms"])
         time_exit_price = float(market.iloc[exit_index]["close"])
         if _is_triple_barrier(assumptions.exit_policy_id):
@@ -374,6 +398,47 @@ class ExecutionSimulator:
             exit_reason=exit_reason,
         )
 
+    def _entry_result(
+        self,
+        signal: dict[str, object],
+        market: pd.DataFrame,
+        assumptions: ExecutionAssumptions,
+        *,
+        lower_timeframe_market_data: pd.DataFrame | None,
+    ) -> EntryResult | None:
+        target_time = int(signal["decision_time_ms"]) + int(assumptions.entry_latency_ms)
+        if assumptions.entry_price_source == "lower_timeframe_execution_path":
+            if lower_timeframe_market_data is None or lower_timeframe_market_data.empty:
+                raise ValueError("lower_timeframe_execution_path requires lower_timeframe_market_data")
+            lower_row = _lower_timeframe_entry_row(
+                lower_timeframe_market_data,
+                target_time_ms=target_time,
+                symbol=str(signal.get("symbol", "")),
+            )
+            entry_time = int(lower_row["bar_time_ms"])
+            primary_candidates = market.index[market["bar_time_ms"] <= entry_time]
+            if len(primary_candidates) == 0:
+                raise ValueError("lower timeframe entry fill precedes primary market coverage")
+            return EntryResult(
+                primary_entry_index=int(primary_candidates[-1]),
+                entry_time_ms=entry_time,
+                target_entry_time_ms=target_time,
+                entry_price=float(lower_row["open"]),
+                sequence_proof="lower_timeframe_open",
+            )
+
+        entry_index = self._entry_index(signal, market, assumptions)
+        if entry_index is None:
+            return None
+        entry_row = market.iloc[entry_index]
+        return EntryResult(
+            primary_entry_index=int(entry_index),
+            entry_time_ms=int(entry_row["bar_time_ms"]),
+            target_entry_time_ms=target_time,
+            entry_price=self._entry_price(signal, entry_row, assumptions),
+            sequence_proof="primary_bar_time",
+        )
+
     def _entry_price(
         self,
         signal: dict[str, object],
@@ -401,6 +466,9 @@ class ExecutionSimulator:
                 "entry_price",
                 "exit_price",
                 "holding_ms",
+                "entry_target_time_ms",
+                "entry_primary_bar_time_ms",
+                "entry_sequence_proof",
                 "exit_target_time_ms",
                 "exit_target_holding_ms",
                 "exit_used_fallback",
@@ -481,6 +549,31 @@ def _sequence_proof(assumptions: ExecutionAssumptions, policy_result: ExitPolicy
     if assumptions.exit_price_source == "lower_timeframe_ohlc_sequence" and policy_result.barrier_hit_type != "time":
         return "lower_timeframe_ohlc"
     return "primary_bar_time"
+
+
+def _lower_timeframe_entry_row(
+    frame: pd.DataFrame,
+    *,
+    target_time_ms: int,
+    symbol: str | None,
+) -> pd.Series:
+    required = {"bar_time_ms", "open"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"lower timeframe entry market data missing required columns: {', '.join(missing)}")
+    lower = frame.copy()
+    if "symbol" in lower.columns:
+        if not str(symbol or "").strip():
+            raise ValueError("lower timeframe entry market data with symbol column requires symbol")
+        lower = lower.loc[lower["symbol"].astype(str).str.upper() == str(symbol).upper()].copy()
+    lower["bar_time_ms"] = pd.to_numeric(lower["bar_time_ms"], errors="coerce")
+    lower["open"] = pd.to_numeric(lower["open"], errors="coerce")
+    lower = lower.dropna(subset=["bar_time_ms", "open"]).copy()
+    lower["bar_time_ms"] = lower["bar_time_ms"].astype("int64")
+    lower = lower.loc[lower["bar_time_ms"] >= int(target_time_ms)].sort_values("bar_time_ms", kind="mergesort")
+    if lower.empty:
+        raise ValueError("lower timeframe entry sequence coverage missing for target entry time")
+    return lower.iloc[0]
 
 
 def _primary_index_for_time(market: pd.DataFrame, time_ms: int) -> int:

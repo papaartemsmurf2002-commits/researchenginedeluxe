@@ -56,6 +56,43 @@ def test_live_preflight_passes_safe_testnet_config_and_surfaces_basis_checks(tmp
     assert report.live_basis_checks["max_basis_bps"] == "75"
 
 
+def test_live_preflight_blocks_file_credentials_without_explicit_live_enable(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TBS_HL_TESTNET_FILE", raising=False)
+    monkeypatch.delenv("TBS_HL_BASE_URL", raising=False)
+    monkeypatch.delenv("TBS_HL_PRIVATE_KEY", raising=False)
+    monkeypatch.delenv("TBS_HL_ACCOUNT_ADDRESS", raising=False)
+    monkeypatch.delenv("TBS_HL_ENABLE_LIVE", raising=False)
+    monkeypatch.setenv("TBS_RUNTIME_MODE", RuntimeMode.LIVE.value)
+    monkeypatch.setenv("TBS_WEBHOOK_SECRET", "live-webhook-secret")
+    monkeypatch.setenv("TBS_MAX_DAILY_LOSS_QUOTE", "25")
+    monkeypatch.setenv("TBS_MAX_OPEN_RISK_NOTIONAL", "100")
+    (tmp_path / "hyperliquidtestnet.txt").write_text(
+        "\n".join(
+            [
+                "testnet",
+                "0x1111111111111111111111111111111111111111111111111111111111111111 private",
+                "0x2222222222222222222222222222222222222222 adress",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = AppConfig.from_env()
+
+    assert config.hyperliquid.base_url == "https://api.hyperliquid-testnet.xyz"
+    assert config.hyperliquid.account_address == "0x2222222222222222222222222222222222222222"
+    assert config.hyperliquid.private_key == "0x1111111111111111111111111111111111111111111111111111111111111111"
+    assert config.hyperliquid.enable_live is False
+    with pytest.raises(LivePreflightError) as exc_info:
+        assert_live_preflight(config, command="serve")
+
+    blockers = set(exc_info.value.report.blockers)
+    assert "hyperliquid_live_not_enabled" in blockers
+    assert "missing_hyperliquid_account_address" not in blockers
+    assert "missing_hyperliquid_private_key" not in blockers
+
+
 @pytest.mark.parametrize("command", sorted(RESEARCH_COMMANDS))
 def test_live_preflight_rejects_research_command_even_when_other_live_checks_pass(tmp_path: Path, command: str) -> None:
     with pytest.raises(LivePreflightError) as exc_info:

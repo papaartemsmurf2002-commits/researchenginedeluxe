@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-30
+Last updated: 2026-05-31
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -21,10 +21,299 @@ Stage advancement stop rule:
 
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
-| P0 | 0 | 0 | 1 | 0 |
+| P0 | 0 | 0 | 8 | 0 |
 | P1 | 1 | 0 | 15 | 0 |
 | P2 | 0 | 0 | 2 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
+
+## ISSUE-R106-014: Runtime artifact validation is not mode-aware and not fail-closed for unknown manifests
+
+Severity: P0
+Stage discovered: Stage R106 - active index and research identity audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/promotion/artifact_validator.py`, `src/tradingbotsuite/live/preflight.py`, `src/tradingbotsuite/runtime.py`, `tests/live/**`, `tests/research_artifacts/test_candidate_pack.py`
+
+### Problem
+
+The artifact validator has `validate_artifact_for_live_input()`, but no
+mode-aware `validate_artifact_for_runtime_mode()` contract. The live validator
+rejects explicit research and observe-only flags, but it can allow an unknown
+minimal manifest when `promotion_ready: true` is present and live-boundary
+fields are missing.
+
+### Evidence
+
+The WPR106-32 execution and artifact audit found that a minimal unknown manifest
+with `artifact_manifest_version` and `promotion_ready: true` can return
+`allowed=True` from the generic live-input validator. Candidate-pack gates are
+stricter for candidate-pack evidence, but the generic runtime/live validation
+path is not fail-closed for unknown or mode-ambiguous manifests.
+
+### Required resolution
+
+Add mode-aware artifact validation for runtime/paper/live/shadow contexts.
+Unknown manifests and manifests missing explicit live-boundary fields must fail
+closed. Live mode must reject research-only, observe-only, shadow-only, unknown,
+and mode-ambiguous artifacts before scorer, shadow-loader, or live adapter
+construction.
+
+### Resolution notes
+
+Resolved by WPR106-38. `validate_artifact_for_runtime_mode()` now fail-closes
+runtime artifact loading by mode. Minimal unknown or mode-ambiguous manifests
+are rejected. Live validation now requires explicit runtime-mode allowance and
+explicit live boundary fields. Paper runtime artifact loading is unsupported
+and rejected until a later promotion process defines an explicit paper-runtime
+contract. Shadow runtime loading is restricted to explicit shadow promotion
+candidates that pass the existing shadow validator and declare shadow runtime
+allowance. Live preflight activates artifact validation whenever an artifact
+path is configured, including non-live modes, and `runtime.build_engine()`
+validates before scorer or shadow-loader construction.
+
+## ISSUE-R106-013: Local credential files can imply Hyperliquid live/testnet enablement
+
+Severity: P0
+Stage discovered: Stage R106 - active index and research identity audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/config.py`, `tests/test_config.py`, `tests/live/test_preflight.py`, `tests/tradingbotsuite/test_engine.py`
+
+### Problem
+
+Presence of a local Hyperliquid testnet credential file can imply live/testnet
+enablement when `TBS_HL_ENABLE_LIVE` is absent. Live enablement must require an
+explicit environment or secret-manager setting and an explicit operator choice;
+credential-file presence must not activate live capability by default.
+
+### Evidence
+
+The WPR106-32 safety audit found `src/tradingbotsuite/config.py` loading
+`hyperliquidtestnet.txt`, setting testnet `enable_live=True`, and using that
+value when `TBS_HL_ENABLE_LIVE` is absent. Existing tests assert the current
+behavior, while `docs/OPERATOR_QUICKSTART.md` says live/testnet requires
+explicit `TBS_HL_ENABLE_LIVE=true`.
+
+### Required resolution
+
+Change config loading so credential files may provide signer/account data but
+cannot satisfy live enablement unless explicit live-enable configuration is
+present. Update tests to reject implicit enablement and prove live preflight
+still blocks unsafe modes.
+
+### Resolution notes
+
+Resolved by WPR106-37. Hyperliquid credential files remain passive signer,
+account, and endpoint inputs only. Testnet file parsing no longer emits
+`enable_live`, and `AppConfig.from_env()` now resolves Hyperliquid live
+enablement only from explicit `TBS_HL_ENABLE_LIVE`. Config regressions cover
+file-only passive loading, explicit live opt-in, and explicit mainnet URL plus
+file credentials with no live flag. Live preflight now has a regression proving
+file-supplied key/account data still blocks on `hyperliquid_live_not_enabled`
+when the explicit flag is absent.
+
+## ISSUE-R106-012: Lower-timeframe entry pricing is labeled but not used
+
+Severity: P0
+Stage discovered: Stage R106 - active index and research identity audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/backtesting/execution_sim.py`, `tests/unit/test_execution_simulator.py`, `tests/backtesting/**`
+
+### Problem
+
+`lower_timeframe_execution_path` requires lower-timeframe data but does not use
+that path to choose the latency fill time or fill price. The simulator still
+selects the next primary bar and falls through to the primary bar open, which
+can make latency entry pricing optimistic or mislabeled.
+
+### Evidence
+
+The WPR106-32 execution audit found that
+`ExecutionSimulator._entry_index()` applies latency against primary
+`bar_time_ms`, while `_entry_price()` ignores lower-timeframe rows for
+`lower_timeframe_execution_path`. A 60-second latency inside a 15-minute bar can
+therefore be represented as a next-primary-open fill rather than a
+lower-timeframe observable fill.
+
+### Required resolution
+
+Either implement true lower-timeframe latency fill selection and price evidence
+or reject `lower_timeframe_execution_path` until it is implemented. Add tests
+where lower-timeframe and primary-bar prices differ and assert the exact
+contract.
+
+### Resolution notes
+
+Resolved by WPR106-36. The reference research simulator now treats
+`lower_timeframe_execution_path` as a proven lower-timeframe latency fill: it
+selects the first symbol-matched lower-timeframe row at or after
+`decision_time_ms + entry_latency_ms`, uses that row's open as the entry price,
+propagates the actual lower-timeframe entry time into holding and exit timing,
+and records `entry_target_time_ms`, `entry_primary_bar_time_ms`, and
+`entry_sequence_proof`. Missing lower-frame open/timestamp coverage fails
+closed. Vector, CUDA, and CUDA-batched fixed-holding engines remain unsupported
+for lower-timeframe entry sources, but now emit matching primary-bar entry
+proof metadata for supported paths.
+
+## ISSUE-R106-011: Generic purge is fixed-bar based instead of label/event-end aware
+
+Severity: P0
+Stage discovered: Stage R106 - active index and research identity audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/backtesting/splits.py`, `src/tradingbotsuite/research/dataset.py`, `src/tradingbotsuite/research/hmm_knn.py`, `src/tradingbotsuite/research_discovery/knn_study.py`, `src/tradingbotsuite/research_discovery/runner.py`, `tests/backtesting/test_splits.py`, `tests/research_discovery/**`, `tests/tradingbotsuite/**`
+
+### Problem
+
+The generic split engine purges by a fixed number of bars. Fixed-bar purge is
+not reliable for long or overlapping labels; label interval or event end time
+must drive purging.
+
+### Evidence
+
+The WPR106-32 data and validation audit found no active `LabelSpec` type.
+`build_purged_walk_forward_splits()` sets
+`train_end = validation_start - purge_embargo_bars - 1`. Legacy research
+dataset code has `label_interval_start_ms`, `label_interval_end_ms`, and
+`label_exit_time_ms`, and discovery KNN has a separate label-horizon training
+filter, but the active generic split contract lacks explicit event-end-aware
+purge evidence.
+
+### Required resolution
+
+Add explicit LabelSpec/event-end metadata for label-producing research paths and
+make split purge horizon-aware where long or overlapping labels can leak. Fixed
+bar purge may remain only as a documented fallback for cases with no event-end
+labels and must be clearly identified as such in manifests.
+
+### Resolution notes
+
+Resolved by WPR106-35. `LabelSpec` and split payload evidence now distinguish
+event-end-aware purge from fixed-bar fallback. Label/event-end-aware splits use
+`label_event_end_time_ms`, `event_end_time_ms`, `label_exit_time_ms`,
+`label_interval_end_ms`, or `label_future_end_time_ms` when supplied, convert
+embargo bars to milliseconds, and exclude train rows whose label/event end plus
+embargo reaches the validation start. Missing required event-end columns fail
+closed. Discovery directional labels now stamp `label_event_end_time_ms`, HMM
+and KNN materialization honor explicit event-safe train indices, and historical
+cycle split manifests record purge-method counts plus compact train-index
+evidence instead of raw index dumps. Fixed-bar purge remains only as identified
+fallback evidence when no event-end metadata is available.
+
+## ISSUE-R106-010: Synthetic fallback and source selection are not explicit enough
+
+Severity: P0
+Stage discovered: Stage R106 - active index and research identity audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_discovery/spec.py`, `src/tradingbotsuite/research_discovery/runner.py`, `src/tradingbotsuite/research_artifacts/candidate_pack.py`, `configs/research/**`, `configs/discovery/**`, `tests/contracts/**`, `tests/historical/**`, `tests/research_discovery/**`
+
+### Problem
+
+Historical-cycle source loading can synthesize data when no data source is
+declared. Configs and tests include `synthetic_fallback_allowed`, but
+`CycleDataSpec` does not parse it as a contract field. Source selection evidence
+is also implicit rather than a clear selected/skipped/rejected source ledger.
+
+### Evidence
+
+The WPR106-32 data contract audit found that historical cycles try
+`dataset_path`, `dataset_manifest_paths`, and `local_fixture_dir`, then
+synthesize when `synthetic_fixture` is true or no source is declared. Discovery
+missing-data paths are stricter and candidate-pack gates reject synthetic or
+non-ready evidence, but the historical research-cycle contract does not fail
+closed on the explicit non-negotiable flag.
+
+### Required resolution
+
+Parse and enforce explicit synthetic fallback policy. Synthetic must be
+explicit, demo/test-only, non-promotable, and rejected for candidate-ready
+evidence. Historical and discovery runs should write source-selection evidence
+that records selected, skipped, rejected, and missing sources.
+
+### Resolution notes
+
+Resolved by WPR106-34. `CycleDataSpec` now parses and round-trips
+`synthetic_fallback_allowed` plus explicit synthetic use-case metadata. No
+declared data source now fails closed unless `synthetic_fixture: true` is
+explicitly requested. Synthetic fixtures are restricted to `test_only`,
+`demo_only`, or `benchmark_only`, cannot be combined with declared real source
+paths, and remain non-promotable. Historical cycle manifests now include a
+required `source_selection_manifest` with selected/skipped/rejected source
+records. Ambiguous `local_fixture_dir` directories with multiple Parquet files
+fail closed instead of selecting the first file.
+
+## ISSUE-R106-009: CI and reproducible research install checks are missing
+
+Severity: P0
+Stage discovered: Stage R106 - active index and research identity audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `.github/workflows/**`, `pyproject.toml`, `README.md`, `docs/ACTIVE_INDEX.md`, `tests/**`
+
+### Problem
+
+The repository has no checked-in GitHub Actions workflow or equivalent CI gate
+for reproducible installation and baseline validation. Without a repeatable
+install/check surface, research evidence can drift by local environment.
+
+### Evidence
+
+The WPR106-32 pre-edit audit found no `.github` workflow files. Current docs
+list local validation commands, but there is no repository CI artifact proving
+editable install, compile, contracts, and focused research-only checks run in a
+clean environment.
+
+### Required resolution
+
+Add a CI/reproducible research install packet that installs the package in a
+clean Python 3.11 environment, runs compile, contracts, and a focused safety
+baseline, and documents any intentional optional dependency exclusions.
+
+### Resolution notes
+
+Resolved by WPR106-33. `.github/workflows/research-validation.yml` now installs
+`.[dev]` in a clean Python 3.11 GitHub Actions job, runs `pip check`, compiles
+`src/tradingbotsuite`, runs contract tests, and runs focused live/artifact
+boundary tests. Optional research, Crypto Lake, and GPU extras are explicitly
+outside this baseline.
+
+## ISSUE-R106-008: Active index and ResearchEngineDeluxe identity were missing
+
+Severity: P0
+Stage discovered: Stage R106 - active index and research identity audit
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `docs/ACTIVE_INDEX.md`, `START_HERE.md`, `README.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`
+
+### Problem
+
+Agents had no current active index and onboarding docs still emphasized
+TradingBotSuite or the old research branch name. That increased the chance that
+future work would follow stale docs, miss current P0 blockers, or treat package
+identity as product identity.
+
+### Evidence
+
+The WPR106-32 repo cartography audit found `docs/ACTIVE_INDEX.md` missing, the
+current checkout on `main`, and stale branch/identity wording in onboarding
+docs. The external master report also recommends canonical ResearchEngineDeluxe
+research-only identity while keeping `tradingbotsuite` as a package
+implementation detail.
+
+### Required resolution
+
+Create `docs/ACTIVE_INDEX.md`, update onboarding identity, and point future
+agents to current stage, latest evidence, open blockers, and research-only
+rules before source work.
+
+### Resolution notes
+
+Resolved by WPR106-32. The active index and onboarding updates clarify current
+checkout identity, research-only boundaries, latest R106 evidence, and the open
+P0 stop condition. No source behavior or generated research evidence was
+changed.
 
 ## ISSUE-R104-001: Durable R104 fixtures are too compact for candidate-ready brute-force evidence
 
@@ -91,7 +380,13 @@ fetch retry and completed per-symbol fixture-pack reuse after interruption.
 WPR106-04 expands that retry path for longer DNS/VPN outages with env-tunable
 attempt and backoff defaults while keeping checksum mismatches fail-fast. The
 issue remains open until the refreshed catalog, deep cycles, exact sweeps, and
-eligibility review complete on candidate-depth evidence.
+eligibility review complete on candidate-depth evidence. WPR106-46 implements
+the Option A exact replay-overlay domain and bounded cycle-smoke path: all 48
+WPR106-31 replay leads are representable and 48 singleton overlay specs were
+generated locally, with bounded BTC/ETH smokes proving overlay provenance
+through rankings, backtest index, and gate reports. The issue remains open
+because WPR106-46 does not complete the required deep cycles, exact sweeps,
+full exit labs, negative controls, or eligibility review.
 
 ## ISSUE-R106-007: Large exact-discovery eligibility can stall before writing output
 

@@ -7,6 +7,20 @@ from typing import Any, Mapping
 
 
 RESEARCH_CYCLE_SPEC_VERSION = "historical-research-cycle-spec-v1"
+RESEARCH_CYCLE_CONFIG_SCHEMA_VERSION = "historical-research-cycle-config-schema-v1"
+MATERIALIZED_PREDICTION_OVERLAY_SCHEMA_KEYS = frozenset(
+    {
+        "feature_set_id",
+        "kind",
+        "predictions_path",
+        "manifest_path",
+        "join_key",
+        "scope",
+        "candidate_id",
+        "candidate_cache_key",
+        "materialized_candidate_id",
+    }
+)
 REQUIRED_HOLDING_WINDOWS = ("1h", "4h", "12h", "24h", "72h", "7d")
 DEFAULT_FEATURE_SETS = (
     "features_price_trend_vol",
@@ -66,6 +80,116 @@ DEFAULT_EXIT_POLICIES = (
         "exit_policy_source": "default_fixed_holding",
     },
 )
+HISTORICAL_CYCLE_TOP_LEVEL_SCHEMA_KEYS = frozenset(
+    {
+        "spec_version",
+        "cycle_id",
+        "symbol",
+        "holding_windows",
+        "data",
+        "features",
+        "strategies",
+        "validation",
+        "optimizer",
+        "compute",
+        "exits",
+        "exit_policies",
+        "backtest_backend",
+        "output_dir",
+        "research_only",
+        "observe_only",
+        "promotion_ready",
+        "candidate_pack_eligible",
+        "candidate_pack_written",
+        "live_config_writes_allowed",
+        "order_placement_allowed",
+        "sizing_policy_changed",
+        "promotion_artifact_policy",
+        "maturity_label",
+        "work_packet",
+        "blocked",
+        "enabled",
+        "blocker_codes",
+        "activation_requires",
+        "superseded_by",
+        "deferred_strategies",
+        "required_ablations",
+        "strategy_family_requirements",
+        "blueprint_manifest_path",
+        "blueprint_manifest_sha256",
+        "blueprint_matrix_id",
+        "candidate_blueprint_mappings",
+        "matrix_manifest_path",
+    }
+)
+HISTORICAL_CYCLE_SECTION_SCHEMA_KEYS = {
+    "data": frozenset(
+        {
+            "dataset_manifest_paths",
+            "local_fixture_dir",
+            "dataset_path",
+            "lower_timeframe_dataset_path",
+            "synthetic_fixture",
+            "synthetic_fallback_allowed",
+            "synthetic_use_case",
+            "synthetic_row_count",
+            "synthetic_variant",
+            "candidate_blocker_codes",
+            "candidate_pack_eligible",
+            "durable_fixture_readiness_config_path",
+            "durable_public_archive_required_for_candidate_ready",
+            "evidence_scope",
+            "latest_window_rest_data_diagnostic_only",
+        }
+    ),
+    "features": frozenset(
+        {
+            "feature_sets",
+            "materialized_prediction_overlays",
+            "aggtrade_orderflow_scope",
+            "knn_overlay_readiness",
+        }
+    ),
+    "validation": frozenset(
+        {
+            "walk_forward",
+            "purge_embargo_bars",
+            "stress_periods_required",
+            "min_splits",
+            "trade_count_floor",
+            "max_single_split_pnl_share",
+            "min_cost_stress_survival_rate",
+            "split_modes",
+            "rolling_train_window_bars",
+            "shifted_anchor_offsets",
+            "regime_column",
+            "stress_volatility_column",
+            "stress_zscore_threshold",
+        }
+    ),
+    "optimizer": frozenset(
+        {
+            "method_sequence",
+            "max_candidates_per_strategy",
+            "top_regions_to_refine",
+            "search_spaces",
+        }
+    ),
+    "compute": frozenset(
+        {
+            "cpu_threads",
+            "gpu_acceleration",
+            "gpu_device_class",
+            "gpu_required",
+            "gpu_execution_profile",
+            "tensor_core_policy",
+            "gpu_batch_candidates",
+            "gpu_memory_fraction_limit",
+            "gpu_validation_sample_rate",
+        }
+    ),
+    "exits": frozenset({"exit_policies", "deferred_exit_policies"}),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,8 +199,28 @@ class CycleDataSpec:
     dataset_path: Path | None = None
     lower_timeframe_dataset_path: Path | None = None
     synthetic_fixture: bool = False
+    synthetic_fallback_allowed: bool = False
+    synthetic_use_case: str = "test_only"
     synthetic_row_count: int = 240
     synthetic_variant: str = "balanced"
+
+    def __post_init__(self) -> None:
+        synthetic_use_case = str(self.synthetic_use_case).strip()
+        allowed_synthetic_use_cases = {"test_only", "demo_only", "benchmark_only"}
+        if synthetic_use_case not in allowed_synthetic_use_cases:
+            raise ValueError(
+                "data.synthetic_use_case must be one of: "
+                + ", ".join(sorted(allowed_synthetic_use_cases))
+            )
+        if self.synthetic_fallback_allowed and not self.synthetic_fixture:
+            raise ValueError("data.synthetic_fallback_allowed requires synthetic_fixture=true")
+        declared_real_source = (
+            self.dataset_path is not None
+            or self.local_fixture_dir is not None
+            or bool(self.dataset_manifest_paths)
+        )
+        if self.synthetic_fixture and declared_real_source:
+            raise ValueError("data.synthetic_fixture cannot be combined with declared real data sources")
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any] | None, *, base_path: Path) -> "CycleDataSpec":
@@ -99,6 +243,8 @@ class CycleDataSpec:
                 else None
             ),
             synthetic_fixture=bool(payload.get("synthetic_fixture", False)),
+            synthetic_fallback_allowed=bool(payload.get("synthetic_fallback_allowed", False)),
+            synthetic_use_case=str(payload.get("synthetic_use_case", "test_only")).strip() or "test_only",
             synthetic_row_count=int(payload.get("synthetic_row_count", 240)),
             synthetic_variant=str(payload.get("synthetic_variant", "balanced")),
         )
@@ -114,8 +260,10 @@ class CycleDataSpec:
                 else None
             ),
             "synthetic_fixture": self.synthetic_fixture,
+            "synthetic_fallback_allowed": self.synthetic_fallback_allowed,
         }
         if self.synthetic_fixture:
+            payload["synthetic_use_case"] = self.synthetic_use_case
             payload["synthetic_row_count"] = self.synthetic_row_count
             payload["synthetic_variant"] = self.synthetic_variant
         return payload
@@ -128,11 +276,21 @@ class MaterializedPredictionOverlaySpec:
     predictions_path: Path
     manifest_path: Path | None = None
     join_key: str = "source_row_index"
+    scope: str = "feature_set"
+    candidate_id: str | None = None
+    candidate_cache_key: str | None = None
+    materialized_candidate_id: str | None = None
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any], *, base_path: Path) -> "MaterializedPredictionOverlaySpec":
         if not isinstance(payload, Mapping):
             raise ValueError("features.materialized_prediction_overlays entries must be JSON objects")
+        unknown = sorted(set(str(key) for key in payload) - MATERIALIZED_PREDICTION_OVERLAY_SCHEMA_KEYS)
+        if unknown:
+            raise ValueError(
+                "features.materialized_prediction_overlays unknown schema keys: "
+                + ", ".join(unknown)
+            )
         feature_set_id = str(payload.get("feature_set_id") or "").strip()
         if not feature_set_id:
             raise ValueError("features.materialized_prediction_overlays.feature_set_id is required")
@@ -144,6 +302,20 @@ class MaterializedPredictionOverlaySpec:
         join_key = str(payload.get("join_key", "source_row_index")).strip()
         if join_key not in {"source_row_index", "bar_time_ms", "feature_time_ms"}:
             raise ValueError(f"unsupported materialized prediction overlay join_key: {join_key}")
+        candidate_id = _optional_non_empty_string(payload.get("candidate_id"))
+        candidate_cache_key = _optional_non_empty_string(payload.get("candidate_cache_key"))
+        materialized_candidate_id = _optional_non_empty_string(payload.get("materialized_candidate_id"))
+        inferred_candidate_scope = candidate_id is not None or candidate_cache_key is not None
+        scope = str(payload.get("scope") or ("candidate" if inferred_candidate_scope else "feature_set")).strip()
+        if scope not in {"feature_set", "candidate"}:
+            raise ValueError(f"unsupported materialized prediction overlay scope: {scope}")
+        if scope == "feature_set" and inferred_candidate_scope:
+            raise ValueError("feature-set materialized prediction overlays cannot declare candidate_id or candidate_cache_key")
+        if scope == "candidate":
+            if candidate_id is None and candidate_cache_key is None:
+                raise ValueError("candidate-scoped materialized prediction overlays require candidate_id or candidate_cache_key")
+            if not payload.get("manifest_path"):
+                raise ValueError("candidate-scoped materialized prediction overlays require manifest_path")
         return cls(
             feature_set_id=feature_set_id,
             kind=kind,
@@ -154,6 +326,10 @@ class MaterializedPredictionOverlaySpec:
                 else None
             ),
             join_key=join_key,
+            scope=scope,
+            candidate_id=candidate_id,
+            candidate_cache_key=candidate_cache_key,
+            materialized_candidate_id=materialized_candidate_id,
         )
 
     def to_payload(self) -> dict[str, Any]:
@@ -163,6 +339,10 @@ class MaterializedPredictionOverlaySpec:
             "predictions_path": str(self.predictions_path),
             "manifest_path": str(self.manifest_path) if self.manifest_path is not None else None,
             "join_key": self.join_key,
+            "scope": self.scope,
+            "candidate_id": self.candidate_id,
+            "candidate_cache_key": self.candidate_cache_key,
+            "materialized_candidate_id": self.materialized_candidate_id,
         }
 
 
@@ -188,12 +368,32 @@ class CycleFeatureSpec:
         if unknown_feature_sets:
             raise ValueError(f"materialized prediction overlay feature_set_id not declared: {', '.join(unknown_feature_sets)}")
         duplicate_keys = [
-            f"{overlay.feature_set_id}:{overlay.kind}"
+            _materialized_prediction_overlay_duplicate_key(overlay)
             for overlay in overlays
-            if sum(1 for item in overlays if item.feature_set_id == overlay.feature_set_id and item.kind == overlay.kind) > 1
+            if sum(
+                1
+                for item in overlays
+                if _materialized_prediction_overlay_duplicate_key(item)
+                == _materialized_prediction_overlay_duplicate_key(overlay)
+            )
+            > 1
         ]
         if duplicate_keys:
             raise ValueError(f"duplicate materialized prediction overlay: {sorted(set(duplicate_keys))[0]}")
+        mixed_scope_keys = {
+            f"{overlay.feature_set_id}:{overlay.kind}"
+            for overlay in overlays
+            if sum(
+                1
+                for item in overlays
+                if item.feature_set_id == overlay.feature_set_id
+                and item.kind == overlay.kind
+                and item.scope != overlay.scope
+            )
+            > 0
+        }
+        if mixed_scope_keys:
+            raise ValueError(f"mixed materialized prediction overlay scopes: {sorted(mixed_scope_keys)[0]}")
         return cls(feature_sets=feature_sets, materialized_prediction_overlays=overlays)
 
     def to_payload(self) -> dict[str, Any]:
@@ -417,6 +617,7 @@ class HistoricalResearchCycleSpec:
     def from_payload(cls, payload: Mapping[str, Any], *, spec_path: Path) -> "HistoricalResearchCycleSpec":
         if not isinstance(payload, Mapping):
             raise ValueError("historical research cycle spec must be a JSON object")
+        validate_historical_research_cycle_schema(payload)
         cycle_id = str(payload.get("cycle_id") or "").strip()
         if not cycle_id:
             raise ValueError("cycle_id is required")
@@ -476,11 +677,57 @@ class HistoricalResearchCycleSpec:
         }
 
 
+def historical_research_cycle_schema() -> dict[str, Any]:
+    return {
+        "schema_version": RESEARCH_CYCLE_CONFIG_SCHEMA_VERSION,
+        "spec_version": RESEARCH_CYCLE_SPEC_VERSION,
+        "top_level_keys": sorted(HISTORICAL_CYCLE_TOP_LEVEL_SCHEMA_KEYS),
+        "section_keys": {
+            section: sorted(keys)
+            for section, keys in sorted(HISTORICAL_CYCLE_SECTION_SCHEMA_KEYS.items())
+        },
+        "materialized_prediction_overlay_keys": sorted(MATERIALIZED_PREDICTION_OVERLAY_SCHEMA_KEYS),
+        "metadata_policy": "known_documentary_metadata_allowed_active_parser_fields_fail_closed",
+    }
+
+
+def validate_historical_research_cycle_schema(payload: Mapping[str, Any]) -> None:
+    spec_version = payload.get("spec_version")
+    if spec_version is not None and str(spec_version) != RESEARCH_CYCLE_SPEC_VERSION:
+        raise ValueError(f"historical_research_cycle.spec_version must be {RESEARCH_CYCLE_SPEC_VERSION}")
+    _reject_unknown_keys(
+        payload,
+        allowed=HISTORICAL_CYCLE_TOP_LEVEL_SCHEMA_KEYS,
+        context="historical_research_cycle",
+    )
+    for section, allowed in HISTORICAL_CYCLE_SECTION_SCHEMA_KEYS.items():
+        value = payload.get(section)
+        if value is None:
+            continue
+        if section == "exits" and not isinstance(value, Mapping):
+            continue
+        if not isinstance(value, Mapping):
+            raise ValueError(f"{section} must be a JSON object")
+        _reject_unknown_keys(value, allowed=allowed, context=f"historical_research_cycle.{section}")
+
+
 def _resolve_path(value: Any, *, base_path: Path) -> Path:
     candidate = Path(str(value)).expanduser()
     if candidate.is_absolute():
         return candidate
     return (base_path / candidate).resolve()
+
+
+def _optional_non_empty_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _materialized_prediction_overlay_duplicate_key(overlay: MaterializedPredictionOverlaySpec) -> str:
+    candidate_key = overlay.candidate_id or overlay.candidate_cache_key or ""
+    return f"{overlay.scope}:{overlay.feature_set_id}:{overlay.kind}:{candidate_key}"
 
 
 def _search_space_payload(value: Any) -> Mapping[str, Any]:
@@ -581,3 +828,9 @@ def _json_safe_mapping(value: Mapping[str, Any]) -> dict[str, Any]:
         }
         payload.pop("parameter_space", None)
     return payload
+
+
+def _reject_unknown_keys(payload: Mapping[str, Any], *, allowed: frozenset[str], context: str) -> None:
+    unknown = sorted(str(key) for key in payload if str(key) not in allowed)
+    if unknown:
+        raise ValueError(f"{context} unknown schema keys: {', '.join(unknown)}")

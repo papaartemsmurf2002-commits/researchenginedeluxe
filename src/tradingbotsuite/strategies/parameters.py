@@ -26,6 +26,7 @@ class StrategyParameterMetadata:
     default_parameters: Mapping[str, Any] = field(default_factory=dict)
     parameter_space: Mapping[str, tuple[Any, ...]] = field(default_factory=dict)
     holding_window_overrides: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    additional_allowed_parameter_values: Mapping[str, Mapping[str, tuple[Any, ...]]] = field(default_factory=dict)
     signal_density: SignalDensityControls = field(default_factory=SignalDensityControls)
     failure_modes: tuple[str, ...] = ()
 
@@ -40,6 +41,13 @@ class StrategyParameterMetadata:
         payload["parameter_space"] = {
             key: list(values)
             for key, values in self.parameter_space.items()
+        }
+        payload["additional_allowed_parameter_values"] = {
+            holding_window: {
+                key: list(values)
+                for key, values in parameter_values.items()
+            }
+            for holding_window, parameter_values in self.additional_allowed_parameter_values.items()
         }
         payload["signal_density"] = self.signal_density.to_payload()
         return payload
@@ -361,6 +369,17 @@ STRATEGY_PARAMETER_METADATA: dict[str, StrategyParameterMetadata] = {
             "12h": {"spacing_bars": 10},
             "72h": {"spacing_bars": 18, "posterior_threshold": 0.65},
         },
+        additional_allowed_parameter_values={
+            "1h": {
+                "probability_threshold": (0.48, 0.50, 0.52, 0.55, 0.58, 0.62),
+                "expected_value_threshold": (-0.0004, -0.0002, 0.0, 0.0002),
+                "min_neighbor_count": (2, 3, 4, 5),
+                "min_neighbor_agreement": (0.48, 0.50, 0.52, 0.55, 0.60),
+                "min_neighbor_distance_quality": (0.0, 0.005, 0.01),
+                "min_vote_margin": (0.0, 0.02, 0.03, 0.05),
+                "spacing_bars": (4,),
+            },
+        },
         signal_density=SignalDensityControls(min_signal_rate=0.001, max_signal_rate=0.25, max_turnover=0.25),
         failure_modes=(
             "hmm_knn_missing_split_safe_predictions",
@@ -476,7 +495,10 @@ def strategy_parameter_manifest(strategy_ids: tuple[str, ...] | list[str]) -> li
 
 def allowed_parameter_names(strategy_id: str) -> set[str]:
     metadata = metadata_for_strategy(strategy_id)
-    return set(metadata.default_parameters) | set(metadata.parameter_space)
+    additional_names: set[str] = set()
+    for values_by_name in metadata.additional_allowed_parameter_values.values():
+        additional_names.update(values_by_name)
+    return set(metadata.default_parameters) | set(metadata.parameter_space) | additional_names
 
 
 def strategy_metadata_sha256(strategy_id: str) -> str:
@@ -497,6 +519,13 @@ def allowed_parameter_values(strategy_id: str, holding_window: str, parameter_na
     defaults = metadata.defaults_for_holding_window(holding_window)
     if parameter_name in defaults and defaults[parameter_name] not in values:
         values.append(defaults[parameter_name])
+    for scoped_values in (
+        metadata.additional_allowed_parameter_values.get("*", {}),
+        metadata.additional_allowed_parameter_values.get(holding_window, {}),
+    ):
+        for value in scoped_values.get(parameter_name, ()):
+            if value not in values:
+                values.append(value)
     return tuple(values)
 
 
