@@ -387,6 +387,12 @@ generated locally, with bounded BTC/ETH smokes proving overlay provenance
 through rankings, backtest index, and gate reports. The issue remains open
 because WPR106-46 does not complete the required deep cycles, exact sweeps,
 full exit labs, negative controls, or eligibility review.
+WPR106-47 verifies full 48-lead frozen-entry exit-lab evidence and adds
+separate full-window, modern-window, negative-control, and eligibility audit
+artifacts. It keeps the issue open because all exit-lab gates remain blocked,
+modern-window replay artifacts are missing locally, first-class negative
+controls are missing, WPR106-47-scope multiple-testing and validation floors are
+missing, eligibility rows remain 0/48, and no candidate pack was emitted.
 
 ## ISSUE-R106-007: Large exact-discovery eligibility can stall before writing output
 

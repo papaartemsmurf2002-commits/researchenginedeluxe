@@ -12,6 +12,14 @@ bounded BTC/ETH smokes prove candidate-scoped overlay provenance reaches
 rankings, backtest index, and gate reports. Candidate packs remain blocked,
 `ISSUE-R104-001` remains open, and no candidate-ready or promotion-ready claim
 exists.
+Current WPR106-47 update: WPR106-47 adds a full replay exit-lab and
+negative-control audit packet after WPR106-46. It verifies 48 full frozen-entry
+exit-lab rows from WPR106-31, all blocked by no simple-runner improvement over
+fixed holding; records full-window evidence separately from missing
+modern-window profiles; records 192 blocked negative-control rows for missing
+shuffled-label, shifted-context, no-KNN, and no-regime control artifacts; and
+runs BTC/ETH eligibility bridge audits with 48 blocked rows, zero eligible
+rows, no candidate packs, and no live/paper/promotion claim.
 Last updated: 2026-05-31
 
 WPR106-32 active-index update: the current local checkout is `main`, treated as
@@ -132,12 +140,21 @@ backtest index, and gate reports while preserving fail-closed candidate gates:
 zero pack-eligible rows and no candidate packs emitted. `ISSUE-R104-001`
 remains open.
 
+WPR106-47 implements the full replay exit-lab and negative-control audit lane.
+The packet writes a WPR106-47 audit manifest with separate full exit-lab,
+window-scope, and control rows; verifies 48 WPR106-31 full frozen-entry
+exit-lab gates are blocked; records modern-window and negative-control evidence
+as explicit missing-artifact blockers; and writes BTC/ETH eligibility bridge
+audits with 0 eligible rows and no candidate packs.
+
 ## Stage entry decision
 
 - Prior stage completed: yes
 - Evidence links:
   - `docs/stage_reports/STAGE_R106_EXACT_REPLAY_OVERLAY_DOMAIN_AND_CYCLE_REPORT.md`
   - `docs/work_packets/WPR106-46-exact-replay-overlay-domain-and-cycle.md`
+  - `docs/stage_reports/STAGE_R106_FULL_REPLAY_EXIT_LAB_AND_NEGATIVE_CONTROLS_REPORT.md`
+  - `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls.md`
   - `docs/stage_reports/STAGE_R106_REPLAY_OVERLAY_PREFLIGHT_CONTRACT_REPORT.md`
   - `docs/work_packets/WPR106-45-replay-overlay-preflight-contract.md`
   - `docs/stage_reports/STAGE_R106_CONFIG_SCHEMA_ROUNDTRIP_VALIDATION_REPORT.md`
@@ -1064,6 +1081,7 @@ WPR105-107 implementation note:
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR106-47-full-replay-exit-lab-and-negative-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls.md`, `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls-progress.jsonl`, `docs/stage_reports/STAGE_R106_FULL_REPLAY_EXIT_LAB_AND_NEGATIVE_CONTROLS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/research_discovery/replay_evidence_controls.py`, `src/tradingbotsuite/research_discovery/__init__.py`, `tests/research_discovery/test_replay_evidence_controls.py` | Full replay exit-lab/control audit: 48 full WPR106-31 frozen-entry exit-lab rows verified and blocked, full-window evidence separated from missing modern-window profiles, 192 negative-control rows blocked for missing first-class control artifacts, BTC/ETH eligibility bridge audits with 0 eligible rows, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
 | WPR106-46-exact-replay-overlay-domain-and-cycle | Codex Research Agent | closed | `docs/work_packets/WPR106-46-exact-replay-overlay-domain-and-cycle.md`, `docs/work_packets/WPR106-46-progress.jsonl`, `docs/stage_reports/STAGE_R106_EXACT_REPLAY_OVERLAY_DOMAIN_AND_CYCLE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/**`, `tests/**` | Option A exact replay-overlay implementation: explicit `1h` and replay-domain strategy support, exact singleton spec drafts for 48/48 WPR106-31 replay leads, bounded BTC/ETH cycle smokes with overlay provenance in rankings/backtest/gates, zero pack-eligible rows, no candidate packs, full validation passed, `ISSUE-R104-001` kept open, and no live/paper/order/sizing/promotion authorization. |
 | WPR106-45-replay-overlay-preflight-contract | Codex Research Agent | closed | `docs/work_packets/WPR106-45-replay-overlay-preflight-contract.md`, `docs/work_packets/WPR106-45-progress.jsonl`, `src/tradingbotsuite/research_discovery/replay_overlay_preflight.py`, `src/tradingbotsuite/research_discovery/__init__.py`, `tests/research_discovery/test_replay_overlay_preflight.py`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_REPLAY_OVERLAY_PREFLIGHT_CONTRACT_REPORT.md` | Reusable exact replay-overlay preflight utility, manifest validator, focused contract tests, BTC/ETH WPR106-31 preflight rerun with 48/48 unrepresentable exact replay leads, 48 prediction artifacts and manifests found, 0 overlay specs, 0 candidate packs, and passing compile/research-discovery/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_REPLAY_OVERLAY_PREFLIGHT_CONTRACT_REPORT.md`. |
 | WPR106-41-config-schema-roundtrip-validation | Codex Research Agent | closed | `docs/work_packets/WPR106-41-config-schema-roundtrip-validation.md`, `docs/work_packets/WPR106-41-progress.jsonl`, `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_discovery/spec.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/research_discovery/test_discovery_spec.py`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_CONFIG_SCHEMA_ROUNDTRIP_VALIDATION_REPORT.md` | Versioned schema summaries, fail-closed wrong-version and unknown active-field rejection for historical-cycle/discovery-run specs, parser roundtrip tests, and passing compile/focused research-cycle/discovery/contracts/discovery-parser/diff validation recorded in `docs/stage_reports/STAGE_R106_CONFIG_SCHEMA_ROUNDTRIP_VALIDATION_REPORT.md`. |

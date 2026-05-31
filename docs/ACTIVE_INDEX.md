@@ -18,7 +18,7 @@ rename.
 
 ## Current Checkout
 
-- Local checkout: `codex/wpr106-46-exact-replay-overlay`.
+- Local checkout: `codex/wpr106-47-full-replay-exit-lab-controls`.
 - Stage role: migrated mirror of `research/v3-experimental-engine`.
 - Live runtime branch referenced by older docs: `live/v1-runtime-hardening`.
 - Current git state at WPR106-32 open: `.pytest_cache/v/cache/nodeids` was
@@ -32,6 +32,8 @@ facts.
 
 - Current stage: Stage R106 centralized historical data catalog.
 - Current stage owner: Codex Research Agent.
+- Latest WPR106-47 replay exit-lab/control audit packet:
+  `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls.md`.
 - Latest closed exact replay overlay domain/cycle implementation packet:
   `docs/work_packets/WPR106-46-exact-replay-overlay-domain-and-cycle.md`.
 - Latest closed reusable replay preflight contract packet:
@@ -51,6 +53,9 @@ WPR106-31 produced real replayed KNN/strategy-accounting artifacts and
 annotated entry-signal evidence for 24 BTC and 24 ETH materialized discovery
 leads. It also recorded bounded top-3 frozen-entry exit-lab slices blocked by
 no improvement over fixed holding. This is evidence, not candidate readiness.
+WPR106-47 verified the local full 24-lead-per-symbol frozen-entry exit-lab
+artifacts and added a separate audit manifest for full-window, modern-window,
+negative-control, and eligibility status without candidate-ready claims.
 
 ## Current Gate State
 
@@ -109,13 +114,20 @@ generated singleton overlay specs exist for all 48 WPR106-31 replay leads, and
 bounded BTC/ETH smoke cycles prove candidate-scoped overlay provenance reaches
 rankings, backtest index, and gate reports. Candidate packs remain blocked
 because existing gates do not pass. Do not silently substitute current defaults
-for replayed values.
+for replayed values. WPR106-47 then audits the existing full frozen-entry
+exit-lab evidence for all 48 replay leads, records full-window evidence
+separately from missing modern-window profiles, emits fail-closed
+negative-control rows for missing shuffled-label/shifted-context/no-KNN/no-
+regime artifacts, and runs eligibility review with zero eligible rows.
 
 Broader research queue:
 
-- Run full exit-lab, modern-vs-full-window replay comparison, multiple-testing,
-  validation floors, and candidate-pack eligibility after the exact overlay
-  smoke evidence.
+- Generate first-class modern-window replay artifacts instead of relabeling
+  full-window evidence.
+- Generate first-class shuffled-label, shifted-context, no-KNN, and no-regime
+  negative-control artifacts with provenance and `control_only` boundaries.
+- Materialize WPR106-47-scope multiple-testing and validation-floor manifests
+  before any later candidate-pack eligibility expansion.
 - Keep `ISSUE-R104-001` open until durable candidate-depth data, deep cycles,
   exact sweeps, and eligibility review prove closure.
 - Keep approximate-current-domain overlays separate and explicitly labeled; they
@@ -179,6 +191,15 @@ generated locally, and bounded BTC/ETH smoke cycles produced rankings,
 backtest-index rows, gate reports, and rejection reports with candidate-scoped
 overlay provenance. No candidate pack was emitted, and `ISSUE-R104-001`
 remains open.
+
+WPR106-47 adds the full replay exit-lab and negative-control audit packet. The
+packet verifies 48 existing full frozen-entry exit-lab rows, all blocked by no
+simple-runner improvement over fixed holding; records two full-window scope rows
+available and two modern-window scope rows blocked by missing local modern
+profiles; records 192 blocked control rows for missing shuffled-label,
+shifted-context, no-KNN, and no-regime control artifacts; and runs BTC/ETH
+eligibility bridge audits with 48 blocked rows, zero eligible candidates, and
+no candidate packs.
 
 ## Non-Negotiable Research Boundary
 
