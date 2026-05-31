@@ -308,6 +308,7 @@ def write_research_candidate_pack(
         **research_boundary_metadata(),
         "live_fetch_used": False,
         "order_placement_used": False,
+        "runtime_mode_changed": False,
         "intended_use": "research_observe_only",
         "candidate_id": str(candidate_id),
         "cycle_id": cycle_manifest.get("cycle_id"),
@@ -346,6 +347,10 @@ def validate_research_candidate_pack_manifest(manifest: Mapping[str, Any]) -> li
         reasons.append("research_candidate_pack_manifest_version_required")
     if any(field in manifest for field in LIVE_ADJACENT_VERSION_FIELDS):
         reasons.append("live_or_promotion_manifest_version_forbidden")
+    if manifest.get("control_only") is True:
+        reasons.append("control_only_manifest_forbidden")
+    if str(manifest.get("artifact_family") or "") == "negative_control":
+        reasons.append("negative_control_artifact_forbidden")
     if manifest.get("research_only") is not True:
         reasons.append("research_only_must_be_true")
     if manifest.get("observe_only") is not True:
@@ -366,6 +371,8 @@ def validate_research_candidate_pack_manifest(manifest: Mapping[str, Any]) -> li
         reasons.append("live_fetch_used_must_be_false")
     if manifest.get("order_placement_used") is not False:
         reasons.append("order_placement_used_must_be_false")
+    if manifest.get("runtime_mode_changed") is not False:
+        reasons.append("runtime_mode_changed_must_be_false")
     if str(manifest.get("intended_use") or "") != "research_observe_only":
         reasons.append("intended_use_must_be_research_observe_only")
     source = manifest.get("source_data_evidence")
@@ -397,6 +404,7 @@ def _cycle_manifest_gate_reasons(cycle_manifest: Mapping[str, Any]) -> list[str]
         "runtime_control_input",
         "live_fetch_used",
         "order_placement_used",
+        "runtime_mode_changed",
     ):
         if cycle_manifest.get(field) is not False:
             reasons.append(f"cycle_manifest_{field}_must_be_false")
@@ -1344,6 +1352,10 @@ def _reject_live_adjacent_json(path: Path) -> None:
     payload = _read_json(path)
     if any(field in payload for field in LIVE_ADJACENT_VERSION_FIELDS):
         raise ValueError(f"live-adjacent evidence artifact forbidden: {path}")
+    if payload.get("control_only") is True:
+        raise ValueError(f"negative-control evidence artifact forbidden: {path}")
+    if str(payload.get("artifact_family") or "") == "negative_control":
+        raise ValueError(f"negative-control evidence artifact forbidden: {path}")
     if "research_only" in payload and payload.get("research_only") is not True:
         raise ValueError(f"non-research evidence artifact forbidden: {path}")
     if "observe_only" in payload and payload.get("observe_only") is not True:
@@ -1358,6 +1370,7 @@ def _reject_live_adjacent_json(path: Path) -> None:
         "runtime_control_input",
         "live_fetch_used",
         "order_placement_used",
+        "runtime_mode_changed",
     ):
         if field in payload and payload.get(field) is not False:
             raise ValueError(f"live-adjacent evidence artifact forbidden: {path}")

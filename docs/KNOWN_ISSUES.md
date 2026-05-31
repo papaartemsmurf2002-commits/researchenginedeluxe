@@ -393,6 +393,19 @@ artifacts. It keeps the issue open because all exit-lab gates remain blocked,
 modern-window replay artifacts are missing locally, first-class negative
 controls are missing, WPR106-47-scope multiple-testing and validation floors are
 missing, eligibility rows remain 0/48, and no candidate pack was emitted.
+WPR106-48 adds first-class negative-control artifacts and hardens bridge/pack
+rejection. The issue remains open because all 192 first-class control rows are
+blocked by missing replay profile provenance, validation manifests, and
+modern-window evidence; source label/timestamp inputs are also missing for the
+shuffled-label and shifted-context control families. Refreshed eligibility
+audits still have 0/48 eligible rows and no candidate pack.
+WPR106-49 materializes replay-scope multiple-testing and validation-floor
+manifests for all 48 WPR106-31 replay leads and refreshes eligibility. The
+missing-manifest blockers are gone, but the issue remains open because all
+48 rows still block on exit-lab no-improvement, blocked multiple-testing,
+diagnostic validation floors, partial cycle-ranking overlap, unavailable
+modern-window evidence, and unavailable passing negative controls. No candidate
+pack was emitted.
 
 ## ISSUE-R106-007: Large exact-discovery eligibility can stall before writing output
 
@@ -1169,12 +1182,12 @@ promotion, live readiness, sizing, and order placement remain out of scope.
 ## Issue template
 
 ```markdown
-## ISSUE-ID: Short title
+## ISSUE-XXXX: Short title
 
 Severity: P0/P1/P2/P3
 Stage discovered:
 Owner:
-Status: open | in_progress | resolved | accepted_debt
+Status options: open | in_progress | resolved | accepted_debt
 Paths affected:
 
 ### Problem

@@ -29,6 +29,11 @@ def _crossunder(left: pd.Series, right: pd.Series) -> pd.Series:
     return (left < right) & (left.shift(1) >= right.shift(1))
 
 
+def _shift_bool(series: pd.Series, periods: int) -> pd.Series:
+    values = series.to_numpy(dtype=bool, na_value=False)
+    return pd.Series(values, index=series.index, dtype=bool).shift(periods, fill_value=False).astype(bool)
+
+
 def _half_up_round(value: float) -> int:
     value = float(value)
     if not np.isfinite(value):
@@ -93,7 +98,7 @@ def _confirmed_entries(candidate: pd.Series, confirmation_bars: int) -> tuple[pd
     if bars <= 1:
         return candidate, pd.Series(True, index=candidate.index, dtype=bool)
     confirmed = candidate.rolling(bars, min_periods=bars).sum().eq(bars).astype(bool)
-    previous_confirmed = confirmed.shift(1).fillna(False).astype(bool)
+    previous_confirmed = _shift_bool(confirmed, 1)
     first_confirmed = confirmed & ~previous_confirmed
     return first_confirmed.fillna(False), confirmed.fillna(False)
 
@@ -276,12 +281,12 @@ class LorentzianClassifier:
         is_held_four = pd.Series(bars_held, index=frame.index, dtype=int).eq(4)
         is_held_less_than_four = pd.Series(bars_held, index=frame.index, dtype=int).between(1, 3)
         is_early_signal_flip = signal_change & (
-            signal_change.shift(1).fillna(False) | signal_change.shift(2).fillna(False) | signal_change.shift(3).fillna(False)
+            _shift_bool(signal_change, 1) | _shift_bool(signal_change, 2) | _shift_bool(signal_change, 3)
         )
         is_buy_signal = signal_series.eq(1) & is_ema_uptrend.fillna(False) & is_sma_uptrend.fillna(False)
         is_sell_signal = signal_series.eq(-1) & is_ema_downtrend.fillna(False) & is_sma_downtrend.fillna(False)
-        is_last_signal_buy = signal_series.shift(4).eq(1).fillna(False) & is_ema_uptrend.shift(4).fillna(False) & is_sma_uptrend.shift(4).fillna(False)
-        is_last_signal_sell = signal_series.shift(4).eq(-1).fillna(False) & is_ema_downtrend.shift(4).fillna(False) & is_sma_downtrend.shift(4).fillna(False)
+        is_last_signal_buy = signal_series.shift(4).eq(1) & _shift_bool(is_ema_uptrend, 4) & _shift_bool(is_sma_uptrend, 4)
+        is_last_signal_sell = signal_series.shift(4).eq(-1) & _shift_bool(is_ema_downtrend, 4) & _shift_bool(is_sma_downtrend, 4)
         raw_is_new_buy = is_buy_signal & signal_change
         raw_is_new_sell = is_sell_signal & signal_change
         confirmation_bars = max(int(getattr(config, "min_signal_persistence_bars", 1)), 1)
@@ -335,10 +340,10 @@ class LorentzianClassifier:
         bars_since_green_exit = _bars_since(alert_bearish)
         is_valid_short_exit = (bars_since_red_exit > bars_since_red_entry).fillna(False)
         is_valid_long_exit = (bars_since_green_exit > bars_since_green_entry).fillna(False)
-        end_long_dynamic = is_bearish_change.fillna(False) & is_valid_long_exit.shift(1).fillna(False)
-        end_short_dynamic = is_bullish_change.fillna(False) & is_valid_short_exit.shift(1).fillna(False)
-        end_long_strict = ((is_held_four & is_last_signal_buy) | (is_held_less_than_four & is_new_sell & is_last_signal_buy)) & start_long.shift(4).fillna(False)
-        end_short_strict = ((is_held_four & is_last_signal_sell) | (is_held_less_than_four & is_new_buy & is_last_signal_sell)) & start_short.shift(4).fillna(False)
+        end_long_dynamic = is_bearish_change.fillna(False) & _shift_bool(is_valid_long_exit, 1)
+        end_short_dynamic = is_bullish_change.fillna(False) & _shift_bool(is_valid_short_exit, 1)
+        end_long_strict = ((is_held_four & is_last_signal_buy) | (is_held_less_than_four & is_new_sell & is_last_signal_buy)) & _shift_bool(start_long, 4)
+        end_short_strict = ((is_held_four & is_last_signal_sell) | (is_held_less_than_four & is_new_buy & is_last_signal_sell)) & _shift_bool(start_short, 4)
         dynamic_valid = (not config.use_ema_filter) and (not config.use_sma_filter) and (not config.use_kernel_smoothing)
         end_long = end_long_dynamic if config.use_dynamic_exits and dynamic_valid else end_long_strict
         end_short = end_short_dynamic if config.use_dynamic_exits and dynamic_valid else end_short_strict

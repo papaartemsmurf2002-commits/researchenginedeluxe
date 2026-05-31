@@ -32,6 +32,14 @@ facts.
 
 - Current stage: Stage R106 centralized historical data catalog.
 - Current stage owner: Codex Research Agent.
+- Latest WPR106-51 complete review hardening and publish packet:
+  `docs/work_packets/WPR106-51-complete-review-hardening-and-publish.md`.
+- Latest WPR106-50 full-codebase validation/performance audit packet:
+  `docs/work_packets/WPR106-50-full-codebase-validation-and-performance-audit.md`.
+- Latest WPR106-49 replay-scope validation manifest refresh packet:
+  `docs/work_packets/WPR106-49-replay-scope-validation-manifests-and-eligibility-refresh.md`.
+- Latest WPR106-48 first-class negative-control hardening packet:
+  `docs/work_packets/WPR106-48-first-class-negative-controls-modern-window-and-hardening.md`.
 - Latest WPR106-47 replay exit-lab/control audit packet:
   `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls.md`.
 - Latest closed exact replay overlay domain/cycle implementation packet:
@@ -56,6 +64,29 @@ no improvement over fixed holding. This is evidence, not candidate readiness.
 WPR106-47 verified the local full 24-lead-per-symbol frozen-entry exit-lab
 artifacts and added a separate audit manifest for full-window, modern-window,
 negative-control, and eligibility status without candidate-ready claims.
+WPR106-48 adds first-class negative-control artifacts for shuffled labels,
+shifted context, no-KNN overlay, and no-regime backend controls. All 192
+control rows remain blocked because replay profile provenance, validation
+manifest evidence, and modern-window evidence are missing, but the controls are
+now structurally labeled `artifact_family: negative_control`,
+`control_only: true`, and `candidate_evidence: false`.
+WPR106-49 materializes replay-scope multiple-testing and validation-floor
+manifests for all 48 WPR106-31 replay leads and refreshes BTC/ETH eligibility
+audits. Missing-manifest blockers are removed for this evidence scope, but all
+48 rows remain blocked and no candidate pack is written.
+WPR106-50 runs broad compile, full-suite, grouped, benchmark-focused, and CLI
+performance validation. It fixes a checked-config relative path bug in the
+research-experiment benchmark command and removes repeated legacy pandas
+FutureWarnings without changing candidate gates or runtime behavior.
+WPR106-51 performs the final broad review, validation, and publish hardening
+pass over the inherited WPR106-48 through WPR106-50 worktree. It confirms
+compile, contracts, full-suite, focused touched-path validation, and diff
+hygiene; hardens replay provenance, negative-control row validation,
+candidate-pack runtime-mode-change rejection, benchmark nested path
+resolution, and Lorentzian warning cleanup; tightens the known-issue template
+so naive counters do not report a fake open template issue; and preserves zero
+eligible candidates with no candidate pack, live, paper, order-placement,
+sizing, runtime, or promotion claim.
 
 ## Current Gate State
 
@@ -119,15 +150,26 @@ exit-lab evidence for all 48 replay leads, records full-window evidence
 separately from missing modern-window profiles, emits fail-closed
 negative-control rows for missing shuffled-label/shifted-context/no-KNN/no-
 regime artifacts, and runs eligibility review with zero eligible rows.
+WPR106-48 turns those control rows into first-class fail-closed artifacts,
+hardens candidate-pack bridge and pack validation against negative-control
+inputs, and normalizes old replay-ledger compatibility columns at read time
+without rewriting generated WPR106-31 evidence. WPR106-49 then materializes
+the replay-scope multiple-testing and validation-floor manifests that WPR106-48
+left missing, refreshes eligibility, removes the missing-manifest blockers, and
+still confirms zero eligible rows and no candidate packs.
 
 Broader research queue:
 
 - Generate first-class modern-window replay artifacts instead of relabeling
   full-window evidence.
-- Generate first-class shuffled-label, shifted-context, no-KNN, and no-regime
-  negative-control artifacts with provenance and `control_only` boundaries.
-- Materialize WPR106-47-scope multiple-testing and validation-floor manifests
-  before any later candidate-pack eligibility expansion.
+- Replace the WPR106-48 fail-closed first-class control blockers with real
+  replay profile provenance, validation manifests, modern-window evidence, and
+  source label/timestamp inputs before treating controls as available.
+- Add passing replay validation evidence only through real evidence: current
+  WPR106-49 multiple-testing and validation-floor manifests are materialized
+  but blocked, so later expansion still needs split/window concentration,
+  source capability, baseline, ablation, exit-lab, and full cycle-ranking
+  evidence.
 - Keep `ISSUE-R104-001` open until durable candidate-depth data, deep cycles,
   exact sweeps, and eligibility review prove closure.
 - Keep approximate-current-domain overlays separate and explicitly labeled; they
@@ -200,6 +242,31 @@ profiles; records 192 blocked control rows for missing shuffled-label,
 shifted-context, no-KNN, and no-regime control artifacts; and runs BTC/ETH
 eligibility bridge audits with 48 blocked rows, zero eligible candidates, and
 no candidate packs.
+
+WPR106-49 materializes replay-scope multiple-testing and validation-floor gate
+artifacts for the 24 BTC and 24 ETH WPR106-31 replay leads, then refreshes
+eligibility with those manifests wired in. Both symbols have 24 blocked
+multiple-testing rows, 24 diagnostic validation-floor rows, 24 blocked
+eligibility rows, zero eligible rows, and zero missing-manifest blockers. No
+candidate pack was emitted.
+
+WPR106-50 performs the full-codebase validation and diagnostic performance
+audit. Final validation after fixes reports 1539 passed, 1 skipped, 1 warning;
+`pip check` passes; grouped high-risk, benchmark/vector/GPU, integration,
+top-level legacy, experiment-runner, and strategy-flow suites pass. CLI
+benchmarks pass for historical medium repeat 2, discovery deep repeat 2,
+hardware utilization, and the Phase 1 research-experiment benchmark. The
+provider latest-month benchmark completes as report-only evidence because
+repeat 1 lacks determinism/cache-reuse evidence.
+
+WPR106-51 performs a final complete-review hardening and publish pass. Broad
+validation remains green at 1544 passed, 1 skipped, and 1 XGBoost environment
+warning; focused touched-path validation passes; retry-agent findings in
+replay provenance, negative-control row trust, runtime-mode-change filtering,
+benchmark nested path resolution, and Lorentzian warning cleanup are fixed;
+the known-issue template no longer resembles a real open issue to naive
+counters; `.pytest_cache` and root-level handoff prompts remain unstaged; no
+candidate pack or live/paper/promotion behavior is introduced.
 
 ## Non-Negotiable Research Boundary
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 
 import pandas as pd
@@ -8,10 +9,15 @@ import pandas as pd
 from tradingbotsuite.research_discovery.replay_evidence_controls import (
     WPR10647_REPLAY_EVIDENCE_MANIFEST_VERSION,
     WPR10647_REPLAY_EVIDENCE_POLICY,
+    WPR10648_NEGATIVE_CONTROL_MANIFEST_VERSION,
     WPR10647SymbolEvidenceInput,
+    WPR10648NegativeControlInput,
     build_wpr10647_replay_evidence,
+    build_wpr10648_negative_control_artifacts,
     validate_wpr10647_replay_evidence_manifest,
+    validate_wpr10648_negative_control_manifest,
     write_wpr10647_replay_evidence_artifacts,
+    write_wpr10648_negative_control_artifacts,
 )
 
 
@@ -71,6 +77,221 @@ def test_wpr10647_manifest_validator_rejects_live_adjacent_flags(tmp_path: Path)
     assert "promotion_ready_must_be_false" in reasons
     assert "candidate_pack_written_must_be_false" in reasons
     assert "live_fetch_used_must_be_false" in reasons
+
+
+def test_wpr10648_negative_control_artifacts_are_control_only_not_candidate_evidence(tmp_path: Path) -> None:
+    source = _write_control_source(tmp_path, include_label=True, include_timestamp=True)
+    replay_profile = _write_json(tmp_path / "modern_window_profile.json", {"research_only": True})
+    validation_manifest = _write_json(tmp_path / "validation_manifest.json", {"research_only": True})
+    modern_profile = _write_json(tmp_path / "modern_profile.json", {"research_only": True})
+
+    result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="BTCUSDT",
+                source_manifest_path=source["manifest"],
+                source_rows_path=source["rows"],
+                replay_profile_path=replay_profile,
+                validation_manifest_path=validation_manifest,
+                modern_window_profile_path=modern_profile,
+                require_modern_window_evidence=True,
+                deterministic_seed=7,
+                shift_size=1,
+            )
+        ]
+    )
+    artifact = write_wpr10648_negative_control_artifacts(output_dir=tmp_path / "wpr10648-controls", result=result)
+
+    manifest = json.loads(artifact.manifest_path.read_text(encoding="utf-8"))
+    rows = pd.read_parquet(artifact.control_rows_path)
+
+    assert validate_wpr10648_negative_control_manifest(manifest) == []
+    assert manifest["wpr10648_negative_control_manifest_version"] == WPR10648_NEGATIVE_CONTROL_MANIFEST_VERSION
+    assert manifest["artifact_family"] == "negative_control"
+    assert manifest["control_only"] is True
+    assert manifest["candidate_evidence"] is False
+    assert manifest["candidate_pack_eligible"] is False
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["control_status_counts"] == {"available": 8}
+    assert set(rows["control_family"]) == {
+        "shuffled_labels",
+        "shifted_context",
+        "no_knn_overlay",
+        "no_regime_backend",
+    }
+    assert rows["control_only"].eq(True).all()
+    assert rows["candidate_evidence"].eq(False).all()
+    assert rows["candidate_pack_eligible"].eq(False).all()
+    assert rows["candidate_pack_written"].eq(False).all()
+    shuffled = rows.loc[rows["control_family"].eq("shuffled_labels")]
+    assert shuffled["source_label_hash"].str.len().gt(0).all()
+    assert shuffled["shuffled_label_hash"].str.len().gt(0).all()
+    assert shuffled["label_distribution_match"].eq(True).all()
+    assert shuffled["derangement_rate"].gt(0).all()
+    no_knn = rows.loc[rows["control_family"].eq("no_knn_overlay")]
+    assert no_knn["overlay_used"].eq(False).all()
+    assert no_knn["knn_artifact_input"].fillna("").eq("").all()
+    no_regime = rows.loc[rows["control_family"].eq("no_regime_backend")]
+    assert no_regime["regime_model_backend"].eq("none").all()
+
+
+def test_wpr10648_negative_control_artifacts_fail_closed_when_profile_and_validation_are_missing(
+    tmp_path: Path,
+) -> None:
+    source = _write_control_source(tmp_path, include_label=False, include_timestamp=False)
+
+    result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="ETHUSDT",
+                source_manifest_path=source["manifest"],
+                source_rows_path=source["rows"],
+                require_modern_window_evidence=True,
+            )
+        ]
+    )
+
+    assert result.manifest["control_status_counts"] == {"blocked": 8}
+    reasons = "|".join(result.control_rows["control_reasons"].fillna("").astype(str).tolist())
+    assert "replay_profile_provenance_missing" in reasons
+    assert "validation_manifest_missing" in reasons
+    assert "modern_window_evidence_required" in reasons
+    assert "source_label_column_missing" in reasons
+    assert "source_timestamp_column_missing" in reasons
+    assert result.control_rows["candidate_evidence"].eq(False).all()
+
+
+def test_wpr10647_control_rows_validate_first_class_control_artifact_before_available(
+    tmp_path: Path,
+) -> None:
+    symbol_input = _write_symbol_input(tmp_path)
+    source = _write_control_source(tmp_path, include_label=True, include_timestamp=True)
+    control_result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="BTCUSDT",
+                source_manifest_path=source["manifest"],
+                source_rows_path=source["rows"],
+            )
+        ]
+    )
+    control_artifact = write_wpr10648_negative_control_artifacts(
+        output_dir=tmp_path / "blocked-first-class-controls",
+        result=control_result,
+    )
+    symbol_input = WPR10647SymbolEvidenceInput(
+        symbol=symbol_input.symbol,
+        preflight_manifest_path=symbol_input.preflight_manifest_path,
+        preflight_rows_path=symbol_input.preflight_rows_path,
+        spec_draft_manifest_path=symbol_input.spec_draft_manifest_path,
+        spec_draft_rows_path=symbol_input.spec_draft_rows_path,
+        exit_lab_manifest_path=symbol_input.exit_lab_manifest_path,
+        control_artifact_paths={
+            "shuffled_labels": control_artifact.manifest_path,
+            "shifted_context": control_artifact.manifest_path,
+            "no_knn_baseline": control_artifact.manifest_path,
+            "no_regime_baseline": control_artifact.manifest_path,
+        },
+    )
+
+    result = build_wpr10647_replay_evidence(symbol_inputs=[symbol_input])
+
+    assert result.negative_control_rows["control_status"].eq("blocked").all()
+    reasons = "|".join(result.negative_control_rows["control_reasons"].astype(str).tolist())
+    assert "first_class_negative_control_artifact_blocked" in reasons
+    assert "replay_profile_provenance_missing" in reasons
+
+
+def test_wpr10647_control_rows_reject_tampered_first_class_control_rows_hash(
+    tmp_path: Path,
+) -> None:
+    symbol_input = _write_symbol_input(tmp_path)
+    source = _write_control_source(tmp_path, include_label=True, include_timestamp=True)
+    control_result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="BTCUSDT",
+                source_manifest_path=source["manifest"],
+                source_rows_path=source["rows"],
+            )
+        ]
+    )
+    control_artifact = write_wpr10648_negative_control_artifacts(
+        output_dir=tmp_path / "first-class-controls",
+        result=control_result,
+    )
+    rows = pd.read_parquet(control_artifact.control_rows_path)
+    rows.loc[:, "control_status"] = "available"
+    rows.to_parquet(control_artifact.control_rows_path, index=False)
+    symbol_input = WPR10647SymbolEvidenceInput(
+        symbol=symbol_input.symbol,
+        preflight_manifest_path=symbol_input.preflight_manifest_path,
+        preflight_rows_path=symbol_input.preflight_rows_path,
+        spec_draft_manifest_path=symbol_input.spec_draft_manifest_path,
+        spec_draft_rows_path=symbol_input.spec_draft_rows_path,
+        exit_lab_manifest_path=symbol_input.exit_lab_manifest_path,
+        control_artifact_paths={"shuffled_labels": control_artifact.manifest_path},
+    )
+
+    result = build_wpr10647_replay_evidence(symbol_inputs=[symbol_input])
+
+    reasons = "|".join(result.negative_control_rows["control_reasons"].astype(str).tolist())
+    assert "negative_control_rows_sha256_mismatch" in reasons
+    assert result.negative_control_rows["control_status"].eq("blocked").all()
+
+
+def test_wpr10647_control_rows_reject_tampered_first_class_control_row_boundary_flags(
+    tmp_path: Path,
+) -> None:
+    symbol_input = _write_symbol_input(tmp_path)
+    source = _write_control_source(tmp_path, include_label=True, include_timestamp=True)
+    replay_profile = _write_json(tmp_path / "replay_profile.json", {"research_only": True})
+    validation_manifest = _write_json(tmp_path / "validation_manifest.json", {"research_only": True})
+    modern_profile = _write_json(tmp_path / "modern_profile.json", {"research_only": True})
+    control_result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="BTCUSDT",
+                source_manifest_path=source["manifest"],
+                source_rows_path=source["rows"],
+                replay_profile_path=replay_profile,
+                validation_manifest_path=validation_manifest,
+                modern_window_profile_path=modern_profile,
+                require_modern_window_evidence=True,
+            )
+        ]
+    )
+    control_artifact = write_wpr10648_negative_control_artifacts(
+        output_dir=tmp_path / "first-class-controls",
+        result=control_result,
+    )
+    rows = pd.read_parquet(control_artifact.control_rows_path)
+    rows.loc[rows["control_family"].eq("shuffled_labels"), "candidate_evidence"] = True
+    rows.loc[rows["control_family"].eq("shuffled_labels"), "candidate_pack_eligible"] = True
+    rows.loc[rows["control_family"].eq("shuffled_labels"), "promotion_ready"] = True
+    rows.to_parquet(control_artifact.control_rows_path, index=False)
+    manifest = json.loads(control_artifact.manifest_path.read_text(encoding="utf-8"))
+    manifest["control_rows_sha256"] = _sha256(control_artifact.control_rows_path)
+    control_artifact.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    symbol_input = WPR10647SymbolEvidenceInput(
+        symbol=symbol_input.symbol,
+        preflight_manifest_path=symbol_input.preflight_manifest_path,
+        preflight_rows_path=symbol_input.preflight_rows_path,
+        spec_draft_manifest_path=symbol_input.spec_draft_manifest_path,
+        spec_draft_rows_path=symbol_input.spec_draft_rows_path,
+        exit_lab_manifest_path=symbol_input.exit_lab_manifest_path,
+        control_artifact_paths={"shuffled_labels": control_artifact.manifest_path},
+    )
+
+    result = build_wpr10647_replay_evidence(symbol_inputs=[symbol_input])
+
+    reasons = "|".join(result.negative_control_rows["control_reasons"].astype(str).tolist())
+    assert "negative_control_rows_candidate_evidence_must_be_false" in reasons
+    assert "negative_control_rows_candidate_pack_eligible_must_be_false" in reasons
+    assert "negative_control_rows_promotion_ready_must_be_false" in reasons
+    assert result.negative_control_rows["control_status"].eq("blocked").all()
 
 
 def _write_symbol_input(tmp_path: Path) -> WPR10647SymbolEvidenceInput:
@@ -189,3 +410,64 @@ def _write_symbol_input(tmp_path: Path) -> WPR10647SymbolEvidenceInput:
         spec_draft_rows_path=spec_rows_path,
         exit_lab_manifest_path=exit_manifest_path,
     )
+
+
+def _write_control_source(tmp_path: Path, *, include_label: bool, include_timestamp: bool) -> dict[str, Path]:
+    source_dir = tmp_path / f"control-source-{include_label}-{include_timestamp}"
+    source_dir.mkdir(parents=True)
+    replay_spec = _write_json(source_dir / "replay_spec.json", {"research_only": True})
+    discovery_manifest = _write_json(source_dir / "discovery_manifest.json", {"research_only": True})
+    manifest = _write_json(
+        source_dir / "source_manifest.json",
+        {
+            "replay_overlay_cycle_preflight_manifest_version": "replay-overlay-cycle-spec-preflight-v1",
+            "symbol": "BTCUSDT",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "candidate_pack_written": False,
+            "source_replay_spec_path": str(replay_spec),
+            "source_replay_spec_sha256": _sha256(replay_spec),
+            "source_discovery_manifest_path": str(discovery_manifest),
+            "source_discovery_manifest_sha256": _sha256(discovery_manifest),
+        },
+    )
+    rows = pd.DataFrame(
+        [
+            {
+                "candidate_id": "candidate-a",
+                "materialized_candidate_id": "mat-a",
+                "source_trial_id": "trial-a",
+                "source_record_sha256": "record-a",
+                "context_bucket": "trend",
+            },
+            {
+                "candidate_id": "candidate-b",
+                "materialized_candidate_id": "mat-b",
+                "source_trial_id": "trial-b",
+                "source_record_sha256": "record-b",
+                "context_bucket": "range",
+            },
+        ]
+    )
+    if include_label:
+        rows["label"] = [1, -1]
+    if include_timestamp:
+        rows["timestamp_ms"] = [1000, 2000]
+    rows_path = source_dir / "source_rows.parquet"
+    rows.to_parquet(rows_path, index=False)
+    return {"manifest": manifest, "rows": rows_path}
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def _sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

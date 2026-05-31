@@ -1,9 +1,12 @@
+import warnings
+
 import pandas as pd
 import pytest
 
 from tradingbot.backtest import Backtester
 from tradingbot.config import default_app_config
 from tradingbot.lorentz import LorentzianClassifier
+from tradingbot.lorentz_lc import _confirmed_entries
 from tradingbot.market_structure import MarketStructureEngine
 from tradingbot.optimization import WalkForwardOptimizer
 from tradingbot.order_blocks import OrderBlockEngine
@@ -41,6 +44,17 @@ def test_lorentz_and_backtest_smoke():
     assert "net_profit" in report.metrics
     assert report.metrics["final_equity"] > 0
     assert report.blocks == []
+
+
+def test_lorentz_confirmation_persistence_shift_is_warning_free():
+    candidate = pd.Series([True, True, True, False, True, True], dtype=bool)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", FutureWarning)
+        first_confirmed, confirmed = _confirmed_entries(candidate, 2)
+
+    assert first_confirmed.tolist() == [False, True, False, False, False, True]
+    assert confirmed.tolist() == [False, True, True, False, False, True]
 
 
 def test_optimizer_includes_baseline_comparison():

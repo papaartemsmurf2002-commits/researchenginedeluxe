@@ -774,6 +774,69 @@ def test_research_experiment_benchmark_report_records_runs(tmp_path: Path) -> No
     assert Path(report["runs"][0]["manifest_path"]).exists()
 
 
+def test_research_experiment_benchmark_resolves_source_relative_specs_before_copy(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120)
+    repo_like = tmp_path / "repo-like"
+    repo_dataset = repo_like / "data" / "dataset.parquet"
+    repo_dataset.parent.mkdir(parents=True)
+    pd.read_parquet(dataset.parquet_path).to_parquet(repo_dataset, index=False)
+    config_path = _write_fast_hmm_knn_config(repo_like / "configs" / "experiments" / "hmm_knn_config.json")
+    experiment_spec = _write_experiment_matrix_spec(repo_like / "configs", config_path)
+    output_dir = tmp_path / "research" / "experiments" / "source-relative"
+    pipeline_spec = _write_json(
+        repo_like / "configs" / "specs" / "pipeline.json",
+        {
+            "version": "experiment-runner-pipeline",
+            "asset_scope": ["BTCUSDT"],
+            "output_dir": str(output_dir / "will-be-overridden"),
+            "providers": [
+                {"source_name": "binance_vision", "enabled": True, "inputs": []},
+            ],
+            "dataset_stage": {"enabled": False},
+            "evidence_stage": {
+                "enabled": True,
+                "dataset_path": "../../data/dataset.parquet",
+                "hmm_knn_config": "../experiments/hmm_knn_config.json",
+                "workers": 1,
+                "write_monitoring": True,
+            },
+        },
+    )
+    spec_dir = repo_like / "configs" / "experiments"
+    spec_path = _write_json(
+        spec_dir / "research_experiment.json",
+        {
+            "version": "test-research-experiment-relative-run",
+            "name": "Test Research Experiment Relative Run",
+            "pipeline_spec": "../specs/pipeline.json",
+            "pipeline_stage": "all",
+            "experiment_spec": "../specs/hmm_knn_matrix.json",
+            "output_dir": str(output_dir),
+            "workers": 1,
+            "write_monitoring": True,
+            "required_artifacts": {"data_quality": True, "dataset": False, "evidence": True},
+            "conclusion_policy": "default",
+        },
+    )
+
+    report_path = write_research_experiment_benchmark_report(
+        spec_path=spec_path,
+        output_dir=tmp_path / "research" / "benchmarks",
+        repeat=1,
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    benchmark_spec = json.loads((report_path.parent / "benchmark_spec_1.json").read_text(encoding="utf-8"))
+    run_manifest = json.loads(Path(report["runs"][0]["manifest_path"]).read_text(encoding="utf-8"))
+    effective_pipeline = json.loads(Path(run_manifest["artifact_links"]["effective_pipeline_spec_path"]).read_text(encoding="utf-8"))
+
+    assert Path(benchmark_spec["pipeline_spec"]).exists()
+    assert Path(benchmark_spec["experiment_spec"]).exists()
+    assert Path(report["runs"][0]["manifest_path"]).exists()
+    assert Path(effective_pipeline["evidence_stage"]["dataset_path"]).resolve() == repo_dataset.resolve()
+    assert Path(effective_pipeline["evidence_stage"]["hmm_knn_config"]).resolve() == config_path.resolve()
+
+
 def test_generic_experiment_specs_cache_and_search_are_deterministic() -> None:
     spec = ExperimentSpec(
         experiment_name="deterministic generic experiment",
