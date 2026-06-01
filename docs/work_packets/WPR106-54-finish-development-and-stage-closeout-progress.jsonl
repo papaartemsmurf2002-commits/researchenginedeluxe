@@ -2,3 +2,4 @@
 {"ts":"2026-06-01T16:57:00+03:00","event":"pr_state_verified","details":"Verified PR #2 is open, draft, mergeable, and green at 3681fc9; verified PR #1 is superseded because PR #2 is four commits ahead and zero behind PR #1."}
 {"ts":"2026-06-01T16:57:00+03:00","event":"validation_passed","details":"python -m compileall -q src/tradingbotsuite passed; PYTHONPATH=src python -m pytest tests/contracts -q passed with 441 tests."}
 {"ts":"2026-06-01T16:57:00+03:00","event":"closeout_docs_updated","details":"Updated active index and added WPR106-54 stage report with PR state, blocker state, validation, and research-only boundary."}
+{"ts":"2026-06-01T17:03:00+03:00","event":"closeout_wording_corrected","details":"Clarified that the green PR #2 check was the pre-closeout head at 3681fc9; WPR106-54 documentation commits remain draft PR branch updates and do not merge or mark the PR ready."}

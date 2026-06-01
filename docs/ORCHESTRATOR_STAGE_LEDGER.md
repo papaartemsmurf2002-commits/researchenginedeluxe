@@ -75,10 +75,11 @@ bundle sequencing, and standalone research UI bounded scans/links. Final
 full-suite validation is 1561 passed, 1 skipped, 1 XGBoost environment warning.
 No candidate pack, live/paper/order/sizing/runtime, or promotion claim exists.
 Current WPR106-54 update: WPR106-54 completes the finish-development closeout
-documentation pass. PR #2 is verified open, draft, mergeable, and green at
-`3681fc9`; PR #1 is verified superseded because PR #2 contains PR #1's head
-plus four additional commits. No draft PRs were merged, closed, marked ready,
-or deleted without explicit authorization. Fresh baseline validation passes:
+documentation pass. The pre-closeout PR #2 head is verified open, draft,
+mergeable, and green at `3681fc9`; PR #1 is verified superseded because PR #2
+contains PR #1's head plus four additional commits. No draft PRs were merged,
+closed, marked ready, or deleted without explicit authorization. Fresh baseline
+validation passes:
 `python -m compileall -q src/tradingbotsuite` and
 `PYTHONPATH=src python -m pytest tests/contracts -q` with 441 passed.
 `ISSUE-R104-001` remains the only open P1 blocker, so no candidate-ready or

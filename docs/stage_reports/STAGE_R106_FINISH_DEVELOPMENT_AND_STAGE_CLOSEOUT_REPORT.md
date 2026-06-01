@@ -12,15 +12,18 @@ source behavior or remote draft PR state.
 
 ## PR State
 
-- PR #2 (`codex/wpr106-47-full-replay-exit-lab-controls`) is open, draft,
-  mergeable, and green at
+- Pre-closeout PR #2 (`codex/wpr106-47-full-replay-exit-lab-controls`) was
+  open, draft, mergeable, and green at
   `3681fc9199406ada15f339c68c3f1e9b7934ca88`.
-- GitHub Actions run `research-validation` #8 completed successfully for PR #2.
+- GitHub Actions run `research-validation` #8 completed successfully for that
+  PR #2 head.
 - PR #2 has no review submissions and one WPR106-53 closeout comment.
 - PR #1 (`codex/wpr106-46-exact-replay-overlay`) is open, draft, and mergeable
   but superseded by PR #2. PR #2 is four commits ahead of PR #1 and zero commits
   behind it, so PR #1's head is contained in PR #2.
-- No PR was merged, closed, marked ready, or deleted in this packet.
+- WPR106-54 documentation commits are intended to stay on PR #2 as draft
+  branch updates; no PR was merged, closed, marked ready, or deleted in this
+  packet.
 
 ## Blocker State
 

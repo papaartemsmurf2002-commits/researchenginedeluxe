@@ -121,12 +121,13 @@ and standalone boundary-review links/scan bounds. Final validation reports
 1561 passed, 1 skipped, and 1 XGBoost environment warning. No candidate pack,
 live/paper/order/sizing/runtime authorization, or promotion behavior is
 introduced.
-WPR106-54 performs the finish-development closeout pass. It verifies PR #2 is
-open, draft, mergeable, and green at `3681fc9`; verifies PR #1 is superseded by
-PR #2 because PR #2 contains PR #1's head plus four additional commits; records
-that remote draft PR state was not mutated without explicit merge/close
-authorization; and refreshes closeout documentation. Baseline validation
-passes with `python -m compileall -q src/tradingbotsuite` and
+WPR106-54 performs the finish-development closeout pass. It verifies the
+pre-closeout PR #2 head was open, draft, mergeable, and green at `3681fc9`;
+verifies PR #1 is superseded by PR #2 because PR #2 contains PR #1's head plus
+four additional commits; records that remote draft PR state was not mutated
+without explicit merge/close authorization; and refreshes closeout
+documentation. Baseline validation passes with
+`python -m compileall -q src/tradingbotsuite` and
 `PYTHONPATH=src python -m pytest tests/contracts -q` reporting 441 passed. No
 candidate pack, live/paper/order/sizing/runtime authorization, or promotion
 behavior is introduced.

@@ -15,7 +15,7 @@ candidate packs, or change live/paper execution behavior.
 - Current implementation branch:
   `codex/wpr106-47-full-replay-exit-lab-controls`.
 - Current head: `3681fc9 Harden operator UI reliability`.
-- Draft PR #2 is open, mergeable, and green at
+- Pre-closeout draft PR #2 was open, mergeable, and green at
   `3681fc9199406ada15f339c68c3f1e9b7934ca88`.
 - Draft PR #1 is open and superseded by PR #2 because PR #2 contains PR #1's
   head plus four additional commits.
