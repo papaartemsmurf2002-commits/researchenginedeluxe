@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tradingbotsuite.backtesting.splits import build_purged_walk_forward_splits
+from tradingbotsuite.backtesting.splits import LabelSpec, build_purged_walk_forward_splits
 from tradingbotsuite.research_discovery.hmm_materialization import (
     HMM_POSTERIOR_COLUMNS,
     HmmMaterializationSpec,
@@ -92,6 +92,10 @@ def test_hmm_materialization_emits_required_columns_and_split_safe_rows() -> Non
     assert (materialized["hmm_fit_end_row"] < materialized["source_row_index"]).all()
     assert materialized["hmm_model_id"].astype(str).str.startswith("gaussian_mixture:").all()
     assert materialized["hmm_feature_pack_id"].eq("test_hmm_pack").all()
+    assert materialized["regime_fit_end_row"].equals(materialized["hmm_fit_end_row"])
+    assert materialized["regime_model_id"].equals(materialized["hmm_model_id"])
+    assert materialized["regime_feature_pack_id"].equals(materialized["hmm_feature_pack_id"])
+    assert materialized["regime_split_id"].equals(materialized["hmm_split_id"])
     assert result.manifest["split_safety_passed"] is True
     assert result.manifest["research_only"] is True
     assert result.manifest["observe_only"] is True
@@ -101,6 +105,29 @@ def test_hmm_materialization_emits_required_columns_and_split_safe_rows() -> Non
     assert result.manifest["true_hmm_backend_used"] is False
     assert result.manifest["order_placement_used"] is False
     assert result.manifest["runtime_mode_changed"] is False
+
+
+def test_hmm_materialization_honors_event_safe_train_indices() -> None:
+    frame = _feature_frame()
+    frame["label_event_end_time_ms"] = frame["bar_time_ms"]
+    frame.loc[2, "label_event_end_time_ms"] = frame.loc[30, "bar_time_ms"]
+    frame.loc[4, "label_event_end_time_ms"] = pd.NA
+    splits = build_purged_walk_forward_splits(
+        frame,
+        min_splits=3,
+        purge_embargo_bars=0,
+        time_column="bar_time_ms",
+        label_spec=LabelSpec(event_end_time_column="label_event_end_time_ms", interval_ms=900_000),
+    )
+
+    result = materialize_split_safe_hmm_regimes(frame, splits=splits, spec=_spec(min_training_rows=8))
+    first_record = result.manifest["split_records"][0]
+
+    assert splits[0].validation_start_index == 30
+    assert splits[0].train_indices is not None
+    assert 2 not in splits[0].train_indices
+    assert 4 not in splits[0].train_indices
+    assert first_record["train_row_count"] == len(splits[0].train_indices)
 
 
 def test_hmm_posteriors_are_finite_and_sum_to_one() -> None:
@@ -212,6 +239,7 @@ def test_hmm_materialization_writes_research_only_artifacts(tmp_path: Path) -> N
     assert not posteriors.empty
     assert not split_summary.empty
     assert manifest["regime_detector_type"] == "gmm"
+    assert manifest["regime_model_backend"] == "sklearn.mixture.GaussianMixture"
     assert manifest["true_hmm_backend_used"] is False
 
 
@@ -248,6 +276,8 @@ def test_no_regime_baseline_emits_split_safe_compatibility_columns() -> None:
     assert materialized["posterior_entropy"].eq(0.0).all()
     assert materialized["hmm_model_id"].astype(str).str.startswith("no_regime:").all()
     assert materialized["hmm_feature_pack_id"].eq("test_no_regime_pack").all()
+    assert materialized["regime_model_id"].equals(materialized["hmm_model_id"])
+    assert materialized["regime_feature_pack_id"].equals(materialized["hmm_feature_pack_id"])
     assert (materialized["hmm_fit_end_row"] < materialized["source_row_index"]).all()
     assert result.manifest["regime_detector_type"] == "none"
     assert result.manifest["regime_gate_enabled"] is False
@@ -290,3 +320,7 @@ def _assign_posterior_rows_scalar_reference(
         result.loc[position, "hmm_model_id"] = model_id
         result.loc[position, "hmm_feature_pack_id"] = spec.hmm_feature_pack_id
         result.loc[position, "hmm_split_id"] = split_id
+        result.loc[position, "regime_fit_end_row"] = int(fit_end_row)
+        result.loc[position, "regime_model_id"] = model_id
+        result.loc[position, "regime_feature_pack_id"] = spec.hmm_feature_pack_id
+        result.loc[position, "regime_split_id"] = split_id

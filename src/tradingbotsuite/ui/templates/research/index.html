@@ -15,7 +15,7 @@
     <a href="/research/trades">Trades</a>
     <a href="/research/regimes">Regimes</a>
     <a href="/research/knn-neighbors">KNN neighbors</a>
-    <a href="/research/promotion-candidates">Promotion review</a>
+    <a href="/research/boundary-review">Boundary review</a>
     <a href="/research/jobs">Jobs</a>
   </nav>
   <main>
@@ -31,7 +31,7 @@
           <td>{{ metric.experiment_name }}</td>
           <td>{{ metric.status }}</td>
           <td>{{ metric.failure_count }}</td>
-          <td><a href="/research/api/manifests">{{ metric.manifest_path }}</a></td>
+          <td><span>{{ metric.manifest_path }}</span></td>
         </tr>
       {% endfor %}
       </tbody>

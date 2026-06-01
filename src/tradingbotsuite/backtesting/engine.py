@@ -10,7 +10,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from tradingbotsuite.backtesting.costs import CostModel
+from tradingbotsuite.backtesting.costs import (
+    DEFAULT_RESEARCH_COST_PROFILE_ID,
+    CostModel,
+    validate_fill_profile_id,
+    venue_cost_profile,
+)
 from tradingbotsuite.backtesting.execution_sim import ExecutionAssumptions, ExecutionSimulator
 from tradingbotsuite.backtesting.metrics import REQUIRED_BACKTEST_METRICS, calculate_backtest_metrics
 from tradingbotsuite.strategies import get_strategy_plugin, validate_signal_frame
@@ -44,6 +49,8 @@ class BacktestSpec:
     slippage_bps: float = 5.0
     spread_bps: float = 0.0
     funding_rate: float = 0.0
+    cost_profile_id: str = DEFAULT_RESEARCH_COST_PROFILE_ID
+    fill_profile_id: str | None = None
     exit_policy_id: str = "fixed_holding_window"
     target_return: float | None = None
     stop_return: float | None = None
@@ -105,12 +112,7 @@ class BacktestEngine:
         market = _market_frame(source_frame, symbol=spec.symbol)
         assumptions = _execution_assumptions(spec)
         signals, strategy_metadata = _signals_for_strategy(source_frame, spec)
-        cost_model = CostModel(
-            fee_bps=spec.fee_bps,
-            slippage_bps=spec.slippage_bps,
-            spread_bps=spec.spread_bps,
-            funding_rate=spec.funding_rate,
-        )
+        cost_model = _cost_model_from_spec(spec)
         trades, equity_curve = self.execution_simulator.simulate(
             signals,
             market,
@@ -275,6 +277,48 @@ def _execution_assumptions(spec: BacktestSpec) -> ExecutionAssumptions:
     )
 
 
+def _cost_model_from_spec(spec: BacktestSpec) -> CostModel:
+    profile = venue_cost_profile(spec.cost_profile_id)
+    fill_profile_id = validate_fill_profile_id(spec.fill_profile_id or _fill_profile_for_entry_price_source(spec.entry_price_source))
+    numeric_match = (
+        float(spec.fee_bps) == float(profile.fee_bps)
+        and float(spec.slippage_bps) == float(profile.slippage_bps)
+        and float(spec.spread_bps) == float(profile.spread_bps)
+        and float(spec.funding_rate) == float(profile.funding_rate)
+    )
+    return CostModel(
+        fee_bps=spec.fee_bps,
+        slippage_bps=spec.slippage_bps,
+        spread_bps=spec.spread_bps,
+        funding_rate=spec.funding_rate,
+        funding_interval_ms=profile.funding_interval_ms,
+        venue=profile.venue,
+        cost_profile_id=profile.profile_id,
+        fill_profile_id=fill_profile_id,
+        source_venue=profile.source_venue,
+        execution_venue=profile.execution_venue,
+        evidence_scope=profile.evidence_scope,
+        execution_proof_scope=profile.execution_proof_scope,
+        cost_profile_source=(
+            "registered_profile"
+            if numeric_match and fill_profile_id == profile.fill_profile_id
+            else "registered_profile_with_numeric_or_fill_override"
+        ),
+        not_execution_proof_for=profile.not_execution_proof_for,
+    )
+
+
+def _fill_profile_for_entry_price_source(entry_price_source: str) -> str:
+    value = str(entry_price_source or "")
+    if value == "signal_bar_close_plus_latency":
+        return "signal_close_latency_fill"
+    if value == "vwap_approximation":
+        return "vwap_approximation_fill"
+    if value == "lower_timeframe_execution_path":
+        return "lower_timeframe_latency_open_fill"
+    return "primary_bar_latency_fill"
+
+
 def _load_lower_timeframe_frame(spec: BacktestSpec) -> pd.DataFrame | None:
     if spec.lower_timeframe_dataset_path is None:
         return None
@@ -414,7 +458,13 @@ def _enrich_trades(trades: pd.DataFrame, market: pd.DataFrame) -> pd.DataFrame:
     vol_buckets: list[str] = []
     spreads: list[float] = []
     for row in enriched.to_dict("records"):
-        market_row = by_time.loc[int(row["entry_time_ms"])]
+        primary_time = row.get("entry_primary_bar_time_ms")
+        lookup_time = int(row["entry_time_ms"]) if primary_time is None or pd.isna(primary_time) else int(primary_time)
+        if lookup_time in by_time.index:
+            market_row = by_time.loc[lookup_time]
+        else:
+            candidates = market.loc[market["bar_time_ms"] <= int(row["entry_time_ms"])]
+            market_row = candidates.iloc[-1] if not candidates.empty else market.iloc[0]
         regime = market_row.get("top_regime_label", market_row.get("regime", "unknown"))
         regimes.append("unknown" if pd.isna(regime) else str(regime))
         timestamp = pd.to_datetime(int(row["entry_time_ms"]), unit="ms", utc=True)

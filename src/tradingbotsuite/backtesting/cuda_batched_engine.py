@@ -17,6 +17,7 @@ from tradingbotsuite.backtesting.engine import (
     BacktestResult,
     BacktestSpec,
     _cache_key_components,
+    _cost_model_from_spec,
     _enrich_trades,
     _execution_assumptions,
     _file_sha256,
@@ -200,12 +201,7 @@ class CudaBatchedFixedHoldingBacktestEngine:
         assumptions = _execution_assumptions(spec)
         reference_engine.execution_simulator._validate_assumptions(assumptions, None)
         signals, strategy_metadata = _signals_for_strategy(source_frame, spec)
-        cost_model = CostModel(
-            fee_bps=spec.fee_bps,
-            slippage_bps=spec.slippage_bps,
-            spread_bps=spec.spread_bps,
-            funding_rate=spec.funding_rate,
-        )
+        cost_model = _cost_model_from_spec(spec)
         trades, kernel_evidence = _cuda_batched_fixed_holding_trades(
             signals,
             market,
@@ -515,6 +511,7 @@ def _cuda_rawkernel_fixed_holding_trades(
     for signal_index, signal in enumerate(signal_records):
         if int(values["valid"][signal_index]) != 1:
             continue
+        target_entry_time = int(signal["decision_time_ms"]) + int(assumptions.entry_latency_ms)
         entry_index = int(values["entry_indices"][signal_index])
         exit_index = int(values["exit_indices"][signal_index])
         entry_time = int(values["entry_times"][signal_index])
@@ -561,6 +558,9 @@ def _cuda_rawkernel_fixed_holding_trades(
                 "entry_price": float(values["entry_prices"][signal_index]),
                 "exit_price": float(exit_result.exit_price),
                 "holding_ms": holding_ms,
+                "entry_target_time_ms": target_entry_time,
+                "entry_primary_bar_time_ms": entry_time,
+                "entry_sequence_proof": "primary_bar_time",
                 "exit_target_time_ms": int(values["target_exit_times"][signal_index]),
                 "exit_target_holding_ms": int(assumptions.holding_period_ms),
                 "exit_used_fallback": bool(int(values["used_fallback"][signal_index])),

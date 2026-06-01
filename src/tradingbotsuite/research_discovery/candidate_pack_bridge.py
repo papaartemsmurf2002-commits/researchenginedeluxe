@@ -65,6 +65,7 @@ DISCOVERY_LEDGER_COLUMNS = (
     "hmm_state_count",
     "regime_mode",
     "regime_detector_type",
+    "regime_model_backend",
     "regime_gate_enabled",
     "same_regime_neighbor_pool_enabled",
     "true_hmm_backend_used",
@@ -168,7 +169,7 @@ def evaluate_discovery_candidate_pack_eligibility(
     if interesting is not None and not interesting.empty:
         blocked_ids = _candidate_ids(blocked)
         filter_blocked_ids = _candidate_ids(filter_blockers)
-        exit_lab_entry_gate_lookup, exit_lab_candidate_gate_lookup = _exit_lab_gate_lookups(exit_lab_candidate_gates)
+        exit_lab_entry_lookup, exit_lab_candidate_gate_lookup = _exit_lab_gate_lookups(exit_lab_candidate_gates)
         multiple_testing_gate_lookup = _candidate_gate_lookup(multiple_testing_gates)
         validation_floor_gate_lookup = _candidate_gate_lookup(validation_floor_gates)
         gate_context = (
@@ -187,7 +188,7 @@ def evaluate_discovery_candidate_pack_eligibility(
             if discovery_candidate_id in filter_blocked_ids:
                 reasons.append("candidate_present_in_filter_blockers")
             exit_lab_gate = _exit_lab_gate_row_from_lookup(
-                entry_candidate_lookup=exit_lab_entry_gate_lookup,
+                entry_candidate_lookup=exit_lab_entry_lookup,
                 candidate_lookup=exit_lab_candidate_gate_lookup,
                 discovery_candidate_id=discovery_candidate_id,
                 research_candidate_id=research_candidate_id,
@@ -461,6 +462,7 @@ def _discovery_manifest_reasons(manifest: Mapping[str, Any], path: Path) -> list
     if manifest.get("discovery_run_manifest_version") != DISCOVERY_RUN_MANIFEST_VERSION:
         reasons.append("discovery_run_manifest_version_required")
     reasons.extend(_research_boundary_reasons(manifest, "discovery_manifest"))
+    reasons.extend(_replay_bridge_requirement_reasons(manifest, "discovery_manifest", anchor_dir=path.parent))
     if manifest.get("candidate_pack_written") is not False:
         reasons.append("discovery_manifest_candidate_pack_written_must_be_false")
     if list(manifest.get("candidate_pack_paths") or []) != []:
@@ -588,11 +590,12 @@ def _ledger_integrity_reasons(
     }.items():
         if frame is None:
             continue
-        if list(frame.columns) != list(DISCOVERY_LEDGER_COLUMNS):
-            reasons.append(f"discovery_ledger_schema_mismatch:{name}")
+        normalized_frame, schema_reasons = _ledger_frame_for_integrity(frame, ledger_name=name)
+        if schema_reasons:
+            reasons.extend(schema_reasons)
             continue
         expected = _normalized_ledger_rows(pd.DataFrame(expected_by_name[name], columns=list(DISCOVERY_LEDGER_COLUMNS)))
-        actual = _normalized_ledger_rows(frame)
+        actual = _normalized_ledger_rows(normalized_frame)
         if actual != expected:
             reasons.append(f"discovery_ledger_records_mismatch:{name}")
     return reasons
@@ -616,11 +619,12 @@ def _sampled_ledger_integrity_reasons(
     }.items():
         if frame is None:
             continue
-        if list(frame.columns) != list(DISCOVERY_LEDGER_COLUMNS):
-            reasons.append(f"discovery_ledger_schema_mismatch:{name}")
+        normalized_frame, schema_reasons = _ledger_frame_for_integrity(frame, ledger_name=name)
+        if schema_reasons:
+            reasons.extend(schema_reasons)
             continue
-        if not frame.empty:
-            frames.append(frame.loc[:, list(DISCOVERY_LEDGER_COLUMNS)])
+        if not normalized_frame.empty:
+            frames.append(normalized_frame)
     if not frames:
         if completed_ids:
             reasons.append("discovery_ledger_records_missing")
@@ -671,6 +675,74 @@ def _sampled_ledger_integrity_reasons(
         if actual != expected:
             reasons.append(f"discovery_ledger_sample_record_mismatch:{trial_id}")
     return list(dict.fromkeys(reasons))
+
+
+def _ledger_frame_for_integrity(frame: pd.DataFrame, *, ledger_name: str) -> tuple[pd.DataFrame, list[str]]:
+    required_identity_columns = {"trial_id", "candidate_id", "record_sha256"}
+    if not required_identity_columns.issubset(set(frame.columns)):
+        return frame, [f"discovery_ledger_schema_mismatch:{ledger_name}"]
+    normalized = pd.DataFrame(index=frame.index)
+    for column in DISCOVERY_LEDGER_COLUMNS:
+        if column in frame.columns:
+            normalized[column] = frame[column]
+        else:
+            normalized[column] = _ledger_column_default(column, ledger_name=ledger_name)
+    return normalized.loc[:, list(DISCOVERY_LEDGER_COLUMNS)], []
+
+
+def _ledger_column_default(column: str, *, ledger_name: str) -> Any:
+    if column == "ledger_kind":
+        return {
+            "interesting_candidates": "interesting",
+            "blocked_candidates": "blocked",
+            "filter_blockers": "filter_blocked",
+        }.get(ledger_name, "")
+    if column == "research_only":
+        return True
+    if column == "observe_only":
+        return True
+    if column == "promotion_ready":
+        return False
+    if column in {
+        "trial_index",
+        "hmm_state_count",
+        "k",
+        "min_neighbor_count",
+        "trade_count",
+        "accepted_bar_count",
+        "independent_event_count",
+        "suppressed_overlap_count",
+        "long_independent_event_count",
+        "short_independent_event_count",
+        "event_spacing_bars",
+        "accepted_prediction_count",
+        "evaluated_prediction_count",
+    }:
+        return 0
+    if column in {
+        "score",
+        "overlap_ratio",
+        "event_signal_rate",
+        "side_collapse_ratio",
+        "signal_rate",
+        "realized_expectancy",
+        "independent_event_expectancy",
+        "legacy_density_score",
+        "discovery_screen_score_v2",
+        "signal_rate_ceiling_penalty",
+        "overlap_penalty",
+        "side_collapse_penalty",
+        "final_score",
+    }:
+        return 0.0
+    if column in {
+        "regime_gate_enabled",
+        "same_regime_neighbor_pool_enabled",
+        "true_hmm_backend_used",
+        "near_signal_ceiling",
+    }:
+        return False
+    return ""
 
 
 def _ledger_row_from_trial_record(record: Any) -> dict[str, Any]:
@@ -1178,6 +1250,10 @@ def _research_boundary_reasons(payload: Mapping[str, Any], prefix: str) -> list[
     reasons: list[str] = []
     if any(field in payload for field in LIVE_ADJACENT_VERSION_FIELDS):
         reasons.append(f"{prefix}_live_or_promotion_manifest_version_forbidden")
+    if payload.get("control_only") is True:
+        reasons.append(f"{prefix}_control_only_forbidden")
+    if str(payload.get("artifact_family") or "") == "negative_control":
+        reasons.append(f"{prefix}_negative_control_artifact_forbidden")
     if payload.get("research_only") is not True:
         reasons.append(f"{prefix}_research_only_required")
     if payload.get("observe_only") is not True:
@@ -1197,6 +1273,129 @@ def _research_boundary_reasons(payload: Mapping[str, Any], prefix: str) -> list[
         if field in payload and payload.get(field) is not False:
             reasons.append(f"{prefix}_{field}_must_be_false")
     return reasons
+
+
+def _replay_bridge_requirement_reasons(payload: Mapping[str, Any], prefix: str, *, anchor_dir: Path) -> list[str]:
+    requirements = payload.get("replay_bridge_requirements")
+    if not isinstance(requirements, Mapping):
+        requirements = payload.get("candidate_bridge_requirements")
+    replay_scoped = isinstance(requirements, Mapping) or isinstance(payload.get("replay_metadata"), Mapping)
+    if not replay_scoped:
+        return []
+    req = dict(requirements or {})
+    reasons: list[str] = []
+    if bool(req.get("require_replay_profile_provenance", True)):
+        reasons.extend(
+            _path_hash_provenance_reasons(
+                payload.get("replay_profile_provenance") or payload.get("replay_profile"),
+                prefix=prefix,
+                field="replay_profile_provenance",
+                anchor_dir=anchor_dir,
+            )
+        )
+    if bool(req.get("require_validation_manifest", True)):
+        reasons.extend(
+            _path_hash_provenance_reasons(
+                payload.get("validation_manifest_provenance") or payload.get("validation_manifest"),
+                prefix=prefix,
+                field="validation_manifest",
+                anchor_dir=anchor_dir,
+            )
+        )
+    if bool(req.get("require_exact_replay_lineage", True)):
+        reasons.extend(_exact_replay_lineage_reasons(payload, prefix=prefix, anchor_dir=anchor_dir))
+    if bool(req.get("require_modern_window_evidence", False)):
+        reasons.extend(
+            _path_hash_provenance_reasons(
+                payload.get("modern_window_evidence") or payload.get("modern_window_profile"),
+                prefix=prefix,
+                field="modern_window_evidence",
+                anchor_dir=anchor_dir,
+            )
+        )
+    return reasons
+
+
+def _path_hash_provenance_reasons(value: Any, *, prefix: str, field: str, anchor_dir: Path) -> list[str]:
+    if not isinstance(value, Mapping):
+        return [f"{prefix}_{field}_required"]
+    path = str(value.get("path") or value.get("manifest_path") or value.get("profile_path") or "")
+    sha = str(value.get("sha256") or value.get("manifest_sha256") or value.get("profile_sha256") or "")
+    if not path or not sha:
+        return [f"{prefix}_{field}_required"]
+    resolved = _resolve_provenance_path(path, anchor_dir=anchor_dir)
+    if not resolved.exists():
+        return [f"{prefix}_{field}_path_missing"]
+    if _normalize_sha256(sha) != _file_sha256(resolved):
+        return [f"{prefix}_{field}_sha256_mismatch"]
+    return []
+
+
+def _exact_replay_lineage_reasons(payload: Mapping[str, Any], *, prefix: str, anchor_dir: Path) -> list[str]:
+    lineage = _exact_replay_lineage_payload(payload)
+    if not lineage:
+        return [f"{prefix}_exact_replay_lineage_required"]
+    path_pairs = (
+        (
+            "exact_replay_lineage_replay",
+            lineage.get("source_replay_spec_path") or lineage.get("source_materialization_manifest_path"),
+            lineage.get("source_replay_spec_sha256") or lineage.get("source_materialization_manifest_sha256"),
+        ),
+        (
+            "exact_replay_lineage_discovery",
+            lineage.get("source_discovery_manifest_path"),
+            lineage.get("source_discovery_manifest_sha256"),
+        ),
+    )
+    reasons: list[str] = []
+    for field, raw_path, raw_sha in path_pairs:
+        if not raw_path or not raw_sha:
+            reasons.append(f"{prefix}_{field}_required")
+            continue
+        resolved = _resolve_provenance_path(str(raw_path), anchor_dir=anchor_dir)
+        if not resolved.exists():
+            reasons.append(f"{prefix}_{field}_path_missing")
+            continue
+        if _normalize_sha256(str(raw_sha)) != _file_sha256(resolved):
+            reasons.append(f"{prefix}_{field}_sha256_mismatch")
+    return reasons
+
+
+def _exact_replay_lineage_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    lineage = payload.get("exact_replay_lineage")
+    if isinstance(lineage, Mapping):
+        replay_path = str(lineage.get("source_replay_spec_path") or lineage.get("source_materialization_manifest_path") or "")
+        discovery_path = str(lineage.get("source_discovery_manifest_path") or "")
+        if replay_path and discovery_path:
+            return dict(lineage)
+    replay_metadata = payload.get("replay_metadata")
+    if isinstance(replay_metadata, Mapping):
+        replay_path = str(replay_metadata.get("source_materialization_manifest_path") or "")
+        discovery_path = str(replay_metadata.get("source_discovery_manifest_path") or "")
+        if replay_path and discovery_path:
+            return dict(replay_metadata)
+    replay_path = str(payload.get("source_replay_spec_path") or "")
+    discovery_path = str(payload.get("source_discovery_manifest_path") or "")
+    if replay_path and discovery_path:
+        return {
+            "source_replay_spec_path": replay_path,
+            "source_replay_spec_sha256": str(payload.get("source_replay_spec_sha256") or ""),
+            "source_discovery_manifest_path": discovery_path,
+            "source_discovery_manifest_sha256": str(payload.get("source_discovery_manifest_sha256") or ""),
+        }
+    return {}
+
+
+def _resolve_provenance_path(value: str, *, anchor_dir: Path) -> Path:
+    candidate = Path(value).expanduser()
+    if candidate.is_absolute() or candidate.exists():
+        return candidate.resolve()
+    return (anchor_dir / candidate).resolve()
+
+
+def _normalize_sha256(value: str) -> str:
+    text = str(value).strip()
+    return text.split(":", 1)[1] if text.startswith("sha256:") else text
 
 
 def _candidate_ids(frame: pd.DataFrame | None) -> set[str]:

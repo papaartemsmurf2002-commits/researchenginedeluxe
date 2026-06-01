@@ -1,0 +1,49 @@
+name: research-validation
+
+on:
+  push:
+    branches:
+      - main
+      - "research/**"
+      - "codex/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  reproducible-research-install:
+    name: reproducible research install
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package with dev checks
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+          python -m pip check
+
+      - name: Compile active package
+        run: python -m compileall -q src/tradingbotsuite
+
+      - name: Run contract tests
+        run: python -m pytest tests/contracts -q
+
+      - name: Run live and artifact boundary tests
+        run: >
+          python -m pytest
+          tests/live/test_preflight.py
+          tests/live/test_reject_research_artifacts.py
+          tests/live/test_shadow_loader.py
+          tests/live/test_promotion_candidate_validator.py
+          -q

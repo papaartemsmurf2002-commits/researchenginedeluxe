@@ -16,6 +16,7 @@ from tradingbotsuite.backtesting.engine import (
     BacktestResult,
     BacktestSpec,
     _cache_key_components,
+    _cost_model_from_spec,
     _enrich_trades,
     _execution_assumptions,
     _file_sha256,
@@ -59,12 +60,7 @@ class VectorBacktestEngine:
         assumptions = _execution_assumptions(spec)
         reference_engine.execution_simulator._validate_assumptions(assumptions, None)
         signals, strategy_metadata = _signals_for_strategy(source_frame, spec)
-        cost_model = CostModel(
-            fee_bps=spec.fee_bps,
-            slippage_bps=spec.slippage_bps,
-            spread_bps=spec.spread_bps,
-            funding_rate=spec.funding_rate,
-        )
+        cost_model = _cost_model_from_spec(spec)
         trades = _vector_fixed_holding_trades(
             signals,
             market,
@@ -232,7 +228,8 @@ def _vector_fixed_holding_trades(
     next_available_entry_time = -1
     for signal in signals.sort_values("decision_time_ms", kind="mergesort").to_dict("records"):
         decision_time = int(signal["decision_time_ms"])
-        entry_index = int(np.searchsorted(times, decision_time + int(assumptions.entry_latency_ms), side="left"))
+        target_entry_time = decision_time + int(assumptions.entry_latency_ms)
+        entry_index = int(np.searchsorted(times, target_entry_time, side="left"))
         if entry_index >= len(ordered_market):
             continue
         entry_row = ordered_market.iloc[entry_index]
@@ -290,6 +287,9 @@ def _vector_fixed_holding_trades(
                 "entry_price": float(entry_price),
                 "exit_price": float(exit_result.exit_price),
                 "holding_ms": holding_ms,
+                "entry_target_time_ms": target_entry_time,
+                "entry_primary_bar_time_ms": entry_time,
+                "entry_sequence_proof": "primary_bar_time",
                 "exit_target_time_ms": target_exit_time,
                 "exit_target_holding_ms": int(assumptions.holding_period_ms),
                 "exit_used_fallback": bool(used_fallback),
@@ -337,6 +337,9 @@ def _empty_trades() -> pd.DataFrame:
             "entry_price",
             "exit_price",
             "holding_ms",
+            "entry_target_time_ms",
+            "entry_primary_bar_time_ms",
+            "entry_sequence_proof",
             "exit_target_time_ms",
             "exit_target_holding_ms",
             "exit_used_fallback",

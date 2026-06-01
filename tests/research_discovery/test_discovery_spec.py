@@ -9,7 +9,11 @@ import pytest
 from tradingbotsuite.config import AppConfig, ResearchConfig
 from tradingbotsuite.research_discovery import spec as discovery_spec
 from tradingbotsuite.research_discovery.spec import (
+    DISCOVERY_LEAD_REPLAY_SPEC_VERSION,
+    DISCOVERY_RUN_CONFIG_SCHEMA_VERSION,
+    DISCOVERY_SPEC_VERSION,
     DiscoveryRunSpec,
+    discovery_run_schema,
     discovery_search_space_summary,
     generated_trial_templates,
     resolve_discovery_paths,
@@ -37,6 +41,122 @@ def test_discovery_spec_defaults_and_repo_root_output_resolution(tmp_path: Path)
     assert spec.budget.snapshot_interval_minutes == 30
     assert paths.output_dir == (tmp_path / "research" / "discovery_runs" / "quick-smoke").resolve()
     assert paths.output_dir.is_relative_to(paths.research_output_dir)
+
+
+def test_discovery_run_schema_is_versioned_and_roundtrips(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "roundtrip.json",
+        {
+            "spec_version": DISCOVERY_SPEC_VERSION,
+            "run_id": "roundtrip-discovery",
+            "symbol": "ethusdt",
+            "discovery_mode": "entry_discovery_standard",
+            "feature_column_set_ids": ["price_trend_vol"],
+            "budget": {"max_trials": 4, "rng_seed": 17},
+            "search": {
+                "regime_modes": ["none"],
+                "k_values": [3],
+                "min_neighbor_counts": [2],
+                "distance_metrics": ["euclidean"],
+            },
+        },
+    )
+
+    spec = DiscoveryRunSpec.from_path(spec_path)
+    payload = spec.to_payload()
+    replay = DiscoveryRunSpec.from_payload(
+        payload,
+        spec_path=tmp_path / "resolved-discovery.json",
+        repo_root=Path.cwd(),
+    )
+    schema = discovery_run_schema()
+
+    assert schema["schema_version"] == DISCOVERY_RUN_CONFIG_SCHEMA_VERSION
+    assert schema["spec_version"] == DISCOVERY_SPEC_VERSION
+    assert DISCOVERY_LEAD_REPLAY_SPEC_VERSION in schema["accepted_spec_versions"]
+    assert replay.to_payload() == payload
+
+
+def test_discovery_run_schema_accepts_known_replay_spec_version(tmp_path: Path) -> None:
+    spec = DiscoveryRunSpec.from_payload(
+        {
+            "spec_version": DISCOVERY_LEAD_REPLAY_SPEC_VERSION,
+            "run_id": "replay-compatible-discovery",
+            "discovery_mode": "deep_candidate_harvest",
+            "execution": {"persist_trial_artifacts": "predictions_only"},
+            "trial_templates": [
+                {
+                    "trial_id": "trial-001",
+                    "candidate_id": "mat-001",
+                    "ledger_kind": "blocked",
+                    "candidate_family": "regime_knn_entry_discovery",
+                    "score": 0.1,
+                    "blocker_code": "not_evaluated",
+                    "filter_blocker_code": "",
+                    "payload": {"materialized_candidate_id": "mat-001"},
+                }
+            ],
+            "replay_metadata": {
+                "replay_spec_version": DISCOVERY_LEAD_REPLAY_SPEC_VERSION,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            },
+        },
+        spec_path=tmp_path / "replay-compatible-discovery.json",
+        repo_root=Path.cwd(),
+    )
+
+    assert spec.run_id == "replay-compatible-discovery"
+    assert spec.execution.persist_trial_artifacts == "predictions_only"
+    assert spec.trial_templates[0].candidate_id == "mat-001"
+
+
+def test_discovery_run_schema_accepts_operator_isolation_metadata(tmp_path: Path) -> None:
+    spec = DiscoveryRunSpec.from_payload(
+        {
+            "spec_version": DISCOVERY_SPEC_VERSION,
+            "run_id": "operator-isolated-discovery",
+            "operator_job_id": "run-discovery-001",
+            "operator_original_spec_path": str(tmp_path / "source.json"),
+            "operator_overwrite_protection": "isolated_job_output_dir",
+            "operator_stable_run_id": False,
+            "operator_requested_resume": False,
+            "operator_effective_resume": False,
+        },
+        spec_path=tmp_path / "operator-isolated-discovery.json",
+        repo_root=Path.cwd(),
+    )
+
+    assert spec.run_id == "operator-isolated-discovery"
+    assert "operator_job_id" not in spec.to_payload()
+
+
+def test_discovery_run_schema_rejects_unknown_fields_and_bad_version(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="discovery_run unknown schema keys: live_mode"):
+        DiscoveryRunSpec.from_payload(
+            {"run_id": "bad-top-level", "live_mode": "paper"},
+            spec_path=tmp_path / "bad-top-level.json",
+            repo_root=Path.cwd(),
+        )
+    with pytest.raises(ValueError, match="discovery_run.search unknown schema keys: k_value"):
+        DiscoveryRunSpec.from_payload(
+            {"run_id": "bad-search", "search": {"k_value": [3]}},
+            spec_path=tmp_path / "bad-search.json",
+            repo_root=Path.cwd(),
+        )
+    with pytest.raises(ValueError, match="discovery_run.trial_templates\\[1\\] unknown schema keys: live_signal"):
+        DiscoveryRunSpec.from_payload(
+            {"run_id": "bad-template", "trial_templates": [{"live_signal": True}]},
+            spec_path=tmp_path / "bad-template.json",
+            repo_root=Path.cwd(),
+        )
+    with pytest.raises(ValueError, match="discovery_run.spec_version"):
+        DiscoveryRunSpec.from_payload(
+            {"spec_version": "old-discovery-spec", "run_id": "bad-version"},
+            spec_path=tmp_path / "bad-version.json",
+            repo_root=Path.cwd(),
+        )
 
 
 def test_discovery_spec_rejects_unsafe_run_id(tmp_path: Path) -> None:
@@ -167,6 +287,10 @@ def test_real_discovery_configs_generate_non_placeholder_search_templates() -> N
         "gmm_all_regime_neighbors_with_gate",
     }
     assert all(template.payload["true_hmm_backend_used"] is False for template in standard_templates[:10])
+    assert {template.payload["regime_model_backend"] for template in standard_templates[:10]} <= {
+        "none",
+        "sklearn.mixture.GaussianMixture",
+    }
     assert {template.payload["feature_column_set_id"] for template in standard_templates} == {
         "price_trend_vol",
         "compact_wt3d_base",
@@ -437,9 +561,11 @@ def test_real_discovery_templates_expand_explicit_regime_modes(tmp_path: Path) -
         "gmm_all_regime_neighbors_with_gate",
     }
     assert by_mode["none"]["regime_detector_type"] == "none"
+    assert by_mode["none"]["regime_model_backend"] == "none"
     assert by_mode["none"]["regime_gate_enabled"] is False
     assert by_mode["none"]["same_regime_neighbor_pool_enabled"] is False
     assert by_mode["gmm_same_regime_neighbors"]["regime_detector_type"] == "gmm"
+    assert by_mode["gmm_same_regime_neighbors"]["regime_model_backend"] == "sklearn.mixture.GaussianMixture"
     assert by_mode["gmm_same_regime_neighbors"]["regime_gate_enabled"] is True
     assert by_mode["gmm_same_regime_neighbors"]["same_regime_neighbor_pool_enabled"] is True
     assert by_mode["gmm_all_regime_neighbors_with_gate"]["same_regime_neighbor_pool_enabled"] is False

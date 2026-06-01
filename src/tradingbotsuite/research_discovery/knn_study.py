@@ -12,7 +12,7 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
-from tradingbotsuite.backtesting.splits import WalkForwardSplit
+from tradingbotsuite.backtesting.splits import WalkForwardSplit, training_positions_for_split
 from tradingbotsuite.research.live_readiness import research_boundary_metadata
 from tradingbotsuite.research_discovery.neighbor_cache import (
     ExactNeighborCache,
@@ -66,6 +66,7 @@ class KnnStudySpec:
     same_regime_only: bool = True
     regime_mode: str = "gmm_same_regime_neighbors"
     regime_detector_type: str = "gmm"
+    regime_model_backend: str = "sklearn.mixture.GaussianMixture"
     regime_gate_enabled: bool = True
     same_regime_neighbor_pool_enabled: bool = True
     true_hmm_backend_used: bool = False
@@ -97,6 +98,7 @@ class KnnStudySpec:
             same_regime_only=_bool_value(payload.get("same_regime_only", settings.same_regime_only)),
             regime_mode=settings.regime_mode,
             regime_detector_type=str(payload.get("regime_detector_type", settings.regime_detector_type)).strip().lower(),
+            regime_model_backend=str(payload.get("regime_model_backend", settings.regime_model_backend)).strip(),
             regime_gate_enabled=_bool_value(payload.get("regime_gate_enabled", settings.regime_gate_enabled)),
             same_regime_neighbor_pool_enabled=_bool_value(
                 payload.get("same_regime_neighbor_pool_enabled", settings.same_regime_neighbor_pool_enabled)
@@ -130,6 +132,7 @@ class KnnStudySpec:
             "same_regime_only": self.same_regime_only,
             "regime_mode": self.regime_mode,
             "regime_detector_type": self.regime_detector_type,
+            "regime_model_backend": self.regime_model_backend,
             "regime_gate_enabled": self.regime_gate_enabled,
             "same_regime_neighbor_pool_enabled": self.same_regime_neighbor_pool_enabled,
             "true_hmm_backend_used": self.true_hmm_backend_used,
@@ -209,6 +212,8 @@ def validate_knn_study_spec(spec: KnnStudySpec) -> None:
     settings = regime_mode_settings(spec.regime_mode)
     if spec.regime_detector_type != settings.regime_detector_type:
         raise ValueError("regime_detector_type must match regime_mode")
+    if spec.regime_model_backend != settings.regime_model_backend:
+        raise ValueError("regime_model_backend must match regime_mode")
     if spec.regime_gate_enabled != settings.regime_gate_enabled:
         raise ValueError("regime_gate_enabled must match regime_mode")
     if spec.same_regime_neighbor_pool_enabled != settings.same_regime_neighbor_pool_enabled:
@@ -258,7 +263,7 @@ def materialize_regime_local_knn_predictions(
         validation_positions = _validation_positions(split, row_count=len(ordered))
         if not validation_positions:
             continue
-        train_positions = list(range(max(0, int(split.train_start_index)), max(-1, int(split.train_end_index)) + 1))
+        train_positions = training_positions_for_split(split, row_count=len(ordered))
         if not train_positions:
             split_records.append(_blocked_split_record(split, reason="no_training_rows", validation_count=len(validation_positions)))
             continue
@@ -417,6 +422,7 @@ def materialize_regime_local_knn_predictions(
         "required_output_columns": list(KNN_PREDICTION_COLUMNS),
         "regime_mode": spec.regime_mode,
         "regime_detector_type": spec.regime_detector_type,
+        "regime_model_backend": spec.regime_model_backend,
         "regime_gate_enabled": spec.regime_gate_enabled,
         "same_regime_neighbor_pool_enabled": spec.same_regime_neighbor_pool_enabled,
         "true_hmm_backend_used": spec.true_hmm_backend_used,

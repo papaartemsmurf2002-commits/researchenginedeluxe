@@ -149,6 +149,7 @@ def test_knn_study_emits_strategy_prediction_columns_and_split_safe_neighbors() 
     assert result.manifest["promotion_ready"] is False
     assert result.manifest["regime_mode"] == "gmm_same_regime_neighbors"
     assert result.manifest["regime_detector_type"] == "gmm"
+    assert result.manifest["regime_model_backend"] == "sklearn.mixture.GaussianMixture"
     assert result.manifest["regime_gate_enabled"] is True
     assert result.manifest["same_regime_neighbor_pool_enabled"] is True
     assert result.manifest["true_hmm_backend_used"] is False
@@ -519,6 +520,7 @@ def test_knn_neighbors_are_same_regime_when_configured() -> None:
     assert not diagnostics.empty
     assert diagnostics["neighbor_regime"].eq(diagnostics["query_regime"]).all()
     assert result.manifest["regime_detector_type"] == "gmm"
+    assert result.manifest["regime_model_backend"] == "sklearn.mixture.GaussianMixture"
     assert result.manifest["same_regime_neighbor_pool_enabled"] is True
 
 
@@ -528,6 +530,7 @@ def test_knn_no_regime_mode_ignores_regime_no_trade_values() -> None:
         same_regime_only=False,
         regime_mode="none",
         regime_detector_type="none",
+        regime_model_backend="none",
         regime_gate_enabled=False,
         same_regime_neighbor_pool_enabled=False,
         true_hmm_backend_used=False,
@@ -555,6 +558,7 @@ def test_knn_no_regime_mode_ignores_regime_no_trade_values() -> None:
     assert "hmm_regime_no_trade" not in set(rerun.frame["knn_skip_reason"].astype(str))
     assert rerun.manifest["regime_mode"] == "none"
     assert rerun.manifest["regime_detector_type"] == "none"
+    assert rerun.manifest["regime_model_backend"] == "none"
     assert rerun.manifest["regime_gate_enabled"] is False
     assert rerun.manifest["same_regime_neighbor_pool_enabled"] is False
     assert rerun.manifest["true_hmm_backend_used"] is False
@@ -667,6 +671,7 @@ def test_knn_study_spec_config_loads() -> None:
     assert spec.feature_column_set_id == "price_trend_vol"
     assert spec.regime_mode == "gmm_same_regime_neighbors"
     assert spec.regime_detector_type == "gmm"
+    assert spec.regime_model_backend == "sklearn.mixture.GaussianMixture"
     assert spec.regime_gate_enabled is True
     assert spec.same_regime_neighbor_pool_enabled is True
     assert spec.true_hmm_backend_used is False

@@ -46,7 +46,7 @@ class _AnalogParams:
 class HmmKnnLocalAnalogFilterStrategy(RuleBasedStrategy):
     strategy_id = "hmm_knn_local_analog_filter_v2"
     strategy_version = "v1"
-    allowed_holding_periods = ("4h", "12h", "24h", "72h")
+    allowed_holding_periods = ("4h", "12h", "24h", "72h", "1h")
     required_feature_sets = ("features_perp_context_v2",)
 
     def _signals(self, frame: pd.DataFrame) -> list[RuleSignal]:

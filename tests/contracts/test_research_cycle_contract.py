@@ -13,9 +13,19 @@ from tradingbotsuite.research_cycle.runner import (
     _apply_materialized_prediction_overlays,
     _aggregate_backtest_worker_count,
     _baseline_comparator_coverage,
+    _candidate_feature_frame,
+    _candidate_feature_record,
+    _candidate_scoped_prediction_overlay_context,
     _candidate_space,
+    _candidate_with_materialized_overlay_evidence,
+    _materialized_prediction_overlay_provenance,
 )
-from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec
+from tradingbotsuite.research_cycle.spec import (
+    RESEARCH_CYCLE_CONFIG_SCHEMA_VERSION,
+    RESEARCH_CYCLE_SPEC_VERSION,
+    HistoricalResearchCycleSpec,
+    historical_research_cycle_schema,
+)
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
@@ -104,6 +114,8 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.symbol == "BTCUSDT"
     assert spec.holding_windows == ("1h", "4h", "12h", "24h", "72h", "7d")
     assert spec.data.synthetic_fixture is True
+    assert spec.data.synthetic_fallback_allowed is False
+    assert spec.data.synthetic_use_case == "test_only"
     assert spec.data.lower_timeframe_dataset_path is None
     assert spec.validation.min_splits == 6
     assert spec.validation.split_modes == ("purged_embargoed_walk_forward",)
@@ -117,9 +129,128 @@ def test_historical_research_cycle_spec_contract_defaults(tmp_path: Path) -> Non
     assert spec.to_payload()["compute"]["gpu_execution_profile"] == "fastest_exact"
     assert spec.to_payload()["validation"]["split_modes"] == ["purged_embargoed_walk_forward"]
     assert spec.to_payload()["validation"]["min_cost_stress_survival_rate"] == 1.0
+    assert spec.to_payload()["data"]["synthetic_fallback_allowed"] is False
+    assert spec.to_payload()["data"]["synthetic_use_case"] == "test_only"
     assert spec.exits.exit_policies[0]["exit_policy_id"] == "fixed_holding_window"
     assert spec.to_payload()["exits"]["exit_policies"][0]["exit_policy_id"] == "fixed_holding_window"
     assert spec.features.materialized_prediction_overlays == ()
+
+
+def test_historical_research_cycle_schema_is_versioned_and_roundtrips(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "spec_version": RESEARCH_CYCLE_SPEC_VERSION,
+            "cycle_id": "roundtrip-cycle",
+            "symbol": "ethusdt",
+            "holding_windows": ["4h"],
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 144},
+            "features": {"feature_sets": ["features_price_trend_vol"]},
+            "strategies": ["baseline_no_trade"],
+            "validation": {
+                "split_modes": ["purged_embargoed_walk_forward"],
+                "purge_embargo_bars": 2,
+                "min_splits": 2,
+            },
+            "optimizer": {"max_candidates_per_strategy": 2, "top_regions_to_refine": 1},
+        },
+    )
+
+    spec = HistoricalResearchCycleSpec.from_path(spec_path)
+    payload = spec.to_payload()
+    replay = HistoricalResearchCycleSpec.from_payload(payload, spec_path=tmp_path / "resolved-cycle.json")
+    schema = historical_research_cycle_schema()
+
+    assert schema["schema_version"] == RESEARCH_CYCLE_CONFIG_SCHEMA_VERSION
+    assert schema["spec_version"] == RESEARCH_CYCLE_SPEC_VERSION
+    assert replay.to_payload() == payload
+
+
+def test_historical_research_cycle_schema_rejects_unknown_fields_and_bad_version(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="historical_research_cycle unknown schema keys: typo_section"):
+        HistoricalResearchCycleSpec.from_payload(
+            {
+                "cycle_id": "bad-top-level",
+                "data": {"synthetic_fixture": True},
+                "typo_section": {},
+            },
+            spec_path=tmp_path / "bad-top-level.json",
+        )
+    with pytest.raises(ValueError, match="historical_research_cycle.validation unknown schema keys: purge_bars"):
+        HistoricalResearchCycleSpec.from_payload(
+            {
+                "cycle_id": "bad-validation",
+                "data": {"synthetic_fixture": True},
+                "validation": {"purge_bars": 2},
+            },
+            spec_path=tmp_path / "bad-validation.json",
+        )
+    with pytest.raises(ValueError, match="historical_research_cycle.spec_version"):
+        HistoricalResearchCycleSpec.from_payload(
+            {
+                "spec_version": "old-cycle-spec",
+                "cycle_id": "bad-version",
+                "data": {"synthetic_fixture": True},
+            },
+            spec_path=tmp_path / "bad-version.json",
+        )
+
+
+def test_historical_research_cycle_spec_round_trips_synthetic_fallback_policy(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "fixture_pack_manifest.json"
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "real-source-cycle",
+            "data": {
+                "dataset_manifest_paths": [str(manifest_path)],
+                "synthetic_fixture": False,
+                "synthetic_fallback_allowed": False,
+            },
+        },
+    )
+
+    spec = HistoricalResearchCycleSpec.from_path(spec_path)
+    payload = spec.to_payload()["data"]
+
+    assert spec.data.synthetic_fixture is False
+    assert spec.data.synthetic_fallback_allowed is False
+    assert payload["synthetic_fixture"] is False
+    assert payload["synthetic_fallback_allowed"] is False
+    assert "synthetic_row_count" not in payload
+    assert "synthetic_variant" not in payload
+
+
+def test_historical_research_cycle_spec_rejects_synthetic_with_real_source(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "ambiguous-source-cycle",
+            "data": {
+                "dataset_manifest_paths": [str(tmp_path / "fixture_pack_manifest.json")],
+                "synthetic_fixture": True,
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="synthetic_fixture cannot be combined"):
+        HistoricalResearchCycleSpec.from_path(spec_path)
+
+
+def test_historical_research_cycle_spec_rejects_invalid_synthetic_scope(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "bad-synthetic-scope-cycle",
+            "data": {
+                "synthetic_fixture": True,
+                "synthetic_use_case": "candidate_ready",
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="synthetic_use_case"):
+        HistoricalResearchCycleSpec.from_path(spec_path)
 
 
 def test_historical_research_cycle_spec_accepts_materialized_prediction_overlays(tmp_path: Path) -> None:
@@ -151,7 +282,137 @@ def test_historical_research_cycle_spec_accepts_materialized_prediction_overlays
 
     assert overlay.feature_set_id == "features_perp_context_v2"
     assert overlay.predictions_path == predictions_path.resolve()
+    assert overlay.scope == "feature_set"
     assert spec.to_payload()["features"]["materialized_prediction_overlays"][0]["kind"] == "hmm_knn_local_analog_v2"
+
+
+def test_historical_research_cycle_spec_accepts_candidate_scoped_materialized_prediction_overlays(tmp_path: Path) -> None:
+    predictions_path = tmp_path / "knn_predictions.parquet"
+    predictions_path.write_bytes(b"placeholder")
+    manifest_path = tmp_path / "knn_study_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "candidate-prediction-overlay-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "scope": "candidate",
+                        "candidate_id": "candidate-a",
+                        "materialized_candidate_id": "mat-a",
+                        "feature_set_id": "features_perp_context_v2",
+                        "kind": "hmm_knn_local_analog_v2",
+                        "predictions_path": "knn_predictions.parquet",
+                        "manifest_path": "knn_study_manifest.json",
+                    }
+                ],
+            },
+        },
+    )
+
+    spec = HistoricalResearchCycleSpec.from_path(spec_path)
+    overlay = spec.features.materialized_prediction_overlays[0]
+    payload = spec.to_payload()["features"]["materialized_prediction_overlays"][0]
+
+    assert overlay.scope == "candidate"
+    assert overlay.candidate_id == "candidate-a"
+    assert overlay.materialized_candidate_id == "mat-a"
+    assert payload["scope"] == "candidate"
+    assert payload["candidate_id"] == "candidate-a"
+
+
+def test_historical_research_cycle_spec_rejects_duplicate_candidate_scoped_materialized_prediction_overlay(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "knn_study_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "duplicate-candidate-overlay-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "scope": "candidate",
+                        "candidate_id": "candidate-a",
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": "knn_predictions_a.parquet",
+                        "manifest_path": str(manifest_path),
+                    },
+                    {
+                        "scope": "candidate",
+                        "candidate_id": "candidate-a",
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": "knn_predictions_b.parquet",
+                        "manifest_path": str(manifest_path),
+                    },
+                ],
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="duplicate materialized prediction overlay"):
+        HistoricalResearchCycleSpec.from_path(spec_path)
+
+
+def test_historical_research_cycle_spec_rejects_candidate_scoped_overlay_without_manifest(tmp_path: Path) -> None:
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "candidate-overlay-without-manifest",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "scope": "candidate",
+                        "candidate_id": "candidate-a",
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": "knn_predictions.parquet",
+                    }
+                ],
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="candidate-scoped materialized prediction overlays require manifest_path"):
+        HistoricalResearchCycleSpec.from_path(spec_path)
+
+
+def test_historical_research_cycle_spec_rejects_mixed_materialized_prediction_overlay_scopes(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "knn_study_manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "mixed-overlay-scope-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "scope": "feature_set",
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": "global_knn_predictions.parquet",
+                        "manifest_path": str(manifest_path),
+                    },
+                    {
+                        "scope": "candidate",
+                        "candidate_id": "candidate-a",
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": "candidate_knn_predictions.parquet",
+                        "manifest_path": str(manifest_path),
+                    },
+                ],
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="mixed materialized prediction overlay scopes"):
+        HistoricalResearchCycleSpec.from_path(spec_path)
 
 
 def test_historical_research_cycle_spec_rejects_overlay_for_undeclared_feature_set(tmp_path: Path) -> None:
@@ -221,6 +482,148 @@ def test_materialized_prediction_overlay_updates_feature_frame_identity(tmp_path
     assert record["materialized_prediction_overlay_count"] == 1
     assert updated.manifest["feature_computation_scope"] == "materialized_registered_feature_sets_with_prediction_overlays"
     assert updated.manifest["materialized_prediction_overlays"][0]["raw_knn_accepted_row_count"] == 7
+    candidate = {
+        "candidate_id": "global-overlay-candidate",
+        "candidate_cache_key": "global-overlay-candidate",
+        "strategy_id": "hmm_knn_local_analog_filter_v2",
+        "feature_set_id": "features_perp_context_v2",
+        "holding_window": "4h",
+    }
+    enriched = _candidate_with_materialized_overlay_evidence(
+        candidate,
+        updated.manifest,
+        None,
+    )
+    provenance = _materialized_prediction_overlay_provenance(enriched)
+    assert provenance["materialized_prediction_overlay_used"] is True
+    assert provenance["materialized_prediction_overlay_scope"] == "feature_set"
+    assert provenance["materialized_prediction_overlay_candidate_id"] == "global-overlay-candidate"
+    assert provenance["materialized_prediction_overlay_feature_frame_sha256"] == record["feature_frame_sha256"]
+
+
+def test_candidate_scoped_materialized_prediction_overlay_updates_only_target_candidate_frame(tmp_path: Path) -> None:
+    predictions_path = tmp_path / "knn_predictions.parquet"
+    manifest_path = tmp_path / "knn_study_manifest.json"
+    _overlay_predictions(row_count=8).to_parquet(predictions_path, index=False)
+    _write_json(
+        manifest_path,
+        {
+            "knn_study_manifest_version": "discovery-knn-study-manifest-v1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "split_safety_passed": True,
+        },
+    )
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "candidate-overlay-identity-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "scope": "candidate",
+                        "candidate_id": "candidate-a",
+                        "materialized_candidate_id": "mat-a",
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": str(predictions_path),
+                        "manifest_path": str(manifest_path),
+                    }
+                ],
+            },
+        },
+    )
+    feature_build = _feature_build_fixture(row_count=8)
+    target = {
+        "candidate_id": "candidate-a",
+        "candidate_cache_key": "candidate-a",
+        "strategy_id": "hmm_knn_local_analog_filter_v2",
+        "feature_set_id": "features_perp_context_v2",
+        "holding_window": "4h",
+    }
+    other = {
+        "candidate_id": "candidate-b",
+        "candidate_cache_key": "candidate-b",
+        "strategy_id": "hmm_knn_local_analog_filter_v2",
+        "feature_set_id": "features_perp_context_v2",
+        "holding_window": "4h",
+    }
+
+    context = _candidate_scoped_prediction_overlay_context(
+        feature_build,
+        spec=HistoricalResearchCycleSpec.from_path(spec_path),
+        candidates=[target, other],
+    )
+    target_with_overlay = {
+        **target,
+        "materialized_prediction_overlay_evidence": context.evidence_by_candidate_id["candidate-a"],
+    }
+    target_frame = _candidate_feature_frame(feature_build.frames_by_feature_set, target, context)
+    other_frame = _candidate_feature_frame(feature_build.frames_by_feature_set, other, context)
+    target_record = _candidate_feature_record(context.feature_build_manifest, target, context)
+    provenance = _materialized_prediction_overlay_provenance(target_with_overlay)
+
+    assert "p_up_barrier" in target_frame.columns
+    assert "p_up_barrier" not in other_frame.columns
+    assert target_record["materialized_prediction_overlay_scope"] == "candidate"
+    assert target_record["materialized_prediction_overlay_count"] == 1
+    assert context.feature_build_manifest["candidate_scoped_materialized_prediction_overlay_count"] == 1
+    assert context.feature_build_manifest["feature_computation_scope"].endswith("_with_candidate_prediction_overlays")
+    assert provenance["materialized_prediction_overlay_used"] is True
+    assert provenance["materialized_prediction_overlay_candidate_id"] == "candidate-a"
+    assert provenance["materialized_prediction_overlay_materialized_candidate_id"] == "mat-a"
+    assert provenance["materialized_prediction_overlay_raw_knn_accepted_row_count"] == 7
+
+
+def test_candidate_scoped_materialized_prediction_overlay_rejects_unmatched_candidate(tmp_path: Path) -> None:
+    predictions_path = tmp_path / "knn_predictions.parquet"
+    manifest_path = tmp_path / "knn_study_manifest.json"
+    _overlay_predictions(row_count=8).to_parquet(predictions_path, index=False)
+    _write_json(
+        manifest_path,
+        {
+            "knn_study_manifest_version": "discovery-knn-study-manifest-v1",
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "split_safety_passed": True,
+        },
+    )
+    spec_path = _write_json(
+        tmp_path / "cycle.json",
+        {
+            "cycle_id": "unmatched-candidate-overlay-cycle",
+            "data": {"synthetic_fixture": True, "synthetic_row_count": 120},
+            "features": {
+                "feature_sets": ["features_perp_context_v2"],
+                "materialized_prediction_overlays": [
+                    {
+                        "scope": "candidate",
+                        "candidate_id": "missing-candidate",
+                        "feature_set_id": "features_perp_context_v2",
+                        "predictions_path": str(predictions_path),
+                        "manifest_path": str(manifest_path),
+                    }
+                ],
+            },
+        },
+    )
+    candidate = {
+        "candidate_id": "candidate-a",
+        "candidate_cache_key": "candidate-a",
+        "strategy_id": "hmm_knn_local_analog_filter_v2",
+        "feature_set_id": "features_perp_context_v2",
+        "holding_window": "4h",
+    }
+
+    with pytest.raises(ValueError, match="materialized_prediction_overlay_candidate_unmatched:missing-candidate"):
+        _candidate_scoped_prediction_overlay_context(
+            _feature_build_fixture(row_count=8),
+            spec=HistoricalResearchCycleSpec.from_path(spec_path),
+            candidates=[candidate],
+        )
 
 
 def test_materialized_prediction_overlay_rejects_future_neighbor_boundary(tmp_path: Path) -> None:

@@ -1,5 +1,11 @@
-# TradingBotSuite Workspace
+# ResearchEngineDeluxe
 
+ResearchEngineDeluxe is a research-only evidence system for BTC/ETH perpetual
+futures. It is built to produce reproducible research evidence and rejection
+reports, not live signals, paper signals, sizing instructions, order-placement
+behavior, or promotion authorization.
+
+The active Python package is still named `tradingbotsuite` for compatibility.
 This repository contains two related Python codebases:
 
 - `tradingbot`: the legacy Lorentzian Classification signal-generation, backtest, optimization, and data-cache package.
@@ -18,9 +24,16 @@ pip install -e .[dev]
 ## Validate
 
 ```powershell
-python -m pytest -q
 python -m compileall -q src\tradingbot src\tradingbotsuite
+$env:PYTHONPATH='src'; python -m pytest tests\contracts -q
+python -m pytest -q
 ```
+
+The checked-in GitHub Actions baseline is
+`.github/workflows/research-validation.yml`. It installs `.[dev]` in Python
+3.11, runs `pip check`, compiles `src/tradingbotsuite`, runs contracts, and runs
+focused live/artifact boundary tests. Optional research, Crypto Lake, and GPU
+extras are intentionally excluded from that baseline.
 
 ## Core Commands
 
@@ -88,6 +101,9 @@ infrastructure.
 
 ## Rules
 
+- Read `docs/ACTIVE_INDEX.md` before starting work.
+- Do not treat research outputs as live signals.
+- Do not weaken candidate gates; zero eligible candidates is valid evidence.
 - Do not commit credentials, `.env`, SQLite databases, `data/`, or generated research artifacts.
 - Keep research outputs explicitly `research_only`, `observe_only`, and non-promotable unless a separate promotion plan changes that.
 - Keep runtime trading logic in `src/tradingbotsuite`; the operator UI must stay a thin command/visibility layer.

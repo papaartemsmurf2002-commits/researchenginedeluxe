@@ -11,6 +11,7 @@ import pytest
 from tradingbotsuite import main
 from tradingbotsuite.backtesting import (
     BACKTEST_ENGINE_VERSION,
+    COST_PROFILE_CONTRACT_VERSION,
     CUDA_BATCHED_BACKTEST_ENGINE_VERSION,
     VECTOR_BACKTEST_ENGINE_VERSION,
     BacktestEngine,
@@ -23,9 +24,11 @@ from tradingbotsuite.research_cycle import run_historical_research_cycle
 import tradingbotsuite.research_cycle.runner as runner_module
 from tradingbotsuite.research_cycle.runner import (
     _build_cycle_validation_splits,
+    _candidate_space,
     _cost_stress_evidence_details,
     _cost_stress_scenarios,
     _cycle_market_frame,
+    _load_cycle_dataset,
     _run_cycle_backtest,
     _split_evidence_details,
 )
@@ -66,6 +69,35 @@ def _write_cycle_spec(tmp_path: Path) -> Path:
     return spec_path
 
 
+def _knn_overlay_predictions(*, row_count: int) -> pd.DataFrame:
+    rows = []
+    for index in range(row_count):
+        accepted = index > 0
+        rows.append(
+            {
+                "source_row_index": index,
+                "p_up_barrier": 0.66,
+                "p_down_barrier": 0.34,
+                "expected_net_return_after_costs": 0.001,
+                "neighbor_agreement": 0.70,
+                "neighbor_distance_quality": 0.80,
+                "neighbor_count": 12,
+                "neighbor_min_source_index": 0 if accepted else -1,
+                "neighbor_max_source_index": index - 1 if accepted else -1,
+                "knn_vote_margin": 0.24,
+                "accepted_by_knn": accepted,
+                "knn_skip_reason": "" if accepted else "insufficient_regime_neighbors",
+                "top_regime_label": "trend",
+                "max_regime_probability": 0.80,
+                "posterior_entropy": 0.20,
+                "recent_regime_flip": False,
+                "regime_no_trade": False,
+                "hmm_fit_end_row": index - 1 if accepted else -1,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path) -> None:
     spec_path = _write_cycle_spec(tmp_path)
 
@@ -80,6 +112,7 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     split_manifest = json.loads(Path(manifest["required_outputs"]["split_manifest"]).read_text(encoding="utf-8"))
     rankings = pd.read_parquet(result.candidate_rankings_path)
     backtest_index = pd.read_parquet(result.backtest_index_path)
+    metrics_by_cost_stress = pd.read_parquet(manifest["required_outputs"]["metrics_by_cost_stress"])
     candidate_gate_report = pd.read_parquet(manifest["required_outputs"]["candidate_gate_report"])
     metrics_by_split = pd.read_parquet(manifest["required_outputs"]["metrics_by_split"])
     metrics_by_regime = pd.read_parquet(manifest["required_outputs"]["metrics_by_regime"])
@@ -97,6 +130,21 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert manifest["candidate_pack_written"] is False
     assert manifest["candidate_pack_paths"] == []
     assert manifest["candidate_pack_scope"] == "research_only_evidence_pack"
+    assert manifest["data_source"]["source_type"] == "synthetic_deterministic_fixture"
+    assert manifest["data_source"]["synthetic"] is True
+    assert manifest["data_source"]["synthetic_fixture_requested"] is True
+    assert manifest["data_source"]["synthetic_fallback_allowed"] is False
+    assert manifest["data_source"]["synthetic_use_case"] == "test_only"
+    assert manifest["data_source"]["demo_or_test_only"] is True
+    source_selection_path = Path(manifest["required_outputs"]["source_selection_manifest"])
+    source_selection = json.loads(source_selection_path.read_text(encoding="utf-8"))
+    assert manifest["data_source"]["source_selection"]["source_selection_manifest_version"] == "research-cycle-source-selection-v1"
+    assert manifest["data_source"]["source_selection"]["selected_source_type"] == "synthetic_deterministic_fixture"
+    assert manifest["data_source"]["source_selection"]["declared_source_count"] == 0
+    assert manifest["data_source"]["source_selection"]["synthetic_fixture_requested"] is True
+    assert manifest["data_source"]["source_selection"]["records"][-1]["status"] == "selected"
+    assert manifest["data_source"]["source_selection"]["records"][-1]["reason"] == "explicit_synthetic_fixture_requested"
+    assert source_selection == manifest["data_source"]["source_selection"]
     assert manifest["candidate_count"] == 44
     assert manifest["candidate_search_mode"] == "metadata_default_search"
     assert manifest["candidate_search_method"] == "metadata_capped_grid"
@@ -151,7 +199,14 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert split_manifest["split_modes_requested"] == ["purged_embargoed_walk_forward"]
     assert split_manifest["validation_method_counts"] == {"purged_embargoed_walk_forward": 2}
     assert split_manifest["split_mode_counts"] == {"anchored": 2}
+    assert split_manifest["purge_method_counts"] == {"label_event_end_time": 2}
+    assert split_manifest["label_event_end_time_columns"] == ["label_exit_time_ms"]
     assert split_manifest["split_count"] == 2
+    first_split = split_manifest["splits"][0]
+    assert first_split["purge_method"] == "label_event_end_time"
+    assert first_split["train_indices"] is None
+    assert first_split["train_indices_manifest_policy"] == "compacted_sha256_summary"
+    assert first_split["train_index_summary"]["count"] >= 0
 
     assert set(rankings["metric_scope"]) == {"real_backtest"}
     assert set(rankings["metrics_source"]) == {"backtest_engine"}
@@ -258,6 +313,16 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
         "backtest_max_trade_abs_diff",
         "backtest_backend_fallback_reason",
         "backtest_backend_rejection_reason",
+        "cost_profile_contract_version",
+        "cost_profile_id",
+        "cost_profile_source",
+        "fill_profile_id",
+        "cost_profile_venue",
+        "cost_profile_source_venue",
+        "cost_profile_execution_venue",
+        "cost_profile_evidence_scope",
+        "cost_profile_execution_proof_scope",
+        "not_hyperliquid_execution_proof",
         "exit_policy_id",
         "exit_policy_params_json",
         "exit_policy_source",
@@ -285,6 +350,11 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert {"trade_count_floor", "trade_count_floor_status"} <= set(metrics_by_split.columns)
     assert metrics_by_split["validation_size_bars"].gt(0).all()
     assert set(backtest_index["exit_policy_id"]) == {"fixed_holding_window"}
+    assert set(backtest_index["cost_profile_contract_version"]) == {COST_PROFILE_CONTRACT_VERSION}
+    assert set(backtest_index["cost_profile_source_venue"]) == {"binance_usdm"}
+    assert set(backtest_index["cost_profile_execution_venue"]) == {"binance_usdm_research"}
+    assert set(backtest_index["cost_profile_execution_proof_scope"]) == {"historical_research_only_not_live_execution_proof"}
+    assert set(backtest_index["not_hyperliquid_execution_proof"]) == {True}
     assert set(backtest_index["exit_policy_params_json"]) == {"{}"}
     assert set(backtest_index["exit_price_source"]) == {"primary_close"}
     assert set(backtest_index["lower_timeframe_required"]) == {False}
@@ -314,6 +384,19 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert set(validation_index["gpu_execution_status"]) == {""}
     assert set(validation_index["backtest_backend_fallback_reason"]) == {"auto_validation_reference_required"}
     assert set(backtest_index["backtest_backend_rejection_reason"]) == {""}
+    cost_stress_index = backtest_index.loc[backtest_index["evaluation_scope"] == "cost_stress"]
+    assert set(cost_stress_index["cost_profile_id"]) >= {
+        "binance_usdm_research_baseline",
+        "binance_usdm_research_slippage_2x",
+        "binance_usdm_research_slippage_3x",
+        "binance_usdm_research_adverse_funding",
+        "binance_usdm_research_wide_spread",
+    }
+    assert set(metrics_by_cost_stress["cost_profile_contract_version"]) == {COST_PROFILE_CONTRACT_VERSION}
+    assert set(metrics_by_cost_stress["source_venue"]) == {"binance_usdm"}
+    assert set(metrics_by_cost_stress["execution_venue"]) == {"binance_usdm_research"}
+    assert set(metrics_by_cost_stress["execution_proof_scope"]) == {"historical_research_only_not_live_execution_proof"}
+    assert set(metrics_by_cost_stress["not_hyperliquid_execution_proof"]) == {True}
     assert backtest_index.loc[backtest_index["trade_count"] > 0, "trades_path"].map(lambda value: Path(str(value)).exists()).all()
     assert set(metrics_by_side["side"].dropna().astype(str)) <= {"long", "short"}
     assert "all" not in set(metrics_by_side["side"].dropna().astype(str))
@@ -341,6 +424,115 @@ def test_full_cycle_synthetic_writes_required_research_artifacts(tmp_path: Path)
     assert candidate_gate_report["gate_reasons"].str.contains("ranking_decision_not_research_gate_passed").all()
     incomplete_gate_rows = candidate_gate_report.loc[candidate_gate_report["stability_region_decision"] != "accepted_region"]
     assert incomplete_gate_rows["gate_reasons"].str.contains("stability_region_accepted_decision_required").all()
+
+
+def test_full_cycle_synthetic_routes_candidate_scoped_prediction_overlay_through_rankings_and_backtest_index(tmp_path: Path) -> None:
+    row_count = 96
+    base_payload: dict[str, object] = {
+        "cycle_id": "candidate-scoped-overlay-cycle",
+        "symbol": "BTCUSDT",
+        "output_dir": str(tmp_path / "research" / "historical_cycles" / "candidate-scoped-overlay-cycle"),
+        "holding_windows": ["4h"],
+        "data": {
+            "synthetic_fixture": True,
+            "synthetic_row_count": row_count,
+            "synthetic_variant": "balanced",
+        },
+        "features": {"feature_sets": ["features_perp_context_v2"]},
+        "strategies": ["baseline_no_trade", "hmm_knn_local_analog_filter_v2"],
+        "validation": {
+            "purge_embargo_bars": 2,
+            "min_splits": 2,
+            "trade_count_floor": 1,
+        },
+        "optimizer": {
+            "max_candidates_per_strategy": 1,
+            "top_regions_to_refine": 8,
+        },
+        "compute": {"cpu_threads": 1, "gpu_acceleration": "disabled"},
+        "backtest_backend": "reference",
+    }
+    base_spec_path = tmp_path / "specs" / "base-cycle.json"
+    base_spec_path.parent.mkdir(parents=True, exist_ok=True)
+    base_spec_path.write_text(json.dumps(base_payload, indent=2, sort_keys=True), encoding="utf-8")
+    base_spec = HistoricalResearchCycleSpec.from_path(base_spec_path)
+    target_candidate = next(
+        candidate
+        for candidate in _candidate_space(base_spec)
+        if candidate["strategy_id"] == "hmm_knn_local_analog_filter_v2"
+    )
+    predictions_path = tmp_path / "overlays" / "knn_predictions.parquet"
+    manifest_path = tmp_path / "overlays" / "knn_study_manifest.json"
+    predictions_path.parent.mkdir(parents=True, exist_ok=True)
+    _knn_overlay_predictions(row_count=row_count).to_parquet(predictions_path, index=False)
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "knn_study_manifest_version": "discovery-knn-study-manifest-v1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "split_safety_passed": True,
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    overlay_payload = {
+        **base_payload,
+        "cycle_id": "candidate-scoped-overlay-cycle-run",
+        "output_dir": str(tmp_path / "research" / "historical_cycles" / "candidate-scoped-overlay-cycle-run"),
+        "features": {
+            "feature_sets": ["features_perp_context_v2"],
+            "materialized_prediction_overlays": [
+                {
+                    "scope": "candidate",
+                    "candidate_id": target_candidate["candidate_id"],
+                    "materialized_candidate_id": "mat-synthetic-overlay",
+                    "feature_set_id": "features_perp_context_v2",
+                    "predictions_path": str(predictions_path),
+                    "manifest_path": str(manifest_path),
+                }
+            ],
+        },
+    }
+    spec_path = tmp_path / "specs" / "overlay-cycle.json"
+    spec_path.write_text(json.dumps(overlay_payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = run_historical_research_cycle(
+        spec_path=spec_path,
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    feature_build_manifest = json.loads(Path(manifest["required_outputs"]["feature_build_manifest"]).read_text(encoding="utf-8"))
+    rankings = pd.read_parquet(result.candidate_rankings_path)
+    backtest_index = pd.read_parquet(result.backtest_index_path)
+    candidate_gate_report = pd.read_parquet(manifest["required_outputs"]["candidate_gate_report"])
+    target_rankings = rankings.loc[rankings["candidate_id"] == target_candidate["candidate_id"]]
+    target_backtests = backtest_index.loc[backtest_index["candidate_id"] == target_candidate["candidate_id"]]
+    target_gate_rows = candidate_gate_report.loc[candidate_gate_report["candidate_id"] == target_candidate["candidate_id"]]
+    other_backtests = backtest_index.loc[backtest_index["candidate_id"] != target_candidate["candidate_id"]]
+
+    assert manifest["research_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["candidate_pack_written"] is False
+    assert feature_build_manifest["candidate_scoped_materialized_prediction_overlay_count"] == 1
+    assert target_rankings["materialized_prediction_overlay_used"].eq(True).all()
+    assert target_rankings["materialized_prediction_overlay_scope"].eq("candidate").all()
+    assert target_rankings["materialized_prediction_overlay_materialized_candidate_id"].eq("mat-synthetic-overlay").all()
+    assert target_rankings["materialized_prediction_overlay_split_safety_passed"].eq(True).all()
+    assert target_rankings["materialized_prediction_overlay_research_only"].eq(True).all()
+    assert target_rankings["materialized_prediction_overlay_observe_only"].eq(True).all()
+    assert target_rankings["materialized_prediction_overlay_promotion_ready"].eq(False).all()
+    assert target_backtests["materialized_prediction_overlay_used"].eq(True).all()
+    assert target_gate_rows["materialized_prediction_overlay_used"].eq(True).all()
+    assert target_gate_rows["materialized_prediction_overlay_scope"].eq("candidate").all()
+    assert set(target_backtests["materialized_prediction_overlay_feature_frame_sha256"].astype(str)) == {
+        str(target_rankings["materialized_prediction_overlay_feature_frame_sha256"].iloc[0])
+    }
+    assert other_backtests["materialized_prediction_overlay_used"].eq(False).all()
 
 
 def test_full_cycle_explicit_validation_split_modes_write_evidence(tmp_path: Path) -> None:
@@ -530,6 +722,61 @@ def test_full_cycle_resolves_relative_dataset_manifest_paths(tmp_path: Path) -> 
 
     assert manifest["data_source"]["source_type"] == "dataset_manifest"
     assert manifest["data_source"]["dataset_path"] == str(dataset_path.resolve())
+    assert manifest["data_source"]["source_selection"]["selected_source_type"] == "dataset_manifest"
+    assert manifest["data_source"]["source_selection"]["records"][-1]["status"] == "selected"
+
+
+def test_full_cycle_rejects_output_outside_research_root(tmp_path: Path) -> None:
+    spec_path = _write_cycle_spec(tmp_path)
+    payload = json.loads(spec_path.read_text(encoding="utf-8"))
+    outside = tmp_path / "outside" / "historical_cycle"
+    payload["output_dir"] = str(outside)
+    spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="historical cycle output_dir must be inside"):
+        run_historical_research_cycle(
+            spec_path=spec_path,
+            app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+        )
+
+    assert not outside.exists()
+
+
+def test_full_cycle_rejects_no_source_without_explicit_synthetic_fixture(tmp_path: Path) -> None:
+    spec = HistoricalResearchCycleSpec.from_payload(
+        {
+            "cycle_id": "no-source-cycle",
+            "data": {
+                "synthetic_fixture": False,
+                "synthetic_fallback_allowed": False,
+            },
+        },
+        spec_path=tmp_path / "no-source-cycle.json",
+    )
+
+    with pytest.raises(ValueError, match="cycle_data_source_required"):
+        _load_cycle_dataset(spec, output_dir=tmp_path)
+
+
+def test_full_cycle_rejects_ambiguous_local_fixture_dir(tmp_path: Path) -> None:
+    fixture_dir = tmp_path / "fixtures"
+    fixture_dir.mkdir()
+    build_hmm_knn_sweep_dataset(row_count=80, variant="balanced").to_parquet(fixture_dir / "a.parquet", index=False)
+    build_hmm_knn_sweep_dataset(row_count=80, variant="balanced").to_parquet(fixture_dir / "b.parquet", index=False)
+    spec = HistoricalResearchCycleSpec.from_payload(
+        {
+            "cycle_id": "ambiguous-local-fixture-cycle",
+            "data": {
+                "local_fixture_dir": str(fixture_dir),
+                "synthetic_fixture": False,
+                "synthetic_fallback_allowed": False,
+            },
+        },
+        spec_path=tmp_path / "ambiguous-local-fixture-cycle.json",
+    )
+
+    with pytest.raises(ValueError, match="local_fixture_dir_ambiguous_multiple_parquet_files"):
+        _load_cycle_dataset(spec, output_dir=tmp_path)
 
 
 def test_full_cycle_expands_optimizer_search_spaces_and_writes_stability_regions(tmp_path: Path) -> None:
@@ -1122,8 +1369,9 @@ def test_triple_barrier_cycle_rejects_bad_explicit_lower_timeframe_dataset(tmp_p
         )
 
 
-def test_historical_research_cycle_cli_command_runs(tmp_path: Path) -> None:
+def test_historical_research_cycle_cli_command_runs(tmp_path: Path, monkeypatch) -> None:
     spec_path = _write_cycle_spec(tmp_path)
+    monkeypatch.setenv("TBS_RESEARCH_OUTPUT_DIR", str(tmp_path / "research"))
     args = argparse.Namespace(spec=str(spec_path))
 
     payload = main._run_historical_research_cycle_command(args)

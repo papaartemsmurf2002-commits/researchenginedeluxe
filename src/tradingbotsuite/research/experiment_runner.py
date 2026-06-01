@@ -337,7 +337,7 @@ class ResearchExperimentSpec:
                 else None
             ),
             output_dir=(
-                _resolve_path(payload["output_dir"], base_path=spec_path.parent)
+                _resolve_output_path(payload["output_dir"], base_path=spec_path.parent)
                 if payload.get("output_dir")
                 else None
             ),
@@ -415,11 +415,19 @@ def run_research_experiment(
     spec_path: Path,
     app_config: AppConfig | None = None,
 ) -> ResearchExperimentRunResult:
-    spec_path = Path(spec_path).expanduser()
+    spec_path = Path(spec_path).expanduser().resolve()
     spec = ResearchExperimentSpec.from_payload(_read_json(spec_path), spec_path=spec_path)
     app_config = app_config or AppConfig.from_env()
     run_id = _run_id(spec.name)
-    output_dir = spec.output_dir or (app_config.research.output_dir / "experiments" / run_id)
+    repo_root = _repo_root_from_path(spec_path)
+    research_root = _resolve_path(app_config.research.output_dir, base_path=repo_root)
+    output_dir = spec.output_dir or (research_root / "experiments" / run_id)
+    output_dir = output_dir.resolve()
+    _ensure_inside_research_root(
+        output_dir,
+        research_root=research_root,
+        field_name="experiment output_dir",
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     specs_dir = output_dir / "specs"
     specs_dir.mkdir(parents=True, exist_ok=True)
@@ -559,11 +567,13 @@ def write_research_experiment_benchmark_report(
     if repeat < 1:
         raise ValueError("repeat must be at least 1")
     app_config = app_config or AppConfig.from_env()
-    report_dir = output_dir or (app_config.research.output_dir / "experiments" / "benchmarks" / _run_id(Path(spec_path).stem))
+    source_spec_path = Path(spec_path).expanduser()
+    source_spec = ResearchExperimentSpec.from_payload(_read_json(source_spec_path), spec_path=source_spec_path)
+    report_dir = output_dir or (app_config.research.output_dir / "experiments" / "benchmarks" / _run_id(source_spec_path.stem))
     report_dir.mkdir(parents=True, exist_ok=True)
     runs = []
     for index in range(repeat):
-        payload = _read_json(Path(spec_path))
+        payload = source_spec.to_payload()
         payload["output_dir"] = str(report_dir / f"run-{index + 1}")
         run_spec = report_dir / f"benchmark_spec_{index + 1}.json"
         run_spec.write_text(_canonical_json(payload, indent=2) + "\n", encoding="utf-8")
@@ -583,7 +593,8 @@ def write_research_experiment_benchmark_report(
         "observe_only": True,
         "promotion_ready": False,
         **research_boundary_metadata(),
-        "spec_path": str(spec_path),
+        "spec_path": str(source_spec_path),
+        "resolved_source_spec": source_spec.to_payload(),
         "repeat": repeat,
         "runs": runs,
         "execution_environment": _execution_environment(workers=1),
@@ -2017,7 +2028,7 @@ def _write_effective_pipeline_spec(
     output_dir: Path,
     specs_dir: Path,
 ) -> Path:
-    pipeline_spec = _read_json(spec.pipeline_spec)
+    pipeline_spec = _resolve_pipeline_spec_paths(_read_json(spec.pipeline_spec), source_dir=spec.pipeline_spec.parent)
     pipeline_spec["output_dir"] = str(output_dir / "pipeline")
     evidence_stage = dict(pipeline_spec.get("evidence_stage") or {})
     evidence_stage.pop("experiment_spec", None)
@@ -2031,6 +2042,42 @@ def _write_effective_pipeline_spec(
     effective_path = specs_dir / "provider_pipeline.effective.json"
     effective_path.write_text(_canonical_json(pipeline_spec, indent=2) + "\n", encoding="utf-8")
     return effective_path
+
+
+def _resolve_pipeline_spec_paths(pipeline_spec: Mapping[str, Any], *, source_dir: Path) -> dict[str, Any]:
+    resolved = dict(pipeline_spec)
+    providers = []
+    for provider in resolved.get("providers") or []:
+        if not isinstance(provider, Mapping):
+            providers.append(provider)
+            continue
+        provider_payload = dict(provider)
+        inputs = []
+        for item in provider_payload.get("inputs") or []:
+            if not isinstance(item, Mapping):
+                inputs.append(item)
+                continue
+            input_payload = dict(item)
+            if input_payload.get("path"):
+                input_payload["path"] = str(_resolve_path(input_payload["path"], base_path=source_dir))
+            inputs.append(input_payload)
+        provider_payload["inputs"] = inputs
+        providers.append(provider_payload)
+    if providers:
+        resolved["providers"] = providers
+    dataset_stage = dict(resolved.get("dataset_stage") or {})
+    for key in ("research_config", "db_path"):
+        if dataset_stage.get(key):
+            dataset_stage[key] = str(_resolve_path(dataset_stage[key], base_path=source_dir))
+    if dataset_stage:
+        resolved["dataset_stage"] = dataset_stage
+    evidence_stage = dict(resolved.get("evidence_stage") or {})
+    for key in ("dataset_path", "hmm_knn_config", "experiment_spec"):
+        if evidence_stage.get(key):
+            evidence_stage[key] = str(_resolve_path(evidence_stage[key], base_path=source_dir))
+    if evidence_stage:
+        resolved["evidence_stage"] = evidence_stage
+    return resolved
 
 
 def _pipeline_evidence_experiment_spec(path: Path | None) -> Path | None:
@@ -2213,9 +2260,45 @@ def _git_metadata() -> dict[str, Any]:
 
 def _resolve_path(path: Any, *, base_path: Path) -> Path:
     candidate = Path(str(path)).expanduser()
-    if candidate.is_absolute() or candidate.exists():
-        return candidate
+    if candidate.is_absolute():
+        return candidate.resolve()
+    base_candidate = (base_path / candidate).resolve()
+    if base_candidate.exists():
+        return base_candidate
+    repo_candidate = (_repo_root_from_path(base_path) / candidate).resolve()
+    if repo_candidate.exists():
+        return repo_candidate
+    return base_candidate
+
+
+def _resolve_output_path(path: Any, *, base_path: Path) -> Path:
+    candidate = Path(str(path)).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
     return (base_path / candidate).resolve()
+
+
+def _repo_root_from_path(path: Path) -> Path:
+    start = path if path.is_dir() else path.parent
+    for parent in [start, *start.parents]:
+        if (parent / "pyproject.toml").is_file():
+            return parent.resolve()
+    return Path.cwd().resolve()
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _ensure_inside_research_root(path: Path, *, research_root: Path, field_name: str) -> None:
+    resolved_path = path.resolve()
+    resolved_root = research_root.resolve()
+    if not _is_relative_to(resolved_path, resolved_root):
+        raise ValueError(f"{field_name} must be inside the configured research output directory")
 
 
 def _run_id(name: str) -> str:

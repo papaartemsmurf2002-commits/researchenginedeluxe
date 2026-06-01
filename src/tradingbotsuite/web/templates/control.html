@@ -72,7 +72,7 @@
       <button class="secondary" onclick="runCommand('/api/operator/commands/supervise', {symbol:'BTCUSDT'})">Supervise</button>
       <button class="secondary" onclick="runCommand('/api/operator/commands/reconcile', {symbol:'BTCUSDT'})">Reconcile</button>
       <button class="secondary" onclick="runCommand('/api/operator/commands/refresh-health', {symbol:'BTCUSDT'})">Refresh Health</button>
-      <button class="secondary" onclick="runSmoke()">Smoke Live</button>
+      <button class="secondary" onclick="runSmoke()">Live Smoke Preflight</button>
     </div>
   </div>
   <div class="card">
@@ -85,7 +85,7 @@
     </details>
   </div>
   <div class="card">
-    <h3>Live Snapshot</h3>
+    <h3>Runtime Snapshot</h3>
     <div id="control-snapshot" class="kv"></div>
   </div>
 </div>
@@ -211,12 +211,44 @@
     `).join("");
   }
 
+  let commandInFlight = false;
+
+  function setCommandButtonsDisabled(disabled) {
+    document.querySelectorAll("button").forEach(button => {
+      if (disabled) {
+        button.dataset.commandPrevDisabled = button.disabled ? "true" : "false";
+        button.disabled = true;
+      } else if (button.dataset.commandPrevDisabled) {
+        button.disabled = button.dataset.commandPrevDisabled === "true";
+        delete button.dataset.commandPrevDisabled;
+      }
+    });
+  }
+
   async function runCommand(url, payload) {
-    const response = await window.TBS.postJson(url, payload);
-    document.getElementById("command-summary").innerHTML = renderCommandSummary(response);
-    renderCommandPanels(response);
-    document.getElementById("command-raw").textContent = window.TBS.pretty(response);
-    await refreshControlSnapshot();
+    if (commandInFlight) {
+      document.getElementById("command-summary").innerHTML = '<div class="error-box"><strong>Command already running</strong><br>Wait for the current operator response before submitting another action.</div>';
+      return null;
+    }
+    commandInFlight = true;
+    setCommandButtonsDisabled(true);
+    document.getElementById("command-summary").innerHTML = '<div class="success-box"><strong>Command submitted</strong><br>Waiting for operator response.</div>';
+    try {
+      const response = await window.TBS.postJson(url, payload);
+      document.getElementById("command-summary").innerHTML = renderCommandSummary(response);
+      renderCommandPanels(response);
+      document.getElementById("command-raw").textContent = window.TBS.pretty(response);
+      await refreshControlSnapshot();
+      return response;
+    } catch (error) {
+      document.getElementById("command-summary").innerHTML = window.TBS.errorHtml("Command request failed", error);
+      document.getElementById("command-panels").innerHTML = "";
+      document.getElementById("command-raw").textContent = window.TBS.errorMessage(error);
+      return null;
+    } finally {
+      commandInFlight = false;
+      setCommandButtonsDisabled(false);
+    }
   }
 
   async function runSmoke() {
@@ -248,17 +280,27 @@
     await runCommand("/api/operator/commands/manual-signal", manualSignalPayload(direction));
   }
 
+  let controlRefreshInFlight = false;
+
   async function refreshControlSnapshot() {
-    const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
-    document.getElementById("control-snapshot").innerHTML = window.TBS.renderKv([
-      ["Position", window.TBS.escapeHtml(String((snapshot.position || {}).status || "flat"))],
-      ["Direction", window.TBS.escapeHtml(String((snapshot.position || {}).direction || "n/a"))],
-      ["Safety", (snapshot.safety || {}).in_safe_mode ? window.TBS.pill("Safe Mode", "bad") : window.TBS.pill("Normal", "ok")],
-      ["Runtime State", window.TBS.escapeHtml(String((snapshot.safety_state || {}).state || "healthy"))],
-      ["Market", window.TBS.boolPill(Boolean((snapshot.market_data_health || {}).healthy))],
-      ["Execution", window.TBS.boolPill(Boolean((snapshot.execution_health || {}).healthy))],
-      ["Microstructure", window.TBS.boolPill(Boolean((snapshot.microstructure || {}).healthy))],
-    ]);
+    if (controlRefreshInFlight) return;
+    controlRefreshInFlight = true;
+    try {
+      const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
+      document.getElementById("control-snapshot").innerHTML = window.TBS.renderKv([
+        ["Position", window.TBS.escapeHtml(String((snapshot.position || {}).status || "flat"))],
+        ["Direction", window.TBS.escapeHtml(String((snapshot.position || {}).direction || "n/a"))],
+        ["Safety", (snapshot.safety || {}).in_safe_mode ? window.TBS.pill("Safe Mode", "bad") : window.TBS.pill("Normal", "ok")],
+        ["Runtime State", window.TBS.escapeHtml(String((snapshot.safety_state || {}).state || "healthy"))],
+        ["Market", window.TBS.boolPill(Boolean((snapshot.market_data_health || {}).healthy))],
+        ["Execution", window.TBS.boolPill(Boolean((snapshot.execution_health || {}).healthy))],
+        ["Microstructure", window.TBS.boolPill(Boolean((snapshot.microstructure || {}).healthy))],
+      ]);
+    } catch (error) {
+      document.getElementById("control-snapshot").innerHTML = window.TBS.errorHtml("Snapshot unavailable", error);
+    } finally {
+      controlRefreshInFlight = false;
+    }
   }
 
   refreshControlSnapshot();

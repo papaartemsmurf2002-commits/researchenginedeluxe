@@ -7,7 +7,7 @@ from tradingbotsuite.core.engine import TradingEngine
 from tradingbotsuite.live.preflight import assert_live_preflight
 from tradingbotsuite.live.shadow_loader import load_shadow_promotion_candidate
 from tradingbotsuite.persistence.sqlite_store import SQLiteStore
-from tradingbotsuite.promotion.artifact_validator import load_artifact_manifest
+from tradingbotsuite.promotion.artifact_validator import load_artifact_manifest, validate_artifact_for_runtime_mode
 from tradingbotsuite.research.inference import AcceptanceScorer
 
 
@@ -43,6 +43,13 @@ def build_engine(config: AppConfig, trace_sink=None) -> TradingEngine:
     artifact_path = config.research.artifact_manifest_path
     if artifact_path is not None and artifact_path.exists():
         manifest = load_artifact_manifest(artifact_path)
+        validation = validate_artifact_for_runtime_mode(
+            manifest,
+            runtime_mode=config.runtime_mode,
+            manifest_path=artifact_path,
+        )
+        if not validation.allowed:
+            raise ValueError("runtime artifact rejected: " + ", ".join(validation.reasons))
         if manifest.get("promotion_candidate_manifest_version"):
             loaded_candidate = load_shadow_promotion_candidate(config, artifact_path)
             shadow_promotion_report = loaded_candidate.report.to_payload()

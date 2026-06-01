@@ -28,6 +28,7 @@ from tradingbotsuite.strategies import (
     strategy_registry,
     validate_signal_frame,
 )
+from tradingbotsuite.strategies.parameters import allowed_parameter_values, search_parameter_space_for_holding_window
 
 
 REQUIRED_STAGE6_STRATEGIES = {
@@ -659,16 +660,6 @@ def test_strategy_config_loader_rejects_unknown_parameters(tmp_path: Path) -> No
             {
                 "strategy_id": "hmm_knn_local_analog_filter_v2",
                 "strategy_version": "v1",
-                "feature_set_id": "features_perp_context_v2",
-                "holding_period": "1h",
-                "parameters": {},
-            },
-            "invalid_holding_period:hmm_knn_local_analog_filter_v2:1h",
-        ),
-        (
-            {
-                "strategy_id": "hmm_knn_local_analog_filter_v2",
-                "strategy_version": "v1",
                 "feature_set_id": "features_full_context_no_wt",
                 "holding_period": "24h",
                 "parameters": {},
@@ -826,7 +817,8 @@ def test_hmm_knn_local_analog_filter_metadata_covers_required_contract() -> None
     plugin = get_strategy_plugin("hmm_knn_local_analog_filter_v2")
     metadata = metadata_for_strategy("hmm_knn_local_analog_filter_v2")
 
-    assert plugin.allowed_holding_periods == ("4h", "12h", "24h", "72h")
+    assert plugin.allowed_holding_periods[:4] == ("4h", "12h", "24h", "72h")
+    assert "1h" in plugin.allowed_holding_periods
     assert plugin.required_feature_sets == ("features_perp_context_v2",)
     assert set(metadata.default_parameters) == {
         "probability_threshold",
@@ -841,6 +833,72 @@ def test_hmm_knn_local_analog_filter_metadata_covers_required_contract() -> None
     }
     assert set(metadata.parameter_space) == set(metadata.default_parameters)
     assert "hmm_knn_future_neighbor_boundary" in metadata.failure_modes
+
+
+def test_hmm_knn_local_analog_filter_accepts_wpr106_31_replay_domain_without_expanding_search_grid() -> None:
+    exact_replay_values = {
+        "probability_threshold": (0.48, 0.50, 0.52, 0.55, 0.58, 0.62),
+        "expected_value_threshold": (-0.0004, -0.0002, 0.0, 0.0002),
+        "min_neighbor_count": (2, 3, 4, 5),
+        "min_neighbor_agreement": (0.48, 0.50, 0.52, 0.55, 0.60),
+        "min_neighbor_distance_quality": (0.0, 0.005, 0.01),
+        "min_vote_margin": (0.0, 0.02, 0.03, 0.05),
+        "spacing_bars": (4,),
+    }
+
+    for name, expected_values in exact_replay_values.items():
+        allowed = set(allowed_parameter_values("hmm_knn_local_analog_filter_v2", "1h", name))
+        assert set(expected_values) <= allowed
+
+    search_space = search_parameter_space_for_holding_window("hmm_knn_local_analog_filter_v2", "1h")
+    assert search_space["probability_threshold"] == (0.55, 0.60, 0.65)
+    assert search_space["expected_value_threshold"] == (0.0, 0.0005, 0.001)
+    assert search_space["min_neighbor_count"] == (8, 12, 16)
+    assert search_space["min_neighbor_agreement"] == (0.55, 0.60, 0.65)
+    assert search_space["min_neighbor_distance_quality"] == (0.05, 0.10, 0.20)
+    assert search_space["min_vote_margin"] == (0.05, 0.10, 0.20)
+    assert search_space["spacing_bars"] == (8, 12, 16)
+
+
+def test_hmm_knn_local_analog_filter_loads_one_hour_wpr106_31_exact_domain_config(tmp_path: Path) -> None:
+    path = tmp_path / "hmm_knn_wpr106_31_exact_domain.json"
+    path.write_text(
+        json.dumps(
+            {
+                "strategy_id": "hmm_knn_local_analog_filter_v2",
+                "strategy_version": "v1",
+                "enabled": True,
+                "feature_set_id": "features_perp_context_v2",
+                "holding_period": "1h",
+                "parameters": {
+                    "probability_threshold": 0.62,
+                    "expected_value_threshold": -0.0002,
+                    "min_neighbor_count": 5,
+                    "min_neighbor_agreement": 0.48,
+                    "min_neighbor_distance_quality": 0.0,
+                    "min_vote_margin": 0.03,
+                    "spacing_bars": 4,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_strategy_config(path)
+    plugin = get_strategy_plugin(
+        config.strategy_id,
+        config={**config.parameters, "feature_set_id": config.feature_set_id, "holding_period": config.holding_period},
+    )
+    signals = plugin.predict(_hmm_knn_local_analog_filter_v2_signal_frame(row_count=24))
+    validation = validate_signal_frame(signals)
+
+    assert config.holding_period == "1h"
+    assert plugin.config["spacing_bars"] == 4
+    assert validation.valid is True, validation.errors
+    assert len(signals) > 0
+    assert set(signals["target_holding_max_ms"]) == {60 * 60 * 1000}
 
 
 def test_liquidation_absorption_classifier_metadata_covers_required_contract() -> None:
@@ -917,8 +975,6 @@ def test_strategy_plugin_construction_rejects_invalid_feature_or_window() -> Non
         get_strategy_plugin("hmm_routed_alpha_sleeves_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
     with pytest.raises(ValueError, match="invalid_feature_set:hmm_routed_alpha_sleeves_v2:features_full_context_no_wt"):
         get_strategy_plugin("hmm_routed_alpha_sleeves_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
-    with pytest.raises(ValueError, match="invalid_holding_period:hmm_knn_local_analog_filter_v2:1h"):
-        get_strategy_plugin("hmm_knn_local_analog_filter_v2", config={"feature_set_id": "features_perp_context_v2", "holding_period": "1h"})
     with pytest.raises(ValueError, match="invalid_feature_set:hmm_knn_local_analog_filter_v2:features_full_context_no_wt"):
         get_strategy_plugin("hmm_knn_local_analog_filter_v2", config={"feature_set_id": "features_full_context_no_wt", "holding_period": "24h"})
     with pytest.raises(ValueError, match="invalid_holding_period:liquidation_absorption_classifier_v1:72h"):

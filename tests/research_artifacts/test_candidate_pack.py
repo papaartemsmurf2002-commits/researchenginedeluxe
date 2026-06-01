@@ -7,7 +7,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tradingbotsuite.promotion.artifact_validator import validate_artifact_for_live_input
+from tradingbotsuite.core.models import RuntimeMode
+from tradingbotsuite.promotion.artifact_validator import validate_artifact_for_live_input, validate_artifact_for_runtime_mode
 from tradingbotsuite.research_artifacts import (
     RESEARCH_CANDIDATE_PACK_VERSION,
     evaluate_research_candidate_gate,
@@ -566,6 +567,7 @@ def _cycle_outputs(
             "runtime_control_input": False,
             "live_fetch_used": False,
             "order_placement_used": False,
+            "runtime_mode_changed": False,
             "cycle_id": "candidate-pack-cycle",
             "symbol": "BTCUSDT",
             "data_source": {
@@ -638,6 +640,11 @@ def test_research_candidate_pack_is_research_only_and_rejected_for_live_input(tm
     result = write_research_candidate_pack(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
     live_validation = validate_artifact_for_live_input(manifest, manifest_path=result.manifest_path)
+    runtime_validation = validate_artifact_for_runtime_mode(
+        manifest,
+        runtime_mode=RuntimeMode.LIVE,
+        manifest_path=result.manifest_path,
+    )
 
     assert manifest["research_candidate_pack_manifest_version"] == RESEARCH_CANDIDATE_PACK_VERSION
     assert "promotion_candidate_manifest_version" not in manifest
@@ -680,7 +687,9 @@ def test_research_candidate_pack_is_research_only_and_rejected_for_live_input(tm
     assert manifest["evidence_summary"]["artifact_count"] == len(manifest["evidence"])
     assert "candidate_backtest_manifest:aggregate" in manifest["evidence_summary"]["artifact_names"]
     assert live_validation.allowed is False
+    assert runtime_validation.allowed is False
     assert "research_only_artifact_rejected_for_live_input" in live_validation.reasons
+    assert "research_only_artifact_rejected_for_live_input" in runtime_validation.reasons
 
 
 def test_research_candidate_gate_rebases_migrated_cycle_required_outputs(tmp_path: Path) -> None:
@@ -906,6 +915,7 @@ def test_research_candidate_pack_blocks_unsafe_cycle_manifest_flags(tmp_path: Pa
     manifest["operator_control_input"] = True
     manifest["runtime_control_input"] = True
     manifest["order_placement_used"] = True
+    manifest["runtime_mode_changed"] = True
     cycle_manifest.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
 
     gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
@@ -916,6 +926,7 @@ def test_research_candidate_pack_blocks_unsafe_cycle_manifest_flags(tmp_path: Pa
     assert "cycle_manifest_operator_control_input_must_be_false" in gate.reasons
     assert "cycle_manifest_runtime_control_input_must_be_false" in gate.reasons
     assert "cycle_manifest_order_placement_used_must_be_false" in gate.reasons
+    assert "cycle_manifest_runtime_mode_changed_must_be_false" in gate.reasons
 
 
 def test_research_candidate_pack_blocks_live_adjacent_cycle_manifest_artifact(tmp_path: Path) -> None:
@@ -929,6 +940,21 @@ def test_research_candidate_pack_blocks_live_adjacent_cycle_manifest_artifact(tm
     assert gate.status == "blocked"
     assert "cycle_manifest_live_adjacent_or_invalid" in gate.reasons
     assert "required_output_live_adjacent_or_promotion_ready:research_cycle_manifest" in gate.reasons
+
+
+def test_research_candidate_pack_blocks_runtime_mode_changed_required_output(tmp_path: Path) -> None:
+    cycle_manifest = _cycle_outputs(tmp_path)
+    manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+    backtest_index = pd.read_parquet(manifest["required_outputs"]["backtest_index"])
+    backtest_manifest = Path(str(backtest_index.loc[0, "backtest_manifest_path"]))
+    payload = json.loads(backtest_manifest.read_text(encoding="utf-8"))
+    payload["runtime_mode_changed"] = True
+    backtest_manifest.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+    assert gate.status == "blocked"
+    assert "candidate_backtest_manifest_live_adjacent_or_invalid:aggregate" in gate.reasons
 
 
 def test_research_candidate_pack_validates_fixture_manifest_boundary_and_identity(tmp_path: Path) -> None:
@@ -1328,3 +1354,51 @@ def test_research_candidate_pack_schema_rejects_promotion_fields() -> None:
 
     assert "live_or_promotion_manifest_version_forbidden" in reasons
     assert "promotion_ready_must_be_false" in reasons
+
+
+def test_research_candidate_pack_schema_rejects_negative_control_manifest() -> None:
+    reasons = validate_research_candidate_pack_manifest(
+        {
+            "research_candidate_pack_manifest_version": RESEARCH_CANDIDATE_PACK_VERSION,
+            "artifact_family": "negative_control",
+            "control_only": True,
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "live_signal_input": False,
+            "position_sizing_input": False,
+            "operator_control_input": False,
+            "live_execution_input": False,
+            "runtime_control_input": False,
+            "live_fetch_used": False,
+            "order_placement_used": False,
+            "intended_use": "research_observe_only",
+        }
+    )
+
+    assert "control_only_manifest_forbidden" in reasons
+    assert "negative_control_artifact_forbidden" in reasons
+
+
+def test_research_candidate_gate_rejects_negative_control_evidence_manifest(tmp_path: Path) -> None:
+    cycle_manifest = tmp_path / "negative-control-manifest.json"
+    cycle_manifest.write_text(
+        json.dumps(
+            {
+                "artifact_family": "negative_control",
+                "control_only": True,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "required_outputs": {},
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+    assert gate.status == "blocked"
+    assert "cycle_manifest_live_adjacent_or_invalid" in gate.reasons

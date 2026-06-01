@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Live Predictions</h1>
-<p class="muted">Microstructure-derived short-horizon pressure. This page visualizes live Binance order-flow inputs only; it is not a calibrated model and does not change live gating.</p>
+<h1>Observe-Only Flow Pressure</h1>
+<p class="muted">Microstructure-derived short-horizon pressure. This page visualizes current Binance order-flow inputs only; it is not a trading signal, calibrated model, or live gating change.</p>
 <div class="stat-grid" id="prediction-headline"></div>
 <div class="grid">
   <div class="card wide">
@@ -43,7 +43,12 @@
     `;
   }
 
+  let predictionsRefreshInFlight = false;
+
   async function refreshPredictions() {
+    if (predictionsRefreshInFlight) return;
+    predictionsRefreshInFlight = true;
+    try {
     const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
     const micro = snapshot.microstructure || {};
     const prediction = snapshot.microstructure_prediction || {};
@@ -104,6 +109,15 @@
           </div>
         `).join("")
       : '<div class="empty">No component data.</div>';
+    } catch (error) {
+      document.getElementById("prediction-headline").innerHTML = "";
+      document.getElementById("prediction-bars").innerHTML = window.TBS.errorHtml("Flow-pressure refresh failed", error);
+      document.getElementById("prediction-inputs").innerHTML = "";
+      document.getElementById("prediction-health").innerHTML = "";
+      document.getElementById("prediction-components").innerHTML = "";
+    } finally {
+    predictionsRefreshInFlight = false;
+    }
   }
 
   refreshPredictions();

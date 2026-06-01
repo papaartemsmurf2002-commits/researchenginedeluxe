@@ -7,7 +7,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tradingbotsuite.backtesting import BacktestEngine, BacktestSpec
+from tradingbotsuite.backtesting import COST_PROFILE_CONTRACT_VERSION, BacktestEngine, BacktestSpec
 from tradingbotsuite.backtesting.engine import BACKTEST_CACHE_POLICY, SUPPORTED_HOLDING_WINDOWS_MS
 from tradingbotsuite.backtesting.metrics import REQUIRED_BACKTEST_METRICS
 from tradingbotsuite.research.deterministic_datasets import write_hmm_knn_sweep_dataset
@@ -64,6 +64,13 @@ def test_backtest_writes_required_artifact_contract(tmp_path: Path) -> None:
     assert manifest["exit_policy_id"] == "fixed_holding_window"
     assert manifest["execution_assumptions"]["exit_policy_id"] == "fixed_holding_window"
     assert manifest["execution_assumptions"]["exit_price_source"] == "primary_close"
+    assert manifest["cost_model"]["cost_profile_contract_version"] == COST_PROFILE_CONTRACT_VERSION
+    assert manifest["cost_model"]["cost_profile_id"] == "binance_usdm_research_baseline"
+    assert manifest["cost_model"]["fill_profile_id"] == "primary_bar_latency_fill"
+    assert manifest["cost_model"]["source_venue"] == "binance_usdm"
+    assert manifest["cost_model"]["execution_venue"] == "binance_usdm_research"
+    assert manifest["cost_model"]["execution_proof_scope"] == "historical_research_only_not_live_execution_proof"
+    assert "hyperliquid" in manifest["cost_model"]["not_execution_proof_for"]
     assert manifest["validity"]["fees_slippage_funding_included"] is True
 
 
@@ -313,6 +320,60 @@ def test_cache_key_changes_for_execution_assumptions_and_cost_model(tmp_path: Pa
 
     assert base_manifest["cache_key"] != latency_manifest["cache_key"]
     assert base_manifest["cache_key"] != costs_manifest["cache_key"]
+
+
+def test_backtest_cost_profile_and_fill_profile_participate_in_cache_identity(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
+    common = {
+        "symbol": "BTCUSDT",
+        "output_dir": tmp_path / "backtests",
+        "dataset_path": dataset.parquet_path,
+        "dataset_sha256": dataset.parquet_sha256,
+        "strategy_id": "baseline_no_trade",
+        "holding_window": "1h",
+        "feature_set_id": "features_price_trend_vol",
+    }
+
+    base = BacktestEngine().run(BacktestSpec(run_id="base-profile", **common))
+    stress_profile = BacktestEngine().run(
+        BacktestSpec(
+            run_id="stress-profile",
+            cost_profile_id="binance_usdm_research_slippage_2x",
+            slippage_bps=10.0,
+            **common,
+        )
+    )
+    explicit_fill = BacktestEngine().run(
+        BacktestSpec(run_id="explicit-fill", fill_profile_id="vwap_approximation_fill", **common)
+    )
+    base_manifest = json.loads(base.manifest_path.read_text(encoding="utf-8"))
+    stress_manifest = json.loads(stress_profile.manifest_path.read_text(encoding="utf-8"))
+    fill_manifest = json.loads(explicit_fill.manifest_path.read_text(encoding="utf-8"))
+
+    assert base_manifest["cache_key"] != stress_manifest["cache_key"]
+    assert base_manifest["cache_key"] != fill_manifest["cache_key"]
+    assert stress_manifest["cost_model"]["cost_profile_source"] == "registered_profile"
+    assert stress_manifest["cost_model"]["cost_profile_id"] == "binance_usdm_research_slippage_2x"
+    assert fill_manifest["cost_model"]["cost_profile_source"] == "registered_profile_with_numeric_or_fill_override"
+    assert fill_manifest["cost_model"]["fill_profile_id"] == "vwap_approximation_fill"
+
+
+def test_unknown_cost_or_fill_profile_fails_closed(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
+    common = {
+        "symbol": "BTCUSDT",
+        "output_dir": tmp_path / "backtests",
+        "dataset_path": dataset.parquet_path,
+        "dataset_sha256": dataset.parquet_sha256,
+        "strategy_id": "baseline_no_trade",
+        "holding_window": "1h",
+        "feature_set_id": "features_price_trend_vol",
+    }
+
+    with pytest.raises(ValueError, match="unknown_cost_profile_id"):
+        BacktestEngine().run(BacktestSpec(run_id="bad-cost-profile", cost_profile_id="unknown_venue", **common))
+    with pytest.raises(ValueError, match="unknown_fill_profile_id"):
+        BacktestEngine().run(BacktestSpec(run_id="bad-fill-profile", fill_profile_id="optimistic_fill", **common))
 
 
 def test_backtest_manifest_records_non_fixed_exit_policy_identity(tmp_path: Path) -> None:

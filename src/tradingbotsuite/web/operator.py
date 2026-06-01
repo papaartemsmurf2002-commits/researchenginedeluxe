@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import secrets
 from pathlib import Path
@@ -65,18 +66,41 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             raise HTTPException(status_code=401, detail="authentication required")
         return session
 
-    def require_csrf(request: Request, session: dict[str, Any]) -> None:
-        token = request.headers.get("X-CSRF-Token")
+    def require_csrf_token(token: str | None, session: dict[str, Any]) -> None:
         if token is None:
             raise HTTPException(status_code=403, detail="missing csrf token")
         if not secrets.compare_digest(token, str(session.get("csrf_token", ""))):
             raise HTTPException(status_code=403, detail="invalid csrf token")
+
+    def require_csrf(request: Request, session: dict[str, Any]) -> None:
+        require_csrf_token(request.headers.get("X-CSRF-Token"), session)
+
+    async def read_json_object(request: Request) -> dict[str, Any]:
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail="request body must be valid JSON") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="request body must be a JSON object")
+        return payload
+
+    def required_text(payload: dict[str, Any], field_name: str) -> str:
+        value = payload.get(field_name)
+        if value is None or str(value).strip() == "":
+            raise HTTPException(status_code=400, detail=f"{field_name} is required")
+        return str(value).strip()
 
     def resolve_operator_path(raw_path: object) -> Path:
         path = Path(str(raw_path)).expanduser()
         if path.is_absolute():
             return path.resolve()
         return (repo_root / path).resolve()
+
+    def resolve_spec_relative_path(raw_path: object, spec_path: Path) -> Path:
+        path = Path(str(raw_path)).expanduser()
+        if path.is_absolute():
+            return path.resolve()
+        return (spec_path.parent / path).resolve()
 
     def is_relative_to(path: Path, root: Path) -> bool:
         try:
@@ -155,8 +179,12 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             raise HTTPException(status_code=400, detail=f"experiment spec is not valid JSON: {exc}") from exc
         if not isinstance(spec_payload, dict):
             raise HTTPException(status_code=400, detail="experiment spec must be a JSON object")
-        raw_output_dir = spec_payload.get("output_dir") or research_root / "experiments"
-        output_dir = resolve_operator_path(raw_output_dir)
+        raw_output_dir = spec_payload.get("output_dir")
+        output_dir = (
+            resolve_spec_relative_path(raw_output_dir, spec_path)
+            if raw_output_dir
+            else (research_root / "experiments").resolve()
+        )
         if not is_relative_to(output_dir, research_root):
             raise HTTPException(status_code=400, detail="experiment output_dir must be inside the configured research output directory")
         raw_pipeline_spec = Path(str(spec_payload.get("pipeline_spec") or "")).expanduser()
@@ -229,7 +257,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
             raise HTTPException(status_code=400, detail=f"discovery spec is invalid: {exc}") from exc
         raw_output_dir = spec_payload.get("output_dir")
         if raw_output_dir:
-            output_dir = resolve_operator_path(raw_output_dir)
+            output_dir = resolve_spec_relative_path(raw_output_dir, spec_path)
             if not is_relative_to(output_dir, research_root):
                 raise HTTPException(status_code=400, detail="discovery output_dir must be inside the configured research output directory")
         return spec_path
@@ -292,6 +320,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
 
     @app.post("/ui/login", response_class=HTMLResponse)
     async def operator_login(request: Request, password: str = Form(...)):
+        require_same_origin(request)
         if not secrets.compare_digest(password, active_config().operator_ui.secret or ""):
             return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Invalid secret"}, status_code=401)
         session = {"authenticated": True, "csrf_token": secrets.token_urlsafe(24)}
@@ -305,7 +334,11 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         return response
 
     @app.post("/ui/logout")
-    async def operator_logout(request: Request):
+    async def operator_logout(request: Request, csrf_token: str | None = Form(None)):
+        require_same_origin(request)
+        session = load_session(request)
+        if session is not None:
+            require_csrf_token(csrf_token, session)
         response = RedirectResponse("/ui/login", status_code=303)
         response.delete_cookie(active_config().operator_ui.session_cookie_name)
         return response
@@ -363,7 +396,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
     @app.get("/api/operator/research/artifacts")
     async def operator_research_artifacts(request: Request):
         require_session_json(request)
-        return {"items": service.list_artifacts()}
+        return {"items": await asyncio.to_thread(service.list_artifacts)}
 
     @app.get("/api/operator/research/r104-readiness")
     async def operator_r104_readiness(request: Request):
@@ -413,12 +446,16 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
+        try:
+            direction = SignalDirection(required_text(payload, "direction"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="direction must be long or short") from exc
         return await service.execute_command(
             "manual-signal",
             {
                 "symbol": str(payload.get("symbol", "BTCUSDT")).upper(),
-                "direction": str(payload["direction"]),
+                "direction": str(direction.value),
                 "testnet_short_lived_protections": bool(payload.get("testnet_short_lived_protections", False)),
             },
         )
@@ -428,7 +465,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         return await service.execute_command("supervise", {"symbol": str(payload.get("symbol", "BTCUSDT")).upper()})
 
     @app.post("/api/operator/commands/reconcile")
@@ -436,7 +473,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         return await service.execute_command("reconcile", {"symbol": str(payload.get("symbol", "BTCUSDT")).upper()})
 
     @app.post("/api/operator/commands/refresh-health")
@@ -444,7 +481,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         return await service.execute_command("refresh-health", {"symbol": str(payload.get("symbol", "BTCUSDT")).upper()})
 
     @app.post("/api/operator/commands/smoke-live")
@@ -452,7 +489,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         return await service.execute_command("smoke-live", {"size": payload.get("size")})
 
     @app.post("/api/operator/commands/set-mode")
@@ -460,8 +497,11 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
-        mode = RuntimeMode(str(payload["mode"]))
+        payload = await read_json_object(request)
+        try:
+            mode = RuntimeMode(required_text(payload, "mode"))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="mode must be paper, shadow, or live") from exc
         return await service.execute_command("set-mode", {"mode": str(mode)})
 
     @app.post("/api/operator/research/jobs/build-dataset")
@@ -479,7 +519,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         stage = str(payload.get("stage") or DATA_PIPELINE_DEFAULT_STAGE)
         if stage not in DATA_PIPELINE_STAGES:
             raise HTTPException(status_code=400, detail=f"stage must be one of: {', '.join(DATA_PIPELINE_STAGES)}")
@@ -500,7 +540,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
 
         def month_value(field: str, default: str) -> str:
             value = str(payload.get(field) or default).strip()
@@ -542,7 +582,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
 
         def month_value(field: str, default: str) -> str:
             value = str(payload.get(field) or default).strip()
@@ -584,7 +624,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         spec_path = validate_research_experiment_request(payload)
         try:
             return await service.queue_job(
@@ -601,7 +641,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         spec_path = validate_historical_cycle_request(payload)
         try:
             return await service.queue_job(
@@ -619,7 +659,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         spec_path = validate_discovery_run_request(payload)
         stable_run_id = bool(payload.get("stable_run_id", False)) or exact_required_discovery_spec(spec_path)
         try:
@@ -641,7 +681,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         symbols_raw = payload.get("symbols") or ["BTCUSDT", "ETHUSDT"]
         if not isinstance(symbols_raw, list) or not symbols_raw:
             raise HTTPException(status_code=400, detail="symbols must be a non-empty list")
@@ -688,7 +728,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         cycle_manifest_path = validate_optional_research_file_path(payload, "cycle_manifest_path")
         discovery_manifest_path = validate_optional_research_file_path(payload, "discovery_manifest_path")
         if cycle_manifest_path is None and discovery_manifest_path is None:
@@ -722,7 +762,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         current_analysis_path = validate_optional_research_file_path(payload, "current_analysis_path")
         previous_analysis_path = validate_optional_research_file_path(payload, "previous_analysis_path")
         if current_analysis_path is not None and current_analysis_path.name != "research_analysis.json":
@@ -749,7 +789,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         discovery_manifest_path = validate_research_file_path(payload, "discovery_manifest_path")
         if discovery_manifest_path.name != "discovery_run_manifest.json":
             raise HTTPException(status_code=400, detail="discovery_manifest_path must reference discovery_run_manifest.json")
@@ -780,7 +820,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         discovery_manifest_path = validate_research_file_path(payload, "discovery_manifest_path")
         cycle_manifest_path = validate_optional_research_file_path(payload, "cycle_manifest_path")
         exit_lab_manifest_path = validate_optional_research_file_path(payload, "exit_lab_manifest_path")
@@ -805,7 +845,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
 
         def bounded_number(field: str, default: float, minimum: float, maximum: float) -> float:
             raw = payload.get(field, default)
@@ -869,7 +909,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         dataset_path = validate_research_file_path(payload, "dataset_path")
         try:
             return await service.queue_job("train-model", {"dataset_path": str(dataset_path)})
@@ -881,7 +921,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         train_manifest_path = validate_research_file_path(payload, "train_manifest_path")
         try:
             return await service.queue_job("calibrate-model", {"train_manifest_path": str(train_manifest_path)})
@@ -893,7 +933,7 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         require_same_origin(request)
         session = require_session_json(request)
         require_csrf(request, session)
-        payload = await request.json()
+        payload = await read_json_object(request)
         artifact_manifest_path = validate_research_file_path(payload, "artifact_manifest_path")
         try:
             return await service.queue_job("replay-eval", {"artifact_manifest_path": str(artifact_manifest_path)})

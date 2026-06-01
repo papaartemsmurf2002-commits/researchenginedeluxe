@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,6 +47,46 @@ def _clock() -> datetime:
 
 def _app_config(tmp_path: Path) -> AppConfig:
     return AppConfig(research=ResearchConfig(output_dir=tmp_path / "research"))
+
+
+def test_discovery_label_splits_stamp_event_end_and_use_label_aware_purge() -> None:
+    start = 1_712_649_600_000
+    frame = pd.DataFrame(
+        {
+            "bar_time_ms": [start + index * 900_000 for index in range(24)],
+            "source_row_index": list(range(24)),
+            "close": [100.0 + index for index in range(24)],
+        }
+    )
+    context = SimpleNamespace(label_split_cache={}, label_split_cache_lock=threading.Lock())
+
+    entry, cache_hit = discovery_runner._labeled_splits_with_cache(
+        frame,
+        context=context,
+        column_set_id="test_columns",
+        label_horizon="2bars",
+        interval_ms=900_000,
+        min_splits=2,
+        purge_embargo_bars=1,
+    )
+
+    split = entry.splits[0]
+    assert cache_hit is False
+    assert "label_event_end_time_ms" in entry.labeled.columns
+    assert entry.labeled.loc[0, "label_event_end_time_ms"] == frame.loc[2, "bar_time_ms"]
+    assert split.purge_method == "label_event_end_time"
+    assert split.label_event_end_time_column == "label_event_end_time_ms"
+    assert split.label_id == "directional:2bars"
+    assert split.purge_embargo_ms == 900_000
+    assert split.train_indices == (0, 1, 2, 3, 4)
+
+
+def test_discovery_replay_strategy_accounting_preserves_one_hour_label_horizon() -> None:
+    assert discovery_runner._holding_window_from_label_horizon("1h") == "1h"
+    assert discovery_runner._holding_window_from_label_horizon(" 1H ") == "1h"
+    assert discovery_runner._holding_window_from_label_horizon("4h") == "4h"
+    assert discovery_runner._holding_window_from_label_horizon("1d") == "24h"
+    assert discovery_runner._holding_window_from_label_horizon("unexpected") == "4h"
 
 
 def test_discovery_runner_writes_manifest_state_ledgers_and_snapshots(tmp_path: Path) -> None:
@@ -856,10 +897,12 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
         "gmm_all_regime_neighbors_with_gate",
     }
     assert payload["regime_detector_type"] in {"none", "gmm"}
+    assert payload["regime_model_backend"] in {"none", "sklearn.mixture.GaussianMixture"}
     assert payload["true_hmm_backend_used"] is False
     assert {
         "regime_mode",
         "regime_detector_type",
+        "regime_model_backend",
         "regime_gate_enabled",
         "same_regime_neighbor_pool_enabled",
         "true_hmm_backend_used",
@@ -879,11 +922,14 @@ def test_discovery_runner_executes_real_hmm_knn_trials(tmp_path: Path) -> None:
     assert payload["accepted_bar_count"] >= payload["independent_event_count"]
     assert payload["final_score"] == payload["discovery_screen_score_v2"]
     assert payload["hmm_artifact_persisted"] is True
+    assert payload["regime_artifact_persisted"] is True
     assert payload["knn_artifact_persisted"] is True
     assert Path(payload["hmm_manifest_path"]).exists()
+    assert Path(payload["regime_manifest_path"]).exists()
     assert Path(payload["knn_manifest_path"]).exists()
     assert manifest["regime_truthfulness"]["true_hmm_backend_used"] is False
     assert manifest["regime_truthfulness"]["current_gmm_backend"] == "sklearn.mixture.GaussianMixture"
+    assert "sklearn.mixture.GaussianMixture" in manifest["regime_truthfulness"]["configured_regime_model_backends"]
     assert manifest["event_accounting_policy"]["active_score_field"] == "discovery_screen_score_v2"
     assert manifest["event_accounting_policy"]["overlapping_bar_signals_count_as_independent_trades"] is False
 
@@ -965,20 +1011,28 @@ def test_discovery_runner_no_regime_trial_skips_gmm_materializer(tmp_path: Path,
     assert trial_record["status"] == "completed"
     assert payload["regime_mode"] == "none"
     assert payload["regime_detector_type"] == "none"
+    assert payload["regime_model_backend"] == "none"
     assert payload["regime_gate_enabled"] is False
     assert payload["same_regime_neighbor_pool_enabled"] is False
     assert payload["same_regime_only"] is False
     assert payload["true_hmm_backend_used"] is False
     assert payload["hmm_state_count"] == 0
+    assert payload["regime_state_count"] == 0
     assert payload["hmm_posterior_threshold"] is None
+    assert payload["regime_posterior_threshold"] is None
     assert payload["hmm_entropy_threshold"] is None
+    assert payload["regime_entropy_threshold"] is None
     assert payload["hmm_cache_hit"] is False
+    assert payload["regime_cache_hit"] is False
     assert regime_manifest["regime_detector_type"] == "none"
+    assert regime_manifest["regime_model_backend"] == "none"
     assert regime_manifest["regime_gate_enabled"] is False
     assert knn_manifest["regime_mode"] == "none"
+    assert knn_manifest["regime_model_backend"] == "none"
     assert knn_manifest["regime_gate_enabled"] is False
     assert manifest["regime_truthfulness"]["observed_trial_regime_modes"] == ["none"]
     assert manifest["regime_truthfulness"]["observed_trial_regime_detector_types"] == ["none"]
+    assert manifest["regime_truthfulness"]["observed_trial_regime_model_backends"] == ["none"]
     assert manifest["regime_truthfulness"]["true_hmm_backend_used"] is False
 
 
@@ -1207,7 +1261,7 @@ def test_discovery_runner_failed_real_trial_preserves_search_payload(tmp_path: P
     assert payload["knn_artifact_persisted"] is False
 
 
-def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path: Path, monkeypatch) -> None:
+def test_discovery_runner_reuses_hmm_for_same_horizon_without_label_leak(tmp_path: Path, monkeypatch) -> None:
     spec_path = tmp_path / "specs" / "horizon-cache-discovery.json"
     spec_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1295,9 +1349,10 @@ def test_discovery_runner_reuses_hmm_across_horizons_without_label_leak(tmp_path
         for index in range(1, 4)
     ]
 
-    assert len(hmm_calls) == 1
+    assert len(hmm_calls) == 2
     assert [item[0] for item in knn_inputs] == ["1h", "4h"]
-    assert [payload["hmm_cache_hit"] for payload in trial_payloads] == [False, True, True]
+    assert [payload["hmm_cache_hit"] for payload in trial_payloads] == [False, False, True]
+    assert [payload["regime_cache_hit"] for payload in trial_payloads] == [False, False, True]
     assert [payload["label_split_cache_hit"] for payload in trial_payloads] == [False, False, True]
     assert [payload["knn_base_cache_hit"] for payload in trial_payloads] == [False, False, True]
     assert all(payload["neighbor_cache_lookup_count"] > 0 for payload in trial_payloads)
@@ -1358,6 +1413,7 @@ def test_discovery_runner_compacts_blocked_real_trial_artifacts(tmp_path: Path) 
 
     assert trial_record["ledger_kind"] == "blocked"
     assert payload["hmm_artifact_persisted"] is False
+    assert payload["regime_artifact_persisted"] is False
     assert payload["knn_artifact_persisted"] is False
     assert payload["strategy_accounting_persisted"] is False
     assert not (result.output_dir / "trial_artifacts" / "trial-000001").exists()

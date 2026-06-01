@@ -21,7 +21,7 @@ from tradingbotsuite.research_cycle.benchmark import (
 
 def test_research_cycle_benchmark_report_contains_research_only_gate_metrics(tmp_path: Path) -> None:
     result = write_research_cycle_benchmark_report(
-        output_dir=tmp_path / "benchmarks" / "small",
+        output_dir=tmp_path / "research" / "benchmarks" / "small",
         tier="small",
         repeat=2,
         app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
@@ -212,7 +212,7 @@ def test_research_cycle_benchmark_report_contains_research_only_gate_metrics(tmp
 
 
 def test_research_cycle_benchmark_cleans_stale_repeat_artifacts(tmp_path: Path) -> None:
-    output_dir = tmp_path / "benchmarks" / "stale"
+    output_dir = tmp_path / "research" / "benchmarks" / "stale"
     write_research_cycle_benchmark_report(
         output_dir=output_dir,
         tier="small",
@@ -482,7 +482,7 @@ def test_research_cycle_benchmark_resolves_relative_output_paths(tmp_path: Path,
     )
 
     result = write_research_cycle_benchmark_report(
-        output_dir=Path("relative-benchmark"),
+        output_dir=Path("research") / "relative-benchmark",
         tier="small",
         repeat=1,
         app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
@@ -491,7 +491,7 @@ def test_research_cycle_benchmark_resolves_relative_output_paths(tmp_path: Path,
     run_output = Path(report["runs"][0]["output_dir"])
     spec_payload = json.loads(Path(report["runs"][0]["spec_path"]).read_text(encoding="utf-8"))
 
-    assert result.output_dir == (tmp_path / "relative-benchmark").resolve()
+    assert result.output_dir == (tmp_path / "research" / "relative-benchmark").resolve()
     assert result.report_path == result.output_dir / "research_cycle_benchmark_report.json"
     assert run_output.is_absolute()
     assert Path(spec_payload["output_dir"]).is_absolute()
@@ -574,7 +574,7 @@ def test_research_cycle_benchmark_medium_tier_bounded_execution(tmp_path: Path, 
     )
 
     result = write_research_cycle_benchmark_report(
-        output_dir=tmp_path / "benchmarks" / "medium",
+        output_dir=tmp_path / "research" / "benchmarks" / "medium",
         tier="medium",
         repeat=2,
         app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),

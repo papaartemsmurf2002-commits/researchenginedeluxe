@@ -102,31 +102,41 @@
     `;
   }
 
+  let timelineRefreshInFlight = false;
+
   async function refreshTimeline(force = false) {
     if (!force && document.getElementById("timeline-pause").checked) {
       return;
     }
+    if (timelineRefreshInFlight) return;
+    timelineRefreshInFlight = true;
     const showHealth = document.getElementById("timeline-show-health").checked;
     const showMetrics = document.getElementById("timeline-show-metrics").checked;
-    const feed = await window.TBS.getJson(
-      `/api/operator/feed?limit=120&include_health_events=${showHealth ? "true" : "false"}&include_execution_metrics=${showMetrics ? "true" : "false"}`
-    );
-    const items = feed.items || [];
-    document.getElementById("timeline-rows").innerHTML = items.length ? items.map(item => `
-      <div class="list-item">
-        <div class="split">
-          <div>${kindBadge(item.kind)}</div>
-          <div class="muted">${window.TBS.formatTime(item.time_ms)}</div>
+    try {
+      const feed = await window.TBS.getJson(
+        `/api/operator/feed?limit=120&include_health_events=${showHealth ? "true" : "false"}&include_execution_metrics=${showMetrics ? "true" : "false"}`
+      );
+      const items = feed.items || [];
+      document.getElementById("timeline-rows").innerHTML = items.length ? items.map(item => `
+        <div class="list-item">
+          <div class="split">
+            <div>${kindBadge(item.kind)}</div>
+            <div class="muted">${window.TBS.formatTime(item.time_ms)}</div>
+          </div>
+          <div><strong>${window.TBS.escapeHtml(itemSummary(item))}</strong></div>
+          ${jobDetails(item)}
+          <div class="muted">${window.TBS.escapeHtml(timelineSymbol(item))}</div>
+          <details class="details">
+            <summary>Inspect</summary>
+            <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.payload || {}))}</pre>
+          </details>
         </div>
-        <div><strong>${window.TBS.escapeHtml(itemSummary(item))}</strong></div>
-        ${jobDetails(item)}
-        <div class="muted">${window.TBS.escapeHtml(timelineSymbol(item))}</div>
-        <details class="details">
-          <summary>Inspect</summary>
-          <pre>${window.TBS.escapeHtml(window.TBS.pretty(item.payload || {}))}</pre>
-        </details>
-      </div>
-    `).join("") : '<div class="empty">No recent feed items.</div>';
+      `).join("") : '<div class="empty">No recent feed items.</div>';
+    } catch (error) {
+      document.getElementById("timeline-rows").innerHTML = window.TBS.errorHtml("Timeline refresh failed", error);
+    } finally {
+      timelineRefreshInFlight = false;
+    }
   }
   refreshTimeline();
   document.getElementById("timeline-show-health").addEventListener("change", () => refreshTimeline(true));

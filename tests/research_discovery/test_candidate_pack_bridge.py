@@ -35,6 +35,11 @@ from tradingbotsuite.research_discovery.validation_floors import (
     write_discovery_validation_floor_artifacts,
 )
 from tradingbotsuite.research_discovery.runner import LEDGER_COLUMNS, run_discovery
+from tradingbotsuite.research_discovery.replay_evidence_controls import (
+    WPR10648NegativeControlInput,
+    build_wpr10648_negative_control_artifacts,
+    write_wpr10648_negative_control_artifacts,
+)
 
 from tests.research_artifacts.test_candidate_pack import _cycle_outputs
 
@@ -62,6 +67,12 @@ def _write_spec(
     }
     if trial_templates is not None:
         payload["trial_templates"] = trial_templates
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     return path
@@ -199,6 +210,51 @@ def _stable_payload_sha256(payload: object) -> str:
     return sha256(encoded).hexdigest()
 
 
+def _write_first_class_control_artifact(tmp_path: Path) -> Path:
+    source_dir = tmp_path / "first-class-control-source"
+    source_dir.mkdir(parents=True)
+    replay_spec = source_dir / "replay_spec.json"
+    replay_spec.write_text(json.dumps({"research_only": True}, sort_keys=True), encoding="utf-8")
+    discovery_manifest = source_dir / "source_discovery_manifest.json"
+    discovery_manifest.write_text(json.dumps({"research_only": True}, sort_keys=True), encoding="utf-8")
+    source_manifest = source_dir / "source_manifest.json"
+    source_manifest.write_text(
+        json.dumps(
+            {
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "candidate_pack_written": False,
+                "source_replay_spec_path": str(replay_spec),
+                "source_replay_spec_sha256": _sha256(replay_spec),
+                "source_discovery_manifest_path": str(discovery_manifest),
+                "source_discovery_manifest_sha256": _sha256(discovery_manifest),
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    source_rows = source_dir / "source_rows.parquet"
+    pd.DataFrame(
+        [
+            {"candidate_id": "control-a", "label": 1, "timestamp_ms": 1, "context_bucket": "a"},
+            {"candidate_id": "control-b", "label": -1, "timestamp_ms": 2, "context_bucket": "b"},
+        ]
+    ).to_parquet(source_rows, index=False)
+    result = build_wpr10648_negative_control_artifacts(
+        symbol_inputs=[
+            WPR10648NegativeControlInput(
+                symbol="BTCUSDT",
+                source_manifest_path=source_manifest,
+                source_rows_path=source_rows,
+            )
+        ]
+    )
+    artifact = write_wpr10648_negative_control_artifacts(output_dir=tmp_path / "first-class-controls", result=result)
+    return artifact.manifest_path
+
+
 def test_bridge_ledger_columns_match_runner_columns() -> None:
     assert tuple(candidate_pack_bridge.DISCOVERY_LEDGER_COLUMNS) == tuple(LEDGER_COLUMNS)
 
@@ -242,6 +298,83 @@ def test_bridge_writes_eligibility_only_for_existing_gate_pass(tmp_path: Path) -
     assert eligibility.loc[0, "validation_floor_status"] == "passed"
     assert bool(eligibility.loc[0, "candidate_pack_written"]) is False
     assert not (cycle_manifest.parent / "research_candidate_pack").exists()
+
+
+def test_bridge_rejects_first_class_negative_control_manifest_before_pack_assembly(tmp_path: Path) -> None:
+    control_manifest = _write_first_class_control_artifact(tmp_path)
+
+    result = evaluate_discovery_candidate_pack_eligibility(discovery_manifest_path=control_manifest)
+
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert "discovery_manifest_control_only_forbidden" in result.manifest["global_reasons"]
+    assert "discovery_manifest_negative_control_artifact_forbidden" in result.manifest["global_reasons"]
+    assert result.manifest["candidate_pack_written"] is False
+
+
+def test_bridge_rejects_replay_scoped_manifest_missing_required_replay_provenance(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    manifest = json.loads(discovery.manifest_path.read_text(encoding="utf-8"))
+    manifest["replay_bridge_requirements"] = {
+        "require_replay_profile_provenance": True,
+        "require_validation_manifest": True,
+        "require_exact_replay_lineage": True,
+        "require_modern_window_evidence": True,
+    }
+    discovery.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(discovery_manifest_path=discovery.manifest_path)
+
+    reasons = result.eligibility.loc[0, "bridge_reasons"]
+    assert "discovery_manifest_replay_profile_provenance_required" in reasons
+    assert "discovery_manifest_validation_manifest_required" in reasons
+    assert "discovery_manifest_exact_replay_lineage_required" in reasons
+    assert "discovery_manifest_modern_window_evidence_required" in reasons
+    assert result.manifest["summary"]["eligible_count"] == 0
+
+
+def test_bridge_rejects_replay_scoped_manifest_with_fake_provenance_hashes(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    replay_profile = _write_json(tmp_path / "replay_profile.json", {"research_only": True})
+    validation_manifest = _write_json(tmp_path / "validation_manifest.json", {"research_only": True})
+    modern_profile = _write_json(tmp_path / "modern_profile.json", {"research_only": True})
+    replay_spec = _write_json(tmp_path / "replay_spec.json", {"research_only": True})
+    source_discovery = _write_json(tmp_path / "source_discovery.json", {"research_only": True})
+    manifest = json.loads(discovery.manifest_path.read_text(encoding="utf-8"))
+    manifest["replay_bridge_requirements"] = {
+        "require_replay_profile_provenance": True,
+        "require_validation_manifest": True,
+        "require_exact_replay_lineage": True,
+        "require_modern_window_evidence": True,
+    }
+    bad_sha = "0" * 64
+    manifest["replay_profile_provenance"] = {"path": str(replay_profile), "sha256": bad_sha}
+    manifest["validation_manifest_provenance"] = {"path": str(validation_manifest), "sha256": bad_sha}
+    manifest["modern_window_evidence"] = {"path": str(modern_profile), "sha256": bad_sha}
+    manifest["exact_replay_lineage"] = {
+        "source_replay_spec_path": str(replay_spec),
+        "source_replay_spec_sha256": bad_sha,
+        "source_discovery_manifest_path": str(source_discovery),
+        "source_discovery_manifest_sha256": bad_sha,
+    }
+    discovery.manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = evaluate_discovery_candidate_pack_eligibility(discovery_manifest_path=discovery.manifest_path)
+
+    reasons = result.eligibility.loc[0, "bridge_reasons"]
+    assert "discovery_manifest_replay_profile_provenance_sha256_mismatch" in reasons
+    assert "discovery_manifest_validation_manifest_sha256_mismatch" in reasons
+    assert "discovery_manifest_modern_window_evidence_sha256_mismatch" in reasons
+    assert "discovery_manifest_exact_replay_lineage_replay_sha256_mismatch" in reasons
+    assert "discovery_manifest_exact_replay_lineage_discovery_sha256_mismatch" in reasons
+    assert result.manifest["summary"]["eligible_count"] == 0
 
 
 def test_bridge_blocks_missing_exit_lab_even_when_cycle_gate_passes(tmp_path: Path) -> None:
@@ -296,6 +429,23 @@ def test_bridge_rebases_migrated_discovery_manifest_required_outputs(tmp_path: P
     assert "blocked_candidates_path_missing" not in reasons
     assert "filter_blockers_path_missing" not in reasons
     assert "discovery_trials_dir_missing" not in reasons
+    assert len(result.eligibility) == 1
+
+
+def test_bridge_normalizes_old_replay_ledger_rows_without_rewriting_artifacts(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    interesting = pd.read_parquet(discovery.interesting_candidates_path)
+    interesting.drop(columns=["regime_model_backend"]).to_parquet(discovery.interesting_candidates_path, index=False)
+
+    result = evaluate_discovery_candidate_pack_eligibility(discovery_manifest_path=discovery.manifest_path)
+
+    reasons = "|".join(str(item) for item in result.manifest["global_reasons"])
+    assert "discovery_ledger_schema_mismatch:interesting_candidates" not in reasons
+    assert "discovery_ledger_records_mismatch:interesting_candidates" not in reasons
     assert len(result.eligibility) == 1
 
 

@@ -481,6 +481,89 @@ def test_operator_ui_requires_auth_and_csrf(app_config, sample_bars) -> None:
         assert payload["result"]["packet"]["signal"]["direction"] == "long"
 
 
+def test_operator_logout_requires_csrf_and_same_origin(app_config, sample_bars) -> None:
+    config = _operator_config(app_config)
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        missing_csrf = client.post("/ui/logout", follow_redirects=False)
+        cross_origin = client.post(
+            "/ui/logout",
+            data={"csrf_token": csrf_token},
+            headers={"Origin": "http://evil.test"},
+            follow_redirects=False,
+        )
+        ok = client.post("/ui/logout", data={"csrf_token": csrf_token}, follow_redirects=False)
+
+    assert missing_csrf.status_code == 403
+    assert cross_origin.status_code == 403
+    assert ok.status_code == 303
+    assert ok.headers["location"] == "/ui/login"
+
+
+def test_operator_mutating_routes_validate_json_payloads(app_config, sample_bars) -> None:
+    config = _operator_config(app_config)
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        headers = {"X-CSRF-Token": csrf_token, "Content-Type": "application/json"}
+        invalid_json = client.post("/api/operator/commands/manual-signal", content=b"{", headers=headers)
+        missing_direction = client.post(
+            "/api/operator/commands/manual-signal",
+            json={"symbol": "BTCUSDT"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        invalid_direction = client.post(
+            "/api/operator/commands/manual-signal",
+            json={"symbol": "BTCUSDT", "direction": "sideways"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        missing_mode = client.post(
+            "/api/operator/commands/set-mode",
+            json={},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        invalid_mode = client.post(
+            "/api/operator/commands/set-mode",
+            json={"mode": "testnet"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert invalid_json.status_code == 400
+    assert missing_direction.status_code == 400
+    assert invalid_direction.status_code == 400
+    assert missing_mode.status_code == 400
+    assert invalid_mode.status_code == 400
+
+
+def test_operator_rechecks_research_boundary_when_job_runs(app_config) -> None:
+    config = _operator_config(app_config, mode=RuntimeMode.LIVE)
+
+    class EmptyStore:
+        async def get_safety_status(self):
+            return None
+
+        async def list_position_states(self):
+            return []
+
+    class LiveEngine:
+        def __init__(self, engine_config: AppConfig):
+            self.config = engine_config
+            self.store = EmptyStore()
+
+        def clock(self) -> int:
+            return 0
+
+    service = OperatorConsoleService(
+        OperatorContext(config=config, engine=LiveEngine(config), trace_recorder=TraceRecorder())
+    )
+
+    with pytest.raises(ValueError, match="blocked in live mode"):
+        asyncio.run(service._run_job("build-dataset", {}, "job-live"))
+
+
 def test_operator_snapshot_matches_engine_snapshot(app_config, sample_bars) -> None:
     config = _operator_config(app_config)
     app = create_app(config)
@@ -1958,6 +2041,34 @@ def test_operator_research_artifacts_survives_corrupt_json(app_config, sample_ba
     assert errors
     assert errors[0]["summary"]["intended_type"] == "historical_research_cycle"
     assert "Expecting property name" in errors[0]["summary"]["error"]
+
+
+def test_operator_artifact_index_skips_trials_directory(app_config, sample_bars, tmp_path) -> None:
+    research_dir = tmp_path / "research"
+    included = research_dir / "cycle" / "research_cycle_manifest.json"
+    skipped = research_dir / "trials" / "trial-a" / "research_cycle_manifest.json"
+    included.parent.mkdir(parents=True)
+    skipped.parent.mkdir(parents=True)
+    included.write_text("{}", encoding="utf-8")
+    skipped.write_text("{}", encoding="utf-8")
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_artifact_trials.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    index = app.state.operator_service._artifact_path_index(research_dir)
+
+    assert index["research_cycle_manifest.json"] == [included]
 
 
 def test_operator_research_artifacts_include_hardware_utilization_summary(
@@ -4261,6 +4372,89 @@ def test_operator_research_experiment_job_queues_completes_and_lists_artifact(ap
     assert any(item["type"] == "research_experiment_run" for item in artifacts)
 
 
+def test_operator_research_experiment_accepts_spec_relative_output_dir(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_experiment_relative.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    specs_dir = research_dir / "experiment_specs"
+    pipeline_spec = specs_dir / "pipeline.json"
+    experiment_spec = specs_dir / "research_experiment.json"
+    specs_dir.mkdir(parents=True)
+    pipeline_spec.write_text(
+        json.dumps(
+            {
+                "version": "operator-experiment-pipeline",
+                "asset_scope": ["BTCUSDT"],
+                "output_dir": str(research_dir / "pipeline-output"),
+                "providers": [],
+                "dataset_stage": {"enabled": False},
+                "evidence_stage": {"enabled": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+    experiment_spec.write_text(
+        json.dumps(
+            {
+                "version": "operator-experiment",
+                "name": "Relative Output Experiment",
+                "pipeline_spec": str(pipeline_spec),
+                "pipeline_stage": "all",
+                "output_dir": "relative-output",
+                "required_artifacts": {"data_quality": True, "dataset": False, "evidence": False},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_run_research_experiment(*, spec_path, app_config):
+        payload = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+        output_dir = (Path(spec_path).parent / str(payload["output_dir"])).resolve()
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "experiment_manifest.json"
+        conclusion_path = output_dir / "experiment_conclusion.json"
+        pipeline_summary_path = output_dir / "pipeline_summary.json"
+        for path in [manifest_path, conclusion_path, pipeline_summary_path]:
+            path.write_text(json.dumps({"research_only": True}), encoding="utf-8")
+        return SimpleNamespace(
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            conclusion_path=conclusion_path,
+            pipeline_summary_path=pipeline_summary_path,
+        )
+
+    monkeypatch.setattr("tradingbotsuite.operator_console.run_research_experiment", fake_run_research_experiment)
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-experiment",
+            json={"spec_path": str(experiment_spec)},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+
+    assert response.status_code == 200
+    assert job["status"] == "succeeded"
+    assert Path(job["result"]["output_dir"]) == (specs_dir / "relative-output").resolve()
+
+
 def test_operator_hardware_utilization_job_queues_completes_and_lists_artifact(
     app_config,
     sample_bars,
@@ -4840,8 +5034,8 @@ def test_operator_predictions_page_renders(app_config, sample_bars) -> None:
         page = client.get("/ui/predictions")
 
     assert page.status_code == 200
-    assert "Live Predictions" in page.text
-    assert "Microstructure-derived short-horizon pressure" in page.text
+    assert "Observe-Only Flow Pressure" in page.text
+    assert "not a trading signal" in page.text
 
 
 def test_server_monitor_auto_supervises_open_position(app_config, sample_bars, tmp_path, monkeypatch) -> None:

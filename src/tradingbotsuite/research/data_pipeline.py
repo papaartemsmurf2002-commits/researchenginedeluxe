@@ -390,10 +390,18 @@ def prepare_hmm_knn_research_data(
 ) -> ResearchDataPipelineResult:
     if stage not in DATA_PIPELINE_STAGES:
         raise ValueError(f"stage must be one of: {', '.join(DATA_PIPELINE_STAGES)}")
-    spec_path = Path(spec_path)
+    spec_path = Path(spec_path).expanduser().resolve()
+    app_config = app_config or AppConfig.from_env()
     spec_model = ProviderPipelineSpec.from_payload(_read_json(spec_path), spec_path=spec_path)
     spec = spec_model.to_payload()
-    output_dir = spec_model.output_dir
+    repo_root = _repo_root_from_path(spec_path)
+    research_root = _resolve_path(app_config.research.output_dir, base_path=repo_root)
+    output_dir = _resolve_pipeline_output_dir(spec_model.output_dir, spec_path=spec_path)
+    _ensure_inside_research_root(
+        output_dir,
+        research_root=research_root,
+        field_name="pipeline output_dir",
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     run_intake = stage in {"intake", "dataset", "evidence", "all"}
@@ -1168,15 +1176,51 @@ def _descriptor_payload(descriptor: Any) -> dict[str, Any]:
 def _resolve_path(path: Any, *, base_path: Path) -> Path:
     candidate = Path(str(path))
     if candidate.is_absolute():
-        return candidate
+        return candidate.resolve()
     return (base_path / candidate).resolve()
 
 
 def _resolve_stage_path(path: Any, *, spec_path: Path) -> Path:
     candidate = Path(str(path)).expanduser()
-    if candidate.is_absolute() or candidate.exists():
-        return candidate
-    return (spec_path.parent / candidate).resolve()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    spec_candidate = (spec_path.parent / candidate).resolve()
+    if spec_candidate.exists():
+        return spec_candidate
+    repo_candidate = (_repo_root_from_path(spec_path) / candidate).resolve()
+    if repo_candidate.exists():
+        return repo_candidate
+    return spec_candidate
+
+
+def _resolve_pipeline_output_dir(path: Any, *, spec_path: Path) -> Path:
+    candidate = Path(str(path)).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (_repo_root_from_path(spec_path) / candidate).resolve()
+
+
+def _repo_root_from_path(path: Path) -> Path:
+    start = path if path.is_dir() else path.parent
+    for parent in [start, *start.parents]:
+        if (parent / "pyproject.toml").is_file():
+            return parent.resolve()
+    return Path.cwd().resolve()
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _ensure_inside_research_root(path: Path, *, research_root: Path, field_name: str) -> None:
+    resolved_path = path.resolve()
+    resolved_root = research_root.resolve()
+    if not _is_relative_to(resolved_path, resolved_root):
+        raise ValueError(f"{field_name} must be inside the configured research output directory")
 
 
 def _read_json(path: Path) -> dict[str, Any]:

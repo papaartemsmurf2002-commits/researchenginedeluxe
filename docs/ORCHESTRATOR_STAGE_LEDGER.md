@@ -2,13 +2,296 @@
 
 Current stage: Stage R106 centralized historical data catalog
 Current stage owner: Codex Research Agent
-Stage status: in progress - WPR106-01 through WPR106-31 closed. The one-off durable data collection button is replaced by an R106 Historical Data Catalog source of truth. The completed migrated catalog under `refresh-historical-data-catalog-4dfa2700192f4b6fa1fa8fe833668cfb` is candidate-depth ready for BTCUSDT and ETHUSDT, with active generated readiness and full-window cycle/exact-discovery specs; this pre-profile local catalog truthfully reports no local modern-window profile artifacts, while later refresh code continues to write/index profiles when produced. Historical-data refresh uses a central verified archive cache, reports progress with ETA, reuses partial downloads and completed per-symbol fixture packs after interruption, tolerates longer Binance Vision DNS/VPN outages through env-tunable retry/backoff, and records Binance aggTrade source-order anomalies without discarding event-time bucketed data. Operator progress now reports active historical-cycle backtest-evaluation completion, rate, and ETA before final cycle manifests exist, and completed refresh journals no longer mask the active compute panel. The completed BTC R106 cycle is accepted as current required evidence. BTC exact discovery is complete at 570240/570240 durable trial records; WPR106-12 repaired final ledger schema normalization and rebuilt stale final ledgers/manifests from immutable trial JSONs. WPR106-13 adds a repeatable research analysis artifact step and next-agent handoff for feature/filter/KNN/exit interpretation; WPR106-14 wires that analysis step into the operator job API, artifact index, progress checklist, and required UI path; WPR106-15 adds a bounded one-button operator autopilot sequencer; WPR106-16 adds run-to-run deltas, bridge-compatible frozen-entry exit-lab artifacts with `simple_runner_v1`, modern-window profile generation/indexing for refreshed catalogs, and extends autopilot/UI sequencing through eligibility; WPR106-17 hardens frozen-entry exit-lab and candidate-eligibility fail-closed behavior and ensures autopilot runs all requested symbol cycle/discovery prerequisites before downstream analysis and eligibility; WPR106-18 adds bounded automatic autopilot step retries and one-time stale-autopilot restart requeueing; WPR106-19 records the second long performance/utilization study and identifies exact-discovery KNN/materialization plus final artifact rebuild/I/O as the largest safe speedup targets; WPR106-20 implements observed artifact accounting, finalization/process timing visibility, placeholder process-context avoidance, and operator UI/API performance wiring; WPR106-21 validates the migrated `main` checkout mirror and opens `ISSUE-R106-003` for active catalog handoff drift; WPR106-22 resolves that P1 by rebasing stale absolute catalog/spec paths to the current mirrored operator-run paths at read/isolation time without rewriting generated artifacts; WPR106-23 catalogs the external BTC/ETH perpetual strategy master report as research knowledge, including the full imported source and a detailed strategy/simulator/falsification knowledge base, without turning it into an implementation queue; WPR106-24 resolves the latest autopilot P1 by rebasing stale absolute discovery-manifest `required_outputs` at read time for operator candidate eligibility and the candidate-pack bridge; WPR106-25 resolves the follow-up autopilot P1 by rebasing stale absolute historical-cycle evidence outputs such as `ablation_report` at read time for operator candidate eligibility and candidate-pack gate evaluation; WPR106-26 runs a full repo mismatch/bug audit and resolves the remaining nested old-root metadata portability gap by rebasing repo-root-relative artifact paths such as `data/...`, `configs/...`, and `repo_root` metadata at read time; WPR106-27 resolves the latest large-run autopilot stall by replacing exhaustive 570240-trial eligibility preflight reads with large-run count/hash/sample auditing and by caching historical-cycle gate membership across discovery candidates; WPR106-28 resolves the operator transparency gap by writing active autopilot helper-step telemetry before each helper runs, surfacing current step/attempt/elapsed/ETA in the UI, and marking stale generated `running` autopilot manifests as `stale_review` when no active-step telemetry has updated recently; WPR106-29 materializes missing multiple-testing and validation-floor gate evidence for BTC/ETH discovery leads, adds explicit candidate-universe overlap/reason-count diagnostics, caps rejection Markdown output, and confirms both symbols have 0 discovery-to-cycle ranking overlap, so zero eligible candidate-pack rows are expected from current evidence; WPR106-30 adds a bounded discovery-lead materialization lane that emits descriptor-only BTC/ETH candidate specs with stable materialized IDs, source trial hashes, entry/prediction signatures, and explicit downstream gate requirements, without writing rankings, packs, or promotion claims. The latest retry completed ETH exact discovery to 570240/570240 trials before the WPR106-24 fix, and the next retry proved WPR106-24 effective by advancing to the now-fixed BTC cycle-evidence handoff failure. The WPR106-26 audit found no remaining P0/P1 repo mismatch after normalization and grouped validation. WPR106-27 proves current BTC eligibility evaluation completes in about 9 seconds from the checkout with `PYTHONPATH=src`, producing 22560 blocked research-only rows and 0 eligible candidates because discovery IDs do not overlap current cycle rankings. WPR106-28 found no active Python/autopilot process at audit time; the newest `running` autopilot manifest was stale generated evidence, not a live 16-hour process. WPR106-29 proves current full BTC/ETH bridge eligibility completes in about 17 seconds total from the checkout with `PYTHONPATH=src`, producing 22560 BTC and 23040 ETH blocked research-only rows with no candidate pack, no promotion-ready claim, and rejection Markdown capped while full Parquet rows are preserved. WPR106-30 materializes 24 descriptor-only leads per symbol from the completed exact-discovery ledgers, with 24 unique entry-event signatures per symbol and all outputs research-only/observe-only/promotion-false. WPR106-31 replays those 24 BTC and 24 ETH materialized descriptors through real discovery KNN/strategy-accounting artifact generation, writes 969870 BTC and 957643 ETH annotated entry signals across 24 candidates per symbol, and records bounded top-3 frozen-entry exit-lab slices that are blocked because simple runner exits do not improve over fixed holding. Exact discovery remains resumable from persisted trial records, large resumes no longer hydrate the full trial corpus before useful work, and default real-discovery process concurrency remains performance-first at 8 workers unless a future measured worker-count packet changes it. Next required work is empirical: run the replayed KNN prediction artifacts through a real historical-cycle overlay/backtest/ranking evidence path, then run full exit-lab, multiple-testing, validation floors, and candidate-pack eligibility without weakening candidate-ready gates. No candidate-ready trading claim exists until those gates pass.
-Last updated: 2026-05-30
+Stage status: in progress - WPR106-01 through WPR106-54 closed. The one-off durable data collection button is replaced by an R106 Historical Data Catalog source of truth. The completed migrated catalog under `refresh-historical-data-catalog-4dfa2700192f4b6fa1fa8fe833668cfb` is candidate-depth ready for BTCUSDT and ETHUSDT, with active generated readiness and full-window cycle/exact-discovery specs; this pre-profile local catalog truthfully reports no local modern-window profile artifacts, while later refresh code continues to write/index profiles when produced. Historical-data refresh uses a central verified archive cache, reports progress with ETA, reuses partial downloads and completed per-symbol fixture packs after interruption, tolerates longer Binance Vision DNS/VPN outages through env-tunable retry/backoff, and records Binance aggTrade source-order anomalies without discarding event-time bucketed data. Operator progress now reports active historical-cycle backtest-evaluation completion, rate, and ETA before final cycle manifests exist, and completed refresh journals no longer mask the active compute panel. The completed BTC R106 cycle is accepted as current required evidence. BTC exact discovery is complete at 570240/570240 durable trial records; WPR106-12 repaired final ledger schema normalization and rebuilt stale final ledgers/manifests from immutable trial JSONs. WPR106-13 adds a repeatable research analysis artifact step and next-agent handoff for feature/filter/KNN/exit interpretation; WPR106-14 wires that analysis step into the operator job API, artifact index, progress checklist, and required UI path; WPR106-15 adds a bounded one-button operator autopilot sequencer; WPR106-16 adds run-to-run deltas, bridge-compatible frozen-entry exit-lab artifacts with `simple_runner_v1`, modern-window profile generation/indexing for refreshed catalogs, and extends autopilot/UI sequencing through eligibility; WPR106-17 hardens frozen-entry exit-lab and candidate-eligibility fail-closed behavior and ensures autopilot runs all requested symbol cycle/discovery prerequisites before downstream analysis and eligibility; WPR106-18 adds bounded automatic autopilot step retries and one-time stale-autopilot restart requeueing; WPR106-19 records the second long performance/utilization study and identifies exact-discovery KNN/materialization plus final artifact rebuild/I/O as the largest safe speedup targets; WPR106-20 implements observed artifact accounting, finalization/process timing visibility, placeholder process-context avoidance, and operator UI/API performance wiring; WPR106-21 validates the migrated `main` checkout mirror and opens `ISSUE-R106-003` for active catalog handoff drift; WPR106-22 resolves that P1 by rebasing stale absolute catalog/spec paths to the current mirrored operator-run paths at read/isolation time without rewriting generated artifacts; WPR106-23 catalogs the external BTC/ETH perpetual strategy master report as research knowledge, including the full imported source and a detailed strategy/simulator/falsification knowledge base, without turning it into an implementation queue; WPR106-24 resolves the latest autopilot P1 by rebasing stale absolute discovery-manifest `required_outputs` at read time for operator candidate eligibility and the candidate-pack bridge; WPR106-25 resolves the follow-up autopilot P1 by rebasing stale absolute historical-cycle evidence outputs such as `ablation_report` at read time for operator candidate eligibility and candidate-pack gate evaluation; WPR106-26 runs a full repo mismatch/bug audit and resolves the remaining nested old-root metadata portability gap by rebasing repo-root-relative artifact paths such as `data/...`, `configs/...`, and `repo_root` metadata at read time; WPR106-27 resolves the latest large-run autopilot stall by replacing exhaustive 570240-trial eligibility preflight reads with large-run count/hash/sample auditing and by caching historical-cycle gate membership across discovery candidates; WPR106-28 resolves the operator transparency gap by writing active autopilot helper-step telemetry before each helper runs, surfacing current step/attempt/elapsed/ETA in the UI, and marking stale generated `running` autopilot manifests as `stale_review` when no active-step telemetry has updated recently; WPR106-29 materializes missing multiple-testing and validation-floor gate evidence for BTC/ETH discovery leads, adds explicit candidate-universe overlap/reason-count diagnostics, caps rejection Markdown output, and confirms both symbols have 0 discovery-to-cycle ranking overlap, so zero eligible candidate-pack rows are expected from current evidence; WPR106-30 adds a bounded discovery-lead materialization lane that emits descriptor-only BTC/ETH candidate specs with stable materialized IDs, source trial hashes, entry/prediction signatures, and explicit downstream gate requirements, without writing rankings, packs, or promotion claims. The latest retry completed ETH exact discovery to 570240/570240 trials before the WPR106-24 fix, and the next retry proved WPR106-24 effective by advancing to the now-fixed BTC cycle-evidence handoff failure. The WPR106-26 audit found no remaining P0/P1 repo mismatch after normalization and grouped validation. WPR106-27 proves current BTC eligibility evaluation completes in about 9 seconds from the checkout with `PYTHONPATH=src`, producing 22560 blocked research-only rows and 0 eligible candidates because discovery IDs do not overlap current cycle rankings. WPR106-28 found no active Python/autopilot process at audit time; the newest `running` autopilot manifest was stale generated evidence, not a live 16-hour process. WPR106-29 proves current full BTC/ETH bridge eligibility completes in about 17 seconds total from the checkout with `PYTHONPATH=src`, producing 22560 BTC and 23040 ETH blocked research-only rows with no candidate pack, no promotion-ready claim, and rejection Markdown capped while full Parquet rows are preserved. WPR106-30 materializes 24 descriptor-only leads per symbol from the completed exact-discovery ledgers, with 24 unique entry-event signatures per symbol and all outputs research-only/observe-only/promotion-false. WPR106-31 replays those 24 BTC and 24 ETH materialized descriptors through real discovery KNN/strategy-accounting artifact generation, writes 969870 BTC and 957643 ETH annotated entry signals across 24 candidates per symbol, and records bounded top-3 frozen-entry exit-lab slices that are blocked because simple runner exits do not improve over fixed holding. WPR106-42 adds candidate-scoped historical-cycle overlay routing so those replayed prediction frames can be mapped to generated cycle candidates without global feature-set leakage. WPR106-43 restores discovery lead replay spec compatibility after schema hardening so `discovery-lead-replay-spec-v1` remains an accepted research-only discovery-run specialization. WPR106-44 preflights all 48 replay leads and finds zero exact replay candidates are representable by the current historical-cycle candidate contract, so no overlay cycle specs or candidate packs were emitted. WPR106-45 codifies that exact replay-overlay preflight as reusable code and tests, validates prediction/manifest boundary evidence, reruns BTC/ETH WPR106-31 artifacts, and again finds 48/48 replay leads unrepresentable with no overlay specs or packs emitted. WPR106-46 through WPR106-54 add exact replay-overlay domain support, full exit-lab and negative-control audits, first-class negative-control hardening, replay-scope multiple-testing/validation-floor materialization, full-codebase validation/performance hardening, final complete-review publish hardening, connector hardening, operator UI reliability hardening, and finish-development closeout documentation while preserving zero eligible replay rows and no candidate packs. No candidate-ready trading claim exists until gates pass.
+Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
+in the stage status line and is closed as the Option A exact
+replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`
+historical-cycle support and replay-domain values now make all 48 WPR106-31
+replay leads representable; 48 singleton overlay specs were generated locally;
+bounded BTC/ETH smokes prove candidate-scoped overlay provenance reaches
+rankings, backtest index, and gate reports. Candidate packs remain blocked,
+`ISSUE-R104-001` remains open, and no candidate-ready or promotion-ready claim
+exists.
+Current WPR106-47 update: WPR106-47 adds a full replay exit-lab and
+negative-control audit packet after WPR106-46. It verifies 48 full frozen-entry
+exit-lab rows from WPR106-31, all blocked by no simple-runner improvement over
+fixed holding; records full-window evidence separately from missing
+modern-window profiles; records 192 blocked negative-control rows for missing
+shuffled-label, shifted-context, no-KNN, and no-regime control artifacts; and
+runs BTC/ETH eligibility bridge audits with 48 blocked rows, zero eligible
+rows, no candidate packs, and no live/paper/promotion claim.
+Current WPR106-48 update: WPR106-48 adds first-class negative-control
+artifacts for shuffled-label, shifted-context, no-KNN overlay, and no-regime
+backend controls. They carry `artifact_family: negative_control`,
+`control_only: true`, `candidate_evidence: false`, and promotion disabled. The
+generated 192-row control artifact remains fail-closed because replay profile
+provenance, validation manifests, modern-window evidence, and selected source
+label/timestamp inputs are missing. Candidate-pack bridge and pack validation
+now reject negative-control inputs before pack assembly, replay-scoped bridge
+inputs can require replay profile, validation, exact lineage, and modern-window
+evidence, and old replay ledger rows missing newer compatibility columns are
+normalized at read time without rewriting WPR106-31 artifacts. Eligibility
+remains 0/48 and no candidate pack or live/paper/promotion claim exists.
+Current WPR106-49 update: WPR106-49 materializes replay-scope
+multiple-testing and validation-floor manifests for all 48 WPR106-31 replay
+leads and refreshes BTC/ETH eligibility with those manifests wired in. The
+missing `multiple_testing_manifest_required` and
+`validation_floor_manifest_required` blockers are removed for this evidence
+scope, but all 48 replay rows remain blocked by exit-lab no-improvement,
+multiple-testing, diagnostic validation-floor, and partial cycle-ranking
+evidence. No source-code changes were required, no candidate pack was written,
+and no live/paper/promotion claim exists.
+Current WPR106-50 update: WPR106-50 runs full-codebase compile, full-suite,
+grouped, benchmark-focused, and CLI performance validation. It fixes checked
+repo config relative-path resolution in `benchmark-research-experiment`, adds a
+regression test, and removes repeated legacy pandas downcast warnings in the
+Lorentzian signal flow. Final validation is 1539 passed, 1 skipped, 1 warning;
+CLI benchmarks pass for historical medium, discovery deep, hardware
+utilization, and Phase 1 research experiment. No candidate pack or
+live/paper/promotion claim exists.
+Current WPR106-51 update: WPR106-51 performs the final complete-review
+hardening and publish pass. Compile, pip check, contracts, focused
+touched-path validation, full-suite validation, and diff hygiene pass; the
+known-issue template no longer resembles a real open issue to naive counters;
+retry-agent findings in replay provenance, negative-control row trust,
+runtime-mode-change filtering, benchmark nested path resolution, and
+Lorentzian warning cleanup are fixed; final full-suite validation is 1544
+passed, 1 skipped, 1 warning. `.pytest_cache` and root-level handoff prompts
+are left unstaged. No candidate pack, live/paper/order/sizing/runtime, or
+promotion claim exists.
+Current WPR106-52 update: WPR106-52 installs GitHub CLI 2.93.0, records the
+external desktop GitHub connector startup timeout, hardens standalone research
+UI token/cross-origin writes, boundary-review labeling, artifact scan pruning,
+research output-root validation, spec-relative path resolution, and
+negative-control no-effect guards. Final full-suite validation is 1552 passed,
+1 skipped, 2 warnings. No candidate pack, live/paper/order/sizing/runtime, or
+promotion claim exists.
+Current WPR106-53 update: WPR106-53 completes the operator UI logic
+reliability audit. It hardens logout CSRF handling, mutating JSON-route
+validation, public health redaction, worker-time research/live-boundary checks,
+event-loop-safe artifact scans, browser command debounce/error states,
+symbol-scoped research evidence selection, backend-owned BTC/ETH evidence
+bundle sequencing, and standalone research UI bounded scans/links. Final
+full-suite validation is 1561 passed, 1 skipped, 1 XGBoost environment warning.
+No candidate pack, live/paper/order/sizing/runtime, or promotion claim exists.
+Current WPR106-54 update: WPR106-54 completes the finish-development closeout
+documentation pass. The pre-closeout PR #2 head is verified open, draft,
+mergeable, and green at `3681fc9`; PR #1 is verified superseded because PR #2
+contains PR #1's head plus four additional commits. No draft PRs were merged,
+closed, marked ready, or deleted without explicit authorization. Fresh baseline
+validation passes:
+`python -m compileall -q src/tradingbotsuite` and
+`PYTHONPATH=src python -m pytest tests/contracts -q` with 441 passed.
+`ISSUE-R104-001` remains the only open P1 blocker, so no candidate-ready or
+promotion-ready claim exists.
+Last updated: 2026-06-01
+
+WPR106-32 active-index update: the current local checkout is `main`, treated as
+the migrated R106 research checkout mirror. `docs/ACTIVE_INDEX.md` is now the
+active navigation and blocker index. Newly registered P0 validation and
+boundary issues (`ISSUE-R106-009` through `ISSUE-R106-014`) block stage
+advancement and empirical expansion until resolved. The prior WPR106-31 replay
+evidence remains useful research evidence, but no candidate-ready or
+promotion-ready claim exists.
+
+WPR106-33 closes `ISSUE-R106-009` by adding
+`.github/workflows/research-validation.yml`, a clean Python 3.11 editable
+install baseline with `pip check`, compile, contracts, and focused
+live/artifact boundary tests. Open P0 blockers remain and still block empirical
+expansion.
+
+WPR106-34 closes `ISSUE-R106-010` by parsing explicit synthetic fallback
+policy, rejecting no-source auto-synthesis, rejecting ambiguous local fixture
+directories, and writing a required source-selection manifest for historical
+research cycles. Open P0 blockers remain and still block empirical expansion.
+
+WPR106-35 closes `ISSUE-R106-011` by adding `LabelSpec` and
+label/event-end-aware split purge. Discovery labels now stamp event-end times,
+train-only split consumers honor explicit event-safe train indices, historical
+cycle split manifests record purge-method evidence, and fixed-bar purge remains
+only as an identified fallback when no event-end metadata is available. Open P0
+blockers remain and still block empirical expansion.
+
+WPR106-36 closes `ISSUE-R106-012` by making
+`lower_timeframe_execution_path` use lower-timeframe latency fills in the
+reference research simulator. Entry fills now select the first lower-timeframe
+open at or after the latency target, record fill proof metadata, and fail
+closed when lower-frame coverage is missing. Vector/CUDA accelerated paths
+remain unsupported for lower-timeframe entry sources. Open P0 blockers remain
+and still block empirical expansion.
+
+WPR106-37 closes `ISSUE-R106-013` by removing credential-file implied
+Hyperliquid live/testnet enablement. Local `hyperliquidtestnet.txt` data can
+still supply passive testnet endpoint, signer, and account values, but
+`enable_live` is now false unless `TBS_HL_ENABLE_LIVE` is explicitly truthy.
+Live preflight has a regression proving file-supplied key/account data still
+blocks on missing explicit live enablement. Open P0 blockers remain and still
+block empirical expansion.
+
+WPR106-38 closes `ISSUE-R106-014` by adding
+`validate_artifact_for_runtime_mode()` and routing live preflight plus runtime
+artifact dispatch through it before scorer or shadow-loader construction.
+Unknown or mode-ambiguous manifests fail closed, live mode now requires explicit
+runtime allowance and live-boundary fields, paper runtime artifact loading is
+rejected until an explicit later contract exists, and shadow runtime loading is
+restricted to explicit shadow promotion candidates that pass the existing
+shadow validator. The active P0 blocker count is now zero; empirical expansion
+can resume only through the existing research-only gates.
+
+WPR106-39 normalizes active discovery regime backend semantics without changing
+model fitting, strategies, or candidate gates. Discovery trial templates, KNN
+specs/manifests, ledgers, run manifests, and artifact identity now carry
+`regime_model_backend`; GMM-backed evidence is stamped as
+`sklearn.mixture.GaussianMixture`, no-regime evidence is stamped as `none`, and
+legacy `hmm_*` columns remain compatibility aliases alongside canonical
+`regime_*` fields.
+
+WPR106-40 adds venue-aware research cost/fill profile metadata without changing
+trade accounting formulas, strategies, candidate gates, or execution modes.
+Backtest manifests and cache keys now carry registered cost profile and fill
+profile evidence; historical-cycle cost-stress rows expose source venue,
+execution venue, evidence scope, and explicit `not_hyperliquid_execution_proof`
+metadata while preserving the required 11-scenario stress set and existing
+survival gate semantics.
+
+WPR106-41 adds active config schema and roundtrip validation without changing
+research behavior, gates, strategies, execution semantics, or runtime modes.
+Historical-cycle and discovery-run spec parsers now reject wrong
+`spec_version` values and unknown active nested parser fields, expose
+versioned schema summaries, and have focused roundtrip tests proving
+`from_payload(to_payload())` preserves effective config contracts.
+
+WPR106-42 adds candidate-scoped materialized prediction overlay routing without
+changing strategies, candidate gates, execution semantics, runtime modes, live
+behavior, or promotion behavior. Historical-cycle specs can now declare
+candidate-scoped KNN prediction overlays keyed to generated candidate IDs or
+cache keys; the runner builds candidate-specific feature frames for matched
+candidates, fails closed on unsafe or unmatched overlays, and records overlay
+provenance in rankings, backtest index, and gate reports. No replay-overlay
+cycle outputs or candidate packs were generated by this infrastructure packet.
+
+WPR106-43 restores discovery lead replay spec compatibility after the WPR106-41
+schema guard. `discovery-lead-replay-spec-v1` is now an accepted discovery-run
+specialization again, `replay_metadata` is a known top-level replay field, and
+arbitrary wrong discovery `spec_version` values still fail closed. No generated
+replay artifacts, discovery behavior, candidate gates, live behavior, or pack
+behavior changed.
+
+WPR106-44 preflights all WPR106-31 BTCUSDT/ETHUSDT replay leads for exact
+candidate-scoped historical-cycle overlay execution. All 48 prediction Parquets
+and KNN manifests exist, but zero leads are exactly representable by the
+current historical-cycle `hmm_knn_local_analog_filter_v2` candidate contract
+because the replay leads use 1h horizons, 4-bar spacing, and multiple threshold
+values outside the current strategy metadata domain. No overlay cycle specs,
+candidate packs, or promotion claims were emitted; zero representable exact
+replay candidates is valid evidence.
+
+WPR106-45 codifies the WPR106-44 exact replay-overlay preflight as reusable
+research-only code and contract tests. The reusable preflight checks strategy
+plugin support, current strategy parameter domains, KNN prediction and manifest
+existence, manifest research-boundary flags, split safety, prediction path
+match, and prediction SHA match before any overlay spec can be trusted. A fresh
+BTC/ETH rerun from the reusable utility checked all 48 WPR106-31 replay leads,
+found all 48 prediction Parquets and KNN manifests, found 0 exact representable
+candidates, and emitted no overlay specs or candidate packs.
+
+WPR106-46 implements the Option A exact replay-overlay domain and bounded
+cycle-smoke lane. Exact `1h` support plus explicit replay-domain values make all
+48 WPR106-31 replay leads representable, and the replay preflight now emits one
+singleton historical-cycle overlay spec per representable lead. Bounded BTC and
+ETH singleton cycles prove candidate-scoped overlay provenance through rankings,
+backtest index, and gate reports while preserving fail-closed candidate gates:
+zero pack-eligible rows and no candidate packs emitted. `ISSUE-R104-001`
+remains open.
+
+WPR106-47 implements the full replay exit-lab and negative-control audit lane.
+The packet writes a WPR106-47 audit manifest with separate full exit-lab,
+window-scope, and control rows; verifies 48 WPR106-31 full frozen-entry
+exit-lab gates are blocked; records modern-window and negative-control evidence
+as explicit missing-artifact blockers; and writes BTC/ETH eligibility bridge
+audits with 0 eligible rows and no candidate packs.
+
+WPR106-48 implements first-class negative-control artifacts and bridge
+hardening. It writes a WPR106-48 negative-control manifest with 192
+control-only rows across shuffled-label, shifted-context, no-KNN overlay, and
+no-regime backend families; all rows remain blocked by missing replay profile
+provenance, validation manifest, modern-window evidence, and selected source
+label/timestamp inputs. Candidate-pack bridge and pack validation now reject
+negative-control inputs, replay-scoped bridge requirements fail closed when
+required provenance is missing, and historical replay ledgers missing newer
+compatibility columns are normalized at read time. Refreshed BTC/ETH bridge
+audits have 48 blocked rows, no replay-ledger schema mismatch blocker, zero
+eligible rows, and no candidate packs.
+
+WPR106-49 implements replay-scope validation manifest materialization and
+eligibility refresh. Existing multiple-testing and validation-floor builders
+generated BTC/ETH gate manifests from the WPR106-31 replay discovery manifests,
+covering 24 leads per symbol. Refreshed eligibility no longer reports missing
+multiple-testing or validation-floor manifests, but both symbols still have 24
+blocked eligibility rows, zero eligible rows, and no candidate packs.
+
+WPR106-50 implements the full-codebase validation and diagnostic performance
+audit. It fixes research-experiment benchmark source-relative child spec
+resolution, adds regression coverage, removes legacy pandas boolean-shift
+warnings, runs full and grouped validation, runs CLI benchmark evidence, and
+records that the final full suite passes with 1539 tests, 1 skipped test, and 1
+environment warning.
+
+WPR106-51 implements the complete-review hardening and publish packet. It
+opens a final review packet, runs subagent and local review tracks, confirms
+compile/pip/contracts/full-suite/focused validation, fixes retry-agent review
+findings in replay provenance, negative-control row validation,
+runtime-mode-change filtering, benchmark nested path resolution, and
+Lorentzian warning cleanup, tightens the `docs/KNOWN_ISSUES.md` template
+placeholder, documents unstaged cache/handoff files, and preserves zero
+eligible rows, no candidate packs, and no live/paper/order/sizing/runtime/
+promotion authorization.
 
 ## Stage entry decision
 
 - Prior stage completed: yes
 - Evidence links:
+  - `docs/stage_reports/STAGE_R106_COMPLETE_REVIEW_HARDENING_AND_PUBLISH_REPORT.md`
+  - `docs/work_packets/WPR106-51-complete-review-hardening-and-publish.md`
+  - `docs/stage_reports/STAGE_R106_FULL_CODEBASE_VALIDATION_AND_PERFORMANCE_AUDIT_REPORT.md`
+  - `docs/work_packets/WPR106-50-full-codebase-validation-and-performance-audit.md`
+  - `docs/stage_reports/STAGE_R106_REPLAY_SCOPE_VALIDATION_MANIFESTS_AND_ELIGIBILITY_REFRESH_REPORT.md`
+  - `docs/work_packets/WPR106-49-replay-scope-validation-manifests-and-eligibility-refresh.md`
+  - `docs/stage_reports/STAGE_R106_FIRST_CLASS_NEGATIVE_CONTROLS_MODERN_WINDOW_HARDENING_REPORT.md`
+  - `docs/work_packets/WPR106-48-first-class-negative-controls-modern-window-and-hardening.md`
+  - `docs/stage_reports/STAGE_R106_FULL_REPLAY_EXIT_LAB_AND_NEGATIVE_CONTROLS_REPORT.md`
+  - `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls.md`
+  - `docs/stage_reports/STAGE_R106_EXACT_REPLAY_OVERLAY_DOMAIN_AND_CYCLE_REPORT.md`
+  - `docs/work_packets/WPR106-46-exact-replay-overlay-domain-and-cycle.md`
+  - `docs/stage_reports/STAGE_R106_REPLAY_OVERLAY_PREFLIGHT_CONTRACT_REPORT.md`
+  - `docs/work_packets/WPR106-45-replay-overlay-preflight-contract.md`
+  - `docs/stage_reports/STAGE_R106_CONFIG_SCHEMA_ROUNDTRIP_VALIDATION_REPORT.md`
+  - `docs/work_packets/WPR106-41-config-schema-roundtrip-validation.md`
+  - `docs/stage_reports/STAGE_R106_CANDIDATE_SCOPED_REPLAY_OVERLAY_CYCLE_GATES_REPORT.md`
+  - `docs/work_packets/WPR106-42-candidate-scoped-replay-overlay-cycle-gates.md`
+  - `docs/stage_reports/STAGE_R106_DISCOVERY_REPLAY_SPEC_SCHEMA_COMPATIBILITY_REPORT.md`
+  - `docs/work_packets/WPR106-43-discovery-replay-spec-schema-compatibility.md`
+  - `docs/stage_reports/STAGE_R106_REPLAY_OVERLAY_CYCLE_SPEC_PREFLIGHT_REPORT.md`
+  - `docs/work_packets/WPR106-44-replay-overlay-cycle-spec-preflight.md`
+  - `docs/stage_reports/STAGE_R106_VENUE_AWARE_COST_FILL_PROFILES_REPORT.md`
+  - `docs/work_packets/WPR106-40-venue-aware-cost-fill-profiles.md`
+  - `docs/stage_reports/STAGE_R106_REGIME_BACKEND_SEMANTICS_REPORT.md`
+  - `docs/work_packets/WPR106-39-regime-backend-semantics.md`
+  - `docs/stage_reports/STAGE_R106_ACTIVE_INDEX_RESEARCH_IDENTITY_REPORT.md`
+  - `docs/work_packets/WPR106-32-active-index-research-identity.md`
+  - `docs/stage_reports/STAGE_R106_CI_REPRODUCIBLE_RESEARCH_INSTALL_REPORT.md`
+  - `docs/work_packets/WPR106-33-ci-reproducible-research-install.md`
+  - `docs/stage_reports/STAGE_R106_FAIL_CLOSED_SYNTHETIC_SOURCE_SELECTION_REPORT.md`
+  - `docs/work_packets/WPR106-34-fail-closed-synthetic-source-selection.md`
+  - `docs/stage_reports/STAGE_R106_LABEL_EVENT_END_AWARE_PURGE_REPORT.md`
+  - `docs/work_packets/WPR106-35-label-event-end-aware-purge.md`
+  - `docs/stage_reports/STAGE_R106_LOWER_TIMEFRAME_ENTRY_PRICING_REPORT.md`
+  - `docs/work_packets/WPR106-36-lower-timeframe-entry-pricing.md`
+  - `docs/stage_reports/STAGE_R106_EXPLICIT_HYPERLIQUID_LIVE_ENABLE_REPORT.md`
+  - `docs/work_packets/WPR106-37-explicit-hyperliquid-live-enable.md`
+  - `docs/stage_reports/STAGE_R106_MODE_AWARE_ARTIFACT_RUNTIME_VALIDATION_REPORT.md`
+  - `docs/work_packets/WPR106-38-mode-aware-artifact-runtime-validation.md`
+  - `docs/ACTIVE_INDEX.md`
   - `docs/stage_reports/STAGE_R106_DISCOVERY_LEAD_REPLAY_ENTRY_EVIDENCE_REPORT.md`
   - `docs/work_packets/WPR106-31-discovery-lead-replay-entry-evidence.md`
   - `docs/stage_reports/STAGE_R106_DISCOVERY_LEAD_MATERIALIZATION_LANE_REPORT.md`
@@ -125,7 +408,41 @@ Last updated: 2026-05-30
   - `tests/contracts/test_feature_contracts.py`
   - `docs/stage_reports/STAGE_R96_GPU_ACCELERATED_STABILITY_REGION_SEARCH_REPORT.md`
 - Known blockers accepted into this stage:
-  - No P0 issues are open.
+  - Open P0 issue count is zero after WPR106-38. The P0 safety boundaries still
+    govern all later research work and must not be weakened.
+  - WPR106-39 preserves the non-negotiable regime naming rule by stamping
+    active GMM/no-regime backend evidence in machine-readable fields while
+    retaining legacy HMM/KNN compatibility names.
+  - WPR106-40 preserves the Binance-versus-Hyperliquid boundary by stamping
+    venue-aware cost/fill research evidence as historical research only and not
+    Hyperliquid execution proof.
+  - WPR106-41 preserves config-boundary safety by failing closed on misspelled
+    active parser fields and wrong active spec versions while retaining known
+    documentary metadata in historical-cycle configs.
+  - `ISSUE-R106-014` is resolved by WPR106-38. Runtime artifact validation is
+    now mode-aware, unknown/mode-ambiguous manifests fail closed, paper/live
+    runtime loading rejects unsupported artifacts, and shadow loading requires
+    explicit shadow promotion candidates.
+  - `ISSUE-R106-013` is resolved by WPR106-37. Hyperliquid credential files
+    can provide passive signer/account/endpoint values, but cannot imply
+    `enable_live`; explicit `TBS_HL_ENABLE_LIVE=true` is required.
+  - `ISSUE-R106-012` is resolved by WPR106-36. The reference simulator now
+    uses lower-timeframe open fills at or after the latency target for
+    `lower_timeframe_execution_path`, records entry proof metadata, and fails
+    closed when lower-frame entry coverage is unavailable.
+  - `ISSUE-R106-011` is resolved by WPR106-35. The split engine now supports
+    `LabelSpec`, event-end-aware purge, compact train-index evidence, and
+    discovery/historical-cycle wiring for label end-time metadata.
+  - `ISSUE-R106-009` is resolved by WPR106-33. The repository now has a
+    checked-in clean Python 3.11 CI baseline for editable install, dependency
+    consistency, compile, contracts, and live/artifact boundary tests.
+  - `ISSUE-R106-010` is resolved by WPR106-34. Historical cycles now fail
+    closed instead of silently synthesizing with no source, explicit synthetic
+    fixtures are test/demo/benchmark scoped, ambiguous local fixture directories
+    are rejected, and source-selection manifests are required outputs.
+  - `ISSUE-R106-008` is resolved by WPR106-32. The active index now clarifies
+    ResearchEngineDeluxe identity, current checkout state, latest R106
+    evidence, open blockers, and research-only boundaries.
   - `ISSUE-R104-001` is open. Compact checksum-verified BTCUSDT/ETHUSDT
     Binance Vision multi-window fixture packs are valid for screening, but
     expanded durable primary-bar fixtures are still required for
@@ -872,6 +1189,25 @@ WPR105-107 implementation note:
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR106-53-operator-ui-logic-reliability-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-53-operator-ui-logic-reliability-audit.md`, `docs/work_packets/WPR106-53-operator-ui-logic-reliability-audit-progress.jsonl`, `docs/stage_reports/STAGE_R106_OPERATOR_UI_LOGIC_RELIABILITY_AUDIT_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/web/app.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/base.html`, `src/tradingbotsuite/web/templates/control.html`, `src/tradingbotsuite/web/templates/overview.html`, `src/tradingbotsuite/web/templates/predictions.html`, `src/tradingbotsuite/web/templates/research.html`, `src/tradingbotsuite/web/templates/timeline.html`, `src/tradingbotsuite/ui/research_app.py`, `src/tradingbotsuite/ui/templates/research/artifacts.html`, `src/tradingbotsuite/ui/templates/research/experiments.html`, `src/tradingbotsuite/ui/templates/research/index.html`, `src/tradingbotsuite/operator_console.py`, `tests/test_engine.py`, `tests/test_operator_ui.py`, `tests/tradingbotsuite/test_engine.py`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/integration/test_research_ui.py` | Operator UI reliability audit: logout CSRF, mutating JSON validation, public health redaction, worker-time research/live-boundary checks, artifact scan offloading, browser debounce/error states, symbol-scoped evidence actions, backend autopilot evidence bundle sequencing, and standalone research UI bounded scans/links implemented; inline script parse, compile, contracts, focused, broad operator/engine, and full-suite validation passed, final full suite 1561 passed/1 skipped/1 warning, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-52-github-cli-ui-connector-review-and-optimization | Codex Research Agent | closed | `docs/work_packets/WPR106-52-github-cli-ui-connector-review-and-optimization.md`, `docs/work_packets/WPR106-52-github-cli-ui-connector-review-and-optimization-progress.jsonl`, `docs/stage_reports/STAGE_R106_GITHUB_CLI_UI_CONNECTOR_REVIEW_AND_OPTIMIZATION_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/ui/research_app.py`, `src/tradingbotsuite/ui/templates/research/index.html`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research/data_pipeline.py`, `src/tradingbotsuite/research/experiment_runner.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_discovery/replay_evidence_controls.py`, `tests/integration/test_research_ui.py`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/tradingbotsuite/test_data_pipeline.py`, `tests/tradingbotsuite/test_experiment_runner.py`, `tests/historical/test_full_cycle_synthetic.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `tests/historical/test_research_cycle_benchmark.py`, `tests/research_discovery/test_replay_evidence_controls.py` | GitHub CLI installed and verified at 2.93.0 but unauthenticated; desktop GitHub connector MCP startup timeout recorded; standalone research UI write API token/cross-origin guard, boundary-review labeling, operator trials scan pruning, research output-root fail-closed checks, spec-relative stage path resolution, and negative-control no-effect guards implemented; compile/pip/contracts/focused/full-suite validation passed, final full suite 1552 passed/1 skipped/2 warnings, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-51-complete-review-hardening-and-publish | Codex Research Agent | closed | `docs/work_packets/WPR106-51-complete-review-hardening-and-publish.md`, `docs/work_packets/WPR106-51-complete-review-hardening-and-publish-progress.jsonl`, `docs/stage_reports/STAGE_R106_COMPLETE_REVIEW_HARDENING_AND_PUBLISH_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/research_discovery/candidate_pack_bridge.py`, `src/tradingbotsuite/research_discovery/replay_evidence_controls.py`, `src/tradingbotsuite/research_artifacts/candidate_pack.py`, `src/tradingbotsuite/research/experiment_runner.py`, `src/tradingbot/lorentz_lc.py`, `tests/research_discovery/test_candidate_pack_bridge.py`, `tests/research_discovery/test_replay_evidence_controls.py`, `tests/research_artifacts/test_candidate_pack.py`, `tests/tradingbotsuite/test_experiment_runner.py`, `tests/test_strategy_flow.py` | Complete review hardening and publish packet: replay provenance file/hash validation, negative-control row hash/boundary validation, runtime-mode-change evidence rejection, benchmark nested source-relative path resolution, Lorentzian warning cleanup, known-issue template hardening, compile/pip/contracts/focused/full-suite/diff validation passed, final full suite 1544 passed/1 skipped/1 warning, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-50-full-codebase-validation-and-performance-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-50-full-codebase-validation-and-performance-audit.md`, `docs/work_packets/WPR106-50-full-codebase-validation-and-performance-audit-progress.jsonl`, `docs/stage_reports/STAGE_R106_FULL_CODEBASE_VALIDATION_AND_PERFORMANCE_AUDIT_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research/experiment_runner.py`, `tests/tradingbotsuite/test_experiment_runner.py`, `src/tradingbot/lorentz_lc.py` | Full-codebase validation/performance audit: benchmark-research-experiment source-relative child spec path fix, regression test, legacy pandas warning cleanup, compile/pip/full/grouped/benchmark/CLI validation passed, final full suite 1539 passed/1 skipped/1 warning, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-49-replay-scope-validation-manifests-and-eligibility-refresh | Codex Research Agent | closed | `docs/work_packets/WPR106-49-replay-scope-validation-manifests-and-eligibility-refresh.md`, `docs/work_packets/WPR106-49-replay-scope-validation-manifests-and-eligibility-refresh-progress.jsonl`, `docs/stage_reports/STAGE_R106_REPLAY_SCOPE_VALIDATION_MANIFESTS_AND_ELIGIBILITY_REFRESH_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md` | Replay-scope multiple-testing and validation-floor manifests materialized for 24 BTC and 24 ETH WPR106-31 replay leads, refreshed eligibility has no missing-manifest blockers, all 48 rows remain blocked, zero eligible rows, no source-code changes, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-48-first-class-negative-controls-modern-window-and-hardening | Codex Research Agent | closed | `docs/work_packets/WPR106-48-first-class-negative-controls-modern-window-and-hardening.md`, `docs/work_packets/WPR106-48-first-class-negative-controls-modern-window-and-hardening-progress.jsonl`, `docs/stage_reports/STAGE_R106_FIRST_CLASS_NEGATIVE_CONTROLS_MODERN_WINDOW_HARDENING_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/research_discovery/replay_evidence_controls.py`, `src/tradingbotsuite/research_discovery/candidate_pack_bridge.py`, `src/tradingbotsuite/research_artifacts/candidate_pack.py`, `tests/research_discovery/test_replay_evidence_controls.py`, `tests/research_discovery/test_candidate_pack_bridge.py`, `tests/research_artifacts/test_candidate_pack.py` | First-class negative-control artifacts for shuffled-label, shifted-context, no-KNN overlay, and no-regime backend controls; bridge/pack rejection of negative-control evidence; replay-ledger read-side compatibility normalization; 48 blocked eligibility rows, zero eligible rows, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-47-full-replay-exit-lab-and-negative-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls.md`, `docs/work_packets/WPR106-47-full-replay-exit-lab-and-negative-controls-progress.jsonl`, `docs/stage_reports/STAGE_R106_FULL_REPLAY_EXIT_LAB_AND_NEGATIVE_CONTROLS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/research_discovery/replay_evidence_controls.py`, `src/tradingbotsuite/research_discovery/__init__.py`, `tests/research_discovery/test_replay_evidence_controls.py` | Full replay exit-lab/control audit: 48 full WPR106-31 frozen-entry exit-lab rows verified and blocked, full-window evidence separated from missing modern-window profiles, 192 negative-control rows blocked for missing first-class control artifacts, BTC/ETH eligibility bridge audits with 0 eligible rows, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-46-exact-replay-overlay-domain-and-cycle | Codex Research Agent | closed | `docs/work_packets/WPR106-46-exact-replay-overlay-domain-and-cycle.md`, `docs/work_packets/WPR106-46-progress.jsonl`, `docs/stage_reports/STAGE_R106_EXACT_REPLAY_OVERLAY_DOMAIN_AND_CYCLE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/**`, `tests/**` | Option A exact replay-overlay implementation: explicit `1h` and replay-domain strategy support, exact singleton spec drafts for 48/48 WPR106-31 replay leads, bounded BTC/ETH cycle smokes with overlay provenance in rankings/backtest/gates, zero pack-eligible rows, no candidate packs, full validation passed, `ISSUE-R104-001` kept open, and no live/paper/order/sizing/promotion authorization. |
+| WPR106-45-replay-overlay-preflight-contract | Codex Research Agent | closed | `docs/work_packets/WPR106-45-replay-overlay-preflight-contract.md`, `docs/work_packets/WPR106-45-progress.jsonl`, `src/tradingbotsuite/research_discovery/replay_overlay_preflight.py`, `src/tradingbotsuite/research_discovery/__init__.py`, `tests/research_discovery/test_replay_overlay_preflight.py`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_REPLAY_OVERLAY_PREFLIGHT_CONTRACT_REPORT.md` | Reusable exact replay-overlay preflight utility, manifest validator, focused contract tests, BTC/ETH WPR106-31 preflight rerun with 48/48 unrepresentable exact replay leads, 48 prediction artifacts and manifests found, 0 overlay specs, 0 candidate packs, and passing compile/research-discovery/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_REPLAY_OVERLAY_PREFLIGHT_CONTRACT_REPORT.md`. |
+| WPR106-41-config-schema-roundtrip-validation | Codex Research Agent | closed | `docs/work_packets/WPR106-41-config-schema-roundtrip-validation.md`, `docs/work_packets/WPR106-41-progress.jsonl`, `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_discovery/spec.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/research_discovery/test_discovery_spec.py`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_CONFIG_SCHEMA_ROUNDTRIP_VALIDATION_REPORT.md` | Versioned schema summaries, fail-closed wrong-version and unknown active-field rejection for historical-cycle/discovery-run specs, parser roundtrip tests, and passing compile/focused research-cycle/discovery/contracts/discovery-parser/diff validation recorded in `docs/stage_reports/STAGE_R106_CONFIG_SCHEMA_ROUNDTRIP_VALIDATION_REPORT.md`. |
+| WPR106-40-venue-aware-cost-fill-profiles | Codex Research Agent | closed | `docs/work_packets/WPR106-40-venue-aware-cost-fill-profiles.md`, `docs/work_packets/WPR106-40-progress.jsonl`, `src/tradingbotsuite/backtesting/costs.py`, `src/tradingbotsuite/backtesting/__init__.py`, `src/tradingbotsuite/backtesting/engine.py`, `src/tradingbotsuite/backtesting/vector_engine.py`, `src/tradingbotsuite/backtesting/cuda_engine.py`, `src/tradingbotsuite/backtesting/cuda_batched_engine.py`, `src/tradingbotsuite/research_cycle/runner.py`, `tests/contracts/test_backtest_contracts.py`, `tests/historical/test_full_cycle_synthetic.py`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_VENUE_AWARE_COST_FILL_PROFILES_REPORT.md` | Venue-aware registered research cost/fill profiles, explicit historical-research-only execution-proof scope, cost/fill profile metadata in backtest manifests/cache identity/backtest-index rows/cost-stress rows, required stress scenario set preserved, and passing compile/focused backtest/unit/synthetic/contracts/candidate-pack/diff validation recorded in `docs/stage_reports/STAGE_R106_VENUE_AWARE_COST_FILL_PROFILES_REPORT.md`. |
+| WPR106-39-regime-backend-semantics | Codex Research Agent | closed | `docs/work_packets/WPR106-39-regime-backend-semantics.md`, `docs/work_packets/WPR106-39-progress.jsonl`, `src/tradingbotsuite/research_discovery/hmm_materialization.py`, `src/tradingbotsuite/research_discovery/spec.py`, `src/tradingbotsuite/research_discovery/knn_study.py`, `src/tradingbotsuite/research_discovery/runner.py`, `src/tradingbotsuite/research_discovery/manifests.py`, `src/tradingbotsuite/research_discovery/artifact_keys.py`, `src/tradingbotsuite/research_discovery/candidate_pack_bridge.py`, `tests/research_discovery/test_hmm_materialization.py`, `tests/research_discovery/test_discovery_spec.py`, `tests/research_discovery/test_knn_study.py`, `tests/research_discovery/test_discovery_runner.py`, `tests/research_discovery/test_artifact_keys.py`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_REGIME_BACKEND_SEMANTICS_REPORT.md` | Active discovery GMM/no-regime backend evidence now carries explicit `regime_model_backend`, ledgers/run manifests/artifact identity preserve backend truthfulness, canonical `regime_*` aliases sit beside legacy `hmm_*` compatibility fields, and passing compile/focused discovery/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_REGIME_BACKEND_SEMANTICS_REPORT.md`. |
+| WPR106-38-mode-aware-artifact-runtime-validation | Codex Research Agent | closed | `docs/work_packets/WPR106-38-mode-aware-artifact-runtime-validation.md`, `docs/work_packets/WPR106-38-progress.jsonl`, `src/tradingbotsuite/promotion/artifact_validator.py`, `src/tradingbotsuite/promotion/__init__.py`, `src/tradingbotsuite/live/preflight.py`, `src/tradingbotsuite/live/shadow_loader.py`, `src/tradingbotsuite/runtime.py`, `tests/live/test_reject_research_artifacts.py`, `tests/live/test_promotion_candidate_validator.py`, `tests/live/test_shadow_loader.py`, `tests/research_artifacts/test_candidate_pack.py`, `docs/ACTIVE_INDEX.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_MODE_AWARE_ARTIFACT_RUNTIME_VALIDATION_REPORT.md` | Mode-aware fail-closed artifact runtime validation, live preflight and runtime dispatch validation before scorer/shadow-loader construction, explicit shadow runtime declarations, `ISSUE-R106-014` resolved, active P0 count reduced to zero, and passing compile/focused live/artifact/candidate-pack/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_MODE_AWARE_ARTIFACT_RUNTIME_VALIDATION_REPORT.md`. |
+| WPR106-37-explicit-hyperliquid-live-enable | Codex Research Agent | closed | `docs/work_packets/WPR106-37-explicit-hyperliquid-live-enable.md`, `docs/work_packets/WPR106-37-progress.jsonl`, `src/tradingbotsuite/config.py`, `tests/test_config.py`, `tests/tradingbotsuite/test_config.py`, `tests/live/test_preflight.py`, `docs/ACTIVE_INDEX.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_EXPLICIT_HYPERLIQUID_LIVE_ENABLE_REPORT.md` | Hyperliquid credential-file parsing is passive for signer/account/endpoint data, explicit `TBS_HL_ENABLE_LIVE=true` is required for enablement, file credentials without explicit enable fail live preflight, `ISSUE-R106-013` resolved, and passing compile/focused config-live/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_EXPLICIT_HYPERLIQUID_LIVE_ENABLE_REPORT.md`. |
+| WPR106-36-lower-timeframe-entry-pricing | Codex Research Agent | closed | `docs/work_packets/WPR106-36-lower-timeframe-entry-pricing.md`, `docs/work_packets/WPR106-36-progress.jsonl`, `src/tradingbotsuite/backtesting/execution_sim.py`, `src/tradingbotsuite/backtesting/engine.py`, `src/tradingbotsuite/backtesting/vector_engine.py`, `src/tradingbotsuite/backtesting/cuda_engine.py`, `src/tradingbotsuite/backtesting/cuda_batched_engine.py`, `tests/unit/test_execution_simulator.py`, `docs/ACTIVE_INDEX.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_LOWER_TIMEFRAME_ENTRY_PRICING_REPORT.md` | Reference simulator lower-timeframe entry fills now use lower-timeframe open at or after latency target, missing coverage fails closed, trade rows record entry proof metadata, accelerated primary-bar paths preserve metadata parity while still rejecting lower-timeframe entry sources, `ISSUE-R106-012` resolved, and passing compile/unit/backtesting/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_LOWER_TIMEFRAME_ENTRY_PRICING_REPORT.md`. |
+| WPR106-35-label-event-end-aware-purge | Codex Research Agent | closed | `docs/work_packets/WPR106-35-label-event-end-aware-purge.md`, `src/tradingbotsuite/backtesting/splits.py`, `src/tradingbotsuite/features/split_transforms.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_discovery/runner.py`, `src/tradingbotsuite/research_discovery/hmm_materialization.py`, `src/tradingbotsuite/research_discovery/knn_study.py`, `tests/backtesting/test_splits.py`, `tests/features/test_feature_builders.py`, `tests/research_discovery/test_hmm_materialization.py`, `tests/research_discovery/test_discovery_runner.py`, `tests/historical/test_full_cycle_synthetic.py`, `docs/ACTIVE_INDEX.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_LABEL_EVENT_END_AWARE_PURGE_REPORT.md` | `LabelSpec` event-end-aware split purge, compact train-index split-manifest evidence, discovery label event-end stamping, HMM/KNN/train-only consumers honoring explicit event-safe training rows, historical-cycle split purge evidence, `ISSUE-R106-011` resolved, and passing compile/focused backtesting/features/research-discovery/historical/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_LABEL_EVENT_END_AWARE_PURGE_REPORT.md`. |
+| WPR106-34-fail-closed-synthetic-source-selection | Codex Research Agent | closed | `docs/work_packets/WPR106-34-fail-closed-synthetic-source-selection.md`, `src/tradingbotsuite/research_cycle/spec.py`, `src/tradingbotsuite/research_cycle/runner.py`, `tests/contracts/test_research_cycle_contract.py`, `tests/historical/test_full_cycle_synthetic.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `docs/ACTIVE_INDEX.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_FAIL_CLOSED_SYNTHETIC_SOURCE_SELECTION_REPORT.md` | `synthetic_fallback_allowed` contract parsing, no-source synthetic fallback removed, explicit synthetic test/demo/benchmark scope, synthetic-plus-real-source rejection, ambiguous `local_fixture_dir` rejection, required `source_selection_manifest`, `ISSUE-R106-010` resolved, and passing compile/focused historical/contracts/diff validation recorded in `docs/stage_reports/STAGE_R106_FAIL_CLOSED_SYNTHETIC_SOURCE_SELECTION_REPORT.md`. |
+| WPR106-33-ci-reproducible-research-install | Codex Research Agent | closed | `docs/work_packets/WPR106-33-ci-reproducible-research-install.md`, `.github/workflows/research-validation.yml`, `README.md`, `docs/ACTIVE_INDEX.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_CI_REPRODUCIBLE_RESEARCH_INSTALL_REPORT.md` | Clean Python 3.11 GitHub Actions baseline for editable `.[dev]` install, `pip check`, compile, contracts, and focused live/artifact boundary tests; `ISSUE-R106-009` resolved; local compile/contracts/live-boundary/workflow YAML/diff validation recorded in `docs/stage_reports/STAGE_R106_CI_REPRODUCIBLE_RESEARCH_INSTALL_REPORT.md`. |
+| WPR106-32-active-index-research-identity | Codex Research Agent | closed | `docs/work_packets/WPR106-32-active-index-research-identity.md`, `docs/ACTIVE_INDEX.md`, `START_HERE.md`, `README.md`, `docs/KNOWN_ISSUES.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/stage_reports/STAGE_R106_ACTIVE_INDEX_RESEARCH_IDENTITY_REPORT.md` | Active index and identity clarification, newly registered P0 stop-condition issues, current `main` checkout/migrated R106 mirror guidance, no source/config/data/live behavior changes, and baseline validation recorded in `docs/stage_reports/STAGE_R106_ACTIVE_INDEX_RESEARCH_IDENTITY_REPORT.md`. |
 | WPR106-31-discovery-lead-replay-entry-evidence | Codex Research Agent | closed | `docs/work_packets/WPR106-31-discovery-lead-replay-entry-evidence.md`, `docs/stage_reports/STAGE_R106_DISCOVERY_LEAD_REPLAY_ENTRY_EVIDENCE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_discovery/discovery_lead_replay.py`, `src/tradingbotsuite/research_discovery/spec.py`, `src/tradingbotsuite/research_discovery/runner.py`, `src/tradingbotsuite/research_discovery/__init__.py`, `tests/research_discovery/test_discovery_lead_replay.py`, `tests/research_discovery/test_discovery_spec.py`, `tests/research_discovery/test_discovery_runner.py` | Replay-spec and entry-signal evidence lane, `predictions_only` discovery artifact policy, 24/24 BTC and 24/24 ETH replay trials completed, 969,870 BTC and 957,643 ETH annotated entry signals across 24 candidates per symbol, bounded top-3 exit-lab slices blocked by no improvement over fixed holding, no ranking/pack/promotion claim, and passing compile/research-discovery/contracts/candidate-pack/diff validation recorded in `docs/stage_reports/STAGE_R106_DISCOVERY_LEAD_REPLAY_ENTRY_EVIDENCE_REPORT.md`. |
 | WPR106-30-discovery-lead-materialization-lane | Codex Research Agent | closed | `docs/work_packets/WPR106-30-discovery-lead-materialization-lane.md`, `docs/stage_reports/STAGE_R106_DISCOVERY_LEAD_MATERIALIZATION_LANE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_discovery/discovery_lead_materialization.py`, `src/tradingbotsuite/research_discovery/__init__.py`, `tests/research_discovery/test_discovery_lead_materialization.py` | Descriptor-only discovery-lead materialization lane, 24 BTC and 24 ETH hash-backed materialized descriptors, source trial/signature preservation, explicit downstream gate requirements, no ranking/pack/promotion claim, and passing compile/research-discovery/contracts/candidate-pack validation recorded in `docs/stage_reports/STAGE_R106_DISCOVERY_LEAD_MATERIALIZATION_LANE_REPORT.md`. |
 | WPR106-29-candidate-rejection-root-cause-and-gate-materialization | Codex Research Agent | closed | `docs/work_packets/WPR106-29-candidate-rejection-root-cause-and-gate-materialization.md`, `docs/stage_reports/STAGE_R106_CANDIDATE_REJECTION_ROOT_CAUSE_AND_GATE_MATERIALIZATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_discovery/candidate_pack_bridge.py`, `src/tradingbotsuite/research_discovery/multiple_testing.py`, `tests/research_discovery/test_candidate_pack_bridge.py`, `tests/research_discovery/test_multiple_testing.py` | BTC/ETH gate materialization and bridge rerun show 0 discovery-to-cycle ranking overlap, 22,560 BTC and 23,040 ETH blocked research-only rows, capped rejection Markdown, explicit manifest reason counts/alignment, no candidate pack, no promotion claim, and passing compile/contracts/research-discovery/candidate-pack/UI validation recorded in `docs/stage_reports/STAGE_R106_CANDIDATE_REJECTION_ROOT_CAUSE_AND_GATE_MATERIALIZATION_REPORT.md`. |
@@ -1067,7 +1403,7 @@ WPR105-107 implementation note:
 | Stage 13 readiness templates and blocked report are generated | `tests/tradingbotsuite/test_stage13_readiness.py` | yes |
 | Live mode rejects every registered research command | `tests/live/test_preflight.py` | yes |
 | Operator Stage 13 diagnostics are read-only | `tests/tradingbotsuite/test_operator_ui.py` | yes |
-| No P0 issues open | `docs/KNOWN_ISSUES.md` | yes |
+| No P0 issues open | `docs/KNOWN_ISSUES.md` | no - open P0 issues were registered by WPR106-32 |
 | Fewer than four unresolved P1 issues | `docs/KNOWN_ISSUES.md` | yes |
 
 ## Orchestrator decision

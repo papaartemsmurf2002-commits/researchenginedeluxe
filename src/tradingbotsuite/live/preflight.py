@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 from tradingbotsuite.config import AppConfig
 from tradingbotsuite.core.models import RuntimeMode
-from tradingbotsuite.promotion.artifact_validator import load_artifact_manifest, validate_artifact_for_live_input
+from tradingbotsuite.promotion.artifact_validator import load_artifact_manifest, validate_artifact_for_runtime_mode
 from tradingbotsuite.research.command_registry import RESEARCH_COMMANDS
 from tradingbotsuite.research.live_readiness import DEFAULT_WEBHOOK_SECRET_VALUES
 
@@ -52,11 +52,13 @@ def build_live_preflight_report(
         _check_hyperliquid_live_config(config),
         _check_reconciliation_capability(config),
         _check_research_command(config, command),
-        _check_research_artifact(artifact_path),
+        _check_research_artifact(artifact_path, config.runtime_mode),
         _check_basis_surfaces(config),
         _check_execution_journal_evidence(execution_journal_evidence),
     ]
-    active_checks = checks if config.runtime_mode == RuntimeMode.LIVE else []
+    active_checks = checks if config.runtime_mode == RuntimeMode.LIVE else [
+        check for check in checks if check["name"] == "validate_artifact_for_runtime_mode" and artifact_path is not None
+    ]
     blockers = tuple(reason for check in active_checks if not check["passed"] for reason in check["reasons"])
     return LivePreflightReport(
         preflight_version=LIVE_PREFLIGHT_VERSION,
@@ -165,15 +167,15 @@ def _check_research_command(config: AppConfig, command: str | None) -> dict[str,
     return _check("reject_research_command_in_live_mode", reasons)
 
 
-def _check_research_artifact(path: Path | None) -> dict[str, Any]:
+def _check_research_artifact(path: Path | None, runtime_mode: RuntimeMode) -> dict[str, Any]:
     if path is None:
-        return _check("reject_research_artifact_as_live_input", [])
+        return _check("validate_artifact_for_runtime_mode", [])
     if not Path(path).exists():
-        return _check("reject_research_artifact_as_live_input", [f"artifact_manifest_missing:{path}"])
+        return _check("validate_artifact_for_runtime_mode", [f"artifact_manifest_missing:{path}"])
     manifest = load_artifact_manifest(path)
-    result = validate_artifact_for_live_input(manifest, manifest_path=Path(path))
-    reasons = [f"live_artifact_rejected:{reason}" for reason in result.reasons]
-    return _check("reject_research_artifact_as_live_input", reasons)
+    result = validate_artifact_for_runtime_mode(manifest, runtime_mode=runtime_mode, manifest_path=Path(path))
+    reasons = [f"runtime_artifact_rejected:{reason}" for reason in result.reasons]
+    return _check("validate_artifact_for_runtime_mode", reasons)
 
 
 def _check_basis_surfaces(config: AppConfig) -> dict[str, Any]:

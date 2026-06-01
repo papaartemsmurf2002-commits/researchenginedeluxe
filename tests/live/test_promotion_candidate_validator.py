@@ -5,9 +5,11 @@ from pathlib import Path
 
 from tradingbotsuite.promotion import (
     load_promotion_candidate_manifest,
+    validate_artifact_for_runtime_mode,
     validate_promotion_candidate_for_live_input,
     validate_promotion_candidate_for_shadow,
 )
+from tradingbotsuite.core.models import RuntimeMode
 
 
 def _candidate_payload() -> dict:
@@ -19,6 +21,7 @@ def _candidate_payload() -> dict:
         "observe_only": True,
         "promotion_ready": False,
         "shadow_only": True,
+        "allowed_runtime_modes": ["shadow"],
         "intended_use": "shadow_only_promotion_candidate",
         "live_signal_input": False,
         "position_sizing_input": False,
@@ -150,3 +153,31 @@ def test_shadow_only_promotion_candidate_is_rejected_as_live_order_input(tmp_pat
     assert "research_only_artifact_rejected_for_live_input" in live_result.reasons
     assert "observe_only_artifact_rejected_for_live_input" in live_result.reasons
     assert "manifest_declares_not_live_signal_input" in live_result.reasons
+
+
+def test_shadow_only_promotion_candidate_is_mode_aware_shadow_only(tmp_path: Path) -> None:
+    manifest_path = _write_candidate(tmp_path / "promotion_candidate.json", _candidate_payload())
+    payload = load_promotion_candidate_manifest(manifest_path).payload
+
+    shadow_result = validate_artifact_for_runtime_mode(
+        payload,
+        runtime_mode=RuntimeMode.SHADOW,
+        manifest_path=manifest_path,
+    )
+    paper_result = validate_artifact_for_runtime_mode(
+        payload,
+        runtime_mode=RuntimeMode.PAPER,
+        manifest_path=manifest_path,
+    )
+    live_result = validate_artifact_for_runtime_mode(
+        payload,
+        runtime_mode=RuntimeMode.LIVE,
+        manifest_path=manifest_path,
+    )
+
+    assert shadow_result.allowed
+    assert not paper_result.allowed
+    assert not live_result.allowed
+    assert "promotion_candidate_rejected_for_paper_runtime" in paper_result.reasons
+    assert "promotion_candidate_rejected_for_live_input" in live_result.reasons
+    assert "runtime_mode_not_allowed:live" in live_result.reasons

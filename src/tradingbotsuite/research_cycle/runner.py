@@ -22,6 +22,7 @@ from tradingbotsuite.backtesting import (
     cuda_batched_backtest_support_reason,
     cuda_backtest_support_reason,
     cuda_runtime_evidence,
+    research_cost_stress_scenarios,
 )
 from tradingbotsuite.backtesting.engine import BacktestResult, BacktestSpec
 from tradingbotsuite.backtesting.vector_engine import vector_backtest_support_reason
@@ -33,6 +34,7 @@ from tradingbotsuite.backtesting.splits import (
     build_rolling_walk_forward_splits,
     build_shifted_walk_forward_splits,
     frame_for_split,
+    infer_label_spec,
     month_holdout_splits,
     regime_holdout_splits,
     stress_period_holdout_splits,
@@ -67,7 +69,11 @@ from tradingbotsuite.research_artifacts import (
     source_capability_gate_reasons,
     write_research_candidate_pack,
 )
-from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec, SUPPORTED_RESEARCH_EXIT_POLICIES
+from tradingbotsuite.research_cycle.spec import (
+    HistoricalResearchCycleSpec,
+    MaterializedPredictionOverlaySpec,
+    SUPPORTED_RESEARCH_EXIT_POLICIES,
+)
 from tradingbotsuite.research_cycle.performance import build_candidate_selection_performance_plan
 from tradingbotsuite.strategies import (
     defaults_for_holding_window,
@@ -121,6 +127,14 @@ class HistoricalResearchCycleResult:
 class FeatureBuildResult:
     manifest: dict[str, Any]
     frames_by_feature_set: dict[str, pd.DataFrame]
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateScopedOverlayContext:
+    feature_build_manifest: dict[str, Any]
+    frames_by_candidate_id: dict[str, pd.DataFrame]
+    records_by_candidate_id: dict[str, dict[str, Any]]
+    evidence_by_candidate_id: dict[str, dict[str, Any]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -369,13 +383,19 @@ def _aggregate_candidate_evaluations(
     candidates: list[dict[str, Any]],
     feature_frames: Mapping[str, pd.DataFrame],
     feature_build_manifest: Mapping[str, Any],
+    candidate_overlay_context: CandidateScopedOverlayContext | None,
     data_source: Mapping[str, Any],
     backtest_root: Path,
     workers: int,
 ) -> list[dict[str, Any]]:
     def run_one(candidate: dict[str, Any]) -> dict[str, Any]:
-        candidate_frame = _candidate_feature_frame(feature_frames, candidate)
-        candidate_feature_record = _candidate_feature_record(feature_build_manifest, candidate)
+        candidate = _candidate_with_materialized_overlay_evidence(
+            candidate,
+            feature_build_manifest,
+            candidate_overlay_context,
+        )
+        candidate_frame = _candidate_feature_frame(feature_frames, candidate, candidate_overlay_context)
+        candidate_feature_record = _candidate_feature_record(feature_build_manifest, candidate, candidate_overlay_context)
         candidate_dataset_hash = _validated_feature_frame_hash(candidate_frame, candidate_feature_record, candidate)
         candidate_feature_manifest_sha256 = str(candidate_feature_record["feature_manifest_sha256"])
         lower_timeframe_dataset_path = _candidate_lower_timeframe_dataset_path(candidate, data_source)
@@ -504,18 +524,27 @@ def _build_cycle_validation_splits(
     spec: HistoricalResearchCycleSpec,
 ) -> tuple[WalkForwardSplit, ...]:
     splits: list[WalkForwardSplit] = []
+    label_spec = infer_label_spec(
+        market_frame,
+        time_column="bar_time_ms",
+        interval_ms=_infer_uniform_bar_interval_ms(market_frame),
+        require_event_end_time=False,
+        label_id="historical_cycle",
+    )
     for mode in spec.validation.split_modes:
         if mode == "purged_embargoed_walk_forward":
             mode_splits = build_purged_walk_forward_splits(
                 market_frame,
                 min_splits=spec.validation.min_splits,
                 purge_embargo_bars=spec.validation.purge_embargo_bars,
+                label_spec=label_spec,
             )
         elif mode == "anchored_walk_forward":
             mode_splits = build_anchored_walk_forward_splits(
                 market_frame,
                 min_splits=spec.validation.min_splits,
                 purge_embargo_bars=spec.validation.purge_embargo_bars,
+                label_spec=label_spec,
             )
         elif mode == "rolling_walk_forward":
             train_window = int(spec.validation.rolling_train_window_bars or 0)
@@ -526,6 +555,7 @@ def _build_cycle_validation_splits(
                 min_splits=spec.validation.min_splits,
                 train_window_bars=train_window,
                 purge_embargo_bars=spec.validation.purge_embargo_bars,
+                label_spec=label_spec,
             )
         elif mode == "shifted_purged_walk_forward":
             shifted: list[WalkForwardSplit] = []
@@ -536,6 +566,7 @@ def _build_cycle_validation_splits(
                         min_splits=spec.validation.min_splits,
                         anchor_offset_bars=int(offset),
                         purge_embargo_bars=spec.validation.purge_embargo_bars,
+                        label_spec=label_spec,
                     )
                 )
             mode_splits = tuple(shifted)
@@ -603,8 +634,23 @@ def _cycle_split_manifest(
         "validation_methods": validation_methods,
         "validation_method_counts": _count_values(split.validation_method for split in splits),
         "split_mode_counts": _count_values(split.split_mode for split in splits),
+        "purge_method_counts": _count_values(split.purge_method for split in splits),
+        "label_event_end_time_columns": sorted(
+            {
+                str(split.label_event_end_time_column)
+                for split in splits
+                if split.label_event_end_time_column
+            }
+        ),
         "split_modes_requested": list(spec.validation.split_modes),
         "purge_embargo_bars": int(spec.validation.purge_embargo_bars),
+        "purge_embargo_ms_values": sorted(
+            {
+                int(split.purge_embargo_ms)
+                for split in splits
+                if split.purge_embargo_ms is not None
+            }
+        ),
         "min_splits": int(spec.validation.min_splits),
         "rolling_train_window_bars": spec.validation.rolling_train_window_bars,
         "shifted_anchor_offsets": list(spec.validation.shifted_anchor_offsets),
@@ -631,10 +677,18 @@ def run_historical_research_cycle(
 ) -> HistoricalResearchCycleResult:
     started = time.perf_counter()
     app_config = app_config or AppConfig.from_env()
-    spec_path = Path(spec_path).expanduser()
+    spec_path = Path(spec_path).expanduser().resolve()
     spec = HistoricalResearchCycleSpec.from_path(spec_path)
     _validate_compute_backend_request(spec)
-    output_dir = spec.output_dir or app_config.research.output_dir / "historical_cycles" / _run_id(spec.cycle_id)
+    repo_root = _repo_root_from_path(spec_path)
+    research_root = _resolve_research_root(app_config.research.output_dir, repo_root=repo_root)
+    output_dir = spec.output_dir or research_root / "historical_cycles" / _run_id(spec.cycle_id)
+    output_dir = output_dir.resolve()
+    _ensure_inside_research_root(
+        output_dir,
+        research_root=research_root,
+        field_name="historical cycle output_dir",
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     dataset, data_source = _load_cycle_dataset(spec, output_dir=output_dir)
@@ -656,10 +710,17 @@ def run_historical_research_cycle(
         output_dir=output_dir,
         feature_cache_dir=feature_cache_dir,
     )
-    if spec.features.materialized_prediction_overlays:
+    if _feature_set_prediction_overlays(spec.features.materialized_prediction_overlays):
         feature_build = _apply_materialized_prediction_overlays(feature_build, spec=spec)
     feature_build_manifest = feature_build.manifest
     feature_frames = feature_build.frames_by_feature_set
+    candidates = _candidate_space(spec)
+    candidate_overlay_context = _candidate_scoped_prediction_overlay_context(
+        feature_build,
+        spec=spec,
+        candidates=candidates,
+    )
+    feature_build_manifest = candidate_overlay_context.feature_build_manifest
     feature_build_path = output_dir / "feature_build_manifest.json"
     _write_json(feature_build_path, feature_build_manifest)
 
@@ -669,7 +730,6 @@ def run_historical_research_cycle(
     split_manifest_path = output_dir / "split_manifest.json"
     _write_json(split_manifest_path, split_manifest)
 
-    candidates = _candidate_space(spec)
     search_mode = "explicit_search_spaces" if spec.optimizer.search_spaces else "metadata_default_search"
     search_method = _candidate_search_method(spec) if spec.optimizer.search_spaces else "metadata_capped_grid"
     generated_strategy_ids = _candidate_strategy_ids(candidates)
@@ -737,6 +797,7 @@ def run_historical_research_cycle(
         candidates=candidates,
         feature_frames=feature_frames,
         feature_build_manifest=feature_build_manifest,
+        candidate_overlay_context=candidate_overlay_context,
         data_source=data_source,
         backtest_root=backtest_root,
         workers=aggregate_workers,
@@ -791,8 +852,13 @@ def run_historical_research_cycle(
     for candidate in candidates:
         if str(candidate["candidate_id"]) not in shortlisted_ids:
             continue
-        candidate_frame = _candidate_feature_frame(feature_frames, candidate)
-        candidate_feature_record = _candidate_feature_record(feature_build_manifest, candidate)
+        candidate = _candidate_with_materialized_overlay_evidence(
+            candidate,
+            feature_build_manifest,
+            candidate_overlay_context,
+        )
+        candidate_frame = _candidate_feature_frame(feature_frames, candidate, candidate_overlay_context)
+        candidate_feature_record = _candidate_feature_record(feature_build_manifest, candidate, candidate_overlay_context)
         candidate_dataset_hash = _validated_feature_frame_hash(candidate_frame, candidate_feature_record, candidate)
         candidate_feature_manifest_sha256 = str(candidate_feature_record["feature_manifest_sha256"])
         lower_timeframe_dataset_path = _candidate_lower_timeframe_dataset_path(candidate, data_source)
@@ -869,6 +935,8 @@ def run_historical_research_cycle(
                     slippage_bps=float(scenario["slippage_bps"]),
                     spread_bps=float(scenario.get("spread_bps", 0.0)),
                     funding_rate=float(scenario["funding_rate"]),
+                    cost_profile_id=str(scenario["cost_profile_id"]),
+                    fill_profile_id=str(scenario["fill_profile_id"]),
                     exit_policy_id=str(candidate.get("exit_policy_id", "fixed_holding_window")),
                     target_return=_candidate_target_return(candidate),
                     stop_return=_candidate_stop_return(candidate),
@@ -971,9 +1039,12 @@ def run_historical_research_cycle(
     )
     rejection_report_path = output_dir / "rejection_report.md"
     rejection_report_path.write_text(_rejection_report(rankings, spec=spec, data_source=data_source), encoding="utf-8")
+    source_selection_path = output_dir / "source_selection_manifest.json"
+    _write_json(source_selection_path, dict(data_source.get("source_selection") or {}))
     required_outputs = {
         "research_cycle_manifest": str(output_dir / "research_cycle_manifest.json"),
         "cycle_spec_resolved": str(resolved_spec_path),
+        "source_selection_manifest": str(source_selection_path),
         "data_quality_report": str(data_quality_path),
         "feature_build_manifest": str(feature_build_path),
         "split_manifest": str(split_manifest_path),
@@ -1071,16 +1142,38 @@ def run_historical_research_cycle(
 
 
 def _load_cycle_dataset(spec: HistoricalResearchCycleSpec, *, output_dir: Path) -> tuple[pd.DataFrame, dict[str, Any]]:
+    source_selection: list[dict[str, Any]] = []
     if spec.data.dataset_path is not None:
+        source_selection.append(
+            _source_selection_record(
+                "local_dataset_path",
+                "selected",
+                dataset_path=str(spec.data.dataset_path),
+            )
+        )
         frame = pd.read_parquet(spec.data.dataset_path)
         return frame, {
             "source_type": "local_dataset_path",
             "dataset_path": str(spec.data.dataset_path),
             "synthetic": False,
+            "synthetic_fallback_allowed": bool(spec.data.synthetic_fallback_allowed),
+            "source_selection": _source_selection_payload(
+                spec,
+                source_selection,
+                selected_source_type="local_dataset_path",
+            ),
             **_explicit_lower_timeframe_evidence(spec.data.lower_timeframe_dataset_path),
         }
     for manifest_path in spec.data.dataset_manifest_paths:
         if not manifest_path.exists():
+            source_selection.append(
+                _source_selection_record(
+                    "dataset_manifest",
+                    "skipped",
+                    reason="manifest_path_missing",
+                    manifest_path=str(manifest_path),
+                )
+            )
             continue
         manifest = _read_json(manifest_path)
         manifest_version = str(manifest.get("manifest_version") or manifest.get("fixture_pack_manifest_version") or "")
@@ -1094,6 +1187,15 @@ def _load_cycle_dataset(spec: HistoricalResearchCycleSpec, *, output_dir: Path) 
                 optional_context_families=getattr(validation, "optional_context_families", None),
             )
             fixture_source = dict(manifest.get("source") or {})
+            source_selection.append(
+                _source_selection_record(
+                    "historical_fixture_pack",
+                    "selected",
+                    manifest_path=str(manifest_path),
+                    dataset_path=str(parquet_path),
+                    fixture_id=manifest.get("fixture_id"),
+                )
+            )
             return context.frame, {
                 "source_type": "historical_fixture_pack",
                 "manifest_path": str(manifest_path),
@@ -1110,6 +1212,12 @@ def _load_cycle_dataset(spec: HistoricalResearchCycleSpec, *, output_dir: Path) 
                 "omitted_optional_families": dict(manifest.get("omitted_optional_families") or {}),
                 "research_evidence_limitations": list(manifest.get("research_evidence_limitations") or []),
                 "synthetic": False,
+                "synthetic_fallback_allowed": bool(spec.data.synthetic_fallback_allowed),
+                "source_selection": _source_selection_payload(
+                    spec,
+                    source_selection,
+                    selected_source_type="historical_fixture_pack",
+                ),
                 "validation": validation.to_payload(),
                 "fixture_family_context": dict(context.evidence),
                 "fixture_family_context_sha256": context.context_sha256,
@@ -1117,31 +1225,103 @@ def _load_cycle_dataset(spec: HistoricalResearchCycleSpec, *, output_dir: Path) 
             }
         parquet_path = _resolve_manifest_data_path(manifest_path, manifest)
         if parquet_path is not None:
+            source_selection.append(
+                _source_selection_record(
+                    "dataset_manifest",
+                    "selected",
+                    manifest_path=str(manifest_path),
+                    dataset_path=str(parquet_path),
+                )
+            )
             frame = pd.read_parquet(parquet_path)
             return frame, {
                 "source_type": "dataset_manifest",
                 "manifest_path": str(manifest_path),
                 "dataset_path": str(parquet_path),
                 "synthetic": False,
+                "synthetic_fallback_allowed": bool(spec.data.synthetic_fallback_allowed),
+                "source_selection": _source_selection_payload(
+                    spec,
+                    source_selection,
+                    selected_source_type="dataset_manifest",
+                ),
                 **_explicit_lower_timeframe_evidence(spec.data.lower_timeframe_dataset_path),
             }
+        source_selection.append(
+            _source_selection_record(
+                "dataset_manifest",
+                "rejected",
+                reason="manifest_data_path_missing_or_unusable",
+                manifest_path=str(manifest_path),
+            )
+        )
     if spec.data.local_fixture_dir is not None and spec.data.local_fixture_dir.exists():
         parquet_files = sorted(spec.data.local_fixture_dir.glob("*.parquet"))
-        if parquet_files:
+        if len(parquet_files) == 1:
+            source_selection.append(
+                _source_selection_record(
+                    "local_fixture_dir",
+                    "selected",
+                    fixture_dir=str(spec.data.local_fixture_dir),
+                    dataset_path=str(parquet_files[0]),
+                )
+            )
             frame = pd.read_parquet(parquet_files[0])
             return frame, {
                 "source_type": "local_fixture_dir",
                 "fixture_dir": str(spec.data.local_fixture_dir),
                 "dataset_path": str(parquet_files[0]),
                 "synthetic": False,
+                "synthetic_fallback_allowed": bool(spec.data.synthetic_fallback_allowed),
+                "source_selection": _source_selection_payload(
+                    spec,
+                    source_selection,
+                    selected_source_type="local_fixture_dir",
+                ),
                 **_explicit_lower_timeframe_evidence(spec.data.lower_timeframe_dataset_path),
             }
+        if len(parquet_files) > 1:
+            source_selection.append(
+                _source_selection_record(
+                    "local_fixture_dir",
+                    "rejected",
+                    reason="local_fixture_dir_ambiguous_multiple_parquet_files",
+                    fixture_dir=str(spec.data.local_fixture_dir),
+                    parquet_count=len(parquet_files),
+                )
+            )
+            raise ValueError("local_fixture_dir_ambiguous_multiple_parquet_files")
+        source_selection.append(
+            _source_selection_record(
+                "local_fixture_dir",
+                "rejected",
+                reason="local_fixture_dir_has_no_parquet",
+                fixture_dir=str(spec.data.local_fixture_dir),
+            )
+        )
+    elif spec.data.local_fixture_dir is not None:
+        source_selection.append(
+            _source_selection_record(
+                "local_fixture_dir",
+                "skipped",
+                reason="local_fixture_dir_missing",
+                fixture_dir=str(spec.data.local_fixture_dir),
+            )
+        )
     declared_source = (
         spec.data.dataset_path is not None
         or spec.data.local_fixture_dir is not None
         or bool(spec.data.dataset_manifest_paths)
     )
-    if spec.data.synthetic_fixture or not declared_source:
+    if spec.data.synthetic_fixture:
+        source_selection.append(
+            _source_selection_record(
+                "synthetic_deterministic_fixture",
+                "selected",
+                reason="explicit_synthetic_fixture_requested",
+                synthetic_use_case=spec.data.synthetic_use_case,
+            )
+        )
         frame = build_hmm_knn_sweep_dataset(row_count=spec.data.synthetic_row_count, variant=spec.data.synthetic_variant)
         fixture_path = output_dir / "synthetic_fixture.parquet"
         frame.to_parquet(fixture_path, index=False)
@@ -1149,9 +1329,59 @@ def _load_cycle_dataset(spec: HistoricalResearchCycleSpec, *, output_dir: Path) 
             "source_type": "synthetic_deterministic_fixture",
             "dataset_path": str(fixture_path),
             "synthetic": True,
+            "synthetic_fixture_requested": True,
+            "synthetic_fallback_allowed": bool(spec.data.synthetic_fallback_allowed),
+            "synthetic_use_case": spec.data.synthetic_use_case,
+            "demo_or_test_only": True,
+            "source_selection": _source_selection_payload(
+                spec,
+                source_selection,
+                selected_source_type="synthetic_deterministic_fixture",
+            ),
             **_explicit_lower_timeframe_evidence(spec.data.lower_timeframe_dataset_path),
         }
-    raise ValueError("no usable dataset path, manifest, local fixture parquet, or synthetic fixture flag was supplied")
+    if not declared_source:
+        raise ValueError("cycle_data_source_required: explicit dataset path, manifest, local fixture parquet, or synthetic_fixture=true is required")
+    raise ValueError("no usable dataset path, manifest, local fixture parquet, or explicit synthetic fixture flag was supplied")
+
+
+def _source_selection_record(source_type: str, status: str, **fields: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "source_type": source_type,
+        "status": status,
+    }
+    for key, value in fields.items():
+        if value is None:
+            payload[key] = None
+        elif isinstance(value, (str, int, float, bool)):
+            payload[key] = value
+        else:
+            payload[key] = str(value)
+    return payload
+
+
+def _source_selection_payload(
+    spec: HistoricalResearchCycleSpec,
+    records: list[dict[str, Any]],
+    *,
+    selected_source_type: str,
+) -> dict[str, Any]:
+    return {
+        "source_selection_manifest_version": "research-cycle-source-selection-v1",
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "selected_source_type": selected_source_type,
+        "declared_source_count": int(
+            (1 if spec.data.dataset_path is not None else 0)
+            + len(spec.data.dataset_manifest_paths)
+            + (1 if spec.data.local_fixture_dir is not None else 0)
+        ),
+        "synthetic_fixture_requested": bool(spec.data.synthetic_fixture),
+        "synthetic_fallback_allowed": bool(spec.data.synthetic_fallback_allowed),
+        "synthetic_use_case": spec.data.synthetic_use_case if spec.data.synthetic_fixture else None,
+        "records": [dict(record) for record in records],
+    }
 
 
 def _resolve_manifest_data_path(manifest_path: Path, manifest: Mapping[str, Any]) -> Path | None:
@@ -1474,6 +1704,18 @@ def _cycle_data_source_is_intentional_multi_window_fixture(data_source: Mapping[
     return derivation_type == "multi_window_public_archive_selection" and bool(window_labels)
 
 
+def _feature_set_prediction_overlays(
+    overlays: tuple[MaterializedPredictionOverlaySpec, ...],
+) -> tuple[MaterializedPredictionOverlaySpec, ...]:
+    return tuple(overlay for overlay in overlays if overlay.scope == "feature_set")
+
+
+def _candidate_prediction_overlays(
+    overlays: tuple[MaterializedPredictionOverlaySpec, ...],
+) -> tuple[MaterializedPredictionOverlaySpec, ...]:
+    return tuple(overlay for overlay in overlays if overlay.scope == "candidate")
+
+
 def _apply_materialized_prediction_overlays(
     feature_build: FeatureBuildResult,
     *,
@@ -1483,7 +1725,7 @@ def _apply_materialized_prediction_overlays(
     manifest = dict(feature_build.manifest)
     records = [dict(record) for record in manifest.get("feature_sets", [])]
     overlay_records: list[dict[str, Any]] = []
-    for overlay in spec.features.materialized_prediction_overlays:
+    for overlay in _feature_set_prediction_overlays(spec.features.materialized_prediction_overlays):
         feature_set_id = overlay.feature_set_id
         if feature_set_id not in frames:
             raise ValueError(f"materialized_prediction_overlay_missing_feature_frame:{feature_set_id}")
@@ -1501,6 +1743,7 @@ def _apply_materialized_prediction_overlays(
         )
         evidence.update(
             {
+                "overlay_scope": "feature_set",
                 "predictions_path": str(overlay.predictions_path),
                 "predictions_sha256": _file_sha256(overlay.predictions_path),
                 "manifest_path": str(overlay.manifest_path) if overlay.manifest_path is not None else None,
@@ -1542,6 +1785,97 @@ def _apply_materialized_prediction_overlays(
         }
     )
     return FeatureBuildResult(manifest=manifest, frames_by_feature_set=frames)
+
+
+def _candidate_scoped_prediction_overlay_context(
+    feature_build: FeatureBuildResult,
+    *,
+    spec: HistoricalResearchCycleSpec,
+    candidates: list[dict[str, Any]],
+) -> CandidateScopedOverlayContext:
+    overlays = _candidate_prediction_overlays(spec.features.materialized_prediction_overlays)
+    if not overlays:
+        return CandidateScopedOverlayContext(
+            feature_build_manifest=dict(feature_build.manifest),
+            frames_by_candidate_id={},
+            records_by_candidate_id={},
+            evidence_by_candidate_id={},
+        )
+
+    candidates_by_key = _candidate_overlay_match_index(candidates)
+    frames_by_candidate_id: dict[str, pd.DataFrame] = {}
+    records_by_candidate_id: dict[str, dict[str, Any]] = {}
+    evidence_by_candidate_id: dict[str, dict[str, Any]] = {}
+    overlay_records: list[dict[str, Any]] = []
+    for overlay in overlays:
+        match_key = overlay.candidate_id or overlay.candidate_cache_key or ""
+        candidate = candidates_by_key.get(match_key)
+        if candidate is None:
+            raise ValueError(f"materialized_prediction_overlay_candidate_unmatched:{match_key}")
+        candidate_id = str(candidate["candidate_id"])
+        if candidate_id in frames_by_candidate_id:
+            raise ValueError(f"duplicate materialized prediction overlay candidate: {candidate_id}")
+        feature_set_id = overlay.feature_set_id
+        if feature_set_id != str(candidate.get("feature_set_id") or ""):
+            raise ValueError(f"materialized_prediction_overlay_candidate_feature_set_mismatch:{candidate_id}")
+        if feature_set_id not in feature_build.frames_by_feature_set:
+            raise ValueError(f"materialized_prediction_overlay_missing_feature_frame:{feature_set_id}")
+        if not overlay.predictions_path.exists():
+            raise ValueError(f"materialized_prediction_overlay_missing_predictions:{overlay.predictions_path}")
+        predictions = pd.read_parquet(overlay.predictions_path)
+        overlay_manifest = _materialized_prediction_overlay_manifest(overlay.manifest_path)
+        frame_after, evidence = _merge_materialized_prediction_overlay(
+            feature_build.frames_by_feature_set[feature_set_id],
+            predictions,
+            feature_set_id=feature_set_id,
+            kind=overlay.kind,
+            join_key=overlay.join_key,
+        )
+        evidence.update(
+            {
+                "overlay_scope": "candidate",
+                "candidate_id": candidate_id,
+                "candidate_cache_key": str(candidate.get("candidate_cache_key") or candidate_id),
+                "materialized_candidate_id": overlay.materialized_candidate_id,
+                "candidate_strategy_id": str(candidate.get("strategy_id") or ""),
+                "candidate_holding_window": str(candidate.get("holding_window") or ""),
+                "predictions_path": str(overlay.predictions_path),
+                "predictions_sha256": _file_sha256(overlay.predictions_path),
+                "manifest_path": str(overlay.manifest_path) if overlay.manifest_path is not None else None,
+                "manifest_sha256": _file_sha256(overlay.manifest_path) if overlay.manifest_path is not None else None,
+                "manifest_version": overlay_manifest.get("knn_study_manifest_version"),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        )
+        candidate_record = _candidate_scoped_feature_record(
+            feature_build.manifest,
+            feature_set_id=feature_set_id,
+            frame=frame_after,
+            evidence=evidence,
+        )
+        evidence["pre_overlay_feature_frame_sha256"] = candidate_record.get("pre_overlay_feature_frame_sha256")
+        evidence["post_overlay_feature_frame_sha256"] = candidate_record.get("feature_frame_sha256")
+        evidence["candidate_feature_frame_sha256"] = candidate_record.get("feature_frame_sha256")
+        frames_by_candidate_id[candidate_id] = frame_after
+        records_by_candidate_id[candidate_id] = candidate_record
+        evidence_by_candidate_id[candidate_id] = dict(evidence)
+        overlay_records.append(dict(evidence))
+
+    manifest = dict(feature_build.manifest)
+    manifest["feature_computation_scope"] = _candidate_overlay_feature_computation_scope(
+        str(manifest.get("feature_computation_scope") or "materialized_registered_feature_sets")
+    )
+    manifest["candidate_scoped_materialized_prediction_overlay_count"] = len(overlay_records)
+    manifest["candidate_scoped_materialized_prediction_overlays"] = overlay_records
+    manifest["feature_build_sha256"] = _feature_build_hash_with_candidate_overlays(manifest)
+    return CandidateScopedOverlayContext(
+        feature_build_manifest=manifest,
+        frames_by_candidate_id=frames_by_candidate_id,
+        records_by_candidate_id=records_by_candidate_id,
+        evidence_by_candidate_id=evidence_by_candidate_id,
+    )
 
 
 def _materialized_prediction_overlay_manifest(path: Path | None) -> dict[str, Any]:
@@ -1670,9 +2004,13 @@ def _update_feature_record_for_overlay(
             continue
         overlays = list(record.get("materialized_prediction_overlays") or [])
         previous_hash = record.get("feature_frame_sha256")
+        frame_hash = _frame_hash(frame)
+        if isinstance(evidence, dict):
+            evidence.setdefault("pre_overlay_feature_frame_sha256", previous_hash)
+            evidence.setdefault("post_overlay_feature_frame_sha256", frame_hash)
         overlays.append(dict(evidence))
         record["pre_overlay_feature_frame_sha256"] = previous_hash
-        record["feature_frame_sha256"] = _frame_hash(frame)
+        record["feature_frame_sha256"] = frame_hash
         record["column_count"] = int(len(frame.columns))
         record["materialized_prediction_overlay_count"] = len(overlays)
         record["materialized_prediction_overlays"] = overlays
@@ -1687,6 +2025,78 @@ def _update_feature_record_for_overlay(
         record["cache_status"] = f"{record.get('cache_status')}_with_prediction_overlay"
         return
     raise ValueError(f"materialized_prediction_overlay_missing_feature_record:{feature_set_id}")
+
+
+def _candidate_overlay_match_index(candidates: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    by_key: dict[str, dict[str, Any]] = {}
+    for candidate in candidates:
+        candidate_id = str(candidate.get("candidate_id") or "")
+        candidate_cache_key = str(candidate.get("candidate_cache_key") or "")
+        for key in (candidate_id, candidate_cache_key):
+            if not key:
+                continue
+            existing = by_key.get(key)
+            if existing is not None and str(existing.get("candidate_id")) != candidate_id:
+                raise ValueError(f"duplicate materialized prediction overlay candidate key: {key}")
+            by_key[key] = candidate
+    return by_key
+
+
+def _candidate_scoped_feature_record(
+    feature_build_manifest: Mapping[str, Any],
+    *,
+    feature_set_id: str,
+    frame: pd.DataFrame,
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    for record in feature_build_manifest.get("feature_sets", []):
+        if isinstance(record, Mapping) and str(record.get("feature_set_id")) == feature_set_id:
+            candidate_record = dict(record)
+            _update_feature_record_for_overlay(
+                [candidate_record],
+                feature_set_id=feature_set_id,
+                frame=frame,
+                evidence=evidence,
+            )
+            candidate_record["materialized_prediction_overlay_scope"] = "candidate"
+            return candidate_record
+    raise ValueError(f"materialized_prediction_overlay_missing_feature_record:{feature_set_id}")
+
+
+def _candidate_overlay_feature_computation_scope(current_scope: str) -> str:
+    if current_scope.endswith("_with_candidate_prediction_overlays"):
+        return current_scope
+    return f"{current_scope}_with_candidate_prediction_overlays"
+
+
+def _feature_build_hash_with_candidate_overlays(manifest: Mapping[str, Any]) -> str:
+    identity_records = [
+        {
+            "feature_set_id": record["feature_set_id"],
+            "feature_cache_key": record.get("feature_cache_key"),
+            "feature_manifest_sha256": record.get("feature_manifest_sha256"),
+            "feature_frame_sha256": record.get("feature_frame_sha256"),
+            "interval_ms": record.get("interval_ms"),
+            "row_count": record.get("row_count"),
+            "materialized_prediction_overlays": record.get("materialized_prediction_overlays", []),
+        }
+        for record in manifest.get("feature_sets", [])
+        if isinstance(record, Mapping)
+    ]
+    return _stable_hash(
+        {
+            "feature_build_manifest_version": manifest["feature_build_manifest_version"],
+            "feature_computation_scope": manifest["feature_computation_scope"],
+            "dataset_sha256": manifest["dataset_sha256"],
+            "primary_interval_ms": manifest["primary_interval_ms"],
+            "fixture_family_context_sha256": manifest.get("fixture_family_context_sha256"),
+            "feature_sets": identity_records,
+            "candidate_scoped_materialized_prediction_overlays": manifest.get(
+                "candidate_scoped_materialized_prediction_overlays",
+                [],
+            ),
+        }
+    )
 
 
 def _cycle_feature_interval_evidence(
@@ -1899,7 +2309,11 @@ def _cache_manifest_path_from_feature_path(feature_path: object) -> str | None:
 def _candidate_feature_frame(
     frames_by_feature_set: Mapping[str, pd.DataFrame],
     candidate: Mapping[str, Any],
+    candidate_overlay_context: CandidateScopedOverlayContext | None = None,
 ) -> pd.DataFrame:
+    candidate_id = str(candidate.get("candidate_id") or "")
+    if candidate_overlay_context is not None and candidate_id in candidate_overlay_context.frames_by_candidate_id:
+        return candidate_overlay_context.frames_by_candidate_id[candidate_id]
     feature_set_id = str(candidate["feature_set_id"])
     if feature_set_id not in frames_by_feature_set:
         raise ValueError(f"missing_materialized_feature_frame:{feature_set_id}")
@@ -1909,12 +2323,57 @@ def _candidate_feature_frame(
 def _candidate_feature_record(
     feature_build_manifest: Mapping[str, Any],
     candidate: Mapping[str, Any],
+    candidate_overlay_context: CandidateScopedOverlayContext | None = None,
 ) -> Mapping[str, Any]:
+    candidate_id = str(candidate.get("candidate_id") or "")
+    if candidate_overlay_context is not None and candidate_id in candidate_overlay_context.records_by_candidate_id:
+        return candidate_overlay_context.records_by_candidate_id[candidate_id]
     feature_set_id = str(candidate["feature_set_id"])
     for record in feature_build_manifest.get("feature_sets", []):
         if isinstance(record, Mapping) and str(record.get("feature_set_id")) == feature_set_id:
             return record
     raise ValueError(f"missing_materialized_feature_record:{feature_set_id}")
+
+
+def _candidate_with_materialized_overlay_evidence(
+    candidate: dict[str, Any],
+    feature_build_manifest: Mapping[str, Any],
+    candidate_overlay_context: CandidateScopedOverlayContext | None,
+) -> dict[str, Any]:
+    candidate_id = str(candidate.get("candidate_id") or "")
+    evidence: Mapping[str, Any] | None = None
+    if candidate_overlay_context is not None and candidate_id in candidate_overlay_context.evidence_by_candidate_id:
+        evidence = candidate_overlay_context.evidence_by_candidate_id[candidate_id]
+    else:
+        evidence = _feature_set_materialized_overlay_evidence(feature_build_manifest, candidate)
+    if not isinstance(evidence, Mapping):
+        return candidate
+    enriched = dict(candidate)
+    enriched["materialized_prediction_overlay_evidence"] = dict(evidence)
+    return enriched
+
+
+def _feature_set_materialized_overlay_evidence(
+    feature_build_manifest: Mapping[str, Any],
+    candidate: Mapping[str, Any],
+) -> Mapping[str, Any] | None:
+    feature_set_id = str(candidate.get("feature_set_id") or "")
+    for record in feature_build_manifest.get("feature_sets", []):
+        if not isinstance(record, Mapping) or str(record.get("feature_set_id") or "") != feature_set_id:
+            continue
+        overlays = record.get("materialized_prediction_overlays")
+        if not isinstance(overlays, list) or not overlays:
+            return None
+        evidence = dict(overlays[0])
+        evidence.setdefault("overlay_scope", "feature_set")
+        evidence["candidate_id"] = str(candidate.get("candidate_id") or "")
+        evidence["candidate_cache_key"] = str(candidate.get("candidate_cache_key") or candidate.get("candidate_id") or "")
+        evidence.setdefault("materialized_candidate_id", None)
+        evidence["candidate_feature_frame_sha256"] = str(record.get("feature_frame_sha256") or "")
+        evidence.setdefault("post_overlay_feature_frame_sha256", record.get("feature_frame_sha256"))
+        evidence.setdefault("pre_overlay_feature_frame_sha256", record.get("pre_overlay_feature_frame_sha256"))
+        return evidence
+    return None
 
 
 def _validated_feature_frame_hash(
@@ -2255,6 +2714,61 @@ def _candidate_parameters_json(candidate: Mapping[str, Any], key: str) -> str:
     return _stable_json(payload)
 
 
+def _materialized_prediction_overlay_provenance(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    evidence = candidate.get("materialized_prediction_overlay_evidence")
+    if not isinstance(evidence, Mapping):
+        return {
+            "materialized_prediction_overlay_used": False,
+            "materialized_prediction_overlay_scope": "",
+            "materialized_prediction_overlay_candidate_id": "",
+            "materialized_prediction_overlay_candidate_cache_key": "",
+            "materialized_prediction_overlay_materialized_candidate_id": "",
+            "materialized_prediction_overlay_feature_set_id": "",
+            "materialized_prediction_overlay_kind": "",
+            "materialized_prediction_overlay_join_key": "",
+            "materialized_prediction_overlay_predictions_path": "",
+            "materialized_prediction_overlay_predictions_sha256": "",
+            "materialized_prediction_overlay_manifest_path": "",
+            "materialized_prediction_overlay_manifest_sha256": "",
+            "materialized_prediction_overlay_manifest_version": "",
+            "materialized_prediction_overlay_row_count": 0,
+            "materialized_prediction_overlay_raw_knn_accepted_row_count": 0,
+            "materialized_prediction_overlay_split_safety_rule": "",
+            "materialized_prediction_overlay_split_safety_passed": False,
+            "materialized_prediction_overlay_pre_feature_frame_sha256": "",
+            "materialized_prediction_overlay_post_feature_frame_sha256": "",
+            "materialized_prediction_overlay_feature_frame_sha256": "",
+            "materialized_prediction_overlay_research_only": False,
+            "materialized_prediction_overlay_observe_only": False,
+            "materialized_prediction_overlay_promotion_ready": False,
+        }
+    return {
+        "materialized_prediction_overlay_used": True,
+        "materialized_prediction_overlay_scope": str(evidence.get("overlay_scope") or ""),
+        "materialized_prediction_overlay_candidate_id": str(evidence.get("candidate_id") or ""),
+        "materialized_prediction_overlay_candidate_cache_key": str(evidence.get("candidate_cache_key") or ""),
+        "materialized_prediction_overlay_materialized_candidate_id": str(evidence.get("materialized_candidate_id") or ""),
+        "materialized_prediction_overlay_feature_set_id": str(evidence.get("feature_set_id") or ""),
+        "materialized_prediction_overlay_kind": str(evidence.get("kind") or ""),
+        "materialized_prediction_overlay_join_key": str(evidence.get("join_key") or ""),
+        "materialized_prediction_overlay_predictions_path": str(evidence.get("predictions_path") or ""),
+        "materialized_prediction_overlay_predictions_sha256": str(evidence.get("predictions_sha256") or ""),
+        "materialized_prediction_overlay_manifest_path": str(evidence.get("manifest_path") or ""),
+        "materialized_prediction_overlay_manifest_sha256": str(evidence.get("manifest_sha256") or ""),
+        "materialized_prediction_overlay_manifest_version": str(evidence.get("manifest_version") or ""),
+        "materialized_prediction_overlay_row_count": int(evidence.get("row_count") or 0),
+        "materialized_prediction_overlay_raw_knn_accepted_row_count": int(evidence.get("raw_knn_accepted_row_count") or 0),
+        "materialized_prediction_overlay_split_safety_rule": str(evidence.get("split_safety_rule") or ""),
+        "materialized_prediction_overlay_split_safety_passed": bool(evidence.get("split_safety_passed", False)),
+        "materialized_prediction_overlay_pre_feature_frame_sha256": str(evidence.get("pre_overlay_feature_frame_sha256") or ""),
+        "materialized_prediction_overlay_post_feature_frame_sha256": str(evidence.get("post_overlay_feature_frame_sha256") or ""),
+        "materialized_prediction_overlay_feature_frame_sha256": str(evidence.get("candidate_feature_frame_sha256") or ""),
+        "materialized_prediction_overlay_research_only": bool(evidence.get("research_only", False)),
+        "materialized_prediction_overlay_observe_only": bool(evidence.get("observe_only", False)),
+        "materialized_prediction_overlay_promotion_ready": bool(evidence.get("promotion_ready", False)),
+    }
+
+
 def _resolved_candidate_parameters(strategy_id: str, holding_window: str, specified_parameters: Mapping[str, Any]) -> dict[str, Any]:
     return dict(
         sorted(
@@ -2443,8 +2957,10 @@ def _ranking_record(
     density = signal_density_controls(str(candidate["strategy_id"]))
     final_score = expectancy + net_return + max_drawdown
     cache_key_components = dict(manifest.get("cache_key_components") or {})
+    cost_model = dict(manifest.get("cost_model") or {})
     lower_timeframe_required = _candidate_requires_lower_timeframe(candidate)
     lower_timeframe_dataset_sha256 = manifest.get("lower_timeframe_dataset_sha256")
+    overlay_provenance = _materialized_prediction_overlay_provenance(candidate)
     reasons: list[str] = []
     if bool(data_source.get("synthetic")):
         reasons.append("synthetic_fixture_not_real_oos_evidence")
@@ -2518,6 +3034,7 @@ def _ranking_record(
         "aggregate_backtest_cache_key_components_engine_version": str(
             backend_evidence["backtest_cache_key_components_engine_version"]
         ),
+        **overlay_provenance,
         "metrics_path": str(metrics_path),
         "trade_count": trade_count,
         "long_count": int(metrics.get("long_count", 0)),
@@ -2727,11 +3244,13 @@ def _backtest_index_record(
     backend = dict(backend_evidence or _backtest_backend_evidence(requested="reference", fallback_reason="", manifest=manifest))
     split_payload = dict(split or {})
     cache_key_components = dict(manifest.get("cache_key_components") or {})
+    cost_model = dict(manifest.get("cost_model") or {})
     lower_timeframe_required = _candidate_requires_lower_timeframe(candidate)
     lower_timeframe_dataset_sha256 = manifest.get("lower_timeframe_dataset_sha256")
     exit_sequence_counts = _trade_column_counts(trades_path, "exit_sequence_proof") if lower_timeframe_required else {}
     barrier_counts = _trade_column_counts(trades_path, "barrier_hit_type") if lower_timeframe_required else {}
     exit_price_source_counts = _trade_column_counts(trades_path, "exit_price_source") if lower_timeframe_required else {}
+    overlay_provenance = _materialized_prediction_overlay_provenance(candidate)
     return {
         "candidate_id": candidate["candidate_id"],
         "candidate_cache_key": candidate.get("candidate_cache_key", candidate["candidate_id"]),
@@ -2783,6 +3302,17 @@ def _backtest_index_record(
         "cache_hit": bool(manifest.get("cache_hit", False)),
         "cache_lookup_used": bool(manifest.get("cache_lookup_used", False)),
         "execution_cache_reuse_enabled": bool(manifest.get("execution_cache_reuse_enabled", False)),
+        "cost_profile_contract_version": cost_model.get("cost_profile_contract_version"),
+        "cost_profile_id": cost_model.get("cost_profile_id"),
+        "cost_profile_source": cost_model.get("cost_profile_source"),
+        "fill_profile_id": cost_model.get("fill_profile_id"),
+        "cost_profile_venue": cost_model.get("venue"),
+        "cost_profile_source_venue": cost_model.get("source_venue"),
+        "cost_profile_execution_venue": cost_model.get("execution_venue"),
+        "cost_profile_evidence_scope": cost_model.get("evidence_scope"),
+        "cost_profile_execution_proof_scope": cost_model.get("execution_proof_scope"),
+        "not_hyperliquid_execution_proof": "hyperliquid" in set(cost_model.get("not_execution_proof_for") or ()),
+        **overlay_provenance,
         **backend,
     }
 
@@ -2881,19 +3411,7 @@ def _split_metric_record(
 
 
 def _cost_stress_scenarios() -> tuple[dict[str, Any], ...]:
-    return (
-        {"scenario_id": "base_costs", "scenario_group": "cost", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.0},
-        {"scenario_id": "slippage_2x", "scenario_group": "cost", "fee_bps": 5.0, "slippage_bps": 10.0, "spread_bps": 0.0, "funding_rate": 0.0},
-        {"scenario_id": "slippage_3x", "scenario_group": "cost", "fee_bps": 5.0, "slippage_bps": 15.0, "spread_bps": 0.0, "funding_rate": 0.0},
-        {"scenario_id": "adverse_funding_shock", "scenario_group": "funding", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.00005},
-        {"scenario_id": "wide_spread_stress", "scenario_group": "spread", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 25.0, "funding_rate": 0.0, "transform": "wide_spread"},
-        {"scenario_id": "missing_optional_context_stress", "scenario_group": "feature_context", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.0, "transform": "missing_optional_context"},
-        {"scenario_id": "high_volatility_only", "scenario_group": "volatility", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.0, "filter": "high_volatility"},
-        {"scenario_id": "low_volatility_only", "scenario_group": "volatility", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.0, "filter": "low_volatility"},
-        {"scenario_id": "trend_only", "scenario_group": "regime", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.0, "filter": "trend"},
-        {"scenario_id": "range_only", "scenario_group": "regime", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.0, "filter": "range"},
-        {"scenario_id": "shock_transition_only", "scenario_group": "shock", "fee_bps": 5.0, "slippage_bps": 5.0, "spread_bps": 0.0, "funding_rate": 0.0, "filter": "shock_transition"},
-    )
+    return tuple(dict(scenario) for scenario in research_cost_stress_scenarios())
 
 
 def _cost_stress_frame(frame: pd.DataFrame, scenario: Mapping[str, Any]) -> pd.DataFrame:
@@ -2993,6 +3511,15 @@ def _cost_stress_record(
         "holding_window": candidate["holding_window"],
         "scenario_id": scenario["scenario_id"],
         "scenario_group": scenario.get("scenario_group", "cost"),
+        "cost_profile_contract_version": scenario.get("cost_profile_contract_version"),
+        "cost_profile_id": scenario.get("cost_profile_id"),
+        "fill_profile_id": scenario.get("fill_profile_id"),
+        "venue": scenario.get("venue"),
+        "source_venue": scenario.get("source_venue"),
+        "execution_venue": scenario.get("execution_venue"),
+        "evidence_scope": scenario.get("evidence_scope"),
+        "execution_proof_scope": scenario.get("execution_proof_scope"),
+        "not_hyperliquid_execution_proof": "hyperliquid" in set(scenario.get("not_execution_proof_for") or ()),
         "scenario_filter": scenario.get("filter"),
         "scenario_transform": scenario.get("transform"),
         "fee_bps": float(scenario["fee_bps"]),
@@ -3706,6 +4233,7 @@ def _candidate_gate_report(
                     row.get("stability_validation_scope"),
                 ),
                 "stability_validation_enriched": bool(stability.get("validation_enriched", False)),
+                **_ranking_materialized_prediction_overlay_provenance(row),
                 "candidate_acceptance_scope": (
                     "research_only_pack_eligible_not_promotion_ready"
                     if gate_status == "passed"
@@ -3714,6 +4242,14 @@ def _candidate_gate_report(
             }
         )
     return pd.DataFrame(records)
+
+
+def _ranking_materialized_prediction_overlay_provenance(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        str(key): value
+        for key, value in row.items()
+        if str(key).startswith("materialized_prediction_overlay_")
+    }
 
 
 def _stability_row_gate_reasons(stability: Mapping[str, Any]) -> list[str]:
@@ -4254,6 +4790,36 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str, allow_nan=False) + "\n", encoding="utf-8")
+
+
+def _resolve_research_root(path: Path, *, repo_root: Path) -> Path:
+    candidate = Path(path).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (repo_root / candidate).resolve()
+
+
+def _repo_root_from_path(path: Path) -> Path:
+    start = path if path.is_dir() else path.parent
+    for parent in [start, *start.parents]:
+        if (parent / "pyproject.toml").is_file():
+            return parent.resolve()
+    return Path.cwd().resolve()
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _ensure_inside_research_root(path: Path, *, research_root: Path, field_name: str) -> None:
+    resolved_path = path.resolve()
+    resolved_root = research_root.resolve()
+    if not _is_relative_to(resolved_path, resolved_root):
+        raise ValueError(f"{field_name} must be inside the configured research output directory")
 
 
 def _stable_hash(payload: Any) -> str:

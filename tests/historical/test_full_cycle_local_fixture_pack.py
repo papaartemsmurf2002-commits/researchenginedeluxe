@@ -89,6 +89,13 @@ def test_full_cycle_uses_validated_local_fixture_pack_without_synthetic_fallback
     assert manifest["order_placement_used"] is False
     assert manifest["data_source"]["source_type"] == "historical_fixture_pack"
     assert manifest["data_source"]["synthetic"] is False
+    assert manifest["data_source"]["synthetic_fallback_allowed"] is False
+    source_selection_path = Path(manifest["required_outputs"]["source_selection_manifest"])
+    source_selection = json.loads(source_selection_path.read_text(encoding="utf-8"))
+    assert manifest["data_source"]["source_selection"]["source_selection_manifest_version"] == "research-cycle-source-selection-v1"
+    assert manifest["data_source"]["source_selection"]["selected_source_type"] == "historical_fixture_pack"
+    assert manifest["data_source"]["source_selection"]["records"][-1]["status"] == "selected"
+    assert source_selection == manifest["data_source"]["source_selection"]
     assert manifest["data_source"]["fixture_id"] == "btcusdt-local-offline-v1"
     assert manifest["data_source"]["manifest_path"] == str(manifest_path)
     assert manifest["data_source"]["manifest_sha256"] == _file_sha256(manifest_path)
@@ -794,11 +801,11 @@ def test_full_cycle_materializes_fixture_context_families_and_cache_identity(tmp
 
     first_result = run_historical_research_cycle(
         spec_path=_write_context_cycle_spec(tmp_path / "first", first_manifest_path, cycle_id="fixture-context-cycle-a"),
-        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "first" / "research")),
     )
     second_result = run_historical_research_cycle(
         spec_path=_write_context_cycle_spec(tmp_path / "second", second_manifest_path, cycle_id="fixture-context-cycle-b"),
-        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "second" / "research")),
     )
 
     first_manifest = json.loads(first_result.manifest_path.read_text(encoding="utf-8"))
@@ -852,7 +859,7 @@ def test_full_cycle_consumes_provider_builder_context_fixture_pack(tmp_path: Pat
             fixture_result.manifest_path,
             cycle_id="provider-built-context-cycle",
         ),
-        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "provider_cycle" / "research")),
     )
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))

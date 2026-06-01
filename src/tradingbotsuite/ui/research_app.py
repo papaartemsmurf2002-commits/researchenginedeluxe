@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import time
 from dataclasses import asdict, dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from tradingbotsuite.config import AppConfig, ResearchConfig
@@ -16,6 +19,23 @@ from tradingbotsuite.research.experiment_runner import run_research_experiment
 
 
 RESEARCH_UI_VERSION = "research-ui-stage9-v1"
+RESEARCH_UI_SCAN_SKIP_DIRS = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    "__pycache__",
+    "aggregate_backtests",
+    "backtests",
+    "cache",
+    "cost_stress_backtests",
+    "feature_cache",
+    "feature_frames",
+    "snapshots",
+    "split_backtests",
+    "trial_artifacts",
+    "trials",
+}
+RESEARCH_UI_SCAN_MAX_MATCHES = 500
 
 
 @dataclass(slots=True)
@@ -55,7 +75,7 @@ class ResearchUiService:
 
     def list_manifests(self) -> list[dict[str, Any]]:
         items = []
-        for path in sorted(self.research_root.rglob("*manifest*.json")):
+        for path in _iter_research_paths(self.research_root, "*manifest*.json"):
             payload = _read_json_safely(path)
             items.append(
                 {
@@ -71,7 +91,7 @@ class ResearchUiService:
 
     def experiment_metrics(self) -> list[dict[str, Any]]:
         rows = []
-        for path in sorted(self.research_root.rglob("experiment_manifest.json")):
+        for path in _iter_research_paths(self.research_root, "experiment_manifest.json"):
             payload = _read_json_safely(path)
             outputs = payload.get("required_outputs") or {}
             decision = payload.get("orchestrator_decision") or {}
@@ -104,10 +124,10 @@ class ResearchUiService:
     def knn_neighbor_diagnostics(self) -> list[dict[str, Any]]:
         return [
             {"path": str(path), "manifest_path": _nearest_manifest(path)}
-            for path in sorted(self.research_root.rglob("neighbor_diagnostics.csv"))
+            for path in _iter_research_paths(self.research_root, "neighbor_diagnostics.csv")
         ]
 
-    def promotion_candidates(self) -> list[dict[str, Any]]:
+    def boundary_review_manifests(self) -> list[dict[str, Any]]:
         return [
             item
             for item in self.list_manifests()
@@ -210,8 +230,9 @@ class ResearchUiService:
 
 
 def create_research_app(config: AppConfig | None = None, service: ResearchUiService | None = None) -> FastAPI:
-    config = config or AppConfig.from_env()
+    config = config or (service.app_config if service is not None else AppConfig.from_env())
     service = service or ResearchUiService(research_root=config.research.output_dir, app_config=config)
+    service.app_config = config
     templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates" / "research"))
     app = FastAPI(title="Trading Bot Suite Research UI")
     app.state.research_ui_service = service
@@ -226,6 +247,19 @@ def create_research_app(config: AppConfig | None = None, service: ResearchUiServ
         if extra:
             payload.update(extra)
         return payload
+
+    def require_write_api(request: Request) -> None:
+        secret = config.operator_ui.secret
+        if not secret:
+            raise HTTPException(status_code=403, detail="research_ui_write_api_disabled")
+        origin = request.headers.get("origin")
+        if origin is not None and origin.rstrip("/") != str(request.base_url).rstrip("/"):
+            raise HTTPException(status_code=403, detail="cross-origin request blocked")
+        token = request.headers.get("X-Research-UI-Token")
+        if token is None:
+            raise HTTPException(status_code=403, detail="missing research ui token")
+        if not secrets.compare_digest(token, str(secret)):
+            raise HTTPException(status_code=403, detail="invalid research ui token")
 
     @app.get("/research", response_class=HTMLResponse)
     async def research_home(request: Request):
@@ -267,9 +301,22 @@ def create_research_app(config: AppConfig | None = None, service: ResearchUiServ
     async def knn_neighbors(request: Request):
         return templates.TemplateResponse(request, "artifacts.html", context(request, "knn_neighbors", "KNN Neighbor Diagnostics", {"items": service.knn_neighbor_diagnostics()}))
 
+    @app.get("/research/boundary-review", response_class=HTMLResponse)
+    async def boundary_review(request: Request):
+        return templates.TemplateResponse(
+            request,
+            "artifacts.html",
+            context(
+                request,
+                "boundary_review",
+                "Research Boundary Review",
+                {"items": service.boundary_review_manifests()},
+            ),
+        )
+
     @app.get("/research/promotion-candidates", response_class=HTMLResponse)
-    async def promotion_candidates(request: Request):
-        return templates.TemplateResponse(request, "artifacts.html", context(request, "promotion", "Promotion Candidate Review", {"items": service.promotion_candidates()}))
+    async def legacy_promotion_review():
+        return RedirectResponse("/research/boundary-review", status_code=308)
 
     @app.get("/research/jobs", response_class=HTMLResponse)
     async def jobs(request: Request):
@@ -289,6 +336,7 @@ def create_research_app(config: AppConfig | None = None, service: ResearchUiServ
 
     @app.post("/research/api/jobs/run-research-experiment")
     async def api_run_research_experiment(request: Request):
+        require_write_api(request)
         payload = await request.json()
         spec_path = payload.get("spec_path")
         if not spec_path:
@@ -308,7 +356,7 @@ def create_research_app(config: AppConfig | None = None, service: ResearchUiServ
 def _typed_artifacts(root: Path, pattern: str) -> list[dict[str, Any]]:
     return [
         {"path": str(path), "manifest_path": _nearest_manifest(path)}
-        for path in sorted(Path(root).rglob(pattern))
+        for path in _iter_research_paths(Path(root), pattern)
     ]
 
 
@@ -341,3 +389,22 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _iter_research_paths(root: Path, pattern: str) -> list[Path]:
+    if not root.exists():
+        return []
+    matches: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name not in RESEARCH_UI_SCAN_SKIP_DIRS and not name.startswith(".")
+        ]
+        for filename in filenames:
+            if not fnmatch(filename, pattern):
+                continue
+            matches.append(Path(dirpath) / filename)
+            if len(matches) >= RESEARCH_UI_SCAN_MAX_MATCHES:
+                return sorted(matches)
+    return sorted(matches)

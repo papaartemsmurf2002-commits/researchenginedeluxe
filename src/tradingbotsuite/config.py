@@ -87,7 +87,6 @@ def _load_hyperliquid_testnet_credentials() -> dict[str, str | bool] | None:
     }
     if network == "testnet":
         payload["base_url"] = "https://api.hyperliquid-testnet.xyz"
-        payload["enable_live"] = True
     return payload
 
 
@@ -343,7 +342,7 @@ class AppConfig:
             account_address=hl_account_address or (str((file_credentials or {}).get("account_address")) if file_credentials else None),
             private_key=hl_private_key or (str((file_credentials or {}).get("private_key")) if file_credentials else None),
             vault_address=hl_vault_address,
-            enable_live=_env_bool("TBS_HL_ENABLE_LIVE", bool((file_credentials or {}).get("enable_live", False))),
+            enable_live=_env_bool("TBS_HL_ENABLE_LIVE", False),
             market_order_slippage=float(os.getenv("TBS_HL_MARKET_SLIPPAGE", "0.03")),
             order_timeout_seconds=int(os.getenv("TBS_HL_ORDER_TIMEOUT_SECONDS", "5")),
             ws_stale_after_ms=int(os.getenv("TBS_HL_WS_STALE_AFTER_MS", "120000")),

@@ -168,6 +168,7 @@ class OperatorConsoleService:
         "snapshots",
         "split_backtests",
         "trial_artifacts",
+        "trials",
     }
     _ARTIFACT_SCAN_MAX_MATCHES_PER_PATTERN = 500
 
@@ -3553,6 +3554,7 @@ class OperatorConsoleService:
                 )
 
     async def _run_job(self, job_type: str, request: dict[str, Any], job_id: str) -> dict[str, Any]:
+        await self._assert_research_job_allowed()
         if job_type == "build-dataset":
             result = await build_dataset(self.config)
             return {"dataset_path": str(result.dataset_path), "manifest_path": str(result.manifest_path), "row_count": result.row_count}

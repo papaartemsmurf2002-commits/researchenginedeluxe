@@ -5,7 +5,11 @@ import json
 import pandas as pd
 import pytest
 
-from tradingbotsuite.backtesting.splits import build_anchored_walk_forward_splits
+from tradingbotsuite.backtesting.splits import (
+    LabelSpec,
+    build_anchored_walk_forward_splits,
+    build_purged_walk_forward_splits,
+)
 from tradingbotsuite.features.builders import (
     FEATURE_BUILDER_VERSION,
     build_registered_feature_set,
@@ -41,6 +45,31 @@ def test_canonicalize_deterministic_signal_bars_and_build_price_features() -> No
     assert built.result.completed_bar_validation.valid
     assert "directional_slope_atr" in built.result.frame.columns
     assert built.result.manifest.feature_set_id == "features_price_trend_vol"
+
+
+def test_train_only_split_transform_honors_event_safe_train_indices() -> None:
+    start = 1_712_649_600_000
+    frame = pd.DataFrame(
+        {
+            "bar_time_ms": [start + index * 900_000 for index in range(24)],
+            "feature": [float(index) for index in range(24)],
+            "label_event_end_time_ms": [start + index * 900_000 for index in range(24)],
+        }
+    )
+    frame.loc[2, "label_event_end_time_ms"] = frame.loc[8, "bar_time_ms"]
+    frame.loc[4, "label_event_end_time_ms"] = pd.NA
+    split = build_purged_walk_forward_splits(
+        frame,
+        min_splits=2,
+        purge_embargo_bars=0,
+        label_spec=LabelSpec(event_end_time_column="label_event_end_time_ms", interval_ms=900_000),
+    )[0]
+
+    result = fit_transform_split_train_only(frame, split, feature_columns=["feature"])
+
+    assert split.train_indices == (0, 1, 3, 5, 6, 7)
+    assert result.preprocessor.fit_row_count == 6
+    assert result.train_matrix.index.tolist() == [0, 1, 3, 5, 6, 7]
 
 
 def test_feature_cache_key_is_deterministic() -> None:

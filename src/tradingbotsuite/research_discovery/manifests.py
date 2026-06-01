@@ -8,7 +8,10 @@ from tradingbotsuite.research.live_readiness import research_boundary_metadata
 from tradingbotsuite.research_discovery.spec import (
     DiscoveryResolvedPaths,
     DiscoveryRunSpec,
+    GMM_REGIME_MODEL_BACKEND,
+    NO_REGIME_MODEL_BACKEND,
     discovery_search_space_summary,
+    regime_mode_settings,
 )
 
 
@@ -53,7 +56,11 @@ def discovery_manifest_payload(
             "configured_regime_detector_types": sorted(
                 {"none" if mode == "none" else "gmm" for mode in spec.search.regime_modes}
             ),
-            "current_gmm_backend": "sklearn.mixture.GaussianMixture",
+            "configured_regime_model_backends": sorted(
+                {regime_mode_settings(mode).regime_model_backend for mode in spec.search.regime_modes}
+            ),
+            "current_gmm_backend": GMM_REGIME_MODEL_BACKEND,
+            "no_regime_backend": NO_REGIME_MODEL_BACKEND,
             "true_hmm_backend_used": False,
         },
         "event_accounting_policy": {
