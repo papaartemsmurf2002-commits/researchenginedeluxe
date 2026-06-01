@@ -18,11 +18,14 @@ rename.
 
 ## Current Checkout
 
-- Local checkout: `codex/wpr106-47-full-replay-exit-lab-controls`.
+- Local checkout: `main`.
 - Stage role: migrated mirror of `research/v3-experimental-engine`.
 - Live runtime branch referenced by older docs: `live/v1-runtime-hardening`.
-- Current git state at WPR106-32 open: `.pytest_cache/v/cache/nodeids` was
-  already dirty and is unrelated.
+- WPR106-46 through WPR106-54 were merged through PR #2, and the merged
+  `codex/wpr106-46-exact-replay-overlay` and
+  `codex/wpr106-47-full-replay-exit-lab-controls` branch refs were deleted
+  locally and on `origin`.
+- Current git state after merge cleanup and WPR106-55 handoff start: clean.
 
 If older documents say the current branch is `research/v3-experimental-engine`,
 prefer this index plus WPR106-21 and later R106 reports for local checkout
@@ -32,6 +35,10 @@ facts.
 
 - Current stage: Stage R106 centralized historical data catalog.
 - Current stage owner: Codex Research Agent.
+- Latest WPR106-55 next-agent complete-development handoff packet:
+  `docs/work_packets/WPR106-55-next-agent-complete-development-handoff.md`.
+- Latest WPR106-55 next-agent handoff prompt:
+  `docs/NEXT_AGENT_HANDOFF_WPR106_55_COMPLETE_DEVELOPMENT_PROMPT.md`.
 - Latest WPR106-54 finish-development closeout packet:
   `docs/work_packets/WPR106-54-finish-development-and-stage-closeout.md`.
 - Latest WPR106-54 finish-development closeout report:
