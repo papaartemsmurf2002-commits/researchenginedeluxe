@@ -33,8 +33,13 @@ facts.
 
 ## Active Stage
 
-- Current stage: Stage R106 centralized historical data catalog.
+- Current stage: Stage R106 centralized historical data catalog complete,
+  fail-closed no-candidate decision.
 - Current stage owner: Codex Research Agent.
+- Latest WPR106-56 complete empirical development/stage decision packet:
+  `docs/work_packets/WPR106-56-complete-empirical-development-and-stage-decision.md`.
+- Latest WPR106-56 complete empirical development/stage decision report:
+  `docs/stage_reports/STAGE_R106_COMPLETE_EMPIRICAL_DEVELOPMENT_AND_STAGE_DECISION_REPORT.md`.
 - Latest WPR106-55 next-agent complete-development handoff packet:
   `docs/work_packets/WPR106-55-next-agent-complete-development-handoff.md`.
 - Latest WPR106-55 next-agent handoff prompt:
@@ -138,6 +143,15 @@ documentation. Baseline validation passes with
 `PYTHONPATH=src python -m pytest tests/contracts -q` reporting 441 passed. No
 candidate pack, live/paper/order/sizing/runtime authorization, or promotion
 behavior is introduced.
+WPR106-56 completes the empirical development decision from cleaned merged
+`main`. The R106 Historical Data Catalog is candidate-depth ready for BTCUSDT
+and ETHUSDT, active exact discovery completed 570,240 trials per symbol, active
+historical cycles ranked 63 rejected candidates per symbol, WPR106-29
+materialized active multiple-testing/validation-floor/capped eligibility
+evidence with 22,560 BTC and 23,040 ETH blocked rows, WPR106-49 confirms all 48
+replay rows remain blocked, and no candidate pack exists. `ISSUE-R104-001` is
+resolved as a fail-closed no-candidate outcome, not as candidate readiness or
+promotion readiness.
 
 ## Current Gate State
 
@@ -163,11 +177,15 @@ Resolved P0 blockers in the active-index wave:
 - `ISSUE-R106-014`: live artifact validation was not fail-closed for unknown
   or mode-ambiguous manifests.
 
-Open P1 blocker:
+Open P1 blockers: none.
 
-- `ISSUE-R104-001`: candidate-ready empirical evidence remains blocked until
-  durable candidate-depth data, deep cycles, exact sweeps, and eligibility
-  review complete.
+Resolved P1 blocker:
+
+- `ISSUE-R104-001`: resolved by WPR106-56 as a fail-closed no-candidate
+  empirical outcome after expanded catalog readiness, active deep cycles,
+  exact sweeps, active/replay gate materialization, and eligibility review.
+  Resolution does not create a candidate-ready, paper-ready, live-ready, or
+  promotion-ready claim.
 
 See `docs/KNOWN_ISSUES.md` for the blocking source of truth.
 
@@ -221,8 +239,9 @@ Broader research queue:
   but blocked, so later expansion still needs split/window concentration,
   source capability, baseline, ablation, exit-lab, and full cycle-ranking
   evidence.
-- Keep `ISSUE-R104-001` open until durable candidate-depth data, deep cycles,
-  exact sweeps, and eligibility review prove closure.
+- Treat `ISSUE-R104-001` as resolved by WPR106-56's fail-closed no-candidate
+  decision. New empirical expansion should open a new issue or packet instead
+  of reusing that blocker.
 - Keep approximate-current-domain overlays separate and explicitly labeled; they
   cannot claim exact WPR106-31 replay evidence.
 - Keep live/paper runtime behavior, order placement, sizing, venue execution
@@ -283,7 +302,7 @@ historical-cycle strategy-domain support, 48 singleton overlay specs were
 generated locally, and bounded BTC/ETH smoke cycles produced rankings,
 backtest-index rows, gate reports, and rejection reports with candidate-scoped
 overlay provenance. No candidate pack was emitted, and `ISSUE-R104-001`
-remains open.
+remained open at that point.
 
 WPR106-47 adds the full replay exit-lab and negative-control audit packet. The
 packet verifies 48 existing full frozen-entry exit-lab rows, all blocked by no

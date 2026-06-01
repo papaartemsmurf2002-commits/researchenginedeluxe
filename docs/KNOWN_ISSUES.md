@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
-| P1 | 1 | 0 | 15 | 0 |
+| P1 | 0 | 0 | 16 | 0 |
 | P2 | 0 | 0 | 2 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
 
@@ -320,7 +320,7 @@ changed.
 Severity: P1
 Stage discovered: Stage R104 - candidate validation on durable evidence
 Owner: Codex Research Agent
-Status: open
+Status: resolved
 Paths affected: `data/research/fixtures/**`, `configs/discovery/**`, `configs/research/**`, `src/tradingbotsuite/research_discovery/**`, `src/tradingbotsuite/research_cycle/**`
 
 ### Problem
@@ -355,17 +355,18 @@ Keep all artifacts `research_only`, `observe_only`, and
 
 ### Resolution notes
 
-Open. WPR104-04 adds truthful brute-force-scale run profiles and UI/progress
+Previously open. WPR104-04 adds truthful brute-force-scale run profiles and UI/progress
 wiring, but it does not fabricate additional durable data or claim candidate
 readiness from the compact screening fixture. WPR105-104 hardens the operator
 surface so the compact BTC/ETH fixtures are reported as integrity-ready
 screening windows, not candidate-depth-ready evidence; old/simple artifacts no
-longer complete the required checklist while this issue remains open.
+longer completed the required checklist while this issue was open.
 WPR105-106 adds the missing runnable Step 0 collection pipeline and operator
 button, validates Binance Vision checksum sidecars plus fixture integrity, and
 wires generated candidate-depth packs into readiness, cycle, and discovery
-defaults. This issue remains open until the full collection is run and the
-resulting deep cycles, exact sweeps, and candidate eligibility review complete.
+defaults. This issue remained open until the full collection was run and the
+resulting deep cycles, exact sweeps, and candidate eligibility review were
+complete.
 WPR106-01 supersedes the one-off button with the Historical Data Catalog as the
 single required data source of truth and keeps Bybit, Crypto Lake, and
 Hyperliquid provider slots visible without treating unimplemented ingestion as
@@ -379,33 +380,47 @@ duplicate log sequence inserts. WPR106-03 adds bounded transient Binance Vision
 fetch retry and completed per-symbol fixture-pack reuse after interruption.
 WPR106-04 expands that retry path for longer DNS/VPN outages with env-tunable
 attempt and backoff defaults while keeping checksum mismatches fail-fast. The
-issue remains open until the refreshed catalog, deep cycles, exact sweeps, and
+issue remained open until the refreshed catalog, deep cycles, exact sweeps, and
 eligibility review complete on candidate-depth evidence. WPR106-46 implements
 the Option A exact replay-overlay domain and bounded cycle-smoke path: all 48
 WPR106-31 replay leads are representable and 48 singleton overlay specs were
 generated locally, with bounded BTC/ETH smokes proving overlay provenance
-through rankings, backtest index, and gate reports. The issue remains open
+through rankings, backtest index, and gate reports. The issue remained open
 because WPR106-46 does not complete the required deep cycles, exact sweeps,
 full exit labs, negative controls, or eligibility review.
 WPR106-47 verifies full 48-lead frozen-entry exit-lab evidence and adds
 separate full-window, modern-window, negative-control, and eligibility audit
-artifacts. It keeps the issue open because all exit-lab gates remain blocked,
+artifacts. It kept the issue open because all exit-lab gates remain blocked,
 modern-window replay artifacts are missing locally, first-class negative
 controls are missing, WPR106-47-scope multiple-testing and validation floors are
 missing, eligibility rows remain 0/48, and no candidate pack was emitted.
 WPR106-48 adds first-class negative-control artifacts and hardens bridge/pack
-rejection. The issue remains open because all 192 first-class control rows are
+rejection. The issue remained open because all 192 first-class control rows are
 blocked by missing replay profile provenance, validation manifests, and
 modern-window evidence; source label/timestamp inputs are also missing for the
 shuffled-label and shifted-context control families. Refreshed eligibility
 audits still have 0/48 eligible rows and no candidate pack.
 WPR106-49 materializes replay-scope multiple-testing and validation-floor
 manifests for all 48 WPR106-31 replay leads and refreshes eligibility. The
-missing-manifest blockers are gone, but the issue remains open because all
+missing-manifest blockers are gone, but the issue remained open because all
 48 rows still block on exit-lab no-improvement, blocked multiple-testing,
 diagnostic validation floors, partial cycle-ranking overlap, unavailable
 modern-window evidence, and unavailable passing negative controls. No candidate
 pack was emitted.
+WPR106-56 resolves this issue as a fail-closed no-candidate empirical outcome.
+The compact R104 fixture blocker has been superseded by the completed R106
+Historical Data Catalog under
+`refresh-historical-data-catalog-4dfa2700192f4b6fa1fa8fe833668cfb`, where
+BTCUSDT and ETHUSDT are candidate-depth ready with 221,952 primary 15m bars,
+3,329,280 lower-timeframe rows, checksum evidence, active readiness manifests,
+and generated active cycle/discovery specs. The downstream evidence does not
+support a candidate pack: active cycles have 63 rejected candidates per symbol;
+exact discovery completed 570,240 trials per symbol; WPR106-29 materialized
+active multiple-testing, validation-floor, and capped eligibility evidence with
+22,560 BTCUSDT and 23,040 ETHUSDT blocked rows, zero discovery-to-cycle ranking
+overlap, zero eligible rows, and no candidate packs; WPR106-49 replay-scope
+evidence likewise leaves all 48 replay rows blocked. Resolution is explicitly
+not a candidate-ready, paper-ready, live-ready, or promotion-ready claim.
 
 ## ISSUE-R106-007: Large exact-discovery eligibility can stall before writing output
 
@@ -652,7 +667,7 @@ are produced, and the same read-time rebase covers nested profile path fields.
 
 Resolved by WPR106-22. Regression coverage proves migrated catalog path fields
 are rebased at read time and migrated active cycle/discovery specs are rebased
-before operator isolated specs are written. `ISSUE-R104-001` remains open as an
+before operator isolated specs are written. `ISSUE-R104-001` was still open as an
 empirical evidence gate; WPR106-22 makes no candidate-ready, promotion-ready,
 profitability, or live-readiness claim.
 
@@ -790,8 +805,8 @@ bridge-compatible frozen-entry exit-lab artifacts, and operator/API/UI/autopilot
 sequencing through eligibility. Existing exact-discovery ledgers may still
 write a blocked frozen-entry lab when per-entry timestamps are unavailable, but
 that is now explicit fail-closed evidence rather than missing workflow
-machinery. Candidate-ready evidence remains blocked by empirical gates under
-`ISSUE-R104-001`; no promotion claim is made.
+machinery. Candidate-ready evidence was still blocked by empirical gates under
+`ISSUE-R104-001` at WPR106-16 close; no promotion claim was made.
 
 ## ISSUE-R101-001: Fixture source provider capability mismatch is not validated
 
