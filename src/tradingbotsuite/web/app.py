@@ -62,8 +62,13 @@ def create_app(config: AppConfig | None = None) -> FastAPI:
 
     @app.get("/health/details")
     async def health_details(symbol: str = "BTCUSDT") -> dict[str, object]:
-        snapshot = await engine.collect_system_snapshot(symbol.upper())
-        return snapshot
+        return {
+            "status": "ok",
+            "mode": engine.config.runtime_mode.value,
+            "symbol": symbol.upper(),
+            "operator_ui_enabled": config.operator_ui.enabled,
+            "operator_snapshot": "available_via_authenticated_operator_api",
+        }
 
     @app.post("/webhooks/signal")
     async def signal_webhook(

@@ -145,7 +145,12 @@
     `;
   }
 
+  let overviewRefreshInFlight = false;
+
   async function refreshOverview() {
+    if (overviewRefreshInFlight) return;
+    overviewRefreshInFlight = true;
+    try {
     const snapshot = await window.TBS.getJson("/api/operator/snapshot?symbol=BTCUSDT");
     const position = snapshot.position || {};
     const safety = snapshot.safety || {};
@@ -271,6 +276,12 @@
     })), "health-events");
     renderEventList(snapshot.fresh_stream_events || [], "stream-events");
     renderEventList(snapshot.recent_traces || [], "recent-traces");
+    } catch (error) {
+      document.getElementById("recommendations").innerHTML = window.TBS.errorHtml("Overview refresh failed", error);
+      document.getElementById("headline-stats").innerHTML = "";
+    } finally {
+    overviewRefreshInFlight = false;
+    }
   }
 
   refreshOverview();

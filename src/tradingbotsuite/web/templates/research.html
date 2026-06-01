@@ -1369,6 +1369,28 @@
     return latestArtifacts.find(item => item.type === type) || null;
   }
 
+  function artifactSymbol(item) {
+    const summary = (item || {}).summary || {};
+    const direct = String(
+      summary.symbol
+      || summary.cycle_symbol
+      || summary.discovery_symbol
+      || summary.base_symbol
+      || ""
+    ).toUpperCase();
+    if (direct === "BTCUSDT" || direct === "ETHUSDT") return direct;
+    const text = artifactText(item).toUpperCase();
+    if (text.includes("ETHUSDT") || text.includes("ETH_USDT") || text.includes("ETH-USDT")) return "ETHUSDT";
+    if (text.includes("BTCUSDT") || text.includes("BTC_USDT") || text.includes("BTC-USDT")) return "BTCUSDT";
+    return "";
+  }
+
+  function pickLatestForSymbol(type, symbol) {
+    const expected = String(symbol || "").toUpperCase();
+    if (!expected) return pickLatest(type);
+    return latestArtifacts.find(item => item.type === type && artifactSymbol(item) === expected) || null;
+  }
+
   function localSettings() {
     try {
       return JSON.parse(localStorage.getItem(localSettingsKey) || "{}");
@@ -1685,8 +1707,9 @@
   }
 
   async function queueResearchAnalysis() {
-    const discovery = latestDiscoveryRun();
-    const cycle = latestCycle();
+    const inputs = latestAnalysisInputs();
+    const discovery = inputs.discovery;
+    const cycle = inputs.cycle;
     if (!discovery && !cycle) {
       setJobResponse('<div class="error-box"><strong>No research evidence found</strong><br>Run a durable cycle or exact discovery before analysis.</div>');
       focusResearchSection("artifacts-list");
@@ -1701,7 +1724,7 @@
   }
 
   async function queueResearchDelta() {
-    const analysis = pickLatest("research_analysis");
+    const analysis = latestResearchAnalysis();
     if (!analysis) {
       setJobResponse('<div class="error-box"><strong>No research analysis found</strong><br>Analyze current evidence before writing a run-to-run delta.</div>');
       focusResearchSection("artifacts-list");
@@ -1716,12 +1739,13 @@
 
   async function queueFrozenEntryExitLab() {
     const discovery = latestDiscoveryRun();
+    const symbol = artifactSymbol(discovery);
     if (!discovery) {
       setJobResponse('<div class="error-box"><strong>No discovery run found</strong><br>Run durable discovery before the frozen-entry exit lab.</div>');
       focusResearchSection("artifacts-list");
       return null;
     }
-    if (!pickLatest("research_analysis_delta")) {
+    if (!latestResearchAnalysisDelta(symbol)) {
       setJobResponse('<div class="error-box"><strong>No run-to-run delta found</strong><br>Write the delta artifact before the frozen-entry exit lab.</div>');
       focusResearchSection("artifacts-list");
       return null;
@@ -1769,42 +1793,44 @@
     focusResearchSection("artifacts-list");
   }
 
-  function latestArtifactPath(type) {
-    const item = pickLatest(type);
+  function latestArtifactPath(type, symbol = "") {
+    const item = symbol ? pickLatestForSymbol(type, symbol) : pickLatest(type);
     return item ? item.path : null;
   }
 
   async function reviewCandidateEligibility() {
-    const discovery = latestDiscoveryRun();
+    const inputs = latestEligibilityInputs();
+    const discovery = inputs.discovery;
+    const symbol = inputs.symbol;
     if (!discovery) {
       setJobResponse('<div class="error-box"><strong>No discovery run found</strong><br>Run durable discovery before evaluating candidate-pack eligibility.</div>');
       focusResearchSection("artifacts-list");
       return null;
     }
-    if (!pickLatest("research_analysis")) {
+    if (!inputs.analysis) {
       setJobResponse('<div class="error-box"><strong>No research analysis found</strong><br>Analyze current evidence before eligibility review.</div>');
       focusResearchSection("artifacts-list");
       return null;
     }
-    if (!pickLatest("research_analysis_delta")) {
+    if (!inputs.delta) {
       setJobResponse('<div class="error-box"><strong>No run-to-run delta found</strong><br>Write the delta artifact before eligibility review.</div>');
       focusResearchSection("artifacts-list");
       return null;
     }
-    if (!pickLatest("discovery_exit_lab")) {
+    if (!inputs.exitLab) {
       setJobResponse('<div class="error-box"><strong>No frozen-entry exit lab found</strong><br>Run the frozen-entry exit lab before eligibility review.</div>');
       focusResearchSection("artifacts-list");
       return null;
     }
-    const cycle = latestCycle();
+    const cycle = inputs.cycle;
     document.getElementById("historical-cycle-focus").value = "stability";
     applyHistoricalPreset();
     return await queueJob("/api/operator/research/jobs/evaluate-discovery-candidate-pack-eligibility", {
       discovery_manifest_path: discovery.path,
       cycle_manifest_path: cycle ? cycle.path : null,
-      exit_lab_manifest_path: latestArtifactPath("discovery_exit_lab"),
-      multiple_testing_manifest_path: latestArtifactPath("discovery_multiple_testing"),
-      validation_floors_manifest_path: latestArtifactPath("discovery_validation_floors"),
+      exit_lab_manifest_path: inputs.exitLab,
+      multiple_testing_manifest_path: latestArtifactPath("discovery_multiple_testing", symbol),
+      validation_floors_manifest_path: latestArtifactPath("discovery_validation_floors", symbol),
     }, "Candidate eligibility review");
   }
 
@@ -1814,23 +1840,8 @@
   }
 
   async function queueFullResearchReview() {
-    setJobResponse('<div class="success-box"><strong>Queueing evidence review bundle</strong><br>BTC durable cycle, BTC durable discovery, analysis, delta, and frozen-entry exit lab are submitted in order. Queueing stops if any step is rejected.</div>');
-    const steps = [
-      () => queueDurableCycle("BTCUSDT"),
-      () => queueDurableDiscovery("BTCUSDT"),
-      () => queueResearchAnalysis(),
-      () => queueResearchDelta(),
-      () => queueFrozenEntryExitLab(),
-    ];
-    for (const step of steps) {
-      const response = await step();
-      if (!response) {
-        setJobResponse('<div class="error-box"><strong>Evidence review stopped</strong><br>A required step was rejected or missing evidence. Review Jobs and Artifacts before continuing.</div>');
-        return null;
-      }
-    }
-    setJobResponse('<div class="success-box"><strong>Evidence review queued</strong><br>When the jobs succeed, use Review Candidate Eligibility to run the bridge against indexed manifests.</div>');
-    return true;
+    setJobResponse('<div class="success-box"><strong>Queueing evidence review bundle</strong><br>The backend autopilot runs or reuses the full BTC/ETH checklist, then writes analysis, delta, frozen-entry exit lab, and eligibility evidence.</div>');
+    return await queueResearchAutopilot();
   }
 
   function formatNumber(value) {
@@ -2642,12 +2653,86 @@
       || (runId.startsWith("exact_entry_sweep_") && runId.includes("_candidate_depth_"));
   }
 
-  function latestCycle() {
-    return historicalCycleArtifacts().find(isRequiredHistoricalCycle) || null;
+  function latestCycle(symbol = "") {
+    const expected = String(symbol || "").toUpperCase();
+    return historicalCycleArtifacts().find(item => (
+      isRequiredHistoricalCycle(item)
+      && (!expected || artifactSymbol(item) === expected)
+    )) || null;
   }
 
-  function latestDiscoveryRun() {
-    return discoveryRunArtifacts().find(isRequiredDiscoveryRun) || null;
+  function latestDiscoveryRun(symbol = "") {
+    const expected = String(symbol || "").toUpperCase();
+    return discoveryRunArtifacts().find(item => (
+      isRequiredDiscoveryRun(item)
+      && (!expected || artifactSymbol(item) === expected)
+    )) || null;
+  }
+
+  function researchSymbols() {
+    return ["BTCUSDT", "ETHUSDT"];
+  }
+
+  function latestAnalysisInputs() {
+    for (const symbol of researchSymbols()) {
+      const cycle = latestCycle(symbol);
+      const discovery = latestDiscoveryRun(symbol);
+      if (cycle && discovery) {
+        return { symbol, cycle, discovery };
+      }
+    }
+    for (const symbol of researchSymbols()) {
+      const cycle = latestCycle(symbol);
+      const discovery = latestDiscoveryRun(symbol);
+      if (cycle || discovery) {
+        return { symbol, cycle, discovery };
+      }
+    }
+    return { symbol: "", cycle: latestCycle(), discovery: latestDiscoveryRun() };
+  }
+
+  function latestResearchAnalysis(symbol = "") {
+    return symbol ? pickLatestForSymbol("research_analysis", symbol) : pickLatest("research_analysis");
+  }
+
+  function latestResearchAnalysisDelta(symbol = "") {
+    return symbol ? pickLatestForSymbol("research_analysis_delta", symbol) : pickLatest("research_analysis_delta");
+  }
+
+  function latestEligibilityInputs() {
+    for (const symbol of researchSymbols()) {
+      const discovery = latestDiscoveryRun(symbol);
+      const cycle = latestCycle(symbol);
+      const analysis = latestResearchAnalysis(symbol);
+      const delta = latestResearchAnalysisDelta(symbol);
+      const exitLab = latestArtifactPath("discovery_exit_lab", symbol);
+      if (discovery && analysis && delta && exitLab) {
+        return { symbol, discovery, cycle, analysis, delta, exitLab };
+      }
+    }
+    for (const symbol of researchSymbols()) {
+      const discovery = latestDiscoveryRun(symbol);
+      if (discovery) {
+        return {
+          symbol,
+          discovery,
+          cycle: latestCycle(symbol),
+          analysis: latestResearchAnalysis(symbol),
+          delta: latestResearchAnalysisDelta(symbol),
+          exitLab: latestArtifactPath("discovery_exit_lab", symbol),
+        };
+      }
+    }
+    const discovery = latestDiscoveryRun();
+    const symbol = artifactSymbol(discovery);
+    return {
+      symbol,
+      discovery,
+      cycle: latestCycle(symbol),
+      analysis: latestResearchAnalysis(symbol),
+      delta: latestResearchAnalysisDelta(symbol),
+      exitLab: latestArtifactPath("discovery_exit_lab", symbol),
+    };
   }
 
   function countPositiveValues(counts) {
@@ -3266,6 +3351,11 @@
       document.getElementById("stage13-readiness-panel").innerHTML = renderStage13ReadinessPanel(stage13Readiness);
       document.getElementById("hmm-monitoring-panel").innerHTML = renderHmmMonitoringPanel(latestHmm);
       renderResearchCharts();
+    } catch (error) {
+      setJobResponse(window.TBS.errorHtml("Research refresh failed", error));
+      document.getElementById("jobs-list").innerHTML = `<tr><td colspan="5">${window.TBS.errorHtml("Jobs unavailable", error)}</td></tr>`;
+      document.getElementById("artifacts-list").innerHTML = window.TBS.errorHtml("Artifacts unavailable", error);
+      renderResearchProgress(null);
     } finally {
       researchRefreshInFlight = false;
     }

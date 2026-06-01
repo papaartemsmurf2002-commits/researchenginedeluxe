@@ -32,9 +32,13 @@ facts.
 
 - Current stage: Stage R106 centralized historical data catalog.
 - Current stage owner: Codex Research Agent.
-- Latest WPR106-52 GitHub CLI/UI connector review and optimization packet:
+- Latest WPR106-53 operator UI logic reliability audit packet:
+  `docs/work_packets/WPR106-53-operator-ui-logic-reliability-audit.md`.
+- Latest WPR106-53 operator UI logic reliability audit report:
+  `docs/stage_reports/STAGE_R106_OPERATOR_UI_LOGIC_RELIABILITY_AUDIT_REPORT.md`.
+- Previous WPR106-52 GitHub CLI/UI connector review and optimization packet:
   `docs/work_packets/WPR106-52-github-cli-ui-connector-review-and-optimization.md`.
-- Latest WPR106-52 connector review report:
+- Previous WPR106-52 connector review report:
   `docs/stage_reports/STAGE_R106_GITHUB_CLI_UI_CONNECTOR_REVIEW_AND_OPTIMIZATION_REPORT.md`.
 - Latest WPR106-51 complete review hardening and publish packet:
   `docs/work_packets/WPR106-51-complete-review-hardening-and-publish.md`.
@@ -104,6 +108,15 @@ CWD; and negative-control availability blocks no-effect shuffled-label and
 weak shifted-context evidence. Final validation reports 1552 passed, 1 skipped,
 and 2 warnings. No candidate pack, live/paper/order/sizing/runtime/promotion
 behavior is introduced.
+WPR106-53 performs the follow-up operator UI logic reliability audit. It
+hardens logout CSRF handling, mutating JSON-route validation, worker-time
+research/live-boundary checks, public health redaction, artifact scan
+offloading, command debouncing, visible browser error states, symbol-scoped
+research evidence selection, backend-owned BTC/ETH evidence bundle sequencing,
+and standalone boundary-review links/scan bounds. Final validation reports
+1561 passed, 1 skipped, and 1 XGBoost environment warning. No candidate pack,
+live/paper/order/sizing/runtime authorization, or promotion behavior is
+introduced.
 
 ## Current Gate State
 
@@ -289,6 +302,13 @@ CLI is installed but unauthenticated, the desktop GitHub connector still times
 out externally, UI/research write surfaces and output-root boundaries are
 hardened, negative controls reject no-effect evidence, and the final full suite
 passes at 1552 passed, 1 skipped, 2 warnings.
+WPR106-53 follows with an operator UI logic reliability audit. It fixes
+CSRF/JSON validation, redacts unauthenticated health details, rechecks
+research-job live boundaries at worker time, makes command and refresh failure
+states visible, symbol-scopes research evidence actions, routes the evidence
+bundle through backend autopilot, and keeps standalone research UI scans and
+boundary-review labels bounded and current. The final full suite passes at
+1561 passed, 1 skipped, 1 warning.
 
 ## Non-Negotiable Research Boundary
 

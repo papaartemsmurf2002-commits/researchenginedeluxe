@@ -91,6 +91,7 @@
       <a href="/ui/predictions" class="{% if page == 'predictions' %}active{% endif %}">Predictions</a>
       <a href="/ui/guides" class="{% if page == 'guides' %}active{% endif %}">Guides</a>
       <form method="post" action="/ui/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="secondary" type="submit">Logout</button>
       </form>
     </nav>
@@ -103,7 +104,7 @@
       csrfToken: {{ csrf_token|tojson }},
       async getJson(url) {
         const response = await fetch(url, { credentials: "same-origin" });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await window.TBS.responseErrorText(response));
         return await response.json();
       },
       async postJson(url, payload) {
@@ -116,8 +117,31 @@
           },
           body: JSON.stringify(payload || {})
         });
-        if (!response.ok) throw new Error(await response.text());
+        if (!response.ok) throw new Error(await window.TBS.responseErrorText(response));
         return await response.json();
+      },
+      async responseErrorText(response) {
+        const fallback = `${response.status} ${response.statusText || "request failed"}`.trim();
+        const contentType = response.headers.get("content-type") || "";
+        try {
+          if (contentType.includes("application/json")) {
+            const payload = await response.json();
+            const detail = payload && payload.detail;
+            if (Array.isArray(detail)) return detail.map(item => item.msg || JSON.stringify(item)).join("; ") || fallback;
+            if (detail && typeof detail === "object") return JSON.stringify(detail);
+            return detail ? String(detail) : fallback;
+          }
+          const text = await response.text();
+          return text || fallback;
+        } catch {
+          return fallback;
+        }
+      },
+      errorMessage(error) {
+        return String((error && error.message) || error || "unknown error");
+      },
+      errorHtml(title, error) {
+        return `<div class="error-box"><strong>${window.TBS.escapeHtml(title)}</strong><br>${window.TBS.escapeHtml(window.TBS.errorMessage(error))}</div>`;
       },
       escapeHtml(value) {
         return String(value ?? "")

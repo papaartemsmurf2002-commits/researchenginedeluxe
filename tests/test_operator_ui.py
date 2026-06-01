@@ -8,11 +8,13 @@ from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from tradingbotsuite.config import AppConfig, OperatorUIConfig
 from tradingbotsuite.core.models import PositionState, RuntimeMode, SignalDirection, TradeStatus
 from tradingbotsuite.operator_commands import execute_manual_signal
+from tradingbotsuite.operator_console import OperatorConsoleService, OperatorContext, TraceRecorder
 from tradingbotsuite.web.app import create_app
 
 
@@ -181,6 +183,89 @@ def test_operator_ui_requires_auth_and_csrf(app_config, sample_bars) -> None:
         payload = ok.json()
         assert payload["success"] is True
         assert payload["result"]["packet"]["signal"]["direction"] == "long"
+
+
+def test_operator_logout_requires_csrf_and_same_origin(app_config, sample_bars) -> None:
+    config = _operator_config(app_config)
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        missing_csrf = client.post("/ui/logout", follow_redirects=False)
+        cross_origin = client.post(
+            "/ui/logout",
+            data={"csrf_token": csrf_token},
+            headers={"Origin": "http://evil.test"},
+            follow_redirects=False,
+        )
+        ok = client.post("/ui/logout", data={"csrf_token": csrf_token}, follow_redirects=False)
+
+    assert missing_csrf.status_code == 403
+    assert cross_origin.status_code == 403
+    assert ok.status_code == 303
+    assert ok.headers["location"] == "/ui/login"
+
+
+def test_operator_mutating_routes_validate_json_payloads(app_config, sample_bars) -> None:
+    config = _operator_config(app_config)
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        headers = {"X-CSRF-Token": csrf_token, "Content-Type": "application/json"}
+        invalid_json = client.post("/api/operator/commands/manual-signal", content=b"{", headers=headers)
+        missing_direction = client.post(
+            "/api/operator/commands/manual-signal",
+            json={"symbol": "BTCUSDT"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        invalid_direction = client.post(
+            "/api/operator/commands/manual-signal",
+            json={"symbol": "BTCUSDT", "direction": "sideways"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        missing_mode = client.post(
+            "/api/operator/commands/set-mode",
+            json={},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        invalid_mode = client.post(
+            "/api/operator/commands/set-mode",
+            json={"mode": "testnet"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+
+    assert invalid_json.status_code == 400
+    assert missing_direction.status_code == 400
+    assert invalid_direction.status_code == 400
+    assert missing_mode.status_code == 400
+    assert invalid_mode.status_code == 400
+
+
+def test_operator_rechecks_research_boundary_when_job_runs(app_config) -> None:
+    config = _operator_config(app_config, mode=RuntimeMode.LIVE)
+
+    class EmptyStore:
+        async def get_safety_status(self):
+            return None
+
+        async def list_position_states(self):
+            return []
+
+    class LiveEngine:
+        def __init__(self, engine_config: AppConfig):
+            self.config = engine_config
+            self.store = EmptyStore()
+
+        def clock(self) -> int:
+            return 0
+
+    service = OperatorConsoleService(
+        OperatorContext(config=config, engine=LiveEngine(config), trace_recorder=TraceRecorder())
+    )
+
+    with pytest.raises(ValueError, match="blocked in live mode"):
+        asyncio.run(service._run_job("build-dataset", {}, "job-live"))
 
 
 def test_operator_snapshot_matches_engine_snapshot(app_config, sample_bars) -> None:
@@ -562,8 +647,8 @@ def test_operator_predictions_page_renders(app_config, sample_bars) -> None:
         page = client.get("/ui/predictions")
 
     assert page.status_code == 200
-    assert "Live Predictions" in page.text
-    assert "Microstructure-derived short-horizon pressure" in page.text
+    assert "Observe-Only Flow Pressure" in page.text
+    assert "not a trading signal" in page.text
 
 
 def test_server_monitor_auto_supervises_open_position(app_config, sample_bars, tmp_path, monkeypatch) -> None:

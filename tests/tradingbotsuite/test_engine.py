@@ -85,19 +85,21 @@ def test_webhook_accepts_and_is_idempotent(test_client, app_config: AppConfig) -
     assert second.json()["action"] == "ignore"
 
 
-def test_health_details_exposes_canonical_system_snapshot(test_client) -> None:
+def test_health_details_returns_redacted_public_status(test_client) -> None:
     response = test_client.get("/health/details")
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["symbol"] == "BTCUSDT"
     assert payload["mode"] == "paper"
-    assert "market_data_health" in payload
-    assert "execution_health" in payload
-    assert "position" in payload
-    assert "safety" in payload
-    assert "safety_state" in payload
-    assert "attribution" in payload
+    assert payload["status"] == "ok"
+    assert payload["operator_snapshot"] == "available_via_authenticated_operator_api"
+    assert "market_data_health" not in payload
+    assert "execution_health" not in payload
+    assert "position" not in payload
+    assert "safety" not in payload
+    assert "safety_state" not in payload
+    assert "attribution" not in payload
 
 
 @pytest.mark.asyncio
