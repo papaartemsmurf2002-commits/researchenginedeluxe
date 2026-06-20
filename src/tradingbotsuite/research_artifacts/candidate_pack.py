@@ -534,6 +534,13 @@ def _gate_reasons(row: Mapping[str, Any], *, spec: Mapping[str, Any]) -> list[st
         reasons.append("positive_expectancy_vs_no_trade_required")
     if str(row.get("side_evidence_status") or "") != "complete":
         reasons.append("complete_side_evidence_required")
+    if str(row.get("side_evidence_policy") or "") == "explicit_one_sided_side_veto":
+        if str(row.get("side_veto_control_status") or "") != "passed":
+            reasons.append("side_veto_control_evidence_not_passed")
+        if not str(row.get("side_veto_control_candidate_id") or ""):
+            reasons.append("side_veto_control_candidate_required")
+        if str(row.get("side_veto_control_reasons") or "").strip():
+            reasons.append("side_veto_control_reasons_not_empty")
     if str(row.get("regime_evidence_status") or "") != "complete":
         reasons.append("complete_regime_evidence_required")
     if str(row.get("cost_stress_scenario_status") or "") != "complete":
@@ -864,11 +871,24 @@ def _side_metric_rows_reasons(frame: pd.DataFrame, *, ranking_row: Mapping[str, 
     sides = {str(value).lower() for value in frame["side"].dropna().tolist()}
     if not sides <= {"long", "short"}:
         reasons.append("candidate_side_metric_invalid_side")
-    if bool(ranking_row.get("side_evidence_exception")) is not True and sides != {"long", "short"}:
-        reasons.append("candidate_side_metric_long_short_required")
+    required_sides = _required_side_metric_sides(ranking_row)
+    if bool(ranking_row.get("side_evidence_exception")) is not True and sides != required_sides:
+        if required_sides == {"long", "short"}:
+            reasons.append("candidate_side_metric_long_short_required")
+        else:
+            reasons.append("candidate_side_metric_required_sides_mismatch")
     if (pd.to_numeric(frame["trade_count"], errors="coerce").fillna(0).astype(int) <= 0).any():
         reasons.append("candidate_side_metric_trade_count_required")
     return reasons
+
+
+def _required_side_metric_sides(ranking_row: Mapping[str, Any]) -> set[str]:
+    raw = str(ranking_row.get("side_evidence_required_sides") or "").strip().lower()
+    if raw:
+        required = {item for item in raw.split("|") if item}
+        if required and required <= {"long", "short"}:
+            return required
+    return {"long", "short"}
 
 
 def _missing_columns(frame: pd.DataFrame, columns: set[str]) -> list[str]:

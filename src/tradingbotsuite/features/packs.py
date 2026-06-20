@@ -67,16 +67,26 @@ def build_feature_frame(
             "tests/tradingbotsuite/test_feature_alignment.py",
         ),
     )
-    features = prepared.loc[:, [bar_time_column, "feature_time_ms"]].copy()
+    feature_parts = [prepared.loc[:, [bar_time_column, "feature_time_ms"]]]
     for pack_id in feature_packs:
         pack_frame = _build_pack(prepared, pack_id=pack_id, price_column=price_column, interval_ms=interval_ms)
-        for column in pack_frame.columns:
-            features[column] = pack_frame[column]
+        feature_parts.append(pack_frame)
 
+    features = pd.concat(feature_parts, axis=1)
+    missing_feature_parts: list[pd.Series] = []
+    missing_parts: list[pd.Series] = []
     for column in manifest.feature_columns:
         if column not in features.columns:
-            features[column] = np.nan
-        features[f"missing_{column}"] = features[column].isna().astype(int)
+            feature_column = pd.Series(np.nan, index=features.index, name=column)
+            missing_feature_parts.append(feature_column)
+        else:
+            feature_column = features[column]
+        missing_parts.append(feature_column.isna().astype(int).rename(f"missing_{column}"))
+    if missing_feature_parts:
+        features = pd.concat([features, pd.concat(missing_feature_parts, axis=1)], axis=1)
+    if missing_parts:
+        features = pd.concat([features, pd.concat(missing_parts, axis=1)], axis=1)
+    features = features.copy()
 
     availability_report = _availability_report(features, manifest)
     return FeatureFrameResult(

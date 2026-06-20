@@ -306,12 +306,12 @@ def test_real_discovery_configs_generate_non_placeholder_search_templates() -> N
     assert standard_summary["sampled_fraction"] < 0.01
     assert deep_summary["coverage_label"] == "sparse_sample"
     assert deep_summary["exhaustive"] is False
-    assert exact_btc_summary["total_combinations"] == 570240
-    assert exact_btc_summary["planned_trials"] == 570240
+    assert exact_btc_summary["total_combinations"] == 3456
+    assert exact_btc_summary["planned_trials"] == 3456
     assert exact_btc_summary["sampled_fraction"] == 1.0
     assert exact_btc_summary["exhaustive"] is True
     assert exact_btc_summary["coverage_label"] == "exhaustive"
-    assert exact_eth_summary["total_combinations"] == 570240
+    assert exact_eth_summary["total_combinations"] == 3456
     assert exact_eth_summary["exhaustive"] is True
 
 
@@ -321,20 +321,20 @@ def test_exact_r104_discovery_search_space_dimensions_match_configured_axes() ->
         "hmm_state_count": 1,
         "hmm_posterior_threshold": 1,
         "hmm_entropy_threshold": 1,
-        "label_horizon": 3,
-        "knn_neighbor_pair": 22,
-        "distance_metric": 3,
-        "probability_threshold": 6,
-        "expected_value_threshold": 4,
-        "min_neighbor_agreement": 5,
-        "min_distance_quality": 3,
-        "vote_margin_threshold": 4,
+        "label_horizon": 2,
+        "knn_neighbor_pair": 6,
+        "distance_metric": 2,
+        "probability_threshold": 3,
+        "expected_value_threshold": 2,
+        "min_neighbor_agreement": 3,
+        "min_distance_quality": 2,
+        "vote_margin_threshold": 2,
         "regime_mode": 1,
     }
     expected_neighbor_pairs = {
         (k_value, min_neighbor_count)
-        for k_value in (3, 5, 8, 13, 21, 34)
-        for min_neighbor_count in (2, 3, 4, 5)
+        for k_value in (8, 13, 21)
+        for min_neighbor_count in (3, 5)
         if min_neighbor_count <= k_value
     }
 
@@ -352,17 +352,17 @@ def test_exact_r104_discovery_search_space_dimensions_match_configured_axes() ->
 
         assert summary["search_space_kind"] == "real_regime_knn_entry_discovery"
         assert summary["dimension_counts"] == expected_counts
-        assert summary["total_combinations"] == 570240
-        assert summary["planned_trials"] == 570240
+        assert summary["total_combinations"] == 3456
+        assert summary["planned_trials"] == 3456
         assert summary["exhaustive"] is True
         assert dimensions["feature_column_set_id"] == ("price_trend_vol", "compact_wt3d_base")
-        assert dimensions["label_horizon"] == ("1h", "2h", "4h")
-        assert dimensions["distance_metric"] == ("euclidean", "manhattan", "cosine")
-        assert dimensions["probability_threshold"] == (0.48, 0.5, 0.52, 0.55, 0.58, 0.62)
-        assert dimensions["expected_value_threshold"] == (-0.0004, -0.0002, 0.0, 0.0002)
-        assert dimensions["min_neighbor_agreement"] == (0.48, 0.5, 0.52, 0.55, 0.6)
-        assert dimensions["min_distance_quality"] == (0.0, 0.005, 0.01)
-        assert dimensions["vote_margin_threshold"] == (0.0, 0.02, 0.03, 0.05)
+        assert dimensions["label_horizon"] == ("2h", "4h")
+        assert dimensions["distance_metric"] == ("euclidean", "cosine")
+        assert dimensions["probability_threshold"] == (0.55, 0.58, 0.62)
+        assert dimensions["expected_value_threshold"] == (0.0, 0.0002)
+        assert dimensions["min_neighbor_agreement"] == (0.52, 0.55, 0.6)
+        assert dimensions["min_distance_quality"] == (0.005, 0.01)
+        assert dimensions["vote_margin_threshold"] == (0.02, 0.05)
         assert dimensions["regime_mode"] == ("none",)
         assert neighbor_pairs == expected_neighbor_pairs
         assert discovery_spec._dimension_space_size(tuple(dimensions.items())) == summary["total_combinations"]

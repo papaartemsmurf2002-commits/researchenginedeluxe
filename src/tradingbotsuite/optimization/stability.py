@@ -196,7 +196,19 @@ def _same_stability_family(left: CandidateResult, right: CandidateResult) -> boo
         and left.config.holding_window == right.config.holding_window
         and left.config.exit_policy_id == right.config.exit_policy_id
         and _normalized_mapping(left.config.exit_policy_params) == _normalized_mapping(right.config.exit_policy_params)
+        and _side_veto_family_key(left) == _side_veto_family_key(right)
     )
+
+
+def _side_veto_family_key(result: CandidateResult) -> tuple[str, str] | None:
+    if result.config.strategy_id != "sparse_event_filter_v1":
+        return None
+    params = dict(result.config.parameters)
+    allowed_side = str(params.get("allowed_sides") or "").strip().lower()
+    stage = str(params.get("side_filter_stage") or "").strip().lower()
+    if allowed_side in {"long", "short"}:
+        return (allowed_side, stage)
+    return None
 
 
 def _normalized_mapping(payload: Any) -> dict[str, Any]:

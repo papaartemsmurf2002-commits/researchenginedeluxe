@@ -24,6 +24,7 @@ hyperliquidtestnet.txt
 build/
 dist/
 *.egg-info/
+/outputs/
 
 # Large regenerated market/cache artifacts
 *.log

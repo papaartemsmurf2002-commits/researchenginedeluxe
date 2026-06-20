@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from tradingbotsuite.backtesting.costs import CostModel
+from tradingbotsuite.backtesting.costs import CostModel, funding_rate_from_row
 from tradingbotsuite.backtesting.engine import (
     BACKTEST_CACHE_POLICY,
     BACKTEST_ENGINE_VERSION,
@@ -28,7 +28,7 @@ from tradingbotsuite.backtesting.engine import (
     _stable_hash,
     _write_json,
 )
-from tradingbotsuite.backtesting.execution_sim import _equity_curve
+from tradingbotsuite.backtesting.execution_sim import _equity_curve, _signal_bar_close_price
 from tradingbotsuite.backtesting.exits import fixed_holding_window_exit
 from tradingbotsuite.backtesting.metrics import REQUIRED_BACKTEST_METRICS, calculate_backtest_metrics
 
@@ -202,7 +202,12 @@ def vector_backtest_support_reason(spec: BacktestSpec) -> str | None:
         return "vector_engine_supports_fixed_holding_only"
     if str(spec.exit_price_source) != "primary_close":
         return "vector_engine_supports_primary_close_exit_only"
-    if str(spec.entry_price_source) not in {"next_bar_open", "signal_bar_close_plus_latency", "vwap_approximation"}:
+    if str(spec.entry_price_source) not in {
+        "next_bar_open",
+        "signal_bar_close_plus_latency",
+        "primary_bar_open_plus_latency",
+        "vwap_approximation",
+    }:
         return "vector_engine_entry_price_source_not_supported"
     return None
 
@@ -264,7 +269,7 @@ def _vector_fixed_holding_trades(
             exit_reason=exit_reason,
         )
         holding_ms = int(exit_result.time_in_trade_ms)
-        funding_rate = _optional_float(entry_row.get("funding_rate"))
+        funding_rate = funding_rate_from_row(entry_row)
         spread_bps = _optional_float(entry_row.get("spread_bps"))
         cost = costs.estimate(
             entry_price=entry_price,
@@ -316,8 +321,7 @@ def _vector_fixed_holding_trades(
 
 def _entry_price(signal: dict[str, Any], entry_row: pd.Series, assumptions: Any) -> float:
     if assumptions.entry_price_source == "signal_bar_close_plus_latency":
-        value = signal.get("signal_bar_close")
-        return float(entry_row["open"] if value is None else value)
+        return _signal_bar_close_price(signal)
     if assumptions.entry_price_source == "vwap_approximation":
         return float((float(entry_row["high"]) + float(entry_row["low"]) + float(entry_row["close"])) / 3.0)
     return float(entry_row["open"])

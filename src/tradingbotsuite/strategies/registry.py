@@ -15,6 +15,7 @@ from tradingbotsuite.strategies.oi_flow_breakout import OiFlowBreakoutStrategy
 from tradingbotsuite.strategies.perp_basis_convergence import PerpBasisConvergenceStrategy
 from tradingbotsuite.strategies.range_reversion import RangeReversionStrategy
 from tradingbotsuite.strategies.regime_adaptive import RegimeAdaptiveStrategy
+from tradingbotsuite.strategies.sparse_event_filter import SparseEventFilterStrategy
 from tradingbotsuite.strategies.trend import TrendFollowingStrategy
 from tradingbotsuite.strategies.volatility_breakout import VolatilityBreakoutStrategy
 
@@ -34,6 +35,7 @@ def strategy_registry() -> dict[str, type]:
         "hmm_knn_local_analog_filter_v2": HmmKnnLocalAnalogFilterStrategy,
         "liquidation_absorption_classifier_v1": LiquidationAbsorptionClassifierStrategy,
         "regime_adaptive_v1": RegimeAdaptiveStrategy,
+        "sparse_event_filter_v1": SparseEventFilterStrategy,
         "lc_reference_v1": LcReferenceStrategy,
         "hmm_knn_diagnostic_v1": HmmKnnDiagnosticStrategy,
         "baseline_no_trade": NoTradeStrategy,

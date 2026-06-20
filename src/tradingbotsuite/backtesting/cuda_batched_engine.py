@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 import tradingbotsuite.backtesting.cuda_engine as cuda_module
-from tradingbotsuite.backtesting.costs import CostModel
+from tradingbotsuite.backtesting.costs import CostModel, funding_rate_from_row
 from tradingbotsuite.backtesting.cuda_engine import CUDA_BACKTEST_ENGINE_VERSION
 from tradingbotsuite.backtesting.engine import (
     BACKTEST_CACHE_POLICY,
@@ -139,7 +139,13 @@ void fixed_holding_candidates_fp64(
 
     double entry_price = open_values[entry_index];
     if (entry_price_policy == 1) {
-        entry_price = signal_close_present ? signal_bar_close[i] : open_values[entry_index];
+        if (signal_close_present != 1) {
+            return;
+        }
+        entry_price = signal_bar_close[i];
+        if (!(entry_price == entry_price)) {
+            return;
+        }
     } else if (entry_price_policy == 2) {
         entry_price = (high_values[entry_index] + low_values[entry_index] + close_values[entry_index]) / 3.0;
     }
@@ -456,11 +462,15 @@ def _cuda_rawkernel_fixed_holding_trades(
     n_signals = len(ordered_signals)
     n_market = len(ordered_market)
     signal_bar_close_present = "signal_bar_close" in ordered_signals.columns
+    if assumptions.entry_price_source == "signal_bar_close_plus_latency" and not signal_bar_close_present:
+        raise ValueError("signal_bar_close_plus_latency requires signal_bar_close")
     signal_bar_close = (
         ordered_signals["signal_bar_close"].astype("float64").to_numpy()
         if signal_bar_close_present
         else np.zeros(n_signals, dtype=np.float64)
     )
+    if assumptions.entry_price_source == "signal_bar_close_plus_latency" and not np.isfinite(signal_bar_close).all():
+        raise ValueError("signal_bar_close_plus_latency requires numeric signal_bar_close")
     kernel = _build_candidate_kernel(cupy)
     arrays = _allocate_candidate_arrays(cupy, n_signals)
     block_size = 128
@@ -535,7 +545,7 @@ def _cuda_rawkernel_fixed_holding_trades(
         )
         entry_row = ordered_market.iloc[entry_index]
         holding_ms = int(exit_result.time_in_trade_ms)
-        funding_rate = _optional_float(entry_row.get("funding_rate"))
+        funding_rate = funding_rate_from_row(entry_row)
         spread_bps = _optional_float(entry_row.get("spread_bps"))
         cost = costs.estimate(
             entry_price=float(values["entry_prices"][signal_index]),
@@ -683,7 +693,11 @@ def _simulate_candidate_kernel_numpy(
                 continue
         entry_price = float(open_values[entry_index])
         if entry_policy == 1:
-            entry_price = float(signal_closes[signal_index]) if signal_bar_close_present else float(open_values[entry_index])
+            if not signal_bar_close_present:
+                continue
+            entry_price = float(signal_closes[signal_index])
+            if not np.isfinite(entry_price):
+                continue
         elif entry_policy == 2:
             entry_price = float((high_values[entry_index] + low_values[entry_index] + close_values[entry_index]) / 3.0)
         arrays["valid"][signal_index] = 1

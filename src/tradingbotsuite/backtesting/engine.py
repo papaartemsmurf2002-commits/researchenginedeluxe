@@ -312,6 +312,8 @@ def _fill_profile_for_entry_price_source(entry_price_source: str) -> str:
     value = str(entry_price_source or "")
     if value == "signal_bar_close_plus_latency":
         return "signal_close_latency_fill"
+    if value == "primary_bar_open_plus_latency":
+        return "primary_bar_latency_fill"
     if value == "vwap_approximation":
         return "vwap_approximation_fill"
     if value == "lower_timeframe_execution_path":
@@ -342,6 +344,7 @@ def _market_frame(source: pd.DataFrame, *, symbol: str) -> pd.DataFrame:
     optional = [
         "funding_rate",
         "perp_last_funding_rate",
+        "last_funding_rate",
         "spread_bps",
         "top_regime_label",
         "regime",

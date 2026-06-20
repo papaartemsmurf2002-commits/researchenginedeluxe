@@ -46,6 +46,21 @@
     flex-wrap: wrap;
     margin-top: 16px;
   }
+  .hero-current-flow {
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) auto;
+    gap: 14px;
+    align-items: center;
+    margin-top: 18px;
+    padding: 14px;
+    border: 1px solid rgba(115, 209, 138, 0.42);
+    border-radius: 8px;
+    background: rgba(15, 27, 23, 0.78);
+  }
+  .hero-current-flow strong {
+    display: block;
+    margin-bottom: 4px;
+  }
   .research-band {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -158,6 +173,25 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 14px;
+  }
+  .autopilot-options {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .autopilot-options label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+  .autopilot-options input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
   }
   .intent-list {
     display: grid;
@@ -588,6 +622,9 @@
     .control-grid {
       grid-template-columns: 1fr;
     }
+    .hero-current-flow {
+      grid-template-columns: 1fr;
+    }
     .action-history-row {
       grid-template-columns: 1fr;
     }
@@ -605,15 +642,27 @@
 
 <div class="research-shell">
   <section class="research-hero">
-    <h1>Research Operations</h1>
+    <h1>ResearchEngineDeluxe R106 Console</h1>
     <div class="hero-copy">
-      Use the Required Evidence Checklist first. Everything marked diagnostic or legacy is optional support work and is not part of the required candidate-evidence path. This page never places orders, never changes runtime mode, and never turns research output into live signals.
+      The active iteration path is the R106 Historical Data Catalog plus Research Autopilot. Current evidence is a fail-closed no-candidate result, so new runs should refresh/reuse catalog-selected BTC/ETH specs, rebuild evidence, and inspect blockers instead of writing candidate packs.
     </div>
     <div class="hero-strip">
+      <span class="pill ok">R106 catalog workflow</span>
+      <span class="pill neutral">BTC/ETH candidate-depth specs</span>
       <span class="pill neutral">research_only</span>
       <span class="pill neutral">observe_only</span>
       <span class="pill warn">promotion_ready: false by default</span>
-      <span class="pill ok">offline research branch</span>
+    </div>
+    <div class="hero-current-flow">
+      <div>
+        <strong>Current operator path</strong>
+        <div class="muted">Run New Compute Iteration to force fresh BTC/ETH cycle and discovery work before reviewing evidence. Use Existing Evidence Review only when you want a fast cache/reuse audit.</div>
+      </div>
+      <div class="routine-actions">
+        <button onclick="queueResearchAutopilot({ forceUpstream: true })">Run New Compute Iteration</button>
+        <button class="ghost" onclick="queueResearchAutopilot({ forceUpstream: false })">Review Existing Evidence</button>
+        <button class="ghost" onclick="queueHistoricalDataCatalogRefresh()">Check Catalog</button>
+      </div>
     </div>
   </section>
 
@@ -645,19 +694,21 @@
         <div class="action-tier">
           <div class="function-block">
             <span class="task-tag required">required</span>
-            <h3>Run Research Autopilot</h3>
-            <div class="muted">Runs or reuses the required catalog, BTC/ETH cycle, exact discovery, analysis, run-to-run delta, frozen-entry exit lab, and eligibility steps. It stops at the first blocked prerequisite and writes an autopilot manifest.</div>
+            <h3>Run New Compute Iteration</h3>
+            <div class="muted">Forces fresh isolated BTC/ETH historical-cycle and exact-discovery compute, then refreshes analysis, run-to-run delta, frozen-entry exit lab, and eligibility evidence. It stops at the first blocked prerequisite and writes an autopilot manifest.</div>
             <div class="routine-actions">
-              <button onclick="queueResearchAutopilot()">Run Research Autopilot</button>
+              <button onclick="queueResearchAutopilot({ forceUpstream: true })">Run New Compute Iteration</button>
+              <button class="ghost" onclick="queueResearchAutopilot({ forceUpstream: false })">Review Existing Evidence</button>
               <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
             </div>
           </div>
           <div class="function-block">
             <span class="task-tag required">required</span>
-            <h3>0. Refresh Historical Data Catalog</h3>
-            <div class="muted">This is the only required data step. It refreshes the central catalog, records provider limitations, downloads the implemented Binance Vision BTC/ETH archive fixture path, verifies checksums, and writes active research-only fixture/spec links. Bybit, Crypto Lake, and Hyperliquid stay visible as catalog provider slots until their validated ingestion is implemented.</div>
+            <h3>0. Check Historical Data Catalog</h3>
+            <div class="muted">This is the only required data step. The default action checks and reuses an existing candidate-depth catalog without starting a rebuild. Use explicit rebuild only when you want to rerun the long Binance Vision archive refresh. Bybit, Crypto Lake, and Hyperliquid stay visible as catalog provider slots until their validated ingestion is implemented.</div>
             <div class="routine-actions">
-              <button onclick="queueHistoricalDataCatalogRefresh()">Refresh Historical Catalog</button>
+              <button onclick="queueHistoricalDataCatalogRefresh()">Check / Reuse Catalog</button>
+              <button class="ghost" onclick="queueHistoricalDataCatalogRebuild()">Rebuild Catalog</button>
               <button class="ghost" onclick="openArtifactList()">Open Artifact List</button>
             </div>
           </div>
@@ -739,6 +790,8 @@
         <div class="board-tile"><div class="label">Data Readiness</div><div class="value">Loading</div><div class="meta">Waiting for artifact index.</div></div>
         <div class="board-tile"><div class="label">Current Run</div><div class="value">Loading</div><div class="meta">Waiting for job index.</div></div>
         <div class="board-tile"><div class="label">Progress</div><div class="value">Loading</div><div class="meta">Waiting for latest status.</div></div>
+        <div class="board-tile"><div class="label">Autopilot Evidence</div><div class="value">Loading</div><div class="meta">Waiting for autopilot manifest.</div></div>
+        <div class="board-tile"><div class="label">Testing Readiness</div><div class="value">Loading</div><div class="meta">Waiting for readiness audit.</div></div>
         <div class="board-tile"><div class="label">Latest Snapshot</div><div class="value">Loading</div><div class="meta">Waiting for discovery artifacts.</div></div>
       </div>
     </div>
@@ -760,7 +813,7 @@
           <table class="operation-table">
             <thead><tr><th>Step</th><th>Run</th><th>Done When</th><th>Next</th></tr></thead>
             <tbody>
-              <tr><td>0</td><td>Refresh Historical Data Catalog</td><td>Central catalog, provider states, expanded BTC/ETH public-archive fixture packs, and active specs are written under the research output directory.</td><td>Check Catalog Readiness.</td></tr>
+              <tr><td>0</td><td>Check Historical Data Catalog</td><td>Existing candidate-depth catalog is reused, or an explicit rebuild writes central catalog, provider states, expanded BTC/ETH public-archive fixture packs, and active specs under the research output directory.</td><td>Check Catalog Readiness.</td></tr>
               <tr><td>1</td><td>Check Catalog Readiness</td><td>BTC and ETH catalog-selected fixture integrity and candidate-depth floors are ready.</td><td>Run BTC Deep Cycle.</td></tr>
               <tr><td>2</td><td>BTC Deep Cycle</td><td>Deep historical-cycle manifest, rankings, gates, and rejection report are indexed.</td><td>Run BTC Exact Sweep.</td></tr>
               <tr><td>3</td><td>BTC Exact Sweep</td><td>Discovery manifest reports exhaustive coverage and ledgers/snapshots are indexed.</td><td>Run ETH mirror evidence.</td></tr>
@@ -1037,6 +1090,50 @@
 
         <div class="run-workspace optional-control">
           <span class="task-tag diagnostic">diagnostic</span>
+          <h3>Four-Bar KNN Validation</h3>
+          <div class="muted">Runs the WPR106-77 no-RSI BTC/ETH larger-validation rows from the four-bar datasets.</div>
+          <div class="control-grid">
+            <label>Rows per interval
+              <input id="four-bar-validation-sample-rows" type="number" min="20" max="100000" step="1000" value="8000">
+            </label>
+            <label>Workers
+              <input id="four-bar-validation-workers" type="number" min="1" max="4" step="1" value="1">
+            </label>
+          </div>
+          <div class="inline-buttons" style="margin-top:14px;">
+            <button onclick="queueFourBarKnnLargerValidation(false)">Run Larger Validation</button>
+            <button class="ghost" onclick="queueFourBarKnnLargerValidation(true)">Write Specs Only</button>
+          </div>
+        </div>
+
+        <div class="run-workspace optional-control">
+          <span class="task-tag diagnostic">diagnostic</span>
+          <h3>Four-Bar Archive Mapping</h3>
+          <div class="muted">Maps the local Binance Vision cache into BTC/ETH four-bar datasets and writes matrix replay commands.</div>
+          <div class="control-grid">
+            <label>Archive root
+              <input id="four-bar-archive-root" type="text" value="">
+            </label>
+            <label>Start month
+              <input id="four-bar-archive-start-month" type="text" value="2024-01">
+            </label>
+            <label>End month
+              <input id="four-bar-archive-end-month" type="text" value="2024-12">
+            </label>
+            <label>Rows per interval
+              <input id="four-bar-archive-sample-rows" type="number" min="20" max="100000" step="1000" value="8000">
+            </label>
+            <label>Matrix workers
+              <input id="four-bar-archive-matrix-workers" type="number" min="1" max="4" step="1" value="1">
+            </label>
+          </div>
+          <div class="inline-buttons" style="margin-top:14px;">
+            <button onclick="queueFourBarArchiveMapping()">Map Archive Datasets</button>
+          </div>
+        </div>
+
+        <div class="run-workspace optional-control">
+          <span class="task-tag diagnostic">diagnostic</span>
           <h3>Hardware Utilization Benchmark</h3>
           <div class="muted">Local diagnostic probe for CPU worker saturation and optional CuPy/CUDA matrix throughput before prolonged study.</div>
           <div class="control-grid">
@@ -1205,7 +1302,7 @@
   let latestHistoricalDataCatalog = null;
   let latestResearchProgress = null;
   const localHistoryKey = "tbs.research.localActionHistory.v1";
-  const localSettingsKey = "tbs.research.settings.v1";
+  const localSettingsKey = "researchenginedeluxe.research.settings.r106.v1";
 
   const providerStageDetails = {
     intake: [
@@ -1268,12 +1365,12 @@
 
   const discoveryDetails = {
     "configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json": [
-      ["What It Tests", "Exact bounded BTC sweep over 570240 real KNN entry-discovery combinations using the feature sets that pass compact durable-fixture preflight."],
+      ["What It Tests", "Reduced exact BTC no-regime sweep over 3456 real KNN entry-discovery combinations using the feature sets that pass compact durable-fixture preflight."],
       ["When To Use", "Use after the BTC deep cycle. This is the primary long durable discovery run for brute-force-scale evidence."],
       ["Where It Writes", "operator_runs/discovery_runs/<exact-sweep> for stable pause/resume, feature matrices, trial records, snapshots, and research_only candidate ledgers."]
     ],
     "configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json": [
-      ["What It Tests", "Exact bounded ETH sweep over the same 570240-combination grid for mirror evidence and blocker comparison."],
+      ["What It Tests", "Reduced exact ETH no-regime sweep over the same 3456-combination grid for mirror evidence and blocker comparison."],
       ["When To Use", "Use after the ETH deep cycle or after BTC exact sweep completes and you need cross-symbol evidence."],
       ["Where It Writes", "Research-only ETH exact-sweep artifacts under isolated operator run directories."]
     ],
@@ -1618,10 +1715,20 @@
     return await queueJob("/api/operator/research/jobs/refresh-historical-data-catalog", {
       symbols: ["BTCUSDT", "ETHUSDT"],
       start_month: "2020-01",
-    }, "Refresh Historical Data Catalog");
+      force_rebuild: false,
+    }, "Check / reuse Historical Data Catalog");
   }
 
-  async function queueResearchAutopilot() {
+  async function queueHistoricalDataCatalogRebuild() {
+    return await queueJob("/api/operator/research/jobs/refresh-historical-data-catalog", {
+      symbols: ["BTCUSDT", "ETHUSDT"],
+      start_month: "2020-01",
+      force_rebuild: true,
+    }, "Rebuild Historical Data Catalog");
+  }
+
+  async function queueResearchAutopilot(options = {}) {
+    const forceUpstream = options.forceUpstream === true;
     return await queueJob("/api/operator/research/jobs/run-research-autopilot", {
       symbols: ["BTCUSDT", "ETHUSDT"],
       max_steps: 100,
@@ -1630,13 +1737,40 @@
       include_trade_sortino: true,
       max_sortino_trade_files: 1000,
       discovery_stop_after_trials: null,
-    }, "Research autopilot");
+      force_upstream_recompute: forceUpstream,
+    }, forceUpstream ? "New compute iteration" : "Existing evidence review");
   }
 
   async function queueResearchExperiment(actionLabel = "Research experiment") {
     return await queueJob("/api/operator/research/jobs/run-research-experiment", {
       spec_path: document.getElementById("research-experiment-spec").value,
     }, actionLabel);
+  }
+
+  async function queueFourBarKnnLargerValidation(skipMatrix = false) {
+    const sampleRows = document.getElementById("four-bar-validation-sample-rows").value || "8000";
+    const workers = document.getElementById("four-bar-validation-workers").value || "1";
+    return await queueJob("/api/operator/research/jobs/run-four-bar-knn-larger-validation", {
+      sample_rows_per_interval: Number(sampleRows),
+      workers: Number(workers),
+      force: false,
+      skip_monitor: false,
+      skip_matrix: Boolean(skipMatrix),
+    }, skipMatrix ? "Four-bar KNN validation specs" : "Four-bar KNN larger validation");
+  }
+
+  async function queueFourBarArchiveMapping() {
+    const archiveRoot = document.getElementById("four-bar-archive-root").value.trim();
+    const sampleRows = document.getElementById("four-bar-archive-sample-rows").value || "8000";
+    const matrixWorkers = document.getElementById("four-bar-archive-matrix-workers").value || "1";
+    return await queueJob("/api/operator/research/jobs/map-binance-archive-four-bar-datasets", {
+      archive_root: archiveRoot || null,
+      start_month: document.getElementById("four-bar-archive-start-month").value || "2024-01",
+      end_month: document.getElementById("four-bar-archive-end-month").value || "2024-12",
+      sample_rows_per_interval: Number(sampleRows),
+      matrix_workers: Number(matrixWorkers),
+      force: false,
+    }, "Four-bar archive mapping");
   }
 
   async function queueHistoricalCycle(actionLabel = "Historical research cycle") {
@@ -1699,7 +1833,7 @@
     const ready = latestR104Readiness?.ready;
     const dataGap = latestR104Readiness?.fixture_integrity_ready && !latestR104Readiness?.candidate_evidence_ready;
     const extra = dataGap
-      ? " Run Step 0 Refresh Historical Data Catalog to download and validate expanded BTC/ETH public archives; then run this check again."
+      ? " Run Step 0 Check Catalog first. If the active catalog is missing or stale, use Rebuild Catalog to download and validate expanded BTC/ETH public archives; then run this check again."
       : "";
     setJobResponse(`<div class="${ready ? "success-box" : "error-box"}"><strong>Catalog readiness</strong><br>${window.TBS.escapeHtml((latestR104Readiness?.recommended_next_action || "Readiness endpoint unavailable.") + extra)}</div>`);
     focusResearchSection("r104-settings-section");
@@ -1841,7 +1975,7 @@
 
   async function queueFullResearchReview() {
     setJobResponse('<div class="success-box"><strong>Queueing evidence review bundle</strong><br>The backend autopilot runs or reuses the full BTC/ETH checklist, then writes analysis, delta, frozen-entry exit lab, and eligibility evidence.</div>');
-    return await queueResearchAutopilot();
+    return await queueResearchAutopilot({ forceUpstream: false });
   }
 
   function formatNumber(value) {
@@ -1986,7 +2120,12 @@
             ["Steps", window.TBS.toMono(summary.step_count ?? 0)],
             ["Executed", window.TBS.toMono(summary.executed_step_count ?? 0)],
             ["Skipped", window.TBS.toMono(counts.skipped ?? 0)],
-            ["State Detail", window.TBS.escapeHtml(summary.stale_review ? "stale running manifest; no active process telemetry" : (summary.telemetry_status || "n/a"))],
+            ["Execution", window.TBS.escapeHtml(summary.execution_status || "n/a")],
+            ["Status Detail", window.TBS.escapeHtml(summary.status_detail || "n/a")],
+            ["Upstream Steps", window.TBS.toMono(`${summary.upstream_executed_step_count ?? 0} executed / ${summary.upstream_skipped_step_count ?? 0} skipped`)],
+            ["Downstream Steps", window.TBS.toMono(`${summary.downstream_executed_step_count ?? 0} executed / ${summary.downstream_skipped_step_count ?? 0} skipped`)],
+            ["Force Upstream", window.TBS.escapeHtml(summary.force_upstream_recompute === true ? "true" : "false")],
+            ["Telemetry", window.TBS.escapeHtml(summary.stale_review ? "stale running manifest; no active process telemetry" : (summary.telemetry_status || "n/a"))],
             ["Active Step", window.TBS.escapeHtml(activeStep.key ? `${activeStep.key}${activeStep.symbol ? ` / ${activeStep.symbol}` : ""}` : "none")],
             ["Latest Step", window.TBS.escapeHtml(latestStep.key ? `${latestStep.key} / ${latestStep.status || "unknown"}` : "none")],
             ["Last Update Age", window.TBS.escapeHtml(formatDurationSeconds(summary.last_update_age_seconds))],
@@ -2896,14 +3035,14 @@
     if (item.key === "durable_readiness" && item.status === "blocked") return "Show Data Gap";
     if (item.status === "blocked") return "Data Required";
     if (item.status === "waiting") return "Waiting";
-    if (item.key === "historical_data_catalog") return "Refresh";
+    if (item.key === "historical_data_catalog") return "Check";
     return "Run";
   }
 
   function milestoneDetailText(item) {
     const detail = String(item.detail || "");
     if (item.key === "durable_readiness" && item.status === "blocked") {
-      return `${detail} Run Step 0 Refresh Historical Data Catalog to fetch checksum-verified archives, build expanded fixture packs, and update the active readiness manifests.`;
+      return `${detail} Run Step 0 Check Historical Data Catalog first. If the active catalog is missing or stale, explicitly Rebuild Catalog to fetch checksum-verified archives, build expanded fixture packs, and update the active readiness manifests.`;
     }
     return detail;
   }
@@ -3120,6 +3259,7 @@
     const latestExperiment = pickLatest("research_experiment_run");
     const latestHmm = pickLatest("hmm_knn_artifact");
     const latestHardware = pickLatest("hardware_utilization");
+    const latestAutopilot = pickLatest("research_autopilot");
     const latestDurableCollection = pickLatest("durable_data_collection");
     const latestCatalog = pickLatest("historical_data_catalog");
     const active = activeResearchJob(jobs);
@@ -3180,6 +3320,18 @@
       : (discoverySummary.run_id
       ? `Discovery ${window.TBS.escapeHtml(discoverySummary.run_id)} / ${window.TBS.escapeHtml(String(discoverySummary.status || "indexed"))}`
       : (latestResearchProgress?.next_action || "Progress appears after discovery or cycle artifacts are indexed."));
+    const autopilotSummary = (latestAutopilot || {}).summary || {};
+    const autopilotExecution = autopilotSummary.execution_status || (autopilotSummary.autopilot_status === "completed" && Number(autopilotSummary.executed_step_count || 0) === 0 ? "reused_existing_evidence" : autopilotSummary.autopilot_status);
+    const autopilotValue = autopilotExecution ? String(autopilotExecution).replaceAll("_", " ") : "Not Run";
+    const autopilotMeta = latestAutopilot
+      ? `Executed ${window.TBS.escapeHtml(String(autopilotSummary.executed_step_count ?? 0))}; skipped ${window.TBS.escapeHtml(String(autopilotSummary.skipped_step_count ?? autopilotSummary.status_counts?.skipped ?? 0))}. Latest ${window.TBS.escapeHtml(autopilotSummary.latest_step?.key || "none")}.`
+      : "Run Research Autopilot to record whether evidence was executed or reused.";
+    const testingReadiness = latestResearchProgress?.testing_readiness || {};
+    const testingValue = testingReadiness.ready_to_compute_new_iteration ? "Ready" : (testingReadiness.status ? "Blocked" : "Unknown");
+    const testingBlockers = testingReadiness.blockers || [];
+    const testingMeta = testingReadiness.status
+      ? `${window.TBS.escapeHtml(String(testingReadiness.status).replaceAll("_", " "))}. ${testingBlockers.length ? `Blockers: ${window.TBS.escapeHtml(testingBlockers.slice(0, 3).join(", "))}` : "Knowledge base is documentation-only; executable test surfaces are available."}`
+      : "Testing readiness appears after research progress loads.";
     const snapshotValue = snapshotPath ? "Indexed" : "None";
     const snapshotMeta = snapshotPath || (discoverySummary.run_id ? `Run ${window.TBS.escapeHtml(discoverySummary.run_id)} has no snapshot path in summary.` : "No discovery snapshot artifact found.");
     const hardwareSummary = (latestHardware || {}).summary || {};
@@ -3194,6 +3346,8 @@
       ["Data Readiness", dataValue, dataMeta],
       ["Current Run", runValue, runMeta],
       ["Progress", progressValue, progressMeta],
+      ["Autopilot Evidence", autopilotValue, autopilotMeta],
+      ["Testing Readiness", testingValue, testingMeta],
       ["Latest Snapshot", snapshotValue, snapshotMeta],
       ["Hardware", hardwareValue, hardwareMeta],
       ["Blockers", String(blockerCount), blockerCount ? "Review rejection, discovery-blocker, and readiness panels." : "No blocker count indexed."],

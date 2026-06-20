@@ -1116,6 +1116,64 @@ def test_research_candidate_pack_rejects_placeholder_side_and_regime_metrics(tmp
     assert "candidate_side_metric_long_short_required" in gate.reasons
 
 
+def test_research_candidate_pack_accepts_declared_one_sided_metric_rows(tmp_path: Path) -> None:
+    cycle_manifest = _cycle_outputs(tmp_path)
+    manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+    rankings_path = Path(manifest["required_outputs"]["candidate_rankings"])
+    rankings = pd.read_parquet(rankings_path)
+    rankings.loc[0, "side_evidence_policy"] = "explicit_one_sided_side_veto"
+    rankings.loc[0, "side_evidence_required_sides"] = "long"
+    rankings.loc[0, "side_veto_declared"] = True
+    rankings.loc[0, "side_veto_allowed_side"] = "long"
+    rankings.loc[0, "side_veto_stage"] = "post_selection"
+    rankings.loc[0, "side_veto_control_candidate_id"] = "short-control"
+    rankings.loc[0, "side_veto_control_status"] = "passed"
+    rankings.loc[0, "side_veto_control_reasons"] = ""
+    rankings.to_parquet(rankings_path, index=False)
+    pd.DataFrame(
+        [
+            {
+                "candidate_id": "candidate-1",
+                "side": "long",
+                "trade_count": 5,
+                "costed_expectancy": 0.01,
+                "net_return_after_fees_slippage_funding": 0.02,
+                "hit_rate": 0.6,
+                "backtest_manifest_path": "backtest_manifest.json",
+            }
+        ]
+    ).to_parquet(manifest["required_outputs"]["metrics_by_side"], index=False)
+
+    gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+    assert "candidate_side_metric_long_short_required" not in gate.reasons
+    assert "candidate_side_metric_required_sides_mismatch" not in gate.reasons
+    assert "side_veto_control_evidence_not_passed" not in gate.reasons
+
+
+def test_research_candidate_pack_blocks_one_sided_rows_without_control_evidence(tmp_path: Path) -> None:
+    cycle_manifest = _cycle_outputs(tmp_path)
+    manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))
+    rankings_path = Path(manifest["required_outputs"]["candidate_rankings"])
+    rankings = pd.read_parquet(rankings_path)
+    rankings.loc[0, "side_evidence_policy"] = "explicit_one_sided_side_veto"
+    rankings.loc[0, "side_evidence_required_sides"] = "long"
+    rankings.loc[0, "side_veto_declared"] = True
+    rankings.loc[0, "side_veto_allowed_side"] = "long"
+    rankings.loc[0, "side_veto_stage"] = "post_selection"
+    rankings.loc[0, "side_veto_control_candidate_id"] = ""
+    rankings.loc[0, "side_veto_control_status"] = "failed"
+    rankings.loc[0, "side_veto_control_reasons"] = "candidate_side_veto_control_evidence_required"
+    rankings.to_parquet(rankings_path, index=False)
+
+    gate = evaluate_research_candidate_gate(cycle_manifest_path=cycle_manifest, candidate_id="candidate-1")
+
+    assert gate.status == "blocked"
+    assert "side_veto_control_evidence_not_passed" in gate.reasons
+    assert "side_veto_control_candidate_required" in gate.reasons
+    assert "side_veto_control_reasons_not_empty" in gate.reasons
+
+
 def test_research_candidate_pack_rejects_incomplete_split_and_cost_stress_metrics(tmp_path: Path) -> None:
     cycle_manifest = _cycle_outputs(tmp_path)
     manifest = json.loads(cycle_manifest.read_text(encoding="utf-8"))

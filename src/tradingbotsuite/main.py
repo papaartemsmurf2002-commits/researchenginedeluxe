@@ -24,12 +24,50 @@ from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_STAGES, prepare
 from tradingbotsuite.research.hmm_knn import replay_hmm_knn_artifact, run_hmm_knn_research
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
+from tradingbotsuite.research.knn_four_bar import build_four_bar_knn_dataset_from_fixture
+from tradingbotsuite.research.knn_four_bar_validation import (
+    FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_END_MONTH,
+    FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_START_MONTH,
+    FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL,
+    map_local_binance_archive_four_bar_datasets,
+    run_four_bar_knn_larger_validation,
+)
 from tradingbotsuite.research.experiment_runner import (
     run_research_experiment,
     write_research_experiment_benchmark_report,
 )
 from tradingbotsuite.research.feature_ablation import write_feature_ablation_plan
 from tradingbotsuite.research.stage12_research import write_stage12_research_plan
+from tradingbotsuite.research_sandbox import (
+    DataWindow,
+    audit_sandbox_archive_descriptors,
+    build_sandbox_archive_manifest,
+    build_sandbox_global_leaderboard,
+    build_sandbox_iteration_index,
+    export_sandbox_suite_validation_request_bundle,
+    export_sandbox_validation_request_bundle,
+    export_sandbox_venue_expansion_candidate_manifest,
+    export_sandbox_venue_expansion_request_bundle,
+    index_sandbox_artifacts,
+    load_sandbox_run_spec,
+    load_sandbox_suite_spec,
+    load_strategy_catalog,
+    load_venue_archive_descriptors,
+    materialize_sandbox_strategy_catalog,
+    materialize_sandbox_venue_expansion_requests,
+    preflight_sandbox_compatibility,
+    preflight_sandbox_strict_validation_descriptors,
+    run_sandbox_agent_iteration,
+    run_sandbox_archive_sweep,
+    run_sandbox_suite,
+    show_sandbox_next_action,
+    summarize_sandbox_hypotheses,
+    summarize_sandbox_archive_coverage,
+    summarize_sandbox_run,
+    summarize_sandbox_throughput,
+    summarize_sandbox_suite_hypotheses,
+    verify_sandbox_artifact_integrity,
+)
 from tradingbotsuite.research_cycle import (
     run_historical_research_cycle,
     write_hardware_utilization_report,
@@ -65,6 +103,14 @@ def _resolve_cli_path(path: str | Path) -> Path:
     if repo_candidate.exists():
         return repo_candidate.resolve()
     return candidate.resolve() if candidate.exists() else candidate
+
+
+def _optional_sandbox_requested_window(start: str | None, end: str | None) -> DataWindow | None:
+    if start is None and end is None:
+        return None
+    if start is None or end is None:
+        raise ValueError("requested-window-start and requested-window-end must be supplied together")
+    return DataWindow(start, end)
 
 
 def parse_args() -> argparse.Namespace:
@@ -116,6 +162,50 @@ def parse_args() -> argparse.Namespace:
     hmm_knn_experiments.add_argument("--skip-monitor", action="store_true", help="Do not write monitor-hmm-knn reports for experiment artifacts")
     hmm_knn_experiments.add_argument("--fail-fast", action="store_true", help="Stop on the first failed experiment")
     hmm_knn_experiments.add_argument("--workers", type=int, default=1, help="Bounded worker count for independent experiment specs")
+
+    four_bar_dataset = subparsers.add_parser(
+        "build-four-bar-knn-dataset",
+        help="Build research-only BTC/ETH four-bar HMM/KNN event-label datasets from durable fixtures",
+    )
+    four_bar_dataset.add_argument("--fixture-root", required=True)
+    four_bar_dataset.add_argument("--symbol", required=True, choices=["BTCUSDT", "ETHUSDT"])
+    four_bar_dataset.add_argument("--output-dir", default=None)
+    four_bar_dataset.add_argument("--dataset-name", default=None)
+    four_bar_dataset.add_argument("--base-interval", action="append", choices=["15m", "1h"], default=[])
+    four_bar_dataset.add_argument("--max-rows-per-interval", type=int, default=None)
+
+    four_bar_validation = subparsers.add_parser(
+        "run-four-bar-knn-larger-validation",
+        help="Run the research-only WPR106-77 no-RSI four-bar KNN larger validation packet",
+    )
+    four_bar_validation.add_argument("--output-dir", default=None)
+    four_bar_validation.add_argument("--btc-fixture-root", default=None)
+    four_bar_validation.add_argument("--eth-fixture-root", default=None)
+    four_bar_validation.add_argument(
+        "--sample-rows-per-interval",
+        type=int,
+        default=FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL,
+    )
+    four_bar_validation.add_argument("--workers", type=int, default=1)
+    four_bar_validation.add_argument("--force", action="store_true", help="Rebuild validation datasets and refresh matrix cache")
+    four_bar_validation.add_argument("--skip-monitor", action="store_true", help="Do not write monitor-hmm-knn reports for artifacts")
+    four_bar_validation.add_argument("--skip-matrix", action="store_true", help="Only write datasets, specs, manifest, and replay command")
+
+    archive_four_bar = subparsers.add_parser(
+        "map-binance-archive-four-bar-datasets",
+        help="Map existing local Binance Vision archives into research-only four-bar KNN datasets",
+    )
+    archive_four_bar.add_argument("--output-dir", default=None)
+    archive_four_bar.add_argument("--archive-root", default=None)
+    archive_four_bar.add_argument("--start-month", default=FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_START_MONTH)
+    archive_four_bar.add_argument("--end-month", default=FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_END_MONTH)
+    archive_four_bar.add_argument(
+        "--sample-rows-per-interval",
+        type=int,
+        default=FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL,
+    )
+    archive_four_bar.add_argument("--matrix-workers", type=int, default=1)
+    archive_four_bar.add_argument("--force", action="store_true", help="Rebuild mapped archive datasets")
 
     hmm_knn_dataset = subparsers.add_parser(
         "write-hmm-knn-sweep-datasets",
@@ -221,6 +311,263 @@ def parse_args() -> argparse.Namespace:
 
     research_experiment = subparsers.add_parser("run-research-experiment", help="Run a bundled BTC Phase 1 research experiment")
     research_experiment.add_argument("--spec", required=True)
+
+    rapid_sandbox = subparsers.add_parser(
+        "run-rapid-strategy-sandbox",
+        help="Run the 2024+ research-only rapid strategy iteration sandbox",
+    )
+    rapid_sandbox.add_argument("--spec", required=True, help="Sandbox run spec JSON")
+    rapid_sandbox.add_argument("--strategy-catalog", required=True, help="CSV/TSV/JSON/Parquet/XLSX strategy catalog")
+    rapid_sandbox.add_argument("--venue-archives", required=True, help="JSON venue archive descriptor manifest")
+    rapid_sandbox.add_argument("--market-data", default=None, help="Local normalized market frame or Binance Vision kline CSV/ZIP")
+    rapid_sandbox.add_argument("--output-dir", default=None)
+    rapid_sandbox.add_argument("--min-request-score", type=float, default=0.0)
+
+    summarize_sandbox = subparsers.add_parser(
+        "summarize-rapid-strategy-sandbox",
+        help="Summarize an existing research-only rapid strategy sandbox run",
+    )
+    summarize_sandbox.add_argument("--run-dir", required=True, help="Sandbox run directory under the research output root")
+    summarize_sandbox.add_argument("--top-n", type=int, default=10)
+    summarize_sandbox.add_argument("--no-write-report", action="store_true")
+
+    rapid_sandbox_suite = subparsers.add_parser(
+        "run-rapid-strategy-sandbox-suite",
+        help="Run a 2024+ research-only rapid strategy sandbox suite",
+    )
+    rapid_sandbox_suite.add_argument("--suite", required=True, help="Sandbox suite spec JSON")
+    rapid_sandbox_suite.add_argument("--output-dir", default=None)
+    rapid_sandbox_suite.add_argument("--top-n", type=int, default=None)
+    rapid_sandbox_suite.add_argument("--max-workers", type=int, default=1)
+
+    verify_sandbox_artifacts_parser = subparsers.add_parser(
+        "verify-rapid-strategy-sandbox-artifacts",
+        help="Verify sandbox run or suite child artifact integrity hashes",
+    )
+    verify_sandbox_artifacts_parser.add_argument("--target", required=True, help="Sandbox run/suite directory or manifest path")
+    verify_sandbox_artifacts_parser.add_argument("--output-dir", default=None)
+    verify_sandbox_artifacts_parser.add_argument("--no-write-report", action="store_true")
+
+    summarize_sandbox_hypotheses_parser = subparsers.add_parser(
+        "summarize-rapid-strategy-sandbox-hypotheses",
+        help="Summarize hypothesis-level falsification decisions for a sandbox run or suite",
+    )
+    hypothesis_scope = summarize_sandbox_hypotheses_parser.add_mutually_exclusive_group(required=True)
+    hypothesis_scope.add_argument("--run-dir", default=None, help="Sandbox run directory under the research output root")
+    hypothesis_scope.add_argument("--suite-dir", default=None, help="Sandbox suite directory under the research output root")
+    summarize_sandbox_hypotheses_parser.add_argument("--no-write-report", action="store_true")
+
+    export_sandbox_validation_requests = subparsers.add_parser(
+        "export-rapid-strategy-sandbox-validation-requests",
+        help="Export descriptor-only strict-validation requests from a sandbox run or suite",
+    )
+    validation_scope = export_sandbox_validation_requests.add_mutually_exclusive_group(required=True)
+    validation_scope.add_argument("--run-dir", default=None, help="Sandbox run directory under the research output root")
+    validation_scope.add_argument("--suite-dir", default=None, help="Sandbox suite directory under the research output root")
+    export_sandbox_validation_requests.add_argument("--output-dir", default=None)
+
+    preflight_sandbox_validation_requests = subparsers.add_parser(
+        "preflight-rapid-strategy-sandbox-validation-requests",
+        help="Preflight descriptor-only sandbox strict-validation request bundles without executing validation",
+    )
+    preflight_sandbox_validation_requests.add_argument(
+        "--bundle",
+        required=True,
+        help="Sandbox strict-validation request bundle JSON under the research output root",
+    )
+    preflight_sandbox_validation_requests.add_argument("--output-dir", default=None)
+
+    export_sandbox_venue_expansion_requests = subparsers.add_parser(
+        "export-rapid-strategy-sandbox-venue-expansion-requests",
+        help="Export descriptor-only venue archive intake requests from a sandbox artifact catalog",
+    )
+    export_sandbox_venue_expansion_requests.add_argument(
+        "--catalog",
+        required=True,
+        help="Sandbox artifact catalog JSON under the research output root",
+    )
+    export_sandbox_venue_expansion_requests.add_argument(
+        "--worklist",
+        default=None,
+        help="Optional venue-expansion worklist Parquet under the research output root",
+    )
+    export_sandbox_venue_expansion_requests.add_argument("--output-dir", default=None)
+
+    materialize_sandbox_venue_expansion_requests_parser = subparsers.add_parser(
+        "materialize-rapid-strategy-sandbox-venue-expansion-requests",
+        help="Materialize dry-run descriptor candidates from sandbox venue-expansion requests and local roots",
+    )
+    materialize_sandbox_venue_expansion_requests_parser.add_argument(
+        "--request-bundle",
+        required=True,
+        help="Sandbox venue-expansion request bundle JSON under the research output root",
+    )
+    materialize_sandbox_venue_expansion_requests_parser.add_argument(
+        "--archive-root",
+        action="append",
+        required=True,
+        help="Explicit local archive root or file to scan",
+    )
+    materialize_sandbox_venue_expansion_requests_parser.add_argument("--output-dir", default=None)
+    materialize_sandbox_venue_expansion_requests_parser.add_argument("--venue", default=None)
+    materialize_sandbox_venue_expansion_requests_parser.add_argument("--symbol", default=None)
+    materialize_sandbox_venue_expansion_requests_parser.add_argument("--data-family", default=None)
+    materialize_sandbox_venue_expansion_requests_parser.add_argument("--interval", default=None)
+    materialize_sandbox_venue_expansion_requests_parser.add_argument("--max-files", type=int, default=5000)
+
+    export_sandbox_venue_expansion_candidate_manifest_parser = subparsers.add_parser(
+        "export-rapid-strategy-sandbox-venue-expansion-candidate-manifest",
+        help="Export a new sandbox venue archive manifest from venue-expansion descriptor candidates",
+    )
+    export_sandbox_venue_expansion_candidate_manifest_parser.add_argument(
+        "--descriptor-candidates",
+        required=True,
+        help="Sandbox venue-expansion descriptor candidates JSON under the research output root",
+    )
+    export_sandbox_venue_expansion_candidate_manifest_parser.add_argument("--output-dir", default=None)
+
+    index_sandbox_artifacts_parser = subparsers.add_parser(
+        "index-rapid-strategy-sandbox-artifacts",
+        help="Index existing research-only rapid strategy sandbox artifacts under the research output root",
+    )
+    index_sandbox_artifacts_parser.add_argument("--root-dir", default=None)
+    index_sandbox_artifacts_parser.add_argument("--output-dir", default=None)
+    index_sandbox_artifacts_parser.add_argument("--max-files", type=int, default=5000)
+    index_sandbox_artifacts_parser.add_argument("--no-write-report", action="store_true")
+
+    index_sandbox_iterations_parser = subparsers.add_parser(
+        "index-rapid-strategy-sandbox-iterations",
+        help="Index one-command rapid strategy sandbox iterations under the research output root",
+    )
+    index_sandbox_iterations_parser.add_argument("--root-dir", default=None)
+    index_sandbox_iterations_parser.add_argument("--output-dir", default=None)
+    index_sandbox_iterations_parser.add_argument("--max-files", type=int, default=5000)
+    index_sandbox_iterations_parser.add_argument("--no-write-report", action="store_true")
+
+    sandbox_next_action_parser = subparsers.add_parser(
+        "show-rapid-strategy-sandbox-next-action",
+        help="Summarize existing sandbox artifact catalogs and iteration indexes into a next-action report",
+    )
+    sandbox_next_action_parser.add_argument("--output-root", default=None)
+    sandbox_next_action_parser.add_argument(
+        "--artifact-catalog",
+        action="append",
+        default=None,
+        help="Existing sandbox_artifact_catalog.json under the research output root",
+    )
+    sandbox_next_action_parser.add_argument(
+        "--iteration-index",
+        action="append",
+        default=None,
+        help="Existing sandbox_iteration_index.json under the research output root",
+    )
+    sandbox_next_action_parser.add_argument("--output-dir", default=None)
+    sandbox_next_action_parser.add_argument("--max-files", type=int, default=5000)
+    sandbox_next_action_parser.add_argument("--limit", type=int, default=10)
+    sandbox_next_action_parser.add_argument("--no-write-report", action="store_true")
+
+    sandbox_throughput_parser = subparsers.add_parser(
+        "summarize-rapid-strategy-sandbox-throughput",
+        help="Summarize throughput telemetry from existing rapid strategy sandbox iteration manifests",
+    )
+    sandbox_throughput_parser.add_argument("--root-dir", default=None)
+    sandbox_throughput_parser.add_argument("--output-dir", default=None)
+    sandbox_throughput_parser.add_argument("--max-files", type=int, default=5000)
+    sandbox_throughput_parser.add_argument("--limit", type=int, default=10)
+    sandbox_throughput_parser.add_argument("--no-write-report", action="store_true")
+
+    audit_sandbox_archives = subparsers.add_parser(
+        "audit-rapid-strategy-sandbox-archives",
+        help="Audit local venue archive descriptors for 2024+ sandbox readiness",
+    )
+    audit_sandbox_archives.add_argument("--venue-archives", required=True, help="JSON venue archive descriptor manifest")
+    audit_sandbox_archives.add_argument("--market-data", default=None, help="Optional shared local market frame for smoke audits")
+    audit_sandbox_archives.add_argument("--output-dir", default=None)
+    audit_sandbox_archives.add_argument("--requested-window-start", default=None)
+    audit_sandbox_archives.add_argument("--requested-window-end", default=None)
+
+    archive_coverage_parser = subparsers.add_parser(
+        "summarize-rapid-strategy-sandbox-archive-coverage",
+        help="Summarize local venue archive coverage by venue, symbol, family, and interval",
+    )
+    archive_coverage_parser.add_argument("--venue-archives", required=True, help="JSON venue archive descriptor manifest")
+    archive_coverage_parser.add_argument("--market-data", default=None, help="Optional shared local market frame for smoke coverage")
+    archive_coverage_parser.add_argument("--output-dir", default=None)
+    archive_coverage_parser.add_argument("--requested-window-start", default=None)
+    archive_coverage_parser.add_argument("--requested-window-end", default=None)
+
+    build_sandbox_archive_manifest_parser = subparsers.add_parser(
+        "build-rapid-strategy-sandbox-archive-manifest",
+        help="Build a 2024+ sandbox venue archive manifest from local archive files",
+    )
+    build_sandbox_archive_manifest_parser.add_argument("--archive-root", action="append", required=True)
+    build_sandbox_archive_manifest_parser.add_argument("--output-dir", default=None)
+    build_sandbox_archive_manifest_parser.add_argument("--venue", default=None)
+    build_sandbox_archive_manifest_parser.add_argument("--symbol", default=None)
+    build_sandbox_archive_manifest_parser.add_argument("--data-family", default=None)
+    build_sandbox_archive_manifest_parser.add_argument("--interval", default=None)
+    build_sandbox_archive_manifest_parser.add_argument("--max-files", type=int, default=5000)
+
+    rank_sandbox_artifacts_parser = subparsers.add_parser(
+        "rank-rapid-strategy-sandbox-artifacts",
+        help="Build a global hypothesis leaderboard from existing rapid strategy sandbox runs",
+    )
+    rank_sandbox_artifacts_parser.add_argument("--root-dir", default=None)
+    rank_sandbox_artifacts_parser.add_argument("--output-dir", default=None)
+    rank_sandbox_artifacts_parser.add_argument("--max-runs", type=int, default=5000)
+    rank_sandbox_artifacts_parser.add_argument("--top-n", type=int, default=100)
+    rank_sandbox_artifacts_parser.add_argument("--no-write-report", action="store_true")
+
+    build_sandbox_strategy_catalog_parser = subparsers.add_parser(
+        "build-rapid-strategy-sandbox-strategy-catalog",
+        help="Materialize a normalized sandbox strategy catalog from local strategy files",
+    )
+    build_sandbox_strategy_catalog_parser.add_argument("--catalog-root", action="append", required=True)
+    build_sandbox_strategy_catalog_parser.add_argument("--output-dir", default=None)
+    build_sandbox_strategy_catalog_parser.add_argument("--max-files", type=int, default=5000)
+
+    sandbox_preflight_parser = subparsers.add_parser(
+        "preflight-rapid-strategy-sandbox",
+        help="Preflight strategy/catalog/archive compatibility before a sandbox sweep",
+    )
+    sandbox_preflight_parser.add_argument("--spec", required=True)
+    sandbox_preflight_parser.add_argument("--strategy-catalog", required=True)
+    sandbox_preflight_parser.add_argument("--venue-archives", required=True)
+    sandbox_preflight_parser.add_argument("--market-data", default=None)
+    sandbox_preflight_parser.add_argument("--output-dir", default=None)
+
+    sandbox_iteration_parser = subparsers.add_parser(
+        "run-rapid-strategy-sandbox-iteration",
+        help="Run a one-command archive-backed rapid strategy sandbox iteration",
+    )
+    sandbox_iteration_parser.add_argument("--spec", default=None)
+    strategy_input = sandbox_iteration_parser.add_mutually_exclusive_group(required=True)
+    strategy_input.add_argument("--strategy-catalog", default=None)
+    strategy_input.add_argument("--catalog-root", action="append", default=None)
+    archive_input = sandbox_iteration_parser.add_mutually_exclusive_group(required=True)
+    archive_input.add_argument("--venue-archives", default=None)
+    archive_input.add_argument("--archive-root", action="append", default=None)
+    sandbox_iteration_parser.add_argument("--output-dir", default=None)
+    sandbox_iteration_parser.add_argument("--run-id", default=None)
+    sandbox_iteration_parser.add_argument("--window-start", default="2024-01-01")
+    sandbox_iteration_parser.add_argument("--window-end", default="2024-12-31")
+    sandbox_iteration_parser.add_argument("--window-preset", default="explicit")
+    sandbox_iteration_parser.add_argument("--window-as-of-date", default=None)
+    sandbox_iteration_parser.add_argument("--window-lookback-days", type=int, default=365)
+    sandbox_iteration_parser.add_argument("--holding-periods", default="1,2,4,8")
+    sandbox_iteration_parser.add_argument("--round-trip-cost-bps", type=float, default=8.0)
+    sandbox_iteration_parser.add_argument("--min-trades", type=int, default=5)
+    sandbox_iteration_parser.add_argument("--max-evidence-requests", type=int, default=10)
+    sandbox_iteration_parser.add_argument("--rank-top-n", type=int, default=100)
+    sandbox_iteration_parser.add_argument("--min-request-score", type=float, default=0.0)
+    sandbox_iteration_parser.add_argument("--catalog-max-files", type=int, default=5000)
+    sandbox_iteration_parser.add_argument("--archive-max-files", type=int, default=5000)
+    sandbox_iteration_parser.add_argument("--archive-venue", default=None)
+    sandbox_iteration_parser.add_argument("--archive-symbol", default=None)
+    sandbox_iteration_parser.add_argument("--archive-data-family", default=None)
+    sandbox_iteration_parser.add_argument("--archive-interval", default=None)
+    sandbox_iteration_parser.add_argument("--leaderboard-max-runs", type=int, default=5000)
+    sandbox_iteration_parser.add_argument("--leaderboard-top-n", type=int, default=100)
 
     benchmark_experiment = subparsers.add_parser("benchmark-research-experiment", help="Run repeated research experiment timing reports")
     benchmark_experiment.add_argument("--spec", required=True)
@@ -420,6 +767,63 @@ def _run_hmm_knn_experiments_command(args: argparse.Namespace) -> dict[str, obje
         "experiment_manifest_path": str(result.manifest_path),
         "summary_path": str(result.summary_path),
     }
+
+
+def _run_build_four_bar_knn_dataset_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("build-four-bar-knn-dataset")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "hmm_knn_four_bar")
+    )
+    result = build_four_bar_knn_dataset_from_fixture(
+        fixture_root=_resolve_cli_path(args.fixture_root),
+        output_dir=output_dir,
+        symbol=args.symbol,
+        base_intervals=tuple(args.base_interval or ["15m", "1h"]),
+        dataset_name=args.dataset_name,
+        max_rows_per_interval=args.max_rows_per_interval,
+    )
+    return result.to_payload()
+
+
+def _run_four_bar_knn_larger_validation_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("run-four-bar-knn-larger-validation")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "hmm_knn_four_bar_validation", "wpr106_77_larger_validation_r106_v1")
+    )
+    result = run_four_bar_knn_larger_validation(
+        output_dir=output_dir,
+        btc_fixture_root=_resolve_cli_path(args.btc_fixture_root) if args.btc_fixture_root is not None else None,
+        eth_fixture_root=_resolve_cli_path(args.eth_fixture_root) if args.eth_fixture_root is not None else None,
+        sample_rows_per_interval=args.sample_rows_per_interval,
+        workers=args.workers,
+        force=args.force,
+        write_monitoring=not args.skip_monitor,
+        skip_matrix=args.skip_matrix,
+    )
+    return result.to_payload()
+
+
+def _run_map_binance_archive_four_bar_datasets_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("map-binance-archive-four-bar-datasets")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "hmm_knn_four_bar_archive_mapping", "wpr106_79_local_archive_mapping")
+    )
+    result = map_local_binance_archive_four_bar_datasets(
+        output_dir=output_dir,
+        archive_root=_resolve_cli_path(args.archive_root) if args.archive_root is not None else None,
+        start_month=args.start_month,
+        end_month=args.end_month,
+        sample_rows_per_interval=args.sample_rows_per_interval,
+        matrix_workers=args.matrix_workers,
+        force=args.force,
+    )
+    return result.to_payload()
 
 
 def _run_write_hmm_knn_sweep_datasets_command(args: argparse.Namespace) -> dict[str, object]:
@@ -653,6 +1057,490 @@ def _run_research_experiment_command(args: argparse.Namespace) -> dict[str, obje
         "conclusion_path": str(result.conclusion_path),
         "pipeline_summary_path": str(result.pipeline_summary_path),
     }
+
+
+def _run_rapid_strategy_sandbox_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("run-rapid-strategy-sandbox")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox")
+    )
+    spec = load_sandbox_run_spec(_resolve_cli_path(args.spec))
+    strategies = load_strategy_catalog(_resolve_cli_path(args.strategy_catalog))
+    venues = load_venue_archive_descriptors(_resolve_cli_path(args.venue_archives))
+
+    result = run_sandbox_archive_sweep(
+        spec=spec,
+        strategies=strategies,
+        venues=venues,
+        output_root=output_dir,
+        shared_market_data_path=_resolve_cli_path(args.market_data) if args.market_data is not None else None,
+        min_request_score=args.min_request_score,
+    )
+    return {
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "sandbox_only": True,
+        "candidate_evidence": False,
+        "candidate_pack_eligible": False,
+        "output_dir": str(result.artifacts.run_dir),
+        "manifest_path": str(result.artifacts.manifest_path),
+        "summary_parquet_path": str(result.artifacts.summary_parquet_path),
+        "rankings_parquet_path": str(result.artifacts.rankings_parquet_path),
+        "evidence_requests_json_path": str(result.artifacts.evidence_requests_json_path),
+        "evidence_requests_parquet_path": str(result.artifacts.evidence_requests_parquet_path),
+        "result_count": len(result.results),
+        "screened_count": sum(1 for item in result.results if item.status == "screened"),
+        "evidence_request_count": len(result.evidence_requests),
+    }
+
+
+def _run_summarize_rapid_strategy_sandbox_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("summarize-rapid-strategy-sandbox")
+    run_dir = _resolve_research_output_dir(args.run_dir, config=config, field_name="run_dir")
+    return summarize_sandbox_run(
+        run_dir,
+        top_n=args.top_n,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_rapid_strategy_sandbox_suite_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("run-rapid-strategy-sandbox-suite")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox_suites")
+    )
+    suite = load_sandbox_suite_spec(_resolve_cli_path(args.suite))
+    result = run_sandbox_suite(
+        suite=suite,
+        output_root=output_dir,
+        top_n=args.top_n,
+        max_workers=args.max_workers,
+    )
+    return {
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "sandbox_only": True,
+        "candidate_evidence": False,
+        "candidate_pack_eligible": False,
+        "suite_id": suite.suite_id,
+        "suite_dir": str(result.artifacts.suite_dir),
+        "suite_manifest_path": str(result.artifacts.suite_manifest_path),
+        "suite_index_json_path": str(result.artifacts.suite_index_json_path),
+        "suite_index_parquet_path": str(result.artifacts.suite_index_parquet_path),
+        "suite_evidence_requests_json_path": str(result.artifacts.suite_evidence_requests_json_path),
+        "suite_evidence_requests_parquet_path": str(result.artifacts.suite_evidence_requests_parquet_path),
+        "max_workers": args.max_workers,
+        "case_count": len(result.case_results),
+        "completed_case_count": sum(1 for row in result.index_rows if row.get("case_status") == "completed"),
+        "skipped_case_count": sum(1 for row in result.index_rows if row.get("case_status") == "blocked_by_preflight"),
+        "preflight_trial_estimate": sum(int(row.get("preflight_trial_estimate", 0) or 0) for row in result.index_rows),
+        "preflight_runnable_trial_estimate": sum(
+            int(row.get("preflight_runnable_trial_estimate", 0) or 0) for row in result.index_rows
+        ),
+        "preflight_blocked_trial_estimate": sum(
+            int(row.get("preflight_blocked_trial_estimate", 0) or 0) for row in result.index_rows
+        ),
+        "result_count": sum(int(row.get("result_count", 0)) for row in result.index_rows),
+        "screened_count": sum(int(row.get("screened_count", 0)) for row in result.index_rows),
+        "evidence_request_count": len(result.evidence_requests),
+    }
+
+
+def _run_verify_rapid_strategy_sandbox_artifacts_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("verify-rapid-strategy-sandbox-artifacts")
+    target = _resolve_research_output_dir(args.target, config=config, field_name="target")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    return verify_sandbox_artifact_integrity(
+        target,
+        output_dir=output_dir,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_summarize_rapid_strategy_sandbox_hypotheses_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("summarize-rapid-strategy-sandbox-hypotheses")
+    if args.run_dir is not None:
+        run_dir = _resolve_research_output_dir(args.run_dir, config=config, field_name="run_dir")
+        return summarize_sandbox_hypotheses(
+            run_dir,
+            write_report=not args.no_write_report,
+        )
+    suite_dir = _resolve_research_output_dir(args.suite_dir, config=config, field_name="suite_dir")
+    return summarize_sandbox_suite_hypotheses(
+        suite_dir,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_export_rapid_strategy_sandbox_validation_requests_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("export-rapid-strategy-sandbox-validation-requests")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    if args.run_dir is not None:
+        run_dir = _resolve_research_output_dir(args.run_dir, config=config, field_name="run_dir")
+        return export_sandbox_validation_request_bundle(
+            run_dir,
+            output_dir=output_dir,
+        )
+    suite_dir = _resolve_research_output_dir(args.suite_dir, config=config, field_name="suite_dir")
+    return export_sandbox_suite_validation_request_bundle(
+        suite_dir,
+        output_dir=output_dir,
+    )
+
+
+def _run_preflight_rapid_strategy_sandbox_validation_requests_command(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    config = _config_for_command("preflight-rapid-strategy-sandbox-validation-requests")
+    bundle_path = _resolve_research_output_dir(args.bundle, config=config, field_name="bundle")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(
+            config,
+            "rapid_strategy_sandbox_strict_validation_preflights",
+        )
+    )
+    return preflight_sandbox_strict_validation_descriptors(
+        bundle_path,
+        output_dir=output_dir,
+    )
+
+
+def _run_export_rapid_strategy_sandbox_venue_expansion_requests_command(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    config = _config_for_command("export-rapid-strategy-sandbox-venue-expansion-requests")
+    catalog_path = _resolve_research_output_dir(
+        args.catalog,
+        config=config,
+        field_name="catalog",
+    )
+    worklist_path = (
+        _resolve_research_output_dir(args.worklist, config=config, field_name="worklist")
+        if args.worklist is not None
+        else None
+    )
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    return export_sandbox_venue_expansion_request_bundle(
+        catalog_path,
+        worklist_path=worklist_path,
+        output_dir=output_dir,
+    )
+
+
+def _run_materialize_rapid_strategy_sandbox_venue_expansion_requests_command(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    config = _config_for_command("materialize-rapid-strategy-sandbox-venue-expansion-requests")
+    request_bundle_path = _resolve_research_output_dir(
+        args.request_bundle,
+        config=config,
+        field_name="request_bundle",
+    )
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(
+            config,
+            "rapid_strategy_sandbox_venue_expansion_materializer",
+        )
+    )
+    return materialize_sandbox_venue_expansion_requests(
+        request_bundle_path,
+        [_resolve_cli_path(path) for path in args.archive_root],
+        output_dir=output_dir,
+        venue=args.venue,
+        symbol=args.symbol,
+        data_family=args.data_family,
+        interval=args.interval,
+        max_files=args.max_files,
+    )
+
+
+def _run_export_rapid_strategy_sandbox_venue_expansion_candidate_manifest_command(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    config = _config_for_command("export-rapid-strategy-sandbox-venue-expansion-candidate-manifest")
+    descriptor_candidates_path = _resolve_research_output_dir(
+        args.descriptor_candidates,
+        config=config,
+        field_name="descriptor_candidates",
+    )
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(
+            config,
+            "rapid_strategy_sandbox_venue_expansion_candidate_manifests",
+        )
+    )
+    return export_sandbox_venue_expansion_candidate_manifest(
+        descriptor_candidates_path,
+        output_dir=output_dir,
+    )
+
+
+def _run_index_rapid_strategy_sandbox_artifacts_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("index-rapid-strategy-sandbox-artifacts")
+    root_dir = (
+        _resolve_research_output_dir(args.root_dir, config=config, field_name="root_dir")
+        if args.root_dir is not None
+        else _research_output_root(config)
+    )
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    return index_sandbox_artifacts(
+        root_dir,
+        output_dir=output_dir,
+        max_files=args.max_files,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_index_rapid_strategy_sandbox_iterations_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("index-rapid-strategy-sandbox-iterations")
+    root_dir = (
+        _resolve_research_output_dir(args.root_dir, config=config, field_name="root_dir")
+        if args.root_dir is not None
+        else _research_output_root(config)
+    )
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    return build_sandbox_iteration_index(
+        root_dir,
+        output_dir=output_dir,
+        max_files=args.max_files,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_show_rapid_strategy_sandbox_next_action_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("show-rapid-strategy-sandbox-next-action")
+    output_root = (
+        _resolve_research_output_dir(args.output_root, config=config, field_name="output_root")
+        if args.output_root is not None
+        else _research_output_root(config)
+    )
+    artifact_catalog_paths = [
+        _resolve_research_output_dir(path, config=config, field_name="artifact_catalog")
+        for path in (args.artifact_catalog or [])
+    ] or None
+    iteration_index_paths = [
+        _resolve_research_output_dir(path, config=config, field_name="iteration_index")
+        for path in (args.iteration_index or [])
+    ] or None
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    return show_sandbox_next_action(
+        output_root,
+        artifact_catalog_paths=artifact_catalog_paths,
+        iteration_index_paths=iteration_index_paths,
+        output_dir=output_dir,
+        max_files=args.max_files,
+        limit=args.limit,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_summarize_rapid_strategy_sandbox_throughput_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("summarize-rapid-strategy-sandbox-throughput")
+    root_dir = (
+        _resolve_research_output_dir(args.root_dir, config=config, field_name="root_dir")
+        if args.root_dir is not None
+        else _research_output_root(config)
+    )
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    return summarize_sandbox_throughput(
+        root_dir,
+        output_dir=output_dir,
+        containment_root=_research_output_root(config),
+        max_files=args.max_files,
+        limit=args.limit,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_audit_rapid_strategy_sandbox_archives_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("audit-rapid-strategy-sandbox-archives")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox_archive_audits")
+    )
+    return audit_sandbox_archive_descriptors(
+        _resolve_cli_path(args.venue_archives),
+        output_dir=output_dir,
+        shared_market_data_path=_resolve_cli_path(args.market_data) if args.market_data is not None else None,
+        requested_window=_optional_sandbox_requested_window(
+            getattr(args, "requested_window_start", None),
+            getattr(args, "requested_window_end", None),
+        ),
+    )
+
+
+def _run_summarize_rapid_strategy_sandbox_archive_coverage_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("summarize-rapid-strategy-sandbox-archive-coverage")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox_archive_coverage")
+    )
+    return summarize_sandbox_archive_coverage(
+        _resolve_cli_path(args.venue_archives),
+        output_dir=output_dir,
+        shared_market_data_path=_resolve_cli_path(args.market_data) if args.market_data is not None else None,
+        requested_window=_optional_sandbox_requested_window(
+            getattr(args, "requested_window_start", None),
+            getattr(args, "requested_window_end", None),
+        ),
+    )
+
+
+def _run_build_rapid_strategy_sandbox_archive_manifest_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("build-rapid-strategy-sandbox-archive-manifest")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox_archive_manifests")
+    )
+    return build_sandbox_archive_manifest(
+        [_resolve_cli_path(path) for path in args.archive_root],
+        output_dir=output_dir,
+        venue=args.venue,
+        symbol=args.symbol,
+        data_family=args.data_family,
+        interval=args.interval,
+        max_files=args.max_files,
+    )
+
+
+def _run_rank_rapid_strategy_sandbox_artifacts_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("rank-rapid-strategy-sandbox-artifacts")
+    root_dir = (
+        _resolve_research_output_dir(args.root_dir, config=config, field_name="root_dir")
+        if args.root_dir is not None
+        else _research_output_root(config)
+    )
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else None
+    )
+    return build_sandbox_global_leaderboard(
+        root_dir,
+        output_dir=output_dir,
+        max_runs=args.max_runs,
+        top_n=args.top_n,
+        write_report=not args.no_write_report,
+    )
+
+
+def _run_build_rapid_strategy_sandbox_strategy_catalog_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("build-rapid-strategy-sandbox-strategy-catalog")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox_strategy_catalogs")
+    )
+    return materialize_sandbox_strategy_catalog(
+        [_resolve_cli_path(path) for path in args.catalog_root],
+        output_dir=output_dir,
+        max_files=args.max_files,
+    )
+
+
+def _run_preflight_rapid_strategy_sandbox_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("preflight-rapid-strategy-sandbox")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox_preflights")
+    )
+    return preflight_sandbox_compatibility(
+        spec=load_sandbox_run_spec(_resolve_cli_path(args.spec)),
+        strategies=load_strategy_catalog(_resolve_cli_path(args.strategy_catalog)),
+        venues=load_venue_archive_descriptors(_resolve_cli_path(args.venue_archives)),
+        output_dir=output_dir,
+        shared_market_data_path=_resolve_cli_path(args.market_data) if args.market_data is not None else None,
+    )
+
+
+def _parse_holding_periods(value: str) -> tuple[int, ...]:
+    periods = tuple(int(item.strip()) for item in value.split(",") if item.strip())
+    if not periods:
+        raise ValueError("holding_periods must include at least one positive integer")
+    if any(period <= 0 for period in periods):
+        raise ValueError("holding_periods must include only positive integers")
+    return periods
+
+
+def _run_rapid_strategy_sandbox_iteration_command(args: argparse.Namespace) -> dict[str, object]:
+    config = _config_for_command("run-rapid-strategy-sandbox-iteration")
+    output_dir = (
+        _resolve_research_output_dir(args.output_dir, config=config, field_name="output_dir")
+        if args.output_dir is not None
+        else _default_research_output_dir(config, "rapid_strategy_sandbox_iterations")
+    )
+    return run_sandbox_agent_iteration(
+        output_dir=output_dir,
+        spec_path=_resolve_cli_path(args.spec) if args.spec is not None else None,
+        strategy_catalog_path=_resolve_cli_path(args.strategy_catalog) if args.strategy_catalog is not None else None,
+        catalog_roots=[_resolve_cli_path(path) for path in args.catalog_root] if args.catalog_root else None,
+        venue_archives_path=_resolve_cli_path(args.venue_archives) if args.venue_archives is not None else None,
+        archive_roots=[_resolve_cli_path(path) for path in args.archive_root] if args.archive_root else None,
+        run_id=args.run_id,
+        window_start=args.window_start,
+        window_end=args.window_end,
+        window_preset=getattr(args, "window_preset", "explicit"),
+        window_as_of_date=getattr(args, "window_as_of_date", None),
+        window_lookback_days=getattr(args, "window_lookback_days", 365),
+        holding_periods=_parse_holding_periods(args.holding_periods),
+        round_trip_cost_bps=args.round_trip_cost_bps,
+        min_trades=args.min_trades,
+        max_evidence_requests=args.max_evidence_requests,
+        rank_top_n=args.rank_top_n,
+        min_request_score=args.min_request_score,
+        catalog_max_files=args.catalog_max_files,
+        archive_max_files=args.archive_max_files,
+        archive_venue=args.archive_venue,
+        archive_symbol=args.archive_symbol,
+        archive_data_family=args.archive_data_family,
+        archive_interval=args.archive_interval,
+        leaderboard_max_runs=args.leaderboard_max_runs,
+        leaderboard_top_n=args.leaderboard_top_n,
+    )
 
 
 def _run_benchmark_research_experiment_command(args: argparse.Namespace) -> dict[str, object]:
@@ -964,6 +1852,18 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_hmm_knn_experiments_command(args), indent=2))
+    elif args.command == "build-four-bar-knn-dataset":
+        import json
+
+        print(json.dumps(_run_build_four_bar_knn_dataset_command(args), indent=2))
+    elif args.command == "run-four-bar-knn-larger-validation":
+        import json
+
+        print(json.dumps(_run_four_bar_knn_larger_validation_command(args), indent=2))
+    elif args.command == "map-binance-archive-four-bar-datasets":
+        import json
+
+        print(json.dumps(_run_map_binance_archive_four_bar_datasets_command(args), indent=2))
     elif args.command == "write-hmm-knn-sweep-datasets":
         import json
 
@@ -1004,6 +1904,90 @@ if __name__ == "__main__":
         import json
 
         print(json.dumps(_run_research_experiment_command(args), indent=2))
+    elif args.command == "run-rapid-strategy-sandbox":
+        import json
+
+        print(json.dumps(_run_rapid_strategy_sandbox_command(args), indent=2))
+    elif args.command == "summarize-rapid-strategy-sandbox":
+        import json
+
+        print(json.dumps(_run_summarize_rapid_strategy_sandbox_command(args), indent=2))
+    elif args.command == "run-rapid-strategy-sandbox-suite":
+        import json
+
+        print(json.dumps(_run_rapid_strategy_sandbox_suite_command(args), indent=2))
+    elif args.command == "verify-rapid-strategy-sandbox-artifacts":
+        import json
+
+        print(json.dumps(_run_verify_rapid_strategy_sandbox_artifacts_command(args), indent=2))
+    elif args.command == "summarize-rapid-strategy-sandbox-hypotheses":
+        import json
+
+        print(json.dumps(_run_summarize_rapid_strategy_sandbox_hypotheses_command(args), indent=2))
+    elif args.command == "export-rapid-strategy-sandbox-validation-requests":
+        import json
+
+        print(json.dumps(_run_export_rapid_strategy_sandbox_validation_requests_command(args), indent=2))
+    elif args.command == "preflight-rapid-strategy-sandbox-validation-requests":
+        import json
+
+        print(json.dumps(_run_preflight_rapid_strategy_sandbox_validation_requests_command(args), indent=2))
+    elif args.command == "export-rapid-strategy-sandbox-venue-expansion-requests":
+        import json
+
+        print(json.dumps(_run_export_rapid_strategy_sandbox_venue_expansion_requests_command(args), indent=2))
+    elif args.command == "materialize-rapid-strategy-sandbox-venue-expansion-requests":
+        import json
+
+        print(json.dumps(_run_materialize_rapid_strategy_sandbox_venue_expansion_requests_command(args), indent=2))
+    elif args.command == "export-rapid-strategy-sandbox-venue-expansion-candidate-manifest":
+        import json
+
+        print(json.dumps(_run_export_rapid_strategy_sandbox_venue_expansion_candidate_manifest_command(args), indent=2))
+    elif args.command == "index-rapid-strategy-sandbox-artifacts":
+        import json
+
+        print(json.dumps(_run_index_rapid_strategy_sandbox_artifacts_command(args), indent=2))
+    elif args.command == "index-rapid-strategy-sandbox-iterations":
+        import json
+
+        print(json.dumps(_run_index_rapid_strategy_sandbox_iterations_command(args), indent=2))
+    elif args.command == "show-rapid-strategy-sandbox-next-action":
+        import json
+
+        print(json.dumps(_run_show_rapid_strategy_sandbox_next_action_command(args), indent=2))
+    elif args.command == "summarize-rapid-strategy-sandbox-throughput":
+        import json
+
+        print(json.dumps(_run_summarize_rapid_strategy_sandbox_throughput_command(args), indent=2))
+    elif args.command == "audit-rapid-strategy-sandbox-archives":
+        import json
+
+        print(json.dumps(_run_audit_rapid_strategy_sandbox_archives_command(args), indent=2))
+    elif args.command == "summarize-rapid-strategy-sandbox-archive-coverage":
+        import json
+
+        print(json.dumps(_run_summarize_rapid_strategy_sandbox_archive_coverage_command(args), indent=2))
+    elif args.command == "build-rapid-strategy-sandbox-archive-manifest":
+        import json
+
+        print(json.dumps(_run_build_rapid_strategy_sandbox_archive_manifest_command(args), indent=2))
+    elif args.command == "rank-rapid-strategy-sandbox-artifacts":
+        import json
+
+        print(json.dumps(_run_rank_rapid_strategy_sandbox_artifacts_command(args), indent=2))
+    elif args.command == "build-rapid-strategy-sandbox-strategy-catalog":
+        import json
+
+        print(json.dumps(_run_build_rapid_strategy_sandbox_strategy_catalog_command(args), indent=2))
+    elif args.command == "preflight-rapid-strategy-sandbox":
+        import json
+
+        print(json.dumps(_run_preflight_rapid_strategy_sandbox_command(args), indent=2))
+    elif args.command == "run-rapid-strategy-sandbox-iteration":
+        import json
+
+        print(json.dumps(_run_rapid_strategy_sandbox_iteration_command(args), indent=2))
     elif args.command == "benchmark-research-experiment":
         import json
 

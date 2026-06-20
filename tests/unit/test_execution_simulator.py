@@ -63,6 +63,104 @@ def test_execution_simulator_applies_latency_costs_and_funding() -> None:
     assert equity.iloc[-1]["equity"] != 10_000.0
 
 
+def test_signal_bar_close_plus_latency_uses_signal_close_after_latency_selection() -> None:
+    market = _market()
+    signals = pd.DataFrame(
+        {
+            "signal_id": ["s1"],
+            "symbol": ["BTCUSDT"],
+            "decision_time_ms": [int(market.iloc[0]["bar_time_ms"]) + 900_000],
+            "side": ["long"],
+            "signal_bar_close": [999.0],
+        }
+    )
+    assumptions = ExecutionAssumptions(
+        interval_ms=900_000,
+        entry_latency_ms=900_000,
+        entry_price_source="signal_bar_close_plus_latency",
+        min_holding_ms=3_600_000,
+        max_holding_ms=7 * 24 * 60 * 60 * 1000,
+        holding_period_ms=3_600_000,
+    )
+
+    trades, _ = ExecutionSimulator().simulate(
+        signals,
+        market,
+        costs=CostModel(fee_bps=0.0, slippage_bps=0.0, spread_bps=0.0),
+        assumptions=assumptions,
+        initial_equity=10_000.0,
+    )
+
+    assert trades.iloc[0]["entry_time_ms"] == market.iloc[2]["bar_time_ms"]
+    assert trades.iloc[0]["entry_price"] == pytest.approx(999.0)
+    assert trades.iloc[0]["entry_price"] != pytest.approx(market.iloc[2]["open"])
+
+
+def test_primary_bar_open_plus_latency_uses_latency_bar_open() -> None:
+    market = _market()
+    signals = pd.DataFrame(
+        {
+            "signal_id": ["s1"],
+            "symbol": ["BTCUSDT"],
+            "decision_time_ms": [int(market.iloc[0]["bar_time_ms"]) + 900_000],
+            "side": ["long"],
+            "signal_bar_close": [999.0],
+        }
+    )
+    assumptions = ExecutionAssumptions(
+        interval_ms=900_000,
+        entry_latency_ms=900_000,
+        entry_price_source="primary_bar_open_plus_latency",
+        min_holding_ms=3_600_000,
+        max_holding_ms=7 * 24 * 60 * 60 * 1000,
+        holding_period_ms=3_600_000,
+    )
+
+    trades, _ = ExecutionSimulator().simulate(
+        signals,
+        market,
+        costs=CostModel(fee_bps=0.0, slippage_bps=0.0, spread_bps=0.0),
+        assumptions=assumptions,
+        initial_equity=10_000.0,
+    )
+
+    assert trades.iloc[0]["entry_time_ms"] == market.iloc[2]["bar_time_ms"]
+    assert trades.iloc[0]["entry_price"] == pytest.approx(market.iloc[2]["open"])
+    assert trades.iloc[0]["entry_price"] != 999.0
+
+
+def test_execution_simulator_uses_perp_last_funding_rate_alias_for_costs() -> None:
+    market = _market().drop(columns=["funding_rate"])
+    market["perp_last_funding_rate"] = 0.00016
+    signals = pd.DataFrame(
+        {
+            "signal_id": ["s1"],
+            "symbol": ["BTCUSDT"],
+            "decision_time_ms": [int(market.iloc[0]["bar_time_ms"]) + 900_000],
+            "side": ["long"],
+            "signal_bar_close": [100.5],
+        }
+    )
+    assumptions = ExecutionAssumptions(
+        interval_ms=900_000,
+        entry_latency_ms=900_000,
+        entry_price_source="next_bar_open",
+        min_holding_ms=3_600_000,
+        max_holding_ms=7 * 24 * 60 * 60 * 1000,
+        holding_period_ms=3_600_000,
+    )
+
+    trades, _ = ExecutionSimulator().simulate(
+        signals,
+        market,
+        costs=CostModel(fee_bps=0.0, slippage_bps=0.0, spread_bps=0.0, funding_rate=0.0),
+        assumptions=assumptions,
+        initial_equity=10_000.0,
+    )
+
+    assert trades.iloc[0]["funding_return"] == pytest.approx(-0.00002)
+
+
 def test_same_bar_exit_is_rejected_without_sequence_proof() -> None:
     market = _market()
     signals = pd.DataFrame(

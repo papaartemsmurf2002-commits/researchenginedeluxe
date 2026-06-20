@@ -102,7 +102,5759 @@ discovery-to-cycle ranking overlap; WPR106-49 replay-scope evidence records all
 48 replay rows blocked; and no candidate pack exists. `ISSUE-R104-001` is
 resolved as a fail-closed no-candidate outcome, not as candidate-ready,
 paper-ready, live-ready, or promotion-ready evidence.
-Last updated: 2026-06-01
+Current WPR106-64 local follow-up update: WPR106-57 through WPR106-64 are local
+uncommitted operator/autopilot/documentation hardening packets after the
+WPR106-56 stage decision. WPR106-63 resolves `ISSUE-R106-016` by separating
+reused evidence, downstream-only refresh, and upstream compute semantics.
+WPR106-64 hardens blocked/failed autopilot terminal status, strict autopilot
+boolean request parsing, and operator documentation. The stage remains a
+research-only fail-closed no-candidate decision: no candidate pack,
+live/paper/order/sizing/runtime, or promotion claim exists.
+Current WPR106-65 local follow-up update: WPR106-65 resolves
+`ISSUE-R106-017` by splitting the operator Research page into an explicit
+`Run New Compute Iteration` action that sends `force_upstream_recompute: true`
+and a separate `Review Existing Evidence` cache/reuse action. The service now
+blocks a forced upstream request if no upstream compute actually ran. No
+catalog rebuild, historical cycle, exact discovery, generated artifact rewrite,
+candidate pack, live/paper/order/sizing/runtime, or promotion claim was made by
+the packet itself.
+Current WPR106-66 local follow-up update: WPR106-66 resolves
+`ISSUE-R106-018` after a forced autopilot run failed before compute with
+`historical_research_cycle unknown schema keys: operator_job_id,
+operator_original_spec_path, operator_overwrite_protection`. The isolated
+historical-cycle wrapper now keeps `cycle_spec.json` schema-clean and writes
+operator bookkeeping to `operator_metadata.json`. Historical-cycle schema
+validation remains strict, and no catalog rebuild, historical cycle, exact
+discovery, generated artifact rewrite, candidate pack,
+live/paper/order/sizing/runtime, or promotion claim was made by the packet
+itself.
+Current WPR106-77 local follow-up update: WPR106-77 turns the WPR106-76 larger
+validation decision into a research-only runner and operator Research UI
+button for the narrow no-RSI BTC/ETH four-bar KNN rows. The runner builds or
+reuses deterministic validation datasets, writes selected experiment specs,
+optionally runs the existing HMM/KNN matrix runner, writes cost/split/stress
+gate summaries, and emits a replay PowerShell command. A specs-only smoke ran
+against the real fixture roots and wrote
+`data/research/hmm_knn_four_bar_validation/wpr106_77_cli_smoke/`; no long
+matrix validation, candidate pack, paper/live artifact, order/sizing/runtime
+change, venue intake, or promotion claim was made by this packet.
+Current WPR106-78 local follow-up update: WPR106-78 ran the WPR106-77 larger
+validation command locally with a 10,800,000 ms command timeout and wrote
+`data/research/hmm_knn_four_bar_validation/wpr106_78_full_run/`. The process
+completed, but both BTCUSDT and ETHUSDT matrices failed for concrete fixture
+coverage reasons: the generated no-RSI four-bar datasets contain only 64 rows
+per symbol from compact 32-row source fixtures, causing 15m->1h rows to fail
+with `ValueError: No objects to concatenate` and 1h->4h rows to fail with
+`ValueError: dataset is too small for HMM/KNN walk-forward research`.
+`ISSUE-R106-023` is opened as the data-coverage blocker. WPR106-78 writes the
+next-agent handoff at
+`docs/NEXT_AGENT_HANDOFF_WPR106_78_FOUR_BAR_KNN_LARGER_VALIDATION.md` and
+chooses the venue-intake feature packet as the next phase. No candidate pack,
+paper/live artifact, order/sizing/runtime change, venue intake implementation,
+or promotion claim was made.
+Current WPR106-79 local follow-up update: WPR106-79 supersedes the WPR106-78
+next-phase choice after finding a larger existing local Binance Vision archive
+cache under `data/research/historical_data_cache/binance_vision_public_archive`.
+It chooses the local archive mapping phase, not OKX/Bybit/new venue intake.
+The packet adds a research-only archive-backed four-bar dataset mapper, CLI
+`map-binance-archive-four-bar-datasets`, operator Research UI/job connector,
+artifact indexing, and focused tests. The mapper reads existing local BTC/ETH
+monthly 15m/1m kline and aggTrade ZIPs, preserves same-entry fixed four-bar
+labels and event-end/purge semantics, samples only after labels are built, and
+writes replay commands for the archive-backed HMM/KNN matrix. Follow-up local
+execution on 2026-06-09 completed the 2024 BTCUSDT/ETHUSDT mapping and replayed
+the matrix under
+`data/research/hmm_knn_four_bar_archive_mapping/wpr106_79_full_local_archive_map/`.
+Each symbol has 16,000 selected rows and 2/2 matrix experiment rows completed
+with research-boundary checks passing. `ISSUE-R106-023` is resolved as a
+data-coverage blocker only; the tested rows remain promotion-blocked and do not
+support candidate, paper/live, sizing, runtime-mode, venue-intake, or KNN
+profitability claims.
+Current WPR106-80 local follow-up update: WPR106-80 adds a research-only
+offline Monte Carlo, fixed TP/SL, and Martingale sizing sieve over current R106
+evidence using taker commission 0.0432% per side and funding ignored. The
+WPR106-79 archive-backed KNN rows are rejected as expensive-optimizer
+candidates because larger validation was negative after costs. Conservative
+1:2 fixed TP/SL variants over the WPR106-74 BTC sparse rows are negative and
+path-ambiguous from MAE/MFE-only evidence; x1.5 Martingale is blocked because
+loss-streak distributions exceed fee-positive recovery thresholds and simulated
+ruin probability is positive for fixed TP/SL rows. The only useful follow-up is
+a true BTC sparse long-only/side-veto packet; the current offline side
+decomposition is not candidate-ready and no candidate pack, paper/live artifact,
+order/sizing/runtime change, or promotion claim exists.
+Current WPR106-81 local follow-up update: WPR106-81 adds explicit
+`allowed_sides` and `side_filter_stage` controls to `sparse_event_filter_v1`
+and validates BTCUSDT pre-selection and post-selection side-veto semantics on
+the durable public archive. Pre-selection one-sided rows fail after costs, but
+post-selection long-only rows reproduce the useful WPR106-80 side-decomposition
+hypothesis. The aggTrade-contrarian post-selection long row ranks first with
+346 long trades, +9.420343 net return after cycle costs, split trade-count
+minimum 116, and 11/11 cost-stress scenarios passed; the price-only
+post-selection long row ranks second with 313 long trades and +1.643870 net
+return. Monte Carlo under 0.0432% taker fee per side and funding ignored
+supports optimizer follow-up for those rows while keeping Martingale blocked
+because no sequence-proven 1:2 fixed TP/SL exit exists. `ISSUE-R106-024` is
+opened for the fail-closed gate gap around explicit one-sided side-veto
+evidence. No candidate pack, paper/live artifact, order/sizing/runtime change,
+or promotion claim exists.
+Current WPR106-82 local follow-up update: WPR106-82 runs the bounded expensive
+optimizer follow-up around WPR106-81 post-selection long-only sparse rows. A
+194-candidate attempt was stopped after roughly 89 CPU minutes without
+aggregate artifacts, then a 50-candidate random sample completed with 54
+candidate rows, 54 aggregate backtests, 8 split backtests, and 22 cost-stress
+backtests. The optimized lead is an aggTrade-contrarian post-selection long row
+with `atr_percentile_threshold=0.65`, `shock_threshold=1.3`, `min_score=0.5`,
+`flow_abs_threshold=0.1`, and `flow_count_z_min=0.5`; it records 319 long
+trades, +20.174216 net return after cycle costs, expectancy +0.010652, weakest
+split net return +0.039327, and 11/11 cost-stress scenarios passed. Monte Carlo
+under the user fee model reports +29.322120 observed terminal return, +7.143444
+5th percentile terminal return, and 0/10000 negative terminal paths. The row
+remains fail-closed by one-sided side-veto gate, feature-ablation, and
+stability-region blockers. No candidate pack, paper/live artifact,
+order/sizing/runtime change, or promotion claim exists.
+Current WPR106-83 local follow-up update: WPR106-83 is a docs-only handoff
+packet for the next agent after WPR106-82. It formulates the next broad task as
+research-only gate and evidence closure for explicit one-sided side-veto
+strategies, starting from optimized lead
+`941c7d1a1a3b8669c66e816ee465dc30cf18b1fba56c54b95555a027cdf046d6`. The handoff
+requires paired opposite-side controls, no-trade and transparent baselines,
+feature ablation, split/cost/stability evidence, and research-only provenance
+before any eligibility claim. It creates no code, no generated research
+artifacts, no candidate pack, and no paper/live/order/sizing/runtime or
+promotion claim.
+Current WPR106-84 local follow-up update: WPR106-84 resolves
+`ISSUE-R106-024` as a gate-representation blocker, not as candidate-ready
+evidence. The packet adds explicit one-sided side-veto gate and candidate-pack
+semantics for declared `sparse_event_filter_v1` contracts, requires exact
+paired opposite-side controls, no-trade and transparent baselines, feature
+ablation, split/cost/stability evidence, and research-only provenance, and
+keeps opposite-side controls out of same-side stability neighborhoods. The
+focused BTCUSDT evidence cycle at
+`data/research/historical_cycles/sparse_side_veto_gate_evidence_btcusdt_r106_v1/`
+ran 8 candidates, 8 aggregate backtests, 4 split backtests, and 22 cost-stress
+backtests. The optimized long aggTrade sparse lead
+`941c7d1a1a3b8669c66e816ee465dc30cf18b1fba56c54b95555a027cdf046d6` now has
+complete one-sided side-veto evidence, a passed exact short control, passed
+price-only feature ablation, 11/11 cost-stress survival, and accepted
+stability, but remains rejected by split concentration with
+`max_single_split_pnl_share_above_limit` at `0.9765691016445411`. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live configuration
+write, or promotion claim exists.
+Current WPR106-85 local follow-up update: WPR106-85 moves the next research
+direction away from defending the rejected BTC sparse side-veto lead and starts
+a broader 2024-forward search policy. The first executable pass maps existing
+local Binance Vision BTCUSDT/ETHUSDT monthly archives from 2024-01 through
+2026-04 into no-RSI four-bar Lorentzian/KNN datasets under
+`data/research/wpr106_85_2024_forward_pre_may_archive_map/`, with 16,000 rows
+per symbol and no 2026-05 rows. The two-row BTC matrix and two-row ETH matrix
+complete, but all tested KNN rows remain rejected: raw KNN expectancy is
+negative for all four rows, and the only aggregate-positive meta-filter cell
+has just 11 BTCUSDT trades across four active months with split dominance.
+WPR106-85 then builds exact-window archive-backed durable fixture manifests for
+BTCUSDT and ETHUSDT through 2026-04 and runs broad historical-cycle screens
+over no-trade, trend, range, and volatility-breakout families. The broad
+screens materialize 63 candidates per symbol; across 110 non-baseline
+aggregate candidates there are zero positive-net rows, one positive-expectancy
+ETHUSDT range-reversion row that is still negative after total costs, and zero
+promising pre-May leads. The cycles use CPU vector aggregate screening plus
+reference validation/stress checks; CUDA is not selected and no GPU speedup
+claim is made. May 2026 is not used because no promising lead survives pre-May
+screening; the local archive cache currently ends at 2026-04, so
+`ISSUE-R106-025` records the holdout data dependency for any later promising
+lead. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live configuration write, or promotion claim exists.
+Current WPR106-86 local follow-up update: WPR106-86 runs a scoped
+Lorentzian/KNN feature/filter follow-up on the same pre-May 2024-forward
+archive-backed four-bar datasets. It adds the `price_wick_flow_no_context`
+feature pack, excluding unavailable book/perp context and adding wick,
+range-compression, and observed aggTrade-flow path features. BTCUSDT and
+ETHUSDT each run six variants covering Lorentzian wick/flow rows, compatible
+and all-regime neighbor pools, loose and strict thresholds, Euclidean and
+cosine controls, and 15m->1h plus 1h->4h horizons. Both matrices pass with
+three effective workers; Lorentzian variants resolve the auto distance backend
+to CuPy while Euclidean/cosine controls run on CPU, but no CUDA speedup claim is
+made. Across 12 experiments and 24 primary KNN/meta strategy rows, three rows
+are positive net after costs and positive expectancy, but zero qualify as
+promising pre-May leads after monthly stability review. The best ETHUSDT
+1h->4h wick-flow meta row records 228 trades, +0.035891 net after costs, and
++0.000157 expectancy, but is active in only 10 months with 6 losing active
+months. BTC positive rows are too sparse. May 2026 remains unused. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live configuration
+write, CUDA speedup claim, or promotion claim exists.
+Current WPR106-87 local follow-up update: WPR106-87 revisits sparse/event
+filters broadly on the WPR106-85 exact pre-May BTCUSDT/ETHUSDT archive-backed
+fixture packs. It adds BTC and ETH historical-cycle configs with six explicit
+search spaces per symbol covering price-only trend sparse filters,
+aggTrade-proxy volatility sparse filters, both-sided controls, one-sided
+post-selection controls, aligned and contrarian flow confirmation, 24h and 72h
+fixed holds, and looser active-rate settings. A scoped behavior-preserving
+optimization caches sparse aggTrade flow-confirmation Series once per
+prediction frame; focused sparse regression passed. Both cycles complete with
+66 sampled sparse candidates plus injected comparators per symbol, 74
+aggregate backtests per symbol, and split/cost-stress validation on the
+shortlist. Across 132 research candidates there are 8 positive-net and
+positive-expectancy rows, but zero month-stable leads. The best BTCUSDT row is
+profitable pre-May but has 12 losing active months and cost-stress survival
+below the 0.70 floor. The best ETHUSDT row passes cost stress but has only 20
+active months, 10 losing active months, and 8 inactive months. May 2026 remains
+unused because no pre-May sparse/event lead qualifies for holdout. CUDA is not
+selected by these cycles, and no GPU speedup claim is made. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live configuration write, or
+promotion claim exists. Focused sparse regression, compileall, and contracts
+passed.
+Current WPR106-88 local follow-up update: WPR106-88 tests exit-policy overlays
+over the WPR106-85 exact pre-May BTCUSDT/ETHUSDT archive-backed fixtures,
+including sparse/event rows plus transparent trend, range, and volatility
+controls. BTCUSDT and ETHUSDT cycles each complete 91 aggregate rows with
+split/cost/stability outputs; ETHUSDT v1 is retained only as an aborted audit
+artifact because it imported a sibling package before `PYTHONPATH=src` was
+pinned, and ETHUSDT v2 is the valid rerun. Across 140 non-no-trade strategy
+rows there are 18 positive-net and positive-expectancy rows but zero
+month-stable candidates. The best BTCUSDT row is a transparent volatility
+breakout fixed-hold row with +0.777618 net but 13 losing active months and
+cost-stress survival below the 0.70 floor. The best BTC sparse overlay improves
+the fixed-hold sparse lead to +0.637987 net with 8 losing active months, but
+also fails cost stress. The best ETHUSDT sparse row passes cost stress but has
+only 20 active months, 10 losing active months, and 8 inactive months. May 2026
+remains unused because no pre-May lead qualifies for holdout. Fixed-hold rows
+use the CPU vector path, richer exits use the reference backend, and no CUDA
+speedup claim is made. Compileall and contracts passed.
+Current WPR106-89 local follow-up update: WPR106-89 runs an offline diagnostic
+regime/temporal stability-filter audit over completed WPR106-88 BTCUSDT and
+ETHUSDT trade artifacts. It evaluates 23,389 deterministic post-trade overlays
+covering side, regime, volatility bucket, side/regime/volatility combinations,
+month exclusions, and quarter exclusions over 2024-01 through 2026-04 only.
+There are 4,765 positive-net/expectancy overlay rows, 206 loose monthly
+stability rows, and one strict monthly-stability row: BTCUSDT sparse
+simple-runner `4239f08ef337` with May and June excluded, +0.598581 trade-net
+sum, 112 trades, 24 active months, and 4 losing active months. The strict row
+is diagnostic only because it is post-trade evidence and would be structurally
+inactive during the required May 2026 benchmark month. No non-calendar filter
+family produces a strict stability hit. May 2026 remains unused, no candidate
+pack or promotion claim exists, and compileall/contracts passed.
+Current WPR106-90 local follow-up update: WPR106-90 encodes the WPR106-89
+regime/volatility evidence as causal pre-entry sparse filters and reruns
+focused BTCUSDT/ETHUSDT historical cycles over 2024-01 through 2026-04 only.
+`sparse_event_filter_v1` now has default-off `allowed_regimes` and
+`allowed_volatility_buckets` parameters with contract tests and fail-closed
+invalid/missing-context behavior. The BTCUSDT and ETHUSDT WPR106-90 cycles
+each evaluate 75 candidate rows with 4 split and 11 cost-stress backtests,
+using CPU execution with `gpu_acceleration: disabled`; no CUDA speedup claim is
+made. Across 150 summarized candidate rows there are 58 positive
+net/expectancy rows, 4 loose monthly-stability rows, 0 strict
+monthly-stability rows, and 0 May-holdout eligible rows. May 2026 remains
+unused, no candidate pack or promotion claim exists, focused sparse tests
+passed, compileall passed, and contracts reported 454 passed.
+Current WPR106-91 local follow-up update: WPR106-91 tests the active-rate
+density hypothesis and defragments wide feature-frame construction for
+`features_price_perp_aggflow_no_wt`. `build_feature_frame` now batches missing
+manifest feature columns and missingness indicators with `pd.concat`, and a
+focused feature-builder regression confirms the wide aggTrade path emits no
+pandas fragmentation `PerformanceWarning`. BTCUSDT and ETHUSDT WPR106-91
+cycles each expand 134 candidate rows across transparent volatility, trend,
+range, and sparse/event families over 2024-01 through 2026-04 only, with May
+2026 excluded. Across 268 summarized rows there are 14 positive
+net/expectancy rows, 254 rows inside the 1 to 5 trades-per-active-day density
+band, 1 loose monthly-stability row, 0 strict monthly-stability rows, and 0
+May-holdout eligible rows. Positive rows did not exceed 1 trade per active day;
+the lone loose row is a BTCUSDT 72h transparent volatility-breakout fixed-hold
+comparator that fails cost-stress survival and strict losing-month caps. May
+2026 remains unused, no candidate pack or promotion claim exists, CUDA remains
+disabled, focused feature tests passed, compileall passed, and contracts
+reported 454 passed.
+Current WPR106-92 local follow-up update: WPR106-92 revisits the Lorentzian/KNN
+families for temporal stability over the WPR106-85 2024-01 through 2026-04
+pre-May no-RSI four-bar datasets. It adds the archive-backed
+`price_microdrift_flow_no_context` HMM/KNN feature pack, validates feature-pack
+registration, and runs BTCUSDT/ETHUSDT matrices with 8 experiments per symbol
+and 3 workers. Across 32 KNN/meta strategy rows, 3 rows are positive
+net/expectancy, all 32 rows sit inside 1 to 5 trades per active day, 1 ETHUSDT
+meta row is a loose monthly-stability hit, 0 rows are strict hits, and 1
+pre-May row now requires the May 2026 benchmark. The ETHUSDT row
+`eth-1h-4h-wick-flow-lorentzian-compatible-lower-meta` has 564 trades,
++0.069117 net after costs, +0.000123 expectancy, 2.452 trades per active day,
+10 active months, 5 positive months, 5 losing months, max positive-month profit
+share 0.335295, and max split PnL share 0.366382. May 2026 remains unused
+because `ISSUE-R106-025` still blocks the local holdout archive. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live configuration
+write, CUDA speedup claim, or promotion claim exists; HMM/KNN focused tests
+passed, compileall passed, and contracts reported 454 passed.
+Current WPR106-93 local follow-up update: WPR106-93 resolves the immediate
+ETHUSDT May 2026 benchmark dependency for the WPR106-92 loose KNN lead without
+using May for tuning. It downloads Binance Vision ETHUSDT May 2026 15m kline,
+1m kline, and aggTrades ZIPs plus checksum sidecars, verifies all checksums,
+maps an April+May context dataset with no 15m/1m gaps or duplicates, appends
+only May signal rows to the frozen WPR106-92 pre-May dataset, and runs a
+one-row holdout matrix with training fixed to the 8,000 pre-May 4h rows. The
+May benchmark rejects `eth-1h-4h-wick-flow-lorentzian-compatible-lower-meta`:
+meta has 268 trades, -0.353937 net after costs, -0.001321 expectancy, 31
+active days, 8.645 trades per active day, 10 positive days, 21 losing days, and
+-0.365293 max trade-sequence drawdown; pure KNN is also negative at -0.406169
+net after costs. `ISSUE-R106-025` remains open only for unverified BTCUSDT or
+other future May holdout sources. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live configuration write, CUDA speedup claim, or
+promotion claim exists; compileall passed and contracts reported 454 passed.
+Current WPR106-94 local follow-up update: WPR106-94 tests causal UTC hour and
+weekday session filters across transparent trend, volatility-breakout,
+range-reversion, and sparse/event families over 2024-01 through 2026-04 only.
+It adds default-off `allowed_hours_utc` and `allowed_weekdays_utc` strategy
+parameters, focused contract coverage, and scoped 4-bar transparent spacing for
+active-rate variants. The first BTCUSDT v1 grid was stopped after more than 50
+minutes without a final cycle manifest and is retained only as an aborted
+oversized compute artifact. The narrowed v2 BTCUSDT and ETHUSDT cycles each
+complete 119 rows with 115 research candidates and 4 injected no-trade
+comparators. Each symbol has 11 positive net/expectancy rows and all 115
+research candidates sit inside the 1 to 5 trades-per-active-day band, but both
+symbols have 0 loose monthly-stability rows, 0 strict monthly-stability rows,
+and 0 May-holdout candidates. The best BTCUSDT row is a 72h
+`volatility_breakout_v1` UTC 16-23 variant with 264 trades, +1.996558 net after
+costs, +0.004918 expectancy, 8 losing active months, and cost-stress survival
+0.636364; the best ETHUSDT row is a 72h `sparse_event_filter_v1` UTC 0-7
+weekday contrarian-flow variant with 131 trades, +1.273124 net after costs,
++0.008575 expectancy, and 12 losing active months. May 2026 remains unused, no
+candidate pack or promotion claim exists, CUDA remains disabled, compileall
+passed, and contracts reported 460 passed.
+Current WPR106-95 local follow-up update: WPR106-95 revisits discarded
+positive rows as equal-capital research sleeves and tests pre-May cross-family
+portfolio combinations over 2024-01 through 2026-04 only. It loads 120
+positive-net/expectancy sleeves from WPR106-87, WPR106-88, WPR106-90,
+WPR106-91, and WPR106-94, selects a deterministic 64-sleeve bounded pool, and
+enumerates 650,622 two-, three-, and four-sleeve combinations. The diagnostic
+finds 1,360 loose monthly-stability combinations, 0 strict monthly-stability
+combinations, and 40 pre-May May-holdout leads. Rank 1,
+`combo-d9edcc252c323b03`, combines BTCUSDT volatility-breakout sleeves with an
+ETHUSDT sparse sleeve for 690 trades, 462 active days, 1.494 trades per active
+day, +0.851653 equal-sleeve net return, 24 positive months, 4 losing months,
+and max positive-month profit share 0.100398. The combinations remain
+research-only diagnostics because they are selected on pre-May data and have no
+May 2026 benchmark. `ISSUE-R106-025` is now the immediate dependency because
+the leading combinations include BTCUSDT. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live configuration write, CUDA speedup
+claim, or promotion claim exists; compileall passed and contracts reported 460
+passed.
+Current WPR106-96 local follow-up update: WPR106-96 resolves the BTCUSDT May
+2026 archive dependency for the WPR106-95 rank-1 portfolio benchmark and
+reuses the WPR106-93 ETHUSDT May files. BTCUSDT May 2026 15m kline, 1m kline,
+and aggTrades archives are present in the local public-archive cache with
+checksum sidecars and verified hashes; both symbols have 2,976 May 15m bars,
+44,640 May 1m bars, no kline gaps or duplicates, and 44,640 aggregated
+1-minute aggTrade rows. The preselected `combo-d9edcc252c323b03` May holdout
+benchmark uses frozen WPR106-95 sleeve definitions, runs each sleeve over full
+2024-01 through 2026-05 context, filters May-entry trades, and records 25
+member trades, 20 active days, 1.250 trades per active day, 0.250 overlap-day
+share, and +0.026603 equal-sleeve portfolio return. May 2026 was not used for
+tuning, selection, feature choice, threshold choice, or parameter changes.
+`ISSUE-R106-025` is resolved as a data/benchmark dependency only. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live configuration
+write, CUDA speedup claim, or promotion claim exists. Compileall passed and
+contracts reported 460 passed.
+Current WPR106-97 local follow-up update: WPR106-97 expands the May 2026
+benchmark to all 40 WPR106-95 preselected May-holdout combinations using the
+same WPR106-96 verified BTCUSDT/ETHUSDT May source context and frozen
+pre-May sleeve definitions. The packet extracts 36 unique packet-qualified
+sleeves, materializes four full-context feature frames, runs 36 full-context
+backtests through May, and filters May-entry trades without May tuning,
+selection feedback, feature choice, threshold choice, or parameter changes.
+All 36 sleeve replays succeed. Across the 40 combinations, 24 are positive in
+May and all 40 remain in the 1 to 5 trades-per-active-day range; the best May
+row is WPR106-95 rank 13, `combo-f4f5b5aa62ffd476`, with 30 member trades, 24
+active days, 1.250 trades per active day, 0.250 overlap-day share, and
++0.044274 equal-sleeve portfolio return. WPR106-95 rank 1 is reproduced at
++0.026603, while ranks 3 through 12 are negative because their shared BTCUSDT
+`fbbe/6e79` volatility-breakout sleeve loses about -0.104401 in May. The
+evidence is benchmark-only and diagnostic; no candidate pack, paper/live
+artifact, order/sizing/runtime change, live configuration write, CUDA speedup
+claim, or promotion claim exists.
+Current WPR106-98 local follow-up update: WPR106-98 reranks the WPR106-95
+650,622-combination pre-May portfolio universe with stricter duplicate and
+robustness controls before looking at May. It reconstructs pre-May monthly
+return fingerprints from original sleeve trade artifacts, finds 20 duplicate
+monthly-behavior fingerprint groups across 52 sleeve rows, and requires
+unique candidate hashes, unique core parameter signatures, unique monthly
+behavior fingerprints, 1 to 5 trades per active day, at least 24 active
+months, no more than 5 losing months, low positive-month concentration,
+average cost-stress survival at least 0.50, max sleeve split PnL share at most
+0.75, overlap-day share at most 0.55, and symbol/family diversity. Only three
+combinations pass the hard pre-May filter, and behavior-signature
+de-duplication leaves two selected leads. Rank 1 is WPR106-95 rank 2,
+`combo-d1ccbd91dc5325e5`, with +0.983789 pre-May return, 572 trades, 1.372
+trades per active day, 5 pre-May losing months, max full-year losing months
+of 4, and +0.031402 May benchmark return. Rank 2 is WPR106-95 rank 3,
+`combo-40bfb3546b9707ac`, with +0.927046 pre-May return but -0.014460 May
+benchmark return. Neither lead satisfies the ideal zero-to-two losing-month
+target in every full pre-May calendar year, so no candidate-ready claim
+exists. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live configuration write, CUDA speedup claim, or promotion claim exists.
+Compileall passed and contracts reported 460 passed.
+Current WPR106-99 local follow-up update: WPR106-99 diagnoses the two WPR106-98
+selected robustness leads at component level using only 2024-01-01 through
+2026-04-30 for diagnostics, then joins May 2026 only as a benchmark holdout.
+It reloads original WPR106-95 member sleeve trades, writes sleeve/month/annual
+attribution, combo-level side/regime/volatility-bucket rollups, and all
+two-or-more-sleeve subset ablations before the May join. Both original leads
+still have 5 pre-May losing months, and both share September 2024 as the worst
+month cluster: `combo-d1ccbd91dc5325e5` records -0.118627 in 2024-09 and
+`combo-40bfb3546b9707ac` records -0.106637 in 2024-09. All member sleeves are
+positive in total pre-May contribution, and factor rollups do not isolate a
+single removable side, regime, or volatility bucket. Original lead 1 remains
++0.031402 in the May benchmark, while original lead 2 remains -0.014460; subset
+rows are diagnostic hypotheses only and do not prove the target month-stability
+profile. No May tuning, candidate pack, paper/live artifact, order/sizing/
+runtime change, live configuration write, CUDA speedup claim, or promotion
+claim exists. Compileall passed and contracts reported 460 passed.
+Current WPR106-100 local follow-up update: WPR106-100 recombines the 36
+WPR106-97 May-ready WPR106-95 positive sleeves into all 2-to-6 sleeve
+portfolios over the pre-May 2024-01-01 through 2026-04-30 window, evaluating
+2,391,459 combinations with vectorized chunked monthly and daily accounting
+before any May join. The cluster-aware objective makes annual losing-month
+caps, partial-2026 loss caps, active-month coverage, 1-to-5 trades per active
+day, overlap, positive-month concentration, cost stress, split concentration,
+duplicate behavior, and symbol/family diversity first-class controls. The
+search finds 7,929 combinations with no more than two losing months in both
+full pre-May years, but only one strict all-controls hit:
+`combo100-8e6136c0927425b1`, a five-sleeve portfolio with +0.969026 pre-May
+return, 28 active months, 1.758 trades per active day, 0.507 overlap-day share,
+5 losing months total, and annual losses of 2 in 2024, 2 in 2025, and 1 in
+2026 Jan-Apr. Its May 2026 benchmark is -0.007165 with 35 trades, 26 active
+days, 8 positive days, and 18 losing days, so the strict pre-May improvement is
+rejected as a clean holdout lead. Sixteen of forty fixed selected pre-May leads
+are May-positive, but the best May rows fail the full-year losing-month target.
+No May tuning, candidate pack, paper/live artifact, order/sizing/runtime
+change, live configuration write, CUDA speedup claim, or promotion claim
+exists. Compileall passed and contracts reported 460 passed.
+Current WPR106-101 local follow-up update: WPR106-101 tests causal pre-entry
+filters around the fixed WPR106-100 strict lead without using May 2026 for
+selection. It evaluates 621 side/regime/volatility/UTC-hour/UTC-weekday and
+bounded pairwise filters over 2024-01-01 through 2026-04-30, finds 51
+pre-May-promising filters, and selects 40 behavior-unique rows before joining
+May. The best pre-May filter, `filter-212bec7b6e491417`, improves pre-May
+return to +1.042087 but keeps 5 losing months and benchmarks -0.008109 in May
+with 33 trades, 24 active days, 7 positive days, and 17 losing days. The
+unfiltered strict lead remains -0.007165 in May. Only one selected
+pre-May-promising filter is positive in May, `filter-db75e31526935ed3`, and it
+is nearly flat at +0.000745 while carrying only +0.749948 pre-May return and
+the same 5 losing-month profile. The scoped causal-filter defense is rejected;
+broader family-level entry/feature/exit research remains the useful next
+direction. No May tuning, calendar-month selected filter, candidate pack,
+paper/live artifact, order/sizing/runtime change, live configuration write,
+CUDA speedup claim, or promotion claim exists. Compileall passed and contracts
+reported 460 passed.
+Current WPR106-102 local follow-up update: WPR106-102 refreshes the broader
+family-level sleeve search from the 120 WPR106-95 positive sleeves instead of
+defending only the WPR106-100 strict portfolio. It builds a pre-May-only
+75-sleeve bounded pool with loss-cluster complement scoring and
+packet/symbol/family caps, then evaluates 1,560,763 equal-sleeve portfolios
+with vectorized monthly/daily accounting and deterministic beam expansion for
+5- and 6-sleeve rows. The search finds 2,578 full-year target rows but only one
+strict all-controls row, the already rejected `combo102-8e6136c0927425b1`
+strict portfolio, which benchmarks -0.007165 in May. New diagnostic rows
+reduce pre-May losses to 4 months: ranks 2 and 3 benchmark +0.013312 in May
+with 42 trades and 26 active days, but both fail split-balance proxy only
+because at least one member sleeve has `max_single_split_pnl_share=1.0`; rank 4
+has 4 pre-May losing months but benchmarks -0.002941 in May. Supplemental May
+backtests replayed 18 fixed selected missing sleeves with existing WPR106-97
+feature frames and original configs, all with `ok` status, so all 40 selected
+rows now have May benchmarks. Sixteen selected rows are May-positive and 24 are
+May-negative. The result is a useful split-balance repair/replacement-member
+diagnostic, not candidate-ready evidence. No May tuning, calendar-month
+selected filter, candidate pack, paper/live artifact, order/sizing/runtime
+change, live configuration write, CUDA speedup claim, or promotion claim
+exists. Script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-103 local follow-up update: WPR106-103 tests the WPR106-102
+split-balance repair/replacement direction without using May 2026 for
+selection. It filters the 120 positive WPR106-95/WPR106-102 sleeves to 12 exact
+split-clean sleeves with `max_single_split_pnl_share <= 0.80`, evaluates all
+2,497 possible 2-to-6 sleeve portfolios over 2024-01-01 through 2026-04-30,
+and selects 40 rows before the May join. Three rows satisfy the full-year target
+of no more than two losing months in both 2024 and 2025, but only one row also
+passes partial-2026 and strict split-clean controls: `combo103-8e6136c0927425b1`,
+the same strict five-sleeve lead already rejected in WPR106-100/102. Its May
+benchmark remains -0.007165 with 35 trades, 26 active days, 8 positive days,
+and 18 losing days. The two other full-year-target rows fail partial-2026 loss
+control and benchmark -0.024204 and -0.023214 in May. All 40 selected rows have
+May benchmarks after one supplemental selected-sleeve replay completed `ok`;
+9 selected rows are May-positive and 31 are May-negative, but the May-positive
+rows fail the strict pre-May annual stability target. The scoped split-balance
+repair is closed as falsified diagnostic evidence, not a candidate-ready lead.
+No May tuning, calendar-month selected filter, candidate pack, paper/live
+artifact, order/sizing/runtime change, live configuration write, CUDA speedup
+claim, or promotion claim exists. Script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-104 local follow-up update: WPR106-104 tests constrained
+non-equal sleeve weighting over existing WPR106-102 evidence without using
+May 2026 for optimization, ranking, filtering, weighting, or selection. It
+starts from 1,000 WPR106-102 base combo proposals and 120 positive sleeves,
+evaluates 347,110 bounded weighted rows over 2024-01-01 through 2026-04-30,
+and selects 40 strict weighted pre-May rows before the May join. The search
+finds 603 strict weighted stability rows and 16,205 full-year target rows.
+The best pre-May row, `combo104-b91239b7624cf3dd`, improves the stability
+profile to 3 losing months with +0.509107 pre-May return, 561 trades,
+302 active days, 1.858 trades per active day, and 0.493 overlap-day share,
+but May 2026 rejects it at -0.029783 with 22 trades, 11 active days,
+4 positive days, and 7 losing days. All 40 selected rows have benchmark-only
+May evidence, with 4 May-positive and 36 May-negative. The best May-positive
+selected rows reach only +0.013958 or +0.004301 and have mixed 14 positive /
+12 losing May day balance. Bounded weighting is therefore useful diagnostic
+evidence, not candidate-ready evidence; the next useful direction remains
+new/revisited entry, feature, filter, exit, or scoped Lorentzian/KNN variants
+under the same pre-May-only selection and May benchmark discipline. No May
+tuning, calendar-month selected filter, candidate pack, paper/live artifact,
+order/sizing/runtime change, live configuration write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-105 local follow-up update: WPR106-105 tests a new
+artifact-only causal bar-path/flow entry and exit family over the WPR106-96
+verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 public-archive context,
+without reusing the rejected WPR106-100 through WPR106-104 sleeve portfolio
+logic. Signals use completed 15m bars, enter on the next bar, and require
+pre-May selected trades to exit before 2026-05-01 so May price path cannot
+enter optimization. The staged screen evaluates 5,832 candidates across
+channel-breakout, flush/fade, range-reversion, and compression-continuation
+families with fixed and ATR-barrier exits, one-position-at-a-time overlap
+handling, and 0.0432% taker fee plus 0.0150% slippage/spread per side. It
+finds 270 positive pre-May rows, 3 loose holdout rows, and 0 strict
+month-stability rows. All 3 selected loose rows are ETHUSDT variants and all
+fail May benchmark-only evaluation: `barflow-4af57c2235dc425e` is +0.093710
+pre-May with 10 losing months and -0.010393 in May; `barflow-5adcceacbae60ef7`
+is +0.063250 pre-May with 10 losing months and -0.036940 in May; and
+`barflow-1f575771dfa9ff18` is +0.015509 pre-May with 10 losing months and
+-0.002629 in May. Sparse rows with better annual loss counts are inactive for
+13 to 19 months and are diagnostic only. The tested bar-path/flow family is
+therefore rejected as currently configured, not promoted. No May tuning,
+candidate pack, paper/live artifact, order/sizing/runtime change, live
+configuration write, CUDA speedup claim, or promotion claim exists. Script
+compile, compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-106 local follow-up update: WPR106-106 tests a fresh dense
+causal score and quantile-threshold family over the WPR106-96 verified
+BTCUSDT/ETHUSDT 2024-01 through 2026-05 public-archive context. It calibrates
+all score thresholds only on 2024-01-01 through 2026-04-30, requires pre-May
+trades to exit before 2026-05-01, and joins May only after pre-May loose/strict
+rows are fixed. The artifact runner evaluates 129,600 rows across transparent
+momentum, flow-follow, flow-fade, wick-fade, range-fade,
+compression-breakout, volatility-breakout, session-drift, calendar-flow,
+micro-reversal, and balanced price/flow families with one-position overlap
+handling and 0.0432% taker fee plus 0.0150% slippage/spread per side. It finds
+6,656 positive pre-May rows and 369 loose pre-May rows, but 0 strict
+month-stability rows. Active-rate feasibility is confirmed for positives
+because all 6,656 positive rows land inside 1 to 5 trades per active day after
+overlap handling, but zero positive rows meet the full-year annual target of no
+more than two losing active months in both 2024 and 2025. All 369 loose rows
+are benchmarked in May after selection: 107 are May-positive, 261 are
+May-negative, and 1 is flat. The highest pre-May rows are May-negative, while
+the best May-positive diagnostics are already rejected by pre-May annual
+stability. The family is rejected as currently configured. No May tuning,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-107 local follow-up update: WPR106-107 revisits Lorentzian/KNN
+with a scoped artifact-only rolling causal neighbor implementation instead of
+rerunning prior no-RSI matrix settings. The runner uses WPR106-96 verified
+BTCUSDT/ETHUSDT 2024-01 through 2026-05 public-archive context, evaluates
+signals on 1-hour grid points, enters at the next 15m bar, and freezes May
+benchmark neighbor labels to labels that completed before 2026-05-01. All KNN
+parameter choice, feature-pack choice, threshold calibration, ranking,
+filtering, and selection use only 2024-01-01 through 2026-04-30. It evaluates
+73,728 rows across micro path/flow, trend/session/flow, reversal/wick/range,
+and compression/flow feature packs; Lorentzian and Euclidean distances;
+960/2,880-bar lookbacks; 15/31 neighbors; 8/16/32-bar horizons; and session,
+volatility, side, and active-rate filters. The run finds 1,270 positive
+pre-May rows and 27 loose pre-May rows, but 0 strict month-stability rows. All
+positive rows land inside 1 to 5 trades per active day after overlap handling,
+but zero positive rows meet the full-year annual target of no more than two
+losing active months in both 2024 and 2025. All 27 loose rows are ETHUSDT rows
+and benchmark in May after selection: 4 are May-positive, 21 are May-negative,
+and 2 are flat. The top row `rknn-59968119d9c264fb` is +0.829823 pre-May with
+8 losing months and -0.026627 in May. The family is rejected as currently
+configured. No May tuning, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-108 local follow-up update: WPR106-108 tests a fresh BTC/ETH
+cross-asset relative-value and lead-lag family over the WPR106-96 verified
+2024-01 through 2026-05 public-archive context. It aligns BTCUSDT and ETHUSDT
+15m bars and aggTrade-flow context, computes pre-May-only OLS ETH/BTC beta of
+1.130693, and evaluates pair-return spread/reversion/momentum/lead-lag rows
+plus explicitly labeled single-leg lead-lag diagnostics. All beta/window/hold,
+threshold, family, session/filter, ranking, and selection choices use only
+2024-01-01 through 2026-04-30, and May is joined only after fixed pre-May rows
+are selected. The runner evaluates 19,200 rows, finds 986 positive pre-May
+rows and 81 loose pre-May rows, but 0 strict month-stability rows. All positive
+rows land inside 1 to 5 trades per active day after overlap handling, but zero
+positive rows meet the full-year annual target of no more than two losing
+active months in both 2024 and 2025. Selected loose rows are dominated by
+single-leg ETH follow-BTC diagnostics: 71 single ETH rows, 7 pair rows, and
+3 single BTC rows. May benchmarking after selection records 11 May-positive,
+69 May-negative, and 1 flat row. The highest pre-May row
+`xasset-de4ac045c28d3b9c` is +1.652138 pre-May with 9 losing months and
+-0.038135 in May; the closest stability row has 5 losing months but still
+fails 2025 and loses in May; every selected pair row that traded in May is
+May-negative. The family is rejected as currently configured. No May tuning,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-109 local follow-up update: WPR106-109 tests a fresh
+session-anchor intraday family over the WPR106-96 verified BTCUSDT/ETHUSDT
+2024-01 through 2026-05 public-archive context. It builds daily opening-range,
+prior-day range, Asia range, Europe opening-range, daily VWAP, and
+session-transition momentum/reversal signals from completed 15m bars, enters on
+the next 15m open, and uses 15m aggTrade-flow context. Family, anchor-window,
+threshold, hold, session/filter, ranking, and selection choices use only
+2024-01-01 through 2026-04-30, and May is joined only after fixed pre-May rows
+are selected. The runner evaluates 9,600 rows, finds 1,436 positive pre-May
+rows and 150 loose pre-May rows, but 0 strict month-stability rows. All
+positive rows land inside 1 to 5 trades per active day after overlap handling,
+and 1,428 positive rows are active in at least 24 months, but zero positive rows
+meet the full-year annual target of no more than two losing active months in
+both 2024 and 2025. Selected rows are concentrated in ETHUSDT prior-day and
+opening-range breakout variants. May benchmarking after selection records
+19 May-positive, 118 May-negative, and 13 flat rows. The highest pre-May row
+`anchor-6719209fb0b21325` is +1.405336 pre-May with 7 losing months and
+-0.017786 in May; the closest stability row `anchor-e56191d930311a7f` is
++0.916244 pre-May with 6 losing months and +0.009101 in May, but still fails
+the 2025 annual loss cap. The family is rejected as currently configured. No
+May tuning, candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Script
+compile, compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-110 local follow-up update: WPR106-110 tests a causal
+walk-forward monthly meta-selector over recent pre-May-selected rows from
+WPR106-105 through WPR106-109 instead of defending any one rejected family. The
+runner loads 630 source rows, removes 81 duplicate monthly behavior
+fingerprints, and evaluates 28,800 policies over 549 unique source rows. Source
+pool filtering, policy settings, lookback windows, score modes, weighting,
+ranking, and selection use only 2024-01-01 through 2026-04-30; May source
+returns are loaded only after pre-May policy selection. The screen finds 28,728
+positive pre-May policies, 10,051 loose policies, and 985 strict
+monthly-artifact policies. The highest pre-May policy
+`wfmeta-230ed7fe71bc2ed0` is +1.140045 pre-May with 3 losing months, annual
+losses of 2024: 1, 2025: 1, and 2026 Jan-Apr: 1, and max drawdown -0.083523,
+but it has very high month-to-month membership turnover and benchmarks
+-0.044406 in May. All 100 selected pre-May policies benchmark negative in May:
+0 May-positive, 100 May-negative, and 0 flat, with mean May return -0.039973
+and best May return -0.008727. The strict pre-May count is diagnostic only
+because this packet recombines already-costed source rows at monthly
+resolution and does not replay cross-source intramonth trade overlap. The
+meta-selector family is rejected as currently configured. No May tuning,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-111 local follow-up update: WPR106-111 tests a fresh 1m
+aggTrade flow microstructure family over the WPR106-96 verified BTCUSDT/ETHUSDT
+2024-01 through 2026-05 public-archive context. It uses completed 1m aggTrade
+aggregate rows, next-minute aggregate-price entries, fixed 15/30/60/120/240
+minute exits, and explicit taker/slippage costs. Family, score, threshold,
+hold, session/filter, ranking, and selection choices use only 2024-01-01
+through 2026-04-30, and May is joined only after fixed pre-May rows are
+selected. The runner evaluates 15,360 rows, finds 442 positive pre-May rows and
+42 loose pre-May rows, but 0 strict month-stability rows. All positive rows
+land inside 1 to 5 trades per active day after overlap handling, 403 positive
+rows are active in at least 24 months, and 210 have cost-stress survival of at
+least 0.75, but annual stability remains the blocker. Only seven positive rows
+meet the full-year plus partial-2026 losing-month target, and none has at
+least 60 trades or 24 active months; they are sparse flow-burst fade shorts
+with 5 to 15 trades. The 42 selected loose rows benchmark in May after
+selection with 18 May-positive, 24 May-negative, and 0 flat rows. The highest
+pre-May row `flow1m-58682c5dd5e1679d` is +0.700716 pre-May with 9 losing months
+and -0.007368 in May; May-positive selected rows were already rejected by
+pre-May annual stability. The 1m flow family is rejected as currently
+configured. No May tuning, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-112 local follow-up update: WPR106-112 tests path-managed exits
+over the WPR106-111 1m aggTrade flow positives without using May 2026 for any
+tuning. The pre-May source pool has 271 rows, split across 63 BTCUSDT rows and
+208 ETHUSDT rows, and the TP/SL/time-stop grid evaluates 17,344 overlays using
+completed 1m aggregate-price paths, next-minute entries, actual path-managed
+exit timestamps, and one-position overlap handling. The runner finds 2,316
+positive pre-May rows and 89 loose pre-May rows, but 0 strict month-stability
+rows. All positive rows are inside 1 to 5 trades per active day, 2,057 are
+active in at least 24 months, and 557 have cost-stress survival of at least
+0.75, but zero positive rows meet the full-year target of no more than two
+losing active months in both 2024 and 2025. The 89 selected loose rows benchmark
+in May only after fixed pre-May selection, with 58 May-positive, 31
+May-negative, and 0 flat rows. The best selected pre-May row
+`exit1m-d17af0cdc1689d55` returns +0.193259 pre-May but has 9 losing pre-May
+months and benchmarks -0.009363 in May; the strongest May-positive ETHUSDT
+short price/flow divergence cluster was already rejected by pre-May annual
+stability. This improves WPR106-111's diagnostic May survival but still rejects
+the family as currently configured. No May tuning, candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-113 local follow-up update: WPR106-113 tests a cross-family
+daily risk-throttled portfolio replay over selected trade streams from
+WPR106-106, WPR106-107, WPR106-108, WPR106-109, WPR106-111, and WPR106-112.
+All source filtering, behavior dedupe, portfolio member choice, weight choice,
+daily risk policy choice, ranking, and selection use only 2024-01-01 through
+2026-04-30; May source trades are loaded only after fixed pre-May portfolio
+rows are selected. The runner starts from 758 raw source rows, keeps 140
+deduped pre-May source rows, builds 2,750 monthly screen combinations, and
+replays 40,320 trade-level portfolio rows with actual cross-source overlap,
+same-symbol overlap blocking, max concurrent position controls, max trades/day,
+daily loss stops, and daily profit locks. The replay finds 40,320 positive
+pre-May rows, 16,896 loose rows, and 4,182 strict rows. The selected set has
+100 strict rows across 44 unique member sets; rank 1
+`riskcombo-910a9cff55b9e469` is +0.605807 pre-May with 548 trades, 514 active
+days, 1.066 trades per active day, 28 active months, two losing months, annual
+losses of 2024: 0, 2025: 1, and 2026 Jan-Apr: 1, max drawdown -0.058369, and
+full cost-stress survival. May rejects the fixed selected set: 0 May-positive,
+100 May-negative, and 0 flat rows; the best May row is still negative at
+-0.001124, and rank 1 benchmarks -0.009206. This rejects the current
+cross-family daily risk-throttle construction as candidate-ready evidence. No
+May tuning, candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Script
+compile, compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-114 local follow-up update: WPR106-114 applies a pre-May-only
+rolling pseudo-OOS validation and source-cluster veto to the WPR106-113
+40,320-row cross-family portfolio universe before inspecting May 2026. The
+packet uses only 2024-01-01 through 2026-04-30 for fold returns, cluster
+diagnostics, concentration metrics, ranking, and selection; May remains a
+benchmark-only holdout applied after fixed pre-May selection. The run finds
+0 rolling-strict rows and 942 rolling-loose rows, then selects 68 rolling-loose
+rows across 17 unique member sets. The top selected row
+`riskcombo-a9a222fd65016439` is +0.631458 pre-May with 661 trades, 1.000 trades
+per active day, 28 active months, four losing months, annual losses of
+2024: 2, 2025: 2, and 2026 Jan-Apr: 0, full cost-stress survival, rolling
+validation return +0.456776, and one losing rolling block. The selected set is
+still ETH-only with failed-cluster member share of at least 0.75, and only
+4 of 68 selected rows satisfy the full-year 2024/2025 annual loss target.
+May rejects the fixed selected set: 0 May-positive, 68 May-negative, and
+0 flat rows; best May is -0.010799 and worst May is -0.025147. This rejects
+the WPR106-113 universe as currently salvageable by pre-May rolling
+cluster-veto filtering. No May tuning, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-115 local follow-up update: WPR106-115 tests a fresh
+artifact-only regime-switch intraday family over WPR106-96 verified BTCUSDT and
+ETHUSDT 15m feature frames from 2024-01 through 2026-05. It uses only
+2024-01-01 through 2026-04-30 for trend-continuation, trend-pullback,
+range-reversion, volatility-breakout/fade, flow-follow, and flow-absorption
+score construction, thresholds, session/regime filters, side modes, max
+trades/day caps, exits, ranking, and selection; May 2026 is benchmark-only
+after fixed pre-May selection. ETH perp/funding/OI pressure rows are skipped
+because the available context z-score columns are fully missing, so no shorter
+perp-context claim is made. The run evaluates 45,360 rows, finds 2,512
+positive pre-May rows, 31 loose rows, and 0 strict rows. It also finds 291
+positive rows that meet the annual losing-month target, but all are too sparse
+for the requested active profile, with maximum 18 trades and 14 active months.
+The selected set has 25 loose rows across 8 symbol/family/template groups, with
+7 to 10 pre-May losing months and zero annual-target rows. May benchmark after
+fixed selection records 11 May-positive, 14 May-negative, and 0 flat rows; the
+best selected May row is +0.047973 but was already rejected by pre-May annual
+stability, while the top pre-May row `rswitch-0a860a40b30d0c4f` benchmarks
+-0.030540 in May. The family is rejected as currently configured. No May
+tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, CUDA speedup claim, or promotion claim exists. Script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-116 local follow-up update: WPR106-116 tests a fresh
+artifact-only causal walk-forward Lorentzian KNN search over WPR106-96 verified
+BTCUSDT and ETHUSDT 15m feature frames from 2024-01 through 2026-05. It uses
+only 2024-01-01 through 2026-04-30 for feature-pack choice, pre-May robust
+normalization, label horizon, lookback, neighbor count, threshold, side,
+session/regime filter, max trades/day cap, ranking, and selection; May 2026 is
+benchmark-only after fixed pre-May selection. The run evaluates 41,472 rows
+across price-path/volatility, trend-pullback-state, OHLC wick/range-shape, and
+price/flow-proxy feature packs with causal completed-label neighbor pools. It
+finds 4,219 positive pre-May rows, 231 loose rows, and 0 strict rows. It finds
+63 positive rows that meet the annual losing-month target, including 32 with at
+least 40 trades and 10 active months, but all 32 remain blocked by insufficient
+active months, insufficient trades, or best-month concentration. The selected
+set has 80 loose rows across 21 symbol/feature-pack/horizon groups; selected
+losing months range from 5 to 10. May benchmark after fixed selection records
+6 May-positive, 15 May-negative, and 59 flat rows; the best May row is only
++0.008076 from one May trade, while the selected annual-target rows have no
+May trades. The closest active annual-target row
+`wfknn-bead0446e2412fcb` is +0.304182 pre-May with 86 trades, 18 active months,
+5 losing months, annual losses of 2024: 2, 2025: 2, and 2026 Jan-Apr: 1, and
+full cost-stress survival, but fails the active-month floor. The KNN family is
+not candidate-ready as configured. No May tuning, candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-117 local follow-up update: WPR106-117 expands the strongest
+WPR106-116 annual-target Lorentzian/KNN neighborhoods without using May 2026
+feedback. It selects 20 WPR106-116 source rows from positive pre-May rows that
+meet the annual loss target of at most 2 losing months in 2024, 2 in 2025, and
+1 in 2026 Jan-Apr, then recomputes causal KNN scores over WPR106-96 BTCUSDT
+and ETHUSDT 15m feature frames while varying threshold multiplier, query
+spacing, session/regime filter, and max-trades/day cap. All source selection,
+threshold/query/session/regime/ranking/selection decisions use only
+2024-01-01 through 2026-04-30; May is benchmark-only after fixed pre-May
+selection. The expansion evaluates 4,320 rows, finds 1,804 positive pre-May
+rows, 210 annual-target rows, 36 coverage-loose rows, and 0 coverage-strict
+rows. The 27 selected coverage-loose rows collapse to 9 parameter clusters
+across BTCUSDT trend-pullback long, ETHUSDT trend-pullback Asia long, and
+ETHUSDT price-path-vol US trend short archetypes, with 69 to 105 pre-May
+trades, 17 to 18 active months, 4 to 5 losing months, full cost-stress
+survival, and annual loss targets satisfied. Strict failed because no row
+reached the 20-active-month floor; 9 ETHUSDT trend-pullback rows passed every
+other strict condition at +0.304182 pre-May with 86 trades and 18 active
+months. May benchmark after fixed selection records 9 May-positive, 0
+May-negative, and 18 flat rows; the best May result is +0.000777 from one
+ETHUSDT price-path-vol short trade, so the no-loss May outcome is not enough
+holdout activity to claim robustness. The KNN family remains research-only and
+not candidate-ready. No May tuning, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-118 local follow-up update: WPR106-118 tests a cross-family
+loss-complement ensemble search over compatible selected trade streams from
+WPR106-105, WPR106-106, WPR106-107, WPR106-108, WPR106-109, WPR106-111,
+WPR106-112, WPR106-115, WPR106-116, and WPR106-117. WPR106-110 is excluded
+because it has no trade-level stream, and WPR106-113/WPR106-114 are excluded
+because they are already portfolio replays. The packet loads 185,714 pre-May
+trades, computes 893 source metric rows, filters/deduplicates to 96 source
+rows, screens 57,060 pre-May monthly loss-complement combinations, and replays
+2,940 portfolios at trade level with same-symbol overlap blocking, concurrent
+position caps, max-trades/day caps, optional entry-day guards, and cost-stress
+recomputation. All source filtering, source deduplication, member choice,
+weighting, replay policy choice, ranking, and selection use only 2024-01-01
+through 2026-04-30; May 2026 is benchmark-only after fixed pre-May selection.
+The replay finds 2,940 positive pre-May rows, 203 annual-target rows, 203
+loose rows, and 202 strict rows. The selected 40 strict portfolios have 28
+active months, 402 to 643 trades, 3 to 5 losing months, low best-month
+concentration, full cost-stress survival, and roughly one trade per active
+day, but the selected set is effectively ETH-only and concentrated in
+WPR106-108 single-leg lead-lag, WPR106-109 session/prior-day anchor, and one
+WPR106-106 dense volatility/session source. May rejects every fixed selected
+portfolio: 0 May-positive, 40 May-negative, and 0 flat rows, with best May
+-0.008687 and worst May -0.042144. This rejects the current pre-May
+loss-complement ensemble construction as candidate-ready evidence. No May
+tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, CUDA speedup claim, or promotion claim exists. Script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-119 local follow-up update: WPR106-119 tests the direct
+counterfactual to WPR106-118 by forcing symbol, family, packet, and diversity
+bucket constraints before cross-family replay ranking. It reuses compatible
+selected trade streams from WPR106-105, WPR106-106, WPR106-107, WPR106-108,
+WPR106-109, WPR106-111, WPR106-112, WPR106-115, WPR106-116, and WPR106-117.
+WPR106-110 remains excluded because it has no trade-level stream, and
+WPR106-113/WPR106-114 remain excluded because they are already portfolio
+replays. The packet loads 185,714 pre-May trades, computes 893 source metric
+rows, builds a 144-row diversity source pool, screens 497,313 pre-May
+diversity-constrained monthly rows, and replays 3,640 portfolios at trade
+level with same-symbol overlap blocking, concurrent position caps,
+max-trades/day caps, optional entry-day guards, BTC-floor/source-score/equal
+weights, and cost-stress recomputation. All source filtering,
+diversity-bucket assignment, member choice, weighting, replay policy choice,
+ranking, and selection use only 2024-01-01 through 2026-04-30; May 2026 is
+benchmark-only after fixed pre-May selection. The replay finds 3,640 positive
+pre-May rows, 254 annual-target rows, 254 loose rows, and 254 strict rows. The
+selected 60 strict portfolios all include BTCUSDT and ETHUSDT exposure, at
+least three families, at least two packets, at least three diversity buckets,
+and at most one ETH lead-anchor source. They have 28 active months, 536 to
+1,241 trades, 3 to 5 losing months, low best-month concentration, full
+cost-stress survival, zero rolling losing blocks, and 1.000 to 1.608 trades
+per active day. May improves on WPR106-118 but still rejects the construction
+as candidate-ready evidence: 8 May-positive, 52 May-negative, and 0 flat rows,
+with best May +0.009587, worst May -0.045300, and median May -0.026690. The
+May-positive rows are lower-ranked and still concentrated around ETH
+dense/wick behavior plus one ETH lead-lag source and a small BTC sleeve, while
+the top pre-May ranks are May-negative. No May tuning, candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Script compile, compileall, and
+contracts passed; contracts reported 460 passed.
+Current WPR106-120 local follow-up update: WPR106-120 tests whether WPR106-119's
+diversity-constrained replay universe can be rescued by a stricter pre-May-only
+adversarial robustness reranker rather than by aggregate pre-May ranking. It
+reads the 3,640-row WPR106-119 pre-May replay ranking, applies a strict
+pre-May base filter that leaves 254 base candidate rows, and scores those rows
+with five objective families: adversarial rolling-block floor,
+anti-archetype concentration, recent balance, low-drawdown/cost, and
+trade-quality stability. All reranking features, objective weights, selection,
+deduplication, and policy choices use only 2024-01-01 through 2026-04-30; May
+source trades are loaded only after fixed pre-May selections are written. The
+selected 80 strict-adversarial rows have 28 active months, 522 to 1,241 trades,
+3 to 5 losing months, annual loss targets satisfied, full cost-stress
+survival, 1.000 to 1.608 trades per active day, and 0 to 1 rolling losing
+blocks. They include 40 portfolio IDs not selected by WPR106-119, but only 20
+genuinely new member sets; 60 member sets overlap WPR106-119. May rejects the
+reranker: 8 May-positive, 72 May-negative, and 0 flat rows, with best May
++0.009587, worst May -0.061829, and median May -0.029856. The 20 genuinely
+new member sets are all May-negative, and every objective family has a
+negative median May result. This rejects reranking the WPR106-119 universe as
+candidate-ready evidence and points future work toward genuinely new source
+families, features, exits, or model variants. No May tuning, candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Script compile, compileall, and
+contracts passed; contracts reported 460 passed.
+Current WPR106-121 local follow-up update: WPR106-121 tests a fresh
+artifact-only 15m volatility squeeze, breakout-follow, failed-expansion fade,
+volatility pullback, range-compression, flow-confirmed, and no-flow control
+source family over the WPR106-96 verified BTCUSDT/ETHUSDT feature frames. All
+feature/filter threshold calibration, side/session/regime choice, exit choice,
+ranking, and selection use only 2024-01-01 through 2026-04-30; May 2026 is
+loaded only after fixed pre-May selection. The final narrowed grid evaluates
+18,432 rows after a broader first attempt timed out before final artifacts.
+The run finds 1,998 positive pre-May rows, 9 loose rows, and 0 strict rows.
+Loose rows are concentrated in ETHUSDT long US/high-vol squeeze-follow,
+flow-confirmed squeeze, and no-flow controls plus one BTCUSDT choppy
+failed-expansion fade; all selected rows use fixed 32-bar exits, 278 to 324
+trades, 28 active months, 6 to 7 losing months, and roughly one trade per
+active day. May rejects the family as candidate-ready evidence: 1 selected row
+is May-positive, 8 are May-negative, and 0 are flat, with best May +0.030321
+from the lowest-ranked BTC failed-expansion fade, worst May -0.051256, and
+median May -0.036954. The ETH selected rows return -0.036954 to -0.051256 in
+May, so the fresh compression-to-expansion family does not solve the
+month-stability problem. No May tuning, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-122 local follow-up update: WPR106-122 tests whether the
+WPR106-117 annual-target Lorentzian/KNN rows can be combined into active,
+month-stable trade-level complement portfolios. A broader WPR106-117
+source-replay attempt timed out before final evidence, so the closed run uses
+the already fixed WPR106-117 selected source rows and deduplicates them by
+actual pre-May trade/monthly behavior. The 27 selected WPR106-117 rows collapse
+to 5 unique source behaviors and 420 pre-May source trades. The runner evaluates
+936 2-to-5-member KNN complement portfolios with equal, inverse-drawdown,
+active-month-balanced, and return-tempered weights, same-symbol overlap
+blocking, portfolio concurrent caps, max-trades/day caps, and cost-stress
+recomputation. All 936 rows are positive pre-May, but 0 strict and 0 loose
+combo rows pass. The 72 annual-target rows remain sparse at 17 to 18 active
+months, while higher-coverage rows reach 23 to 26 active months only by failing
+the annual losing-month target, typically with 4 losing months in 2024 and 2
+to 4 in 2025. Because no strict or loose pre-May combo exists, May is not
+benchmarked for selected combos; empty May benchmark tables record that May was
+not used for selection. This rejects a simple KNN complement portfolio layer as
+candidate-ready evidence. No May tuning, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-123 local follow-up update: WPR106-123 tests a fresh
+artifact-only 15m flow/price absorption, divergence, exhaustion, follow,
+pullback, and no-flow control family over the WPR106-96 verified BTCUSDT and
+ETHUSDT feature frames. The first broader grid timed out before final evidence,
+so the closed run uses fixed 16/32-bar exits, long/short sides, all/US
+sessions, all/flow-active regimes, 1.0 and 2.5 target raw signals/day, and
+all/flow-active/absorption filters. BTCUSDT has only basic taker quote proxy
+context, while ETHUSDT has richer aggTrade proxy, CVD-slope proxy, and
+flow-burst proxy columns. The final run evaluates 2,304 pre-May rows, with 343
+positive rows, 182 annual-target rows, 0 flow-loose rows, and 0 flow-strict
+rows. Annual-target positives are too sparse, maxing at 8 trades and 8 active
+months. Active rows reach 28 active months and strong pre-May returns, led by
+ETHUSDT flow-divergence/follow long fixed-32 variants up to +1.233427, but
+fail annual stability with 9 to 11 losing months and typically 4 to 6 losing
+months in 2024 or 2025. Because no strict or loose pre-May row exists, May is
+not benchmarked; empty May benchmark tables record that May was not used for
+selection. This rejects the 15m flow/price absorption-divergence family as
+candidate-ready evidence. No May tuning, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-124 local follow-up update: WPR106-124 tests causal
+trade-health throttle overlays around the active WPR106-123 flow/price
+diagnostic rows. The 33 selected WPR106-123 diagnostics deduplicate to 18
+unique source trade behaviors and 4,588 pre-May source trades. The runner
+evaluates 576 overlay rows across baseline, loss-cooldown, daily-stop,
+rolling-trade-health, monthly-health, and hybrid pause/resume policies, all
+using only realized past accepted trades for state. It finds 498 positive
+pre-May rows but 0 annual-target rows, 0 overlay-loose rows, and 0
+overlay-strict rows. Rolling-trade and hybrid throttles reduce some drawdowns
+and can lower total losing months to 5 to 7, but no overlay satisfies the
+annual caps of 2024 <= 2, 2025 <= 2, and 2026 Jan-Apr <= 1. Because no strict
+or loose pre-May overlay exists, May is not benchmarked; empty May benchmark
+tables record that May was not used for selection. This rejects simple causal
+trade-history throttles as a repair for the WPR106-123 active flow/price rows.
+No May tuning, candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Script compile, compileall, and contracts passed; contracts reported 460
+passed.
+Current WPR106-125 local follow-up update: WPR106-125 tests a fresh
+artifact-only true BTCUSDT/ETHUSDT pair relative-value family instead of the
+prior single-leg lead-lag diagnostics. The runner uses WPR106-96 verified
+2024-01 through 2026-05 public-archive bars and aggTrade-flow context, builds
+two-leg normalized pair returns with unit, pre-May OLS, and rolling-1536 hedge
+ratios, and applies fixed, spread-reversion, and score-flip exits with
+session, correlation, spread-state, and flow-confirmation filters. The first
+broader attempt was stopped without artifacts for poor first-pass throughput;
+the closed narrowed run evaluates 17,280 rows and finds 1,974 positive pre-May
+rows, 10 positive annual-target rows, 8 loose rows, and 0 strict rows. The
+selected loose rows are all unit-beta US-session flow-confirmed
+spread-acceleration momentum variants with 101 to 158 trades, 27 active
+months, 8 losing months, and full cost-stress survival, but they miss the
+annual caps; annual-target positives are too sparse at 21 to 22 trades and 12
+active months. May 2026 is benchmarked only after fixed pre-May selection and
+rejects the family with 0 May-positive, 8 May-negative, and 0 flat rows; best
+May return is -0.005138, worst is -0.023808, and median is -0.020340. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-126 local follow-up update: WPR106-126 tests a fresh
+artifact-only liquidity-sweep and wick-failure family over WPR106-96 verified
+BTCUSDT/ETHUSDT 2024-01 through 2026-05 bars and aggTrade-flow context. It
+builds completed-bar prior-range sweep, wick rejection, failed-breakout
+reclaim, sweep-continuation, and flow-absorbed-sweep scores with next-bar
+entry, fixed 4/8/16/32-bar exits, one-position overlap handling, taker/slippage
+costs, and cost stress. All sweep-window, threshold, session, volatility,
+flow-filter, hold, ranking, and selection choices use only 2024-01-01 through
+2026-04-30, with May 2026 benchmark-only after fixed pre-May selection. The
+run evaluates 6,480 rows, finds 486 positive pre-May rows, 42 positive
+annual-target rows, 10 loose rows, and 0 strict rows. Selected loose rows have
+60 to 330 trades, 21 to 28 active months, and 6 to 8 losing months, but all
+miss at least one annual cap; annual-target rows are too sparse, led by 1 to
+37 trades and at most 14 active months. May rejects the selected set with 1
+May-positive, 9 May-negative, and 0 flat rows; best May is +0.008896, worst is
+-0.072570, and median is -0.012010. The only May-positive selected row was
+already rejected by pre-May annual stability. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-127 local follow-up update: WPR106-127 tests path-managed
+TP/SL/time-stop overlays over a deterministic pre-May-only WPR106-126
+sweep/wick source pool. It reuses WPR106-126 completed-bar feature and signal
+logic, selects 96 source rows only from WPR106-126 pre-May ranking and selected
+artifacts, and evaluates 18,432 overlays across 4/8/16/32-bar max holds, 0.4%
+to 1.5% take-profit levels, 0.4% to 1.2% stop-loss levels, optional
+break-even, and optional trailing stops. Same-bar TP/SL ambiguity is handled
+conservatively as stop-first, and break-even/trailing updates activate only
+after completed favorable bars. The run finds 4,025 positive pre-May rows,
+2,585 positive annual-target rows, 116 loose rows, and 0 strict rows. The
+annual-target rows remain too sparse, maxing at 20 trades and 14 active
+months; the loose rows are active at 68 to 318 trades and 21 to 28 active
+months but fail annual stability with 6 to 8 losing months. May 2026 is
+benchmark-only after fixed pre-May selection and rejects the selected set with
+1 May-positive, 115 May-negative, and 0 flat rows; best May is +0.007162,
+worst is -0.024864, and median is -0.013164. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-128 local follow-up update: WPR106-128 tests a fresh
+artifact-only intraday anchored-VWAP family over WPR106-96 verified BTCUSDT and
+ETHUSDT bars plus 15m aggTrade-flow context. It builds completed-bar daily
+VWAP deviation, displacement, trend-pullback, range-position, volume, and flow
+scores with next-bar entry, fixed 4/8/16/32-bar exits, session/volume/volatility
+and flow filters, one-position overlap handling, taker/slippage costs, and cost
+stress. All feature-window, threshold, filter, hold, ranking, and selection
+choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only
+after fixed pre-May selection. The run evaluates 15,360 rows, finds 1,733
+positive pre-May rows, 2 positive annual-target rows, 52 loose rows, and 0
+strict rows. The loose rows are active, mostly ETHUSDT VWAP volume-flow impulse
+and displacement momentum variants with broad 28-month coverage, but they fail
+annual stability; the top rows have 5 to 6 losing months in 2024. The two
+positive annual-target rows are too sparse at 33 to 46 trades and 18 to 20
+active months. May is mixed but still rejects acceptance with 23 May-positive,
+28 May-negative, and 1 flat selected row; best May is +0.049556, worst is
+-0.127690, and median is -0.002863. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-129 local follow-up update: WPR106-129 tests a fresh
+artifact-only opening-range breakout/fade family over WPR106-96 verified
+BTCUSDT and ETHUSDT bars plus 15m aggTrade-flow context. It builds completed
+15m Asia, EU, and US session opening ranges, then tests breakout-follow,
+failed-breakout fade, retest-continuation, range-fade, and volume-flow impulse
+templates with next-bar entry, fixed 4/8/16/32-bar exits, volatility/volume
+and flow filters, one-position overlap handling, taker/slippage costs, and cost
+stress. All opening-range length, threshold, filter, hold, ranking, and
+selection choices use only 2024-01-01 through 2026-04-30, with May 2026
+benchmark-only after fixed pre-May selection. The run evaluates 17,280 rows,
+finds 2,078 positive pre-May rows, 96 positive annual-target rows, 20 loose
+rows, and 0 strict rows. The loose rows are active, mostly ETHUSDT US 4-bar
+opening-range breakout/volume-flow impulse variants and EU retest variants,
+but they fail annual stability; the top row has +1.038698 pre-May net return,
+366 trades, 28 active months, and 7 losing months. Annual-target rows are too
+sparse, maxing at 29 trades and 15 active months. May rejects all selected rows
+with 0 May-positive, 20 May-negative, and 0 flat rows; best May is -0.004720,
+worst is -0.044803, and median is -0.024827. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-130 local follow-up update: WPR106-130 tests a fresh
+artifact-only prior-day level and gap family over WPR106-96 verified BTCUSDT
+and ETHUSDT bars plus 15m aggTrade-flow context. It builds completed-bar
+prior-day high, low, close, mid, VWAP, range, and current-day opening-gap
+features, then tests prior-day breakout follow, failed-breakout fade,
+prior-range fade, overnight gap reversion, overnight gap continuation, and
+prior-day VWAP reversion templates with next-bar entry, fixed 4/8/16/32-bar
+exits, session/volume/volatility and flow filters, one-position overlap
+handling, taker/slippage costs, and cost stress. All feature-window, threshold,
+filter, hold, ranking, and selection choices use only 2024-01-01 through
+2026-04-30, with May 2026 benchmark-only after fixed pre-May strict selection.
+The run evaluates 17,664 rows, finds 2,061 positive pre-May rows, 1 positive
+annual-target row, 105 loose rows, and 1 strict row. The strict row is ETHUSDT
+prior-day breakout follow with a 384-bar normalization window, 32-bar hold,
+all-session high-range flow-neutral filters, 261 trades, 28 active months, 5
+losing months, annual losses of 2024: 2, 2025: 2, 2026 Jan-Apr: 1, +1.088169
+pre-May net return, -0.126504 max drawdown, 0.163108 best-month share, and
+full cost-stress survival. May rejects the strict row with 3 trades, -0.029037
+net return, and -0.029037 max drawdown. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-131 local follow-up update: WPR106-131 tests a fresh
+artifact-only realized-volatility term-structure family over WPR106-96
+verified BTCUSDT and ETHUSDT bars plus 15m aggTrade-flow context. It builds
+completed-bar short/mid/slow realized volatility, volatility ratios,
+compression, expansion, trend, range, volume, and flow features, then tests
+compression breakout follow, volatility-expansion follow, volatility-shock
+fade, term-structure reversal, quiet-trend pullback, and compression
+mean-reversion templates with next-bar entry, fixed 4/8/16/32-bar exits,
+session and volatility-regime filters, flow filters, one-position overlap
+handling, taker/slippage costs, and cost stress. All volatility-window,
+threshold, filter, hold, ranking, and selection choices use only 2024-01-01
+through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection.
+The run evaluates 27,648 rows, finds 3,267 positive pre-May rows, 249 positive
+annual-target rows, 96 loose rows, and 0 strict rows. The top selected loose
+row is ETHUSDT quiet-trend pullback with a 1,536-bar volatility window,
+8-bar hold, US-session expanding-volatility flow-confirmed filters, 62 trades,
+23 active months, 4 losing months, annual losses of 2024: 2, 2025: 1, 2026
+Jan-Apr: 1, +0.314313 pre-May net return, -0.068759 max drawdown, 0.186075
+best-month share, and full cost-stress survival, but it is not strict because
+it misses trade-count and active-month floors. May rejects the fixed loose
+selection with 30 positive, 65 negative, and 1 flat selected rows; best May is
++0.023473, worst May is -0.053216, and median May is -0.007760. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+CUDA speedup claim, or promotion claim exists. Script compile, compileall, and
+contracts passed; contracts reported 460 passed.
+Current WPR106-132 local follow-up update: WPR106-132 tests a fresh
+artifact-only multi-horizon trend-state family over WPR106-96 verified BTCUSDT
+and ETHUSDT bars plus 15m aggTrade-flow context. It builds completed-bar
+1h/4h/1d/multi-day return state, rolling trend alignment, pullback,
+overextension, choppiness, volatility, range, volume, and flow features, then
+tests multi-horizon trend-follow, trend-pullback resume, state-transition
+breakout, trend-exhaustion fade, choppy mean-reversion, range-expansion
+follow, and flow-confirmed momentum templates with next-bar entry, fixed
+4/8/16/32-bar exits, session and state filters, flow filters, one-position
+overlap handling, taker/slippage costs, and cost stress. All state-window,
+threshold, filter, hold, ranking, and selection choices use only 2024-01-01
+through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection.
+The run evaluates 40,320 rows, finds 5,402 positive pre-May rows, 50 positive
+annual-target rows, 135 loose rows, and 0 strict rows. The top selected loose
+row is ETHUSDT multi-horizon trend-follow with a 384-bar state window,
+32-bar hold, US-session flow-confirmed filters, 155 trades, 28 active months,
+7 losing months, annual losses of 2024: 3, 2025: 2, 2026 Jan-Apr: 2,
++1.269778 pre-May net return, -0.091575 max drawdown, 0.138924 best-month
+share, and full cost-stress survival, but it misses annual losing-month caps.
+May rejects the fixed loose selection with 17 positive, 118 negative, and 0
+flat selected rows; best May is +0.030352, worst May is -0.072618, and median
+May is -0.021058. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Script compile, compileall, and contracts passed; contracts reported 460
+passed.
+Current WPR106-133 local follow-up update: WPR106-133 tests a fresh
+artifact-only BTCUSDT/ETHUSDT cross-symbol lead-lag family over WPR106-96
+verified bars plus 15m aggTrade-flow context. It requires BTCUSDT and ETHUSDT
+completed-bar contexts to be timestamp-aligned, then builds lagged leader
+returns, target returns, rolling correlation, rolling beta/residuals, relative
+strength, range, volume, volatility, and flow features for BTCUSDT->ETHUSDT and
+ETHUSDT->BTCUSDT directions. It tests leader momentum spillover, lagged
+convergence, relative-strength continuation, beta-residual reversion, flow-led
+momentum, and correlation-break follow templates with next-bar target-symbol
+entry, fixed 4/8/16/32-bar exits, session and relation filters, flow filters,
+one-position overlap handling, taker/slippage costs, and cost stress. All
+lead-lag window, lag, threshold, filter, hold, ranking, and selection choices
+use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after
+fixed pre-May selection. The run evaluates 41,472 rows, finds 4,103 positive
+pre-May rows, 0 positive annual-target rows, 59 loose rows, and 0 strict rows.
+The top selected loose row is BTCUSDT->ETHUSDT relative-strength continuation
+with a 96-bar window, 4-bar lag, 32-bar hold, all-session flow-neutral filters,
+623 trades, 28 active months, 7 losing months, annual losses of 2024: 4,
+2025: 2, 2026 Jan-Apr: 1, +1.384103 pre-May net return, -0.184168 max
+drawdown, 0.128455 best-month share, and full cost-stress survival, but no row
+meets annual stability. May rejects the fixed loose selection with 6 positive,
+53 negative, and 0 flat selected rows; best May is +0.065272, worst May is
+-0.132690, and median May is -0.034385. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-134 local follow-up update: WPR106-134 tests a fresh
+artifact-only completed-bar microstructure/state-transition family over
+WPR106-96 verified BTCUSDT and ETHUSDT bars plus 15m aggTrade-flow context. It
+builds 15m return-sign streaks, flow-imbalance streaks, flow/price agreement
+and divergence, alternation/chop, range, volume, realized-volatility, and burst
+features, then tests return-streak continuation, return-streak exhaustion fade,
+flow-price agreement follow, flow-price divergence fade, volatility-burst
+follow, volatility-burst reversal, and alternating-chop reversion templates
+with next-bar entry, fixed 4/8/16/32-bar exits, session and state filters,
+flow filters, one-position overlap handling, taker/slippage costs, and cost
+stress. All state-window, threshold, filter, hold, ranking, and selection
+choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only
+after fixed pre-May selection. The run evaluates 40,320 rows, finds 4,070
+positive pre-May rows, 797 positive annual-target rows, 55 loose rows, and 0
+strict rows. The top selected loose row is ETHUSDT volatility-burst follow with
+a 384-bar state window, 32-bar hold, EU-session flow-neutral filters, 598
+trades, 28 active months, 8 losing months, annual losses of 2024: 2, 2025: 5,
+2026 Jan-Apr: 1, +1.333473 pre-May net return, -0.236297 max drawdown,
+0.171097 best-month share, and full cost-stress survival, but it misses annual
+stability. Annual-target diagnostics are mostly too sparse for selection; the
+strongest annual-target row has 45 trades and 22 active months. May rejects the
+fixed loose selection with 16 positive, 39 negative, and 0 flat selected rows;
+best May is +0.037955, worst May is -0.117907, and median May is -0.022664.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, CUDA speedup claim, or promotion claim exists. Script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-135 local follow-up update: WPR106-135 tests whether the sparse
+positive annual-target diagnostics from WPR106-134 can be converted into
+active, month-stable portfolios. It replays all 797 positive annual-target
+source rows through the WPR106-134 runner, de-duplicates by exact pre-May
+symbol/entry/exit/side behavior, keeps a diversified 128-row source pool, and
+generates 4,300 fixed equal-sleeve member sets. It evaluates 8,542 unique
+portfolio rows across member counts of 2, 3, 4, 5, 6, 8, 10, and 12 and daily
+trade caps of 3 and 5, with portfolio-level same-symbol overlap skipping,
+daily-cap handling, costs, and cost stress. All source-pool, de-duplication,
+portfolio-construction, daily-cap, ranking, and selection choices use only
+2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed
+pre-May selection. The run finds 8,542 positive pre-May portfolios, 3,538
+annual-target rows, 4,635 loose rows, and 279 strict rows. The top selected
+strict portfolio has five equal-sleeve sources, 125 trades, 115 active days,
+1.086957 trades per active day, 28 active months, 4 losing months, annual
+losses of 2024: 2, 2025: 2, 2026 Jan-Apr: 0, +0.133239 pre-May net return,
+-0.011290 max drawdown, 0.173208 best-month share, and full cost-stress
+survival. May rejects the fixed top-100 strict selection with 43 positive, 55
+negative, and 2 flat selected rows; best May is +0.002333, worst May is
+-0.003529, and median May is -0.000509. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-136 local follow-up update: WPR106-136 tests a scoped
+cross-family KNN trade-veto overlay over selected source trades from
+WPR106-130 through WPR106-134. It uses WPR106-96 verified 15m bars plus 15m
+aggTrade-flow aggregation, attaches completed-signal-bar features to each
+source trade, and evaluates causal Lorentzian/Euclidean trade-outcome analog
+filters. Pre-May source trades only use earlier trades whose exits completed
+before the current signal, and May uses frozen pre-May history only. All source
+selection, behavior de-duplication, feature normalization, KNN parameter,
+threshold, daily-cap, ranking, and selection choices use only 2024-01-01
+through 2026-04-30, with May 2026 benchmark-only after fixed pre-May
+selection. The run loads 346 selected source candidates, de-duplicates exact
+pre-May trade behavior to 292 source rows, and evaluates 168,192 overlay rows
+across `path_flow` and `regime_reversal` feature packs, Lorentzian/Euclidean
+distance, 64/160-trade lookbacks, 7/15 neighbors, all-side or same-side
+history, neighbor mean/win thresholds, and daily caps of 1/3/5 trades. It
+finds 132,125 positive pre-May rows, 25,371 annual-target rows, 14,903 loose
+rows, and 12 strict rows. The strict rows are concentrated in two WPR106-133
+ETHUSDT cross-symbol leader-momentum source candidates; the top strict row has
+147 trades, 26 active months, 5 losing months, annual losses of 2024: 2,
+2025: 2, 2026 Jan-Apr: 1, +0.383212 pre-May net return, -0.058052 max
+drawdown, 0.144292 best-month share, and full cost-stress survival. May
+rejects the fixed strict selection with 0 positive, 12 negative, and 0 flat
+rows; every selected overlay accepts the same 8 May trades and records
+-0.070820 May net return. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-137 local follow-up update: WPR106-137 tests whether the
+WPR106-136 KNN trade-veto overlay can survive as a diversified equal-sleeve
+ensemble rather than as a concentrated standalone row filter. It builds a
+fixed 120-row overlay universe from WPR106-136 pre-May evidence only, covering
+103 unique source rows, five source packets, and 16 families, then replays
+those overlays with the WPR106-136 causal rule intact: pre-May trades use only
+earlier completed source-trade outcomes and May uses frozen pre-May history.
+It generates 6,511 diverse member sets requiring unique sources, at least two
+source packets, and at least two families, and evaluates 13,022 ensemble rows
+with equal sleeves, same-symbol overlap skipping, daily caps of 3 and 5
+accepted trades, costs, and cost stress. All overlay-universe, construction,
+diversity, daily-cap, ranking, and selection choices use only 2024-01-01
+through 2026-04-30, with May 2026 benchmark-only after fixed pre-May
+selection. The run finds 13,022 positive pre-May rows, 3,545 annual-target
+rows, 12,557 loose rows, and 3,531 strict rows. The top selected strict
+ensemble combines WPR106-133 lead-lag, WPR106-131 volatility term-structure,
+and WPR106-134 microstructure sleeves across ETHUSDT/ETHUSDT/BTCUSDT, has 518
+trades, 404 active days, 1.282178 trades per active day, 26 active months, 4
+losing months, annual losses of 2024: 2, 2025: 2, 2026 Jan-Apr: 0, +0.866623
+pre-May net return, -0.067977 max drawdown, 0.105048 best-month share, and
+full cost-stress survival. May rejects the fixed top-100 strict selection with
+15 positive, 85 negative, and 0 flat selected rows; best May is +0.019375,
+worst May is -0.045451, and median May is -0.015958. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Script compile, compileall, and
+contracts passed; contracts reported 460 passed.
+Current WPR106-138 local follow-up update: WPR106-138 tests a pre-May-only
+robustness meta-selector across previously selected 2024-forward rows from
+WPR106-130 through WPR106-137. It normalizes single-strategy rows,
+equal-sleeve portfolios, KNN trade-veto overlays, and KNN-veto ensembles into
+one ranking table, then scores them using only 2024-01 through 2026-04 monthly
+evidence: annual losing-month counts, total losing months, rolling six-month
+loss counts and return floors, late-window return, 2026 Jan-Apr return, active
+months, active days, trades per active day, drawdown, Sortino, cost-stress
+survival, and best-month concentration. The selector explicitly allows active
+1-5 trades/day behavior. May 2026 is loaded only after the fixed pre-May
+selection is written. The run loads 558 selected pre-May rows across eight
+source packets and four row kinds, finds 168 selector-strict rows and 277
+selector-loose rows, and fixes the top 100 strict rows for benchmark. Strict
+rows come from WPR106-137 ensembles (94), WPR106-135 portfolios (61),
+WPR106-136 KNN-veto overlays (12), and WPR106-131 volatility term-structure
+(1). The selected top 100 contain 69 WPR106-137 KNN-veto ensemble rows and 31
+WPR106-135 equal-sleeve portfolio rows. The top selected row is WPR106-137
+`vetoensemble-b7901da9b03fc7df`, with 344 trades, 305 active days, 1.127869
+trades per active day, 26 active months, 2 selector losing months, annual
+losses of 2024: 2, 2025: 0, 2026 Jan-Apr: 0, +0.820014 pre-May net return,
+-0.042254 max drawdown, 0.080792 best-month share, and +0.194012 late
+six-month return. May rejects the fixed selected set with 20 positive, 80
+negative, and 0 flat selected rows; best May is +0.012709, worst May is
+-0.035239, and median May is -0.009168. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-139 local follow-up update: WPR106-139 tests a fresh
+artifact-only calendar/session interaction family over WPR106-96 verified
+BTCUSDT/ETHUSDT 15m bars plus 15m aggTrade-flow context. It fits completed-bar
+calendar profiles on 2024-01-01 through 2026-04-30 only, freezing bucket
+direction and strength by `session4`, `weekday_session4`, `hour`, and
+`weekday_hour`, then tests profile-follow, profile-pullback,
+profile-momentum, flow-confirmed profile impulse, and volatility-profile fade
+templates with fixed 4/8/16/32-bar exits, all/Asia/EU/US session filters,
+all/quiet/high-range/high-volume volatility filters, all/confirm/contra/neutral
+flow filters, next-bar entries, one-position overlap handling, costs, and cost
+stress. The search explicitly allows active target rates of 1, 3, and 5 raw
+signals per day. All profile fitting, template, threshold, filter, ranking,
+and selection choices use only pre-May data, with May 2026 benchmark-only
+after fixed strict selection. The run evaluates 29,184 rows, finds 9,735
+positive pre-May rows, 237 annual-target rows, 808 loose rows, and 17 strict
+rows. The top strict row is ETHUSDT flow-confirmed calendar impulse with a
+weekday-hour profile, 32-bar hold, all-session high-volume filter, 678 trades,
+486 active days, 1.395062 trades per active day, 28 active months, 4 losing
+months, annual losses of 2024: 2, 2025: 1, 2026 Jan-Apr: 1, +2.480657
+pre-May net return, -0.205831 max drawdown, 0.125698 best-month share, and
+full cost-stress survival. May rejects every fixed strict row with 0 positive,
+17 negative, and 0 flat selected rows; best May is -0.000748, worst May is
+-0.133646, and median May is -0.033021. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-140 local follow-up update: WPR106-140 tests a causal rolling
+follow-up to the WPR106-139 calendar/session idea over WPR106-96 verified
+BTCUSDT/ETHUSDT 15m bars plus 15m aggTrade-flow context. It replaces
+full-window frozen calendar profiles with same-bucket rolling profile
+statistics that use only completed prior fixed-hold labels; a prior label is
+eligible only when its exit timestamp is before the current signal timestamp.
+For May 2026 benchmark rows, profile history is frozen to labels completed
+before 2026-05-01, so no May label can influence a May signal. The search uses
+only 2024-01-01 through 2026-04-30 for all template, threshold, filter,
+ranking, and selection choices, then benchmarks May 2026 only after fixed
+pre-May selection. It tests causal profile-follow, pullback, momentum,
+flow-impulse, and volatility-fade variants across `session4`,
+`weekday_session4`, `hour`, and `weekday_hour` buckets, 4/8/16/32-bar holds,
+64/256/1024 completed-label rolling lookbacks, all/EU/US session filters,
+all/high-volume volatility filters, all/confirm/contra/neutral flow filters,
+next-bar entries, one-position overlap handling, costs, cost stress, and target
+raw signal rates of 1, 3, and 5 per day. The run evaluates 34,560 rows, finds
+3,257 positive pre-May rows, 115 annual-target rows, 84 loose rows, and 0
+strict rows, so the fixed benchmark set uses the 84 loose rows. The top
+selected loose row is ETHUSDT rolling flow impulse with a weekday-hour profile,
+32-bar hold, 1,024-label lookback, US session, neutral-flow filter, 114 trades,
+114 active days, 1.000000 trades per active day, 21 active months, 3 losing
+months, annual losses of 2024: 0, 2025: 2, 2026 Jan-Apr: 1, +0.704749 pre-May
+net return, -0.195592 max drawdown, 0.190797 best-month share, and full
+cost-stress survival. The largest pre-May loose return is +1.055805 from an
+ETHUSDT rolling profile-follow row, but it has 7 losing months and misses
+strict stability. May rejects the fixed loose set with 12 positive, 58
+negative, and 14 flat selected rows; best May is +0.016704, worst May is
+-0.123038, and median May is -0.014084. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-141 local follow-up update: WPR106-141 tests whether previously
+rejected or loose 2024-forward families have value when combined by a causal
+month-by-month family-rotation portfolio. It loads trade-level selected-row
+artifacts from WPR106-130 through WPR106-137 and WPR106-139 through WPR106-140,
+explicitly skips WPR106-138 because it has no selected trade-level artifacts,
+and normalizes 659 source rows with 139,311 pre-May source trade rows and 5,524
+May source trade rows. For each pre-May month, source members are chosen using
+only earlier monthly evidence, then the selected month is replayed from source
+trades with equal outer sleeves, embedded source costs, same-symbol overlap
+skipping, and accepted-trade daily caps of 1, 3, or 5. All source universe,
+lookback, scoring, diversity, daily-cap, ranking, and selection choices use
+only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed
+pre-May strict selection. The run evaluates 864 rotation rows across
+3/6/12-month lookbacks, member counts 3/5/8, stable-mean/recent-stability/loss
+control/loss-complement scoring, none/family/packet/packet-family diversity,
+and max pairwise monthly-return correlations of 0.65/0.85. It finds 864
+positive pre-May rows, 668 loose rows, and 60 strict rows, then fixes the top
+60 strict rows for May. The top strict row `monthrot-ed7358029b345be5` uses a
+6-month lookback, 5 members, max 1 accepted trade/day, stable-mean scoring, no
+diversity limit, and max pair correlation 0.85; it has 573 pre-May trades, 573
+active days, 25 active months, 3 losing months, annual losses of 2024: 1, 2025:
+2, 2026 Jan-Apr: 0, +0.359543 pre-May net return, -0.046434 max drawdown,
+0.190664 best-month share, and full cost-stress survival. The fixed top-60
+strict set fails May as a broad family with 3 positive, 57 negative, and 0 flat
+rows; best May is +0.012442, worst May is -0.032874, and median May is
+-0.021032. The rank-1 row itself is May-positive at +0.008070 with 26 accepted
+trades, so it remains a narrow research-only follow-up lead requiring source
+deduplication, source/family ablation, shifted/shuffled controls, transparent
+dynamic-rule baselines, and gate checks before trust. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Script compile, compileall, and
+contracts passed; contracts reported 460 passed.
+Current WPR106-142 local follow-up update: WPR106-142 stress-tests the
+WPR106-141 rank-1 causal monthly rotation lead `monthrot-ed7358029b345be5`
+before treating it as more than a narrow research-only lead. The tested rule is
+fixed from pre-May evidence: 6-month lookback, 5 members, max 1 accepted
+trade/day, stable-mean scoring, no diversity limit, and max pair correlation
+0.85. The packet rebuilds the WPR106-141 source universe and reruns the fixed
+rule under 38 controls: baseline, exact source-trade behavior deduplication,
+calendar-only and no-calendar controls, each May-selected source removed, each
+lead-used packet removed, each lead-used family removed, and five
+diagnostic-only shifted/shuffled monthly-evidence negative controls. All
+control definitions use only pre-May artifacts and WPR106-141 selected
+evidence, with May 2026 benchmark-only after each fixed control definition.
+Exact behavior deduplication removes 141 duplicate-behavior source rows across
+132 duplicate groups while preserving the baseline result: 573 pre-May trades,
+25 active months, 3 losing months, +0.359543 pre-May net return, -0.046434 max
+drawdown, full cost-stress survival, and +0.008070 May net return. Across 33
+non-diagnostic controls, 20 remain pre-May strict, 29 are May-positive, and 16
+are both pre-May strict and May-positive; median non-diagnostic May return is
++0.008070, best is +0.017640, and worst is -0.007396. Control failures keep the
+lead fail-closed: dropping WPR106-133, dropping cross-symbol relative strength,
+or dropping the May-selected WPR106-133 source keeps pre-May strictness but
+makes May -0.007396; dropping WPR106-139 breaks pre-May strictness with 7
+losing months; and one of five diagnostic negative controls is May-positive
+at +0.001073. The lead remains research-only and not candidate-ready; next work
+must either enforce stricter packet/family diversity and cross-symbol
+robustness at selection time or reject the family if additional controls and
+holdouts keep mimicking the positive May result. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-143 local follow-up update: WPR106-143 tests whether the
+WPR106-141/WPR106-142 monthly rotation idea can survive when diversity and
+leave-one robustness are required at pre-May selection time rather than added
+after the fact. It rebuilds the WPR106-141 trade-level source universe, removes
+141 exact duplicate-behavior source rows to get 518 deduped sources, and
+evaluates 648 stricter causal monthly rotation rows over 2024-01-01 through
+2026-04-30 only: 3/6/12-month lookbacks, 5/8 members, daily caps of 1/3/5,
+stable-mean/recent-stability/loss-control/loss-complement scoring,
+family/packet/packet-family diversity, and max pair correlations of
+0.45/0.65/0.85. The grid finds 648 positive pre-May rows, 468 loose rows, and
+18 strict/diverse rows. The top 60 diverse loose/strict rows are rerun through
+pre-May-only leave-one-source, leave-one-packet, leave-one-family,
+no-WPR106-133, no-cross-symbol-relative-strength, and no-calendar-like
+controls. No full robust-strict row exists. Twelve core-strict rows remain
+after source/packet/family and cross-symbol-relative-strength checks, with
+roughly 1.52-1.68 trades per active day, 884-988 pre-May trades, 25 active
+months, and 4 losing pre-May months, but all fail the no-calendar-like loose
+floor. Fixed May 2026 benchmark rejects all 12 core-strict rows: 0 positive,
+12 negative, best May -0.019916, worst -0.021032, and median -0.021032.
+Diagnostic shifted/shuffled controls produce 88 selected diagnostic rows and 8
+May-positive diagnostic rows, including 70 strict/diverse rows and 8
+May-positive rows from reversed month order. The monthly rotation family
+remains research-only and fail-closed, and the broad search should move away
+from defending this line. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-144 local follow-up update: WPR106-144 moves away from monthly
+rotation and benchmarks the underlying strategy rows and source families
+directly. It rebuilds the WPR106-141 trade-level source universe, removes 141
+exact duplicate-behavior source rows to get 518 deduped sources, and evaluates
+1,554 individual source-row variants plus 627 fixed equal-sleeve
+source-family portfolios over 2024-01-01 through 2026-04-30 only. Fixed
+portfolios are grouped by packet, family, packet-family, symbol, and
+packet-symbol, choose members by pre-May stability only, and replay with
+embedded source costs, same-symbol overlap skipping, and daily accepted-trade
+caps of 1, 3, or 5. The pre-May screen finds 2,170 positive rows, 1,362 loose
+rows, and 422 strict rows, then fixes the top 120 strict rows before any May
+benchmark. May 2026 rejects the broad selected set with 30 positive rows and
+90 negative rows, best May +0.015157, worst -0.118374, and median -0.002191;
+individual source rows are 21/92 May-positive and fixed source-family
+portfolios are 9/28 May-positive. Narrow research-only follow-up leads remain:
+WPR106-137 `vetoensemble-0984617d185c319b` has 342 pre-May trades, 26 active
+months, 2 losing months, +0.669507 pre-May net return, -0.045469 max
+drawdown, +0.015157 May with 17 trades, and full May cost-stress survival;
+WPR106-137 `vetoensemble-2b025e21f7235d09` has 404 pre-May trades, 26 active
+months, 2 losing months, +0.728679 pre-May net return, -0.053935 max
+drawdown, and +0.009265 May with 22 trades. These are follow-up research
+leads requiring source-member ablation, cross-symbol-relative-strength
+controls, KNN-veto dependence tests, shifted/no-KNN controls, and cluster
+sensitivity checks, not candidate-ready rows. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-145 local follow-up update: WPR106-145 stress-tests the two
+WPR106-137 KNN-veto ensemble rows surfaced by WPR106-144:
+`vetoensemble-0984617d185c319b` and `vetoensemble-2b025e21f7235d09`. The
+packet replays six fixed daily-cap variants from raw WPR106-137 overlay member
+trades, using caps 1/3/5 where relevant, and benchmarks member ablations,
+WPR106-133 removal, `cross_symbol_relative_strength` removal, ETH/BTC symbol
+subsets, no-KNN source-trade baselines, and month-cluster sensitivity. All
+control definitions use only pre-May evidence; May 2026 remains benchmark-only.
+The run evaluates 84 control rows, including 39 non-diagnostic controls and 45
+diagnostic controls. All six baselines are pre-May profile-ok and May-positive:
+`veto098_cap1` has 345 pre-May trades, 26 active months, 2 losing months,
++0.706472 pre-May, -0.045469 max drawdown, and +0.015157 May; `veto098_cap3`
+and cap5 have 385 pre-May trades, 4 losing months, +0.708908 pre-May, and
++0.012709 May; `veto2b025_cap1` has 320 pre-May trades, 5 losing months,
++0.517565 pre-May, and +0.012573 May; `veto2b025_cap3` and cap5 have 404
+pre-May trades, 2 losing months, +0.728679 pre-May, and +0.009265 May. The
+controls keep the leads fail-closed because May-positive behavior is
+materially concentrated in the same WPR106-133 `cross_symbol_relative_strength`
+overlay member `tradeveto-3a585c9bd5b09303`: isolating it produces +0.059766
+May, while the other isolated members are May-negative. Removing the WPR106-133
+or cross-symbol-relative-strength member makes all `veto2b025` variants
+May-negative, and removing all WPR106-133 lead-lag members from `veto098`
+leaves only the WPR106-131 volatility-term member and makes May -0.000680.
+No-KNN diagnostics are mixed: `veto098` no-KNN rows are May-positive but fail
+pre-May profile checks with 9 losing months, while `veto2b025` no-KNN cap 3/5
+has a plausible pre-May profile but fails May. The leads are not duplicate or
+single-month artifacts, but they are not candidate-ready; next useful work is
+a direct causal audit of the WPR106-133 relative-strength overlay member, not
+a candidate-pack attempt. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-146 local follow-up update: WPR106-146 audits the WPR106-133
+`cross_symbol_relative_strength` source row
+`wpr133_leadlag:leadlag-18708dffa1413dce` and WPR106-137 overlay
+`tradeveto-3a585c9bd5b09303`, the member WPR106-145 identified as the
+strongest May-positive contributor inside the rejected KNN-veto ensemble leads.
+All KNN parameter grids, row rankings, controls, and selected rows use only
+2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed
+pre-May selections. The packet evaluates raw no-KNN source controls, exact
+WPR106-137 KNN side controls, and 12,000 nearby KNN parameter rows across
+`path_flow`/`regime_reversal`, Lorentzian/Euclidean distance, 64/96/160/240/320
+lookbacks, 5/7/15/31 neighbors, same-side history, neighbor mean/win-rate
+thresholds, and daily caps 1/3/5. The exact WPR106-137 overlay remains
+profile-ok but not strict: cap 3 has 203 pre-May trades, 26 active months, 5
+losing months, annual losses 2024: 1, 2025: 3, 2026 Jan-Apr: 1, +1.130996
+pre-May, -0.136225 max drawdown, full cost-stress survival, and +0.059766 May.
+Raw source cap 3/5 is also May-positive at +0.065272, while raw long-only and
+short-only side controls fail pre-May profile checks. The grid finds 4,377
+profile-ok rows, 45 WPR106-146 strict-like rows, and 30 WPR106-136 strict rows;
+48 fixed selected rows are replayed on May, all 48 are May-positive, with best
+May +0.067949, median +0.051377, and worst +0.015398. The top selected row is
+a `regime_reversal` + Lorentzian + same-side variant with 64-trade lookback, 31
+neighbors, cap 3/5, 242 pre-May trades, 25 active months, 4 losing months,
+annual losses 2/2/0, +1.140510 pre-May, -0.145973 max drawdown, full
+cost-stress survival, and +0.067949 May. Behavior diagnostics keep the lead
+fail-closed: the 48 selected rows reduce to 17 unique pre-May behavior hashes
+and 8 unique May behavior hashes, the largest May behavior group contains 20
+rows, and the top row takes 16 of the raw source cap-3 May trades while
+excluding one negative raw-source May trade. WPR106-146 upgrades the member to
+a narrow research-only follow-up lead but not a candidate-ready strategy; next
+work should use behavior-deduped parameter selection, rolling pre-May
+holdouts, source-row neighbor controls, and portfolio/hedge tests without
+reusing May for tuning. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-147 local follow-up update: WPR106-147 stress-tests the
+WPR106-146 ETHUSDT `cross_symbol_relative_strength` target source
+`wpr133_leadlag:leadlag-18708dffa1413dce` with behavior de-duplication,
+rolling pre-May holdouts, sibling source controls, and BTC hedge diagnostics.
+All behavior de-duplication, rolling-selection rules, source controls, hedge
+settings, and ranking use only 2024-01-01 through 2026-04-30; May 2026 remains
+benchmark-only after fixed pre-May definitions. The packet recomputes the
+12,000-row target KNN grid with accepted-trade behavior hashes: 4,377 rows are
+profile-ok before de-duplication, 45 are WPR106-146 strict-like, and 30 meet
+WPR106-136 strict rules, but the grid collapses to 2,340 unique pre-May
+behavior hashes with only 718 profile-ok and 15 strict-like representatives.
+The top behavior-deduped row remains the WPR106-146 leading
+`regime_reversal` + Lorentzian + same-side KNN variant with 64-trade lookback,
+31 neighbors, cap 3, 242 pre-May trades, 25 active months, 4 losing months,
+annual losses 2/2/0, +1.140510 pre-May, -0.145973 max drawdown, and +0.067949
+May. The top 30 behavior-deduped rows are all May-positive after fixed pre-May
+selection, with best May +0.067949, median +0.034110, and worst +0.015398, but
+rolling pre-May selection rejects robustness: top-1 rolling selections are
+holdout-positive in only 3/6 splits and profile-ok in only 3/6, with failed
+holdouts in 2025 Q1, Q2, and Q3; top-3 equal-average selections are also
+positive in only 3/6 splits. Sibling source controls reject transfer: across
+five top parameter settings and 14 WPR106-133 ETHUSDT relative-strength
+continuation source rows, the target passes pre-May and May in 5/5 controls,
+but the 65 non-target sibling rows have 9 profile-ok rows, 0 strict-like rows,
+23 May-positive rows, and 0 rows passing both pre-May profile and May
+benchmark. BTC hedge diagnostics also fail to improve the lead: 15 hedge rows
+produce 4 profile-ok rows, 0 strict-like rows, and 10 May-positive rows; full
+1.00 BTC hedge variants turn May negative. WPR106-147 rejects the WPR106-146
+lead as a broader source-level strategy and keeps it as a path-specific
+research pocket only; next broad-search work should move away from defending
+this exact source path. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Script compile, compileall, and contracts passed;
+contracts reported 460 passed.
+Current WPR106-148 local follow-up update: WPR106-148 moves away from defending
+the WPR106-146/WPR106-147 path-specific BTC/ETH sparse side-veto lineage and
+runs a broad behavior-deduped rolling selector over the WPR106-144 direct
+source/family benchmark universe. All accepted-trade behavior hashes, rolling
+holdout diagnostics, ranking, and selection rules use only 2024-01-01 through
+2026-04-30; May 2026 is benchmark-only after the fixed pre-May selection. The
+packet replays 2,181 WPR106-144 candidate rows, records the exact source
+behavior snapshot at 659 source rows reduced to 518, and de-duplicates
+candidate rows to 1,219 unique pre-May accepted-trade behavior hashes. After
+behavior de-duplication, 258 rows are strict, 741 are loose, 444 are rolling
+candidates, and 134 are robust; the fixed benchmark set uses the top 80 robust
+behavior-unique rows. The selected rows look stable pre-May, with median total
+net return +0.724021, median 4 losing months, median rolling worst holdout
++0.034321, and median 1.239579 trades per active day, but May 2026 rejects the
+broad survivor set: 7/80 rows are positive, the positive rate is 8.75%, median
+May return is -0.012930, mean is -0.015425, return sum is -1.233990, best is
++0.019375, and worst is -0.133646. Individual source rows are 7/69
+May-positive and fixed source-family portfolios are 0/11 May-positive. The few
+May-positive rows are narrow WPR106-137 cross-symbol/transition or pullback
+pockets, not a validated broad selector. WPR106-148 remains research-only,
+observe-only, and promotion-ready false; no candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-149 local follow-up update: WPR106-149 tests a fresh
+artifact-only causal flow-state transfer search over the WPR106-96 verified
+BTCUSDT and ETHUSDT 15m feature context through 2026-05. It builds common
+completed-bar price/volume/taker-flow features only, avoiding ETH-only context
+columns, and evaluates flow-state continuation, compression breakout,
+sweep/wick absorption reversal, price/flow divergence, cross-symbol transfer,
+and transparent price-only controls. All score formulas, thresholds, rankings,
+transfer checks, and selections use only 2024-01-01 through 2026-04-30; May
+2026 remains benchmark-only and was not run because no pre-May row passed the
+packet's promising-lead screen. The reduced staged funnel evaluates 5,376 rows
+across BTCUSDT and ETHUSDT, using target raw signal rates of 1 and 5 per day,
+all/US sessions, all/flow-active regimes, both/long/short side modes, daily
+caps of 1 and 5, and fixed 8/16-bar exits with existing overlap, daily-cap, and
+cost accounting. BTCUSDT has 127 positive rows, max +0.129187, and median
+-0.377506; ETHUSDT has 511 positive rows, max +0.814188, and median -0.332186.
+The family produces zero strict rows, zero loose rows, zero transfer-strict
+rows, and zero transfer-loose rows. The best same-configuration
+positive-on-both-symbol diagnostic row still has 11 max losing months, so the
+monthly-stability target is not met. WPR106-149 rejects this fresh common-column
+price/flow state family as a promising source and keeps May 2026 untouched. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-150 local follow-up update: WPR106-150 revisits the WPR106-125
+true-pair BTCUSDT/ETHUSDT relative-value family without rerunning the same
+rejected grid. It reuses WPR106-125 two-leg pair accounting and tests a
+pre-May-only repair layer around spread-acceleration momentum, spread momentum,
+and relative-return momentum with daily caps of 1/5, unit and rolling-1536
+hedges, fixed and score-flip exits, stable-correlation/flow-expansion gates,
+and a causal prior-completed-month loss throttle. All gates, thresholds, exit
+choices, ranking, and selection use only 2024-01-01 through 2026-04-30; May
+2026 is benchmark-only after fixed pre-May loose rows are selected. The packet
+evaluates 5,184 rows, finds 986 positive pre-May rows, 4 annual-target rows, 8
+loose rows, and 0 strict rows. The selected rows are all
+spread-acceleration-momentum repair variants with +0.140573 to +0.234607
+pre-May net return, 84 to 134 trades, 20 to 23 active months, 5 to 7 losing
+months, max drawdown from -0.022178 to -0.038389, and 4/4 cost-stress
+survival, but they still miss the ideal annual stability target. The four
+annual-target rows are too sparse and weak: 30 trades, 11 active months,
++0.003453 pre-May return, best-month share 0.799766, and 1/4 cost-stress
+survival. May rejects the fixed selected set with 0 positive rows, 4 negative
+rows, 4 flat rows, best 0.000000, worst -0.010919, and median -0.005459; flat
+rows are fully skipped by the causal loss throttle after April state. WPR106-150
+rejects this pair repair as candidate-ready or as a new promising lead. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-151 local follow-up update: WPR106-151 revisits rejected
+prior-day level, sweep/wick, and opening-range evidence without defending old
+rows. It runs an artifact-only causal multi-day level retest search over the
+WPR106-96 BTCUSDT/ETHUSDT 15m context with prior completed day, prior
+completed 5-day range, and prior completed week levels; breakout-follow,
+failed-break-fade, retest-rejection, retest-momentum, and midline-reversion
+templates; 96/384-bar normalization; 8/16/32-bar fixed exits; all/US sessions;
+all/high-range/compressed range-state filters; all/flow-confirm/flow-contrarian
+flow filters; both/long/short side modes; target raw signal rates of 1/3/5 per
+day; accepted-trade daily caps of 1/5; and optional prior completed-month loss
+throttle. All feature construction, thresholds, filters, daily caps, loss
+throttle choices, ranking, and selection use only 2024-01-01 through
+2026-04-30; May 2026 is benchmark-only after fixed pre-May strict selection.
+The grid evaluates 113,400 rows, finds 28,627 positive pre-May rows, 3,850
+positive annual-target rows, 1,812 loose rows, and 1 strict row. The strict row
+is BTCUSDT prior-day breakout-follow with 96-bar normalization, 32-bar hold,
+US session, compressed range-state, flow-confirmed long-only entries, target 5
+raw signals/day, max 1 accepted trade/day, and no monthly loss throttle; it has
+120 pre-May trades, 28 active months, 4 losing months, annual losses 2024: 1,
+2025: 2, 2026 Jan-Apr: 1, +0.257106 pre-May net return, -0.070493 max
+drawdown, 0.175802 best-month share, and 4/4 cost-stress survival. May rejects
+the fixed selected row with 3 trades, -0.010441 net return, and -0.010441 max
+drawdown. WPR106-151 rejects this causal multi-day level retest family as
+candidate-ready or as a new promising lead; loose and annual-target diagnostics
+remain research-useful but not promotable. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-152 local follow-up update: WPR106-152 tests a scoped
+Lorentzian/KNN variant away from the rejected WPR106-146 sparse side-veto
+lineage by using WPR106-151 level/retest rows as source strategies. It selects
+160 WPR106-151 source candidate rows using only pre-May ranking evidence,
+replays them with WPR106-151 accounting, exact-behavior de-duplicates to 94
+source-pool rows with at least 60 pre-May trades, and builds 14,495 pre-May
+source trades plus 203 May source trades. KNN features use completed signal-bar
+path, flow, range/regime, WPR106-151 score strength, flow alignment, and trend
+alignment; the grid covers `level_score_flow`, `path_level`, and
+`regime_level` packs, Lorentzian/Euclidean distance, 48/96/192-trade lookbacks,
+5/11/23 neighbors, all-side/same-side history, neighbor mean thresholds
+-0.00010/0.00000/0.00035, win-rate thresholds 0.48/0.54/0.60, and daily caps
+1/3/5. All source-pool selection, KNN features, normalization, distance,
+lookback, neighbor count, thresholds, daily-cap choice, ranking, and selection
+use only 2024-01-01 through 2026-04-30; May 2026 is benchmark-only after fixed
+pre-May loose selection with frozen pre-May neighbor history. The packet
+evaluates 274,104 overlay rows, finds 252,394 positive pre-May rows, 69,210
+positive annual-target rows, 16,568 loose rows, and 0 strict rows. The fixed
+selected set uses the top 100 loose rows; selected rows are concentrated in 5
+ETHUSDT prior-day breakout-follow source rows, mostly `path_level` Lorentzian
+variants. The top selected row has 85 pre-May trades, 25 active months, 4
+losing months, annual losses 2024: 1, 2025: 2, 2026 Jan-Apr: 1, +0.877616
+pre-May net return, -0.132155 max drawdown, 0.185848 best-month share, and 4/4
+cost-stress survival. May rejects every fixed selected row: 0 positive, 100
+negative, 0 flat, best -0.002536, worst -0.030063, and median -0.016714.
+WPR106-152 rejects this level-source KNN trade filter as candidate-ready or as
+a new promising lead; it shows level-aware KNN filtering does not rescue the
+WPR106-151 level/retest diagnostics. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-153 local follow-up update: WPR106-153 revisits order-flow and
+microstructure-style strategies using WPR106-96 1m aggTrade context instead of
+only 15m aggregate flow features. It builds completed 15m features from
+intrabar signed quote imbalance, first-three-minute and last-three-minute
+delta, late-volume share, top-three-minute volume concentration, flow
+flip/acceleration, price response/range/efficiency, absorption, and flow/price
+divergence proxies. The grid covers BTCUSDT and ETHUSDT, 96/384-bar
+normalization, 4/8/16/32-bar fixed exits, all/US sessions, all/flow-burst/
+volume-burst/late-flow/concentrated/absorption/flip state filters,
+both/long/short side modes, 1/3/5 target raw signals per day, accepted-trade
+daily caps of 1/3/5, no throttle or skip-after-one-prior-losing-month
+throttle, and flow burst follow/fade, absorption fade, late-delta flip
+follow/fade, volume-climax reversal, and flow/price divergence fade templates.
+All feature, threshold, filter, side, cap, throttle, hold, ranking, and
+selection decisions use only 2024-01-01 through 2026-04-30; May 2026 is
+benchmark-only after fixed loose pre-May selection. The packet evaluates
+84,672 rows, finds 1,730 positive pre-May rows, 0 positive annual-target rows,
+138 loose rows, and 0 strict rows. The selected top 100 loose rows have
++0.103158 to +0.955683 pre-May net return, 223 to 588 trades, 20 to 28 active
+months, and 6 to 8 losing months. The top selected row is ETHUSDT late-delta
+flip fade, 384-bar normalization, 32-bar hold, US session, late-flow state,
+long-only, target 1 raw signal/day, max 3 accepted trades/day, and no loss
+throttle; it has 521 trades, 28 active months, 8 losing months, annual losses
+2024: 3, 2025: 4, 2026 Jan-Apr: 1, +0.955683 pre-May net return, -0.262727 max
+drawdown, 0.126263 best-month share, and 4/4 cost-stress survival. May is
+mixed but not sufficient: fixed selected rows have 30 positive, 46 negative,
+24 flat, best +0.049922, worst -0.141880, and median 0.000000; the top
+pre-May row loses -0.057689 in May. WPR106-153 rejects this intrabar
+order-flow event family as candidate-ready or as a new promising lead because
+no row meets the annual stability target. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-154 local follow-up update: WPR106-154 tests cross-symbol
+intrabar flow transfer using the WPR106-96 BTCUSDT/ETHUSDT 15m bars and the
+WPR106-153 1m aggTrade intrabar feature construction. BTCUSDT -> ETHUSDT and
+ETHUSDT -> BTCUSDT transfer scores combine leader signed-flow pressure,
+late-minute delta, flow flips, absorption, relative target-versus-leader flow
+gaps, synchronized flow, and target price divergence from leader flow. The grid
+covers 96/384-bar normalization, 4/8/16/32-bar fixed exits, all/US sessions,
+all/leader-flow-burst/leader-late-flow/leader-absorption/relative-dislocation/
+sync-flow/cross-divergence transfer filters, both/long/short side modes, 1/3/5
+target raw signals per day, accepted-trade daily caps of 1/3/5, no throttle or
+skip-after-one-prior-losing-month throttle, and leader-flow follow/fade,
+leader late-flow transfer, leader absorption transfer, relative-pressure
+follow/reversion, synchronized-flow follow, and cross-divergence follow
+templates. All feature, threshold, transfer-filter, side, cap, throttle, hold,
+ranking, and selection decisions use only 2024-01-01 through 2026-04-30; May
+2026 is benchmark-only after fixed loose pre-May selection. The packet
+evaluates 96,768 rows, finds 2,288 positive pre-May rows, 9 positive
+annual-target rows, 221 loose rows, and 0 strict rows. The selected top 100
+loose rows have +0.233163 to +0.880270 pre-May net return, 158 to 764 trades,
+20 to 28 active months, and 5 to 8 losing months. The strongest annual-target
+pocket is BTCUSDT -> ETHUSDT synchronized-flow follow with cross-divergence
+filter, 96-bar normalization, 16-bar hold, all-session long-only entries,
+target 1 raw signal/day, max 3 accepted trades/day, and skip-after-one-prior-
+losing-month throttle; it has 166 trades, 23 active months, 5 losing months,
+annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 1, +0.447167 pre-May net
+return, -0.070444 max drawdown, 0.251185 best-month share, and 4/4
+cost-stress survival. The 9 annual-target rows collapse to two unique trade
+paths from that same setup and no positive annual-target row has at least 24
+active months. May rejects the near-miss pocket and the broader selected set:
+fixed selected rows have 31 positive, 53 negative, 16 flat, best +0.043733,
+worst -0.110654, and median -0.006258; the top pre-May row loses -0.006258 in
+May. WPR106-154 rejects this cross-symbol intrabar flow transfer family as
+candidate-ready; the BTCUSDT -> ETHUSDT synchronized-flow/cross-divergence
+long setup is recorded only as a narrow near-miss research lead needing
+pre-May-only activity repair and robustness controls. The completed run used
+numpy/pandas arrays with per-symbol and per-pair feature caches; no CUDA path
+was used and no speedup was claimed. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, or promotion claim exists.
+Focused script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-155 local follow-up update: WPR106-155 runs a scoped causal
+Lorentzian/KNN strategy search over WPR106-96 BTCUSDT/ETHUSDT 15m bars with
+the WPR106-151/WPR106-126 context helper joining 1m aggTrade flow into
+completed 15m flow-imbalance features. For each signal row, the KNN analog
+score uses only prior rows whose fixed-hold labels have completed before the
+signal row; for May replay, neighbor labels are frozen to labels completed
+before 2026-05-01. Feature packs cover target price/volatility/flow regime,
+short path plus session shape, and cross-symbol relative-flow regime. The grid
+covers BTCUSDT/ETHUSDT, 8/16/32-bar holds, 192/768-bar lookbacks, 11/31
+neighbors, Lorentzian distance plus Euclidean controls, all/US sessions, all/
+win-rate-55/win-rate-60/edge-20 KNN filters, both/long/short side modes, 1/3/5
+target raw signals per day, accepted-trade daily caps of 1/3/5, and no throttle
+or skip-after-one-prior-losing-month throttle. All feature-pack, distance,
+lookback, neighbor, filter, side, threshold, cap, throttle, ranking, and
+selection decisions use only 2024-01-01 through 2026-04-30; May 2026 is
+benchmark-only after fixed loose pre-May selection. The packet evaluates
+62,208 rows, finds 3,279 positive pre-May rows, 0 positive annual-target rows,
+219 loose rows, and 0 strict rows. The selected top 100 loose rows have
++0.294902 to +0.566516 pre-May net return, 120 to 407 trades, 20 to 28 active
+months, and 6 to 8 losing months. The top selected row is ETHUSDT Lorentzian
+target-regime KNN with 32-bar hold, 192-bar lookback, 31 neighbors, all
+session, both sides, target 3 raw signals/day, max 3 accepted trades/day, and
+skip-after-one-prior-losing-month throttle; it has 266 trades, 20 active
+months, 8 losing months, annual losses 2024: 4, 2025: 3, 2026 Jan-Apr: 1,
++0.566516 pre-May net return, -0.198995 max drawdown, 0.211757 best-month
+share, and 4/4 cost-stress survival. The closest annual-loss diagnostics still
+fail at 2/3/1 or worse, with zero positive rows at or below 2/2/1 and zero
+positive rows with at least 24 active months and at most 5 total losing months.
+May is mixed and not a rescue: fixed selected rows have 35 positive, 48
+negative, 17 flat, best +0.013015, worst -0.062679, and median 0.000000; the
+top pre-May row is May-positive at +0.004604 but was already unstable pre-May.
+WPR106-155 rejects this completed-bar online regime-analog KNN formulation as
+candidate-ready; further KNN work needs materially different labels, feature
+geometry, or ensemble construction rather than threshold retuning around this
+score. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts passed; contracts reported 460
+passed.
+Current WPR106-156 local follow-up update: WPR106-156 tests whether recent
+rejected or near-miss 2024-forward families are individually unstable but
+complementary enough to form stable research-only equal-sleeve portfolios. It
+loads fixed selected artifacts from WPR106-151 through WPR106-155, uses only
+2024-01-01 through 2026-04-30 for source scoring, source behavior
+de-duplication, portfolio construction, portfolio behavior de-duplication,
+ranking, and selection, and keeps May 2026 benchmark-only after fixed strict
+pre-May selection. The run loads 401 source rows, behavior-de-duplicates them
+to 153 source rows, generates 2,154 raw portfolios, and pre-May
+portfolio-behavior-de-duplicates them to 1,852 rows. It finds 1,852 positive
+pre-May rows, 273 positive annual-target rows, 1,563 loose rows, and 273 strict
+rows; selected rows are 100 strict rows with +0.550936 to +0.864151 pre-May
+net return, 204 to 1,881 trades, 26 to 28 active months, 2 to 5 losing months,
+and 4/4 cost-stress survival. The top selected row is a two-member quality
+portfolio combining `WPR106-152:levelknn-ac064ca5bef3994a` and
+`WPR106-153:intrabarof-423ffe9e90d52a36`, with 564 trades, 28 active months,
+5 losing months, annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 1, +0.864151
+pre-May net return, -0.103308 max drawdown, and 0.126470 best-month share.
+May 2026 rejects the fixed selected set with 0 positive, 100 negative, and 0
+flat rows; best May return is -0.002595, worst is -0.045187, and median is
+-0.019671. WPR106-156 rejects simple recent-family complement portfolios as
+candidate-ready evidence; the result points to holdout fragility and
+shared-component concentration rather than low activity. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-157 local follow-up update: WPR106-157 broadens beyond the
+recent WPR106-151 through WPR106-156 source set by discovering every local
+`data/research/wpr106_*` packet directory with selected pre-May metrics,
+selected pre-May trade details, and May benchmark trade details. It normalizes
+source IDs including `portfolio_id`, `ensemble_id`, `overlay_id`,
+`candidate_id`, and `benchmark_id`, normalizes weighted/portfolio/source return
+columns, recomputes common pre-May metrics from trade details, behavior-
+de-duplicates accepted pre-May trade paths, scores six anchored pre-May
+holdouts, and selects with packet/component/symbol exposure caps. All
+discovery scoring, behavior de-duplication, rolling diagnostics, exposure
+caps, ranking, and selection use only 2024-01-01 through 2026-04-30; May 2026
+is benchmark-only after fixed pre-May selection. The packet includes 43 packet
+directories, 2,925 metric rows, 591,571 pre-May trade rows, and 21,216 May
+trade rows; it behavior-de-duplicates to 1,915 source rows with 1,915 positive
+pre-May rows, 677 rolling-robust rows, 1,126 loose rows, and 408 strict rows.
+The selected 100 exposure-capped rows span 23 packet labels and contain 70
+strict-rolling rows, 29 rolling-robust rows, and 1 strict-only row. May rejects
+the broad selected set with 23 positive, 75 negative, and 2 flat rows; best May
+return is +0.067949, worst is -0.133646, median is -0.014546, and mean is
+-0.018373. WPR106-157 rejects the broad artifact component exposure selector
+as candidate-ready or portfolio-ready evidence, while recording research-only
+follow-up pockets in WPR106-146 cross-symbol relative-strength trade-veto,
+WPR106-128 anchored VWAP, and smaller BTCUSDT trend/volatility/cross-symbol
+intrabar rows. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-158 local follow-up update: WPR106-158 reranks the broad
+WPR106-157 artifact universe with a stricter nested pre-May family holdout
+selector. It reuses the WPR106-157 artifact-universe builder but scores and
+selects only on 2024-01-01 through 2026-04-30, adding early pre-May,
+late-validation, 2024/2025/2026 Jan-Apr year-block, and inherited rolling
+holdout diagnostics. May 2026 is excluded from family/component scoring,
+ranking, exposure caps, and selection, and is replayed only after the selected
+pre-May rows are fixed. The packet includes 43 packet directories, 2,925
+metric rows, 591,571 pre-May trade rows, and 21,216 May trade rows; it
+behavior-de-duplicates to 1,915 source rows with 367 strict nested rows, 588
+robust nested rows, and 1,351 late-resilient rows. The fixed selected 100-row
+set contains 69 strict-nested rows, 30 robust-nested rows, and 1
+late-resilient row, with 80 to 1,241 trades, 22 to 28 active months, 1 to 11
+losing months, +0.077980 to +2.480657 pre-May total net return, and positive
+late pre-May returns for every selected row. May rejects the fixed selected
+set with 23 positive, 75 negative, and 2 flat rows; best May return is
++0.067949, worst is -0.133646, median is -0.017069, and mean is -0.020578.
+WPR106-158 rejects the nested pre-May selector as candidate-ready,
+portfolio-ready, or promotion-ready evidence. It preserves research-only
+follow-up pockets in WPR106-146 cross-symbol relative-strength trade-veto and
+smaller WPR106-131/128/120 mixed variants, but May must not be used as a tuning
+signal. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts passed; contracts reported 460
+passed.
+Current WPR106-159 local follow-up update: WPR106-159 directly targets the
+requested month-to-month profile by reranking the same broad artifact universe
+with pre-May monthly dropout and rolling-window stability diagnostics. It uses
+only 2024-01-01 through 2026-04-30 for annual loss limits, best-month dropout,
+rolling three-month/six-month windows, ranking, exposure caps, and selection;
+May 2026 is benchmark-only after fixed pre-May selection. The packet includes
+43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, and
+21,216 May trade rows; it behavior-de-duplicates to 1,915 source rows with 326
+monthly-elite rows, 442 dropout-robust rows, and 849 rolling-survivor rows.
+The selected 100-row fixed set contains 78 monthly-elite rows, 10
+dropout-robust rows, and 12 rolling-survivor rows, with 85 to 983 trades, 21
+to 28 active months, 1 to 9 monthly losing months, +0.054780 to +2.480657
+pre-May total net return, and +0.035858 to +1.630755 return after removing the
+best three pre-May months. May rejects the fixed selected set with 18 positive,
+80 negative, and 2 flat rows; best May return is +0.047219, worst is
+-0.133646, median is -0.016834, and mean is -0.020599. WPR106-159 rejects the
+monthly dropout stability selector as candidate-ready, portfolio-ready, or
+promotion-ready evidence and records another falsification that pre-May
+month-to-month stability alone does not solve the May holdout break. It
+preserves research-only follow-up pockets in WPR106-146 cross-symbol
+relative-strength trade-veto and WPR106-128 anchored VWAP rows, but May must
+not be used as a tuning signal. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-160 local follow-up update: WPR106-160 tests pre-May temporal
+generalization by treating 2024-01 through 2025-12 as search history and
+requiring a fixed 2026-01 through 2026-04 validation gate before May replay.
+It uses only 2024-01-01 through 2026-04-30 for search scoring, validation
+scoring, best-month dropout, rolling six-month search windows, annual
+loss-limit checks, ranking, exposure caps, and selection; May 2026 is
+benchmark-only after fixed pre-May selection. The packet includes 43 packet
+directories, 2,925 metric rows, 591,571 pre-May trade rows, and 21,216 May
+trade rows; it behavior-de-duplicates to 1,915 source rows with 321
+temporal-elite rows, 475 temporal-robust rows, and 873 validation-survivor
+rows. The selected 100-row fixed set contains 78 temporal-elite rows, 13
+temporal-robust rows, and 9 validation-survivor rows, with 85 to 985 trades,
+21 to 28 active months, +0.048081 to +2.038350 2024-2025 search return,
++0.000792 to +0.531043 2026 Jan-Apr validation return, and 0 to 2 validation
+losing months. May rejects the fixed selected set with 20 positive, 78
+negative, and 2 flat rows; best May return is +0.067949, worst is -0.133646,
+median is -0.017037, and mean is -0.019105. WPR106-160 rejects the pre-May
+temporal generalization selector as candidate-ready, portfolio-ready, or
+promotion-ready evidence. It preserves research-only follow-up pockets in
+WPR106-146 cross-symbol relative-strength trade-veto and WPR106-128 anchored
+VWAP rows, but May must not be used as a tuning signal. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-161 local follow-up update: WPR106-161 tests whether
+pre-May-defined component pockets transfer better than matched non-selected
+controls. It uses only 2024-01-01 through 2026-04-30 for row scoring,
+component scoring, control matching, exposure caps, ranking, and selection;
+May 2026 is benchmark-only after selected components, pocket rows, and matched
+controls are fixed. The packet includes 43 packet directories, 2,925 metric
+rows, 591,571 pre-May trade rows, and 21,216 May trade rows; it
+behavior-de-duplicates to 1,915 source rows, aggregates 249 component rows,
+selects 24 pre-May components, selects 81 component-pocket rows, and selects
+81 matched controls. May shows component pockets are less bad than controls
+but still rejected: component pockets have 19 positive, 60 negative, 2 flat,
+best +0.067949, worst -0.133646, median -0.015958, and mean -0.015143, while
+matched controls have 10 positive, 68 negative, 3 flat, best +0.027293, worst
+-0.132690, median -0.015520, and mean -0.020810. WPR106-161 rejects the
+component-pocket selector as candidate-ready, portfolio-ready, or
+promotion-ready evidence, while preserving stronger research-only follow-up
+evidence for WPR106-146 cross-symbol relative-strength trade-veto and small
+WPR106-119/WPR106-120 wick-fade pockets. WPR106-139 calendar/session and
+WPR106-137 selected components are further falsified for May transfer. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-162 local follow-up update: WPR106-162 tests whether the
+WPR106-161 component pockets can become more stable as small equal-sleeve
+portfolios once source overlap, active trade rates, costs, and construction
+diversity are handled explicitly. It uses only 2024-01-01 through 2026-04-30
+for source matrices, portfolio generation, pre-May scoring, overlap
+diagnostics, exposure caps, ranking, and selection; May 2026 is benchmark-only
+after fixed portfolio selection. The packet loads 162 source rows, generates
+660 candidate portfolios, finds 415 strict pre-May portfolios and 637 robust
+pre-May portfolios, then selects 72 fixed portfolios under source and
+construction caps: 39 component-pocket portfolios and 33 matched controls.
+The selected portfolios look strong pre-May, with component-pocket median
+total net +2.121019, median drop-best-three-month +1.451363, median 2026
+Jan-Apr validation +0.388685, and median sleeve-average trades per active day
+0.813184; matched controls have median total net +1.334584, median
+drop-best-three-month +0.987136, median validation +0.199268, and median
+sleeve-average trades per active day 0.625300. May rejects every fixed
+portfolio: component pockets have 0 positive, 39 negative, 0 flat, best
+-0.005600, worst -0.069842, median -0.029799, and mean -0.030960; matched
+controls have 0 positive, 33 negative, 0 flat, best -0.009271, worst
+-0.103368, median -0.054215, and mean -0.048921. WPR106-162 rejects
+component-pocket portfolio construction as candidate-ready, portfolio-ready,
+or promotion-ready evidence. It confirms pockets are less bad than controls,
+but overlap-aware equal-sleeve construction does not solve May transfer; no
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-163 local follow-up update: WPR106-163 tests whether the broad
+WPR106 artifact universe can be selected by resilience to difficult pre-May
+months and day clusters rather than by aggregate PnL, component-pocket
+membership, or simple portfolio construction. It rebuilds the WPR106-157 broad
+artifact universe, uses only 2024-01-01 through 2026-04-30 to discover eight
+adverse months and 80 adverse day clusters, and excludes May 2026 from stress
+discovery, row scoring, exposure caps, portfolio generation, ranking, and
+selection. The run includes 43 packet directories, 2,925 metric rows, 591,571
+pre-May trade rows, 21,216 May trade rows, and 1,915 behavior-deduplicated
+source rows. It finds 84 strict adverse-resilience rows, 101 robust rows, and
+1,083 watch rows, then selects 100 fixed rows with 25 strict, 15 robust, and
+60 watch rows. The selected source rows fail May as a broad selector with 30
+positive, 68 negative, 2 flat, best +0.065272, worst -0.133646, median
+-0.006947, and mean -0.013354. It also generates 375 equal-sleeve portfolio
+candidates, selects 38 fixed portfolios, and May rejects those portfolios with
+3 positive, 35 negative, 0 flat, best +0.011174, worst -0.045880, median
+-0.009557, and mean -0.014304. WPR106-163 rejects the adverse-regime
+resilience selector as candidate-ready, portfolio-ready, or promotion-ready
+evidence. It preserves research-only follow-up clues in WPR106-146
+cross-symbol relative-strength trade-veto rows and WPR106-128 anchored VWAP
+flow-impulse rows, while further warning against WPR106-139 calendar/session,
+WPR106-136 KNN trade-veto, and WPR106-156 complement exposure; no candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-164 local follow-up update: WPR106-164 tests whether
+packet/symbol/family/template prototypes can be selected from pre-May
+group-level evidence alone and transfer to May better than matched
+non-selected controls. It rebuilds the WPR106-157 broad artifact universe and
+uses only 2024-01-01 through 2026-04-30 for adverse-month/day diagnostics,
+prototype scoring, prototype selection, representative-row selection,
+control matching, and portfolio construction; May 2026 is benchmark-only after
+all selected prototypes, rows, controls, and portfolios are fixed. The run
+includes 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows,
+21,216 May trade rows, 1,915 behavior-deduplicated source rows, and 305
+prototypes. It finds 25 strict prototypes, 33 robust prototypes, and 105 watch
+prototypes, selects 32 fixed prototypes, selects 100 representative rows, and
+matches 100 non-selected controls. May rejects selected prototype rows and
+they underperform controls: selected prototype rows have 16 positive, 84
+negative, 0 flat, best +0.047219, worst -0.133646, median -0.017170, and mean
+-0.019284, while matched controls have 16 positive, 79 negative, 5 flat, best
++0.065272, worst -0.132690, median -0.015630, and mean -0.015713. It also
+generates selected/control equal-sleeve portfolios; May rejects selected
+prototype portfolios with 0 positive, 39 negative, 0 flat, best -0.000192,
+worst -0.047466, median -0.018105, and mean -0.020730, while matched-control
+portfolios remain rejected but less negative with 3 positive, 30 negative,
+best +0.002249, median -0.002445, and mean -0.016344. WPR106-164 rejects
+pre-May family/template prototype selection as candidate-ready,
+portfolio-ready, or promotion-ready evidence. WPR106-146 relative-strength
+remains a narrow research-only pocket; WPR106-128 anchored VWAP remains a clue
+that did not pass this stricter pre-May prototype path; no candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-165 local follow-up update: WPR106-165 runs a direct
+pseudo-holdout control audit on WPR106-146 cross-symbol relative-strength
+trade-veto and WPR106-128 anchored VWAP flow-impulse, the two narrow pockets
+that remained interesting after repeated broad selectors. The target pockets
+were already noticed through prior May benchmark summaries, so this packet
+does not treat May 2026 as a fresh independent discovery holdout; it is a
+control/falsification audit only. It rebuilds the WPR106-157 broad artifact
+universe and uses only 2024-01-01 through 2026-04-30 for row scoring,
+pseudo-holdout diagnostics, matched-control selection, portfolio construction,
+and portfolio ranking. The run includes 43 packet directories, 2,925 metric
+rows, 591,571 pre-May trade rows, 21,216 May trade rows, 1,915
+behavior-deduplicated source rows, and 47 fixed target source rows. It selects
+17 WPR106-146 rows and 30 WPR106-128 rows, matches 47 non-target controls, and
+generates 872 candidate portfolios before selecting 28 target-pocket and 24
+matched-control portfolios. May splits the target pockets: WPR106-146 has 17
+positive, 0 negative, and 0 flat May rows with best +0.067949, worst
++0.015398, median +0.030569, and mean +0.037985, while WPR106-128 has 13
+positive, 16 negative, and 1 flat May rows with median -0.002686 and mean
+-0.009161. Matched controls have 7 positive, 40 negative, 0 flat, median
+-0.022573, and mean -0.023592. Target-pocket portfolios are 28 positive and 0
+negative in May with best +0.063858, worst +0.007776, median +0.023694, and
+mean +0.024733, while matched-control portfolios are 0 positive and 24 negative
+with median -0.030822 and mean -0.026689. WPR106-165 rejects direct pocket
+pseudo-holdout controls as candidate-ready, portfolio-ready, or promotion-ready
+evidence, rejects WPR106-128 as a direct May benchmark lead, and preserves
+WPR106-146 as the strongest research-only follow-up clue requiring fresh
+non-May retest, direct strategy rerun, causal ablations, side/opposite
+controls, cost/overlap stress, and candidate-gate evidence; no candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-166 local follow-up update: WPR106-166 runs a source-level
+stability and ablation audit around the WPR106-146 cross-symbol
+relative-strength trade-veto clue. It uses only 2024-01-01 through 2026-04-30
+for behavior-deduped row selection, raw-source comparisons, consensus-filter
+thresholds, rolling diagnostics, side controls, and opposite-side controls; May
+2026 is benchmark-only after fixed rows, controls, and thresholds are selected.
+The packet loads WPR106-146 frozen artifacts, selects 17 behavior-deduped
+representatives from 48 selected rows and 17 unique pre-May behavior hashes,
+and finds all 17 representatives May-positive with best +0.067949, worst
++0.015398, median +0.030569, and mean +0.037985. Raw no-KNN cap 3/5 is already
+May-positive at +0.065272 and has +1.209539 pre-May net, but with seven
+pre-May losing months and annual losses 4/3/0. Standalone long/short controls
+fail pre-May profile checks, and opposite-side counterfactuals are uniformly
+negative both pre-May and May. The clearest new descriptor is the pre-May
+selected behavior-consensus threshold 5 filter: 254 pre-May trades, 26 active
+months, two losing months, annual losses 1/1/0, +1.155278 pre-May net,
+-0.141007 max drawdown, best-month share 0.146280, full cost-stress survival,
+and +0.065272 May with 17 trades. WPR106-166 rejects the audit as
+candidate-ready, portfolio-ready, or promotion-ready evidence because the best
+May benchmark remains the same raw WPR106-133 source path and May is not a
+fresh discovery holdout; it preserves WPR106-146 threshold-5 consensus as the
+best research-only descriptor for direct strategy rebuild and fresh non-May
+retest when later data is available; no candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-167 local follow-up update: WPR106-167 directly rebuilds the
+WPR106-166 behavior-consensus threshold 5 descriptor from WPR106-133 source
+trades, WPR106-136 feature cache, and fixed WPR106-146 behavior-representative
+KNN parameters. All fixed representatives and the threshold 5 rule come from
+pre-May evidence only; May 2026 remains benchmark-only after the descriptor is
+frozen. The direct rebuild exactly reproduces the prior artifact result: 254
+pre-May trades, 26 active months, two losing months, annual losses 1/1/0,
++1.155278 pre-May net, -0.141007 max drawdown, best-month share 0.146280, full
+cost-stress survival, and +0.065272 May with 17 trades. All parity checks pass:
+the 17 representative trade-key sets match WPR106-146 frozen artifacts for
+pre-May and May, raw cap-5 trade keys match, and threshold-5 consensus metric
+deltas are all zero. WPR106-167 proves the threshold-5 descriptor is
+reproducible from source trades and fixed KNN parameters, but rejects it as
+candidate-ready, portfolio-ready, or promotion-ready evidence because the May
+benchmark is still the same raw WPR106-133 source path and May is not a fresh
+independent holdout; no candidate pack, paper/live artifact, order/sizing/
+runtime change, live config write, CUDA speedup claim, or promotion claim
+exists. Focused script compile, compileall, and contracts passed; contracts
+reported 460 passed.
+Current WPR106-168 local follow-up update: WPR106-168 audits fresh post-May,
+non-May holdout availability for the WPR106-167 WPR146 threshold-5 descriptor
+and replays it on the first available complete June 2026 prefix. The shared
+local Binance Vision cache has no June 2026 BTCUSDT/ETHUSDT daily archives,
+but remote Binance Vision has a complete 2026-06-01 through 2026-06-11 UTC
+daily window for BTC/ETH 15m klines, 1m klines, and aggTrades. The packet
+downloads only the required BTC/ETH 15m kline and aggTrade daily archives under
+its own output tree, verifies all 44 checksums, aggregates 30,159,488 BTCUSDT
+and 23,956,287 ETHUSDT aggTrade rows into 15,840 one-minute flow rows per
+symbol, and builds 1,056 15m bars per symbol. May 2026 is not used for
+selection, KNN history, parameter choice, or threshold choice; it is only
+present as chronological rolling-feature warm-up for later June bars. The
+fresh non-May replay rejects the WPR146 threshold-5 descriptor: raw source, raw
+cap 5, and threshold-5 consensus all produce 6 June trades, -0.030098 net
+return after costs, -0.056414 max drawdown, negative daily Sortino, one losing
+June month, and 0/4 cost-stress survival. The 17 fixed representatives are
+mixed, with 10 positive and 7 negative rows, best +0.003022, worst -0.030098,
+median +0.001916, and mean -0.007561. WPR106-168 closes the WPR146
+threshold-5 defense path as negative fresh-holdout evidence and returns the
+research thread to broader 2024-forward search; no candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-169 local follow-up update: WPR106-169 returns to broad
+2024-forward search after the WPR106-168 negative fresh holdout. The packet
+runs an artifact-only completed-bar state, aggTrade-flow proxy, and
+cross-symbol interaction screen over BTCUSDT and ETHUSDT 15m WPR106-96 context
+from 2024-01-01 through 2026-04-30, with May 2026 excluded from all scoring,
+thresholds, filters, holds, ranking, and selection. It evaluates 248,832
+pre-May rows across BTC/ETH, eight score templates, three normalization
+windows, four fixed-hold horizons, sessions, volatility gates, flow gates, side
+modes, 1/3/5 target raw signals per active day, and 1/3/5 accepted-trade daily
+caps. The grid finds 40,753 positive pre-May rows, 2,042 annual-target rows,
+384 loose rows, and zero strict rows. The fixed top 100 selected rows are all
+loose and pre-May positive, with median +0.952125 pre-May net return, 25 to 28
+active months, 4 to 8 losing months, 79 to 485 trades, full pre-May
+cost-stress survival, and median one trade per active day. May benchmark for
+those fixed rows is mixed and not candidate-ready: 31 positive, 69 negative,
+best +0.048723, worst -0.177795, median -0.042965, and 31 rows with positive
+May cost-stress survival. The best May-positive clue is an ETHUSDT
+Asia-session volatility-breakout continuation flow-contra row with +0.811320
+pre-May net and +0.048723 May net, but it has seven pre-May losing months,
+annual losses 3/3/1, and -0.265408 pre-May max drawdown, so it remains only a
+research-only follow-up clue. WPR106-169 rejects this broad bar-state/flow
+interaction screen as candidate-ready, portfolio-ready, or promotion-ready
+evidence because no strict pre-May row exists and the fixed selected-set May
+median is negative; no candidate pack, paper/live artifact, order/sizing/
+runtime change, live config write, CUDA speedup claim, or promotion claim
+exists. Focused script compile, compileall, and contracts passed; contracts
+reported 460 passed.
+Current WPR106-170 local follow-up update: WPR106-170 tests a materially
+different Lorentzian/KNN formulation after WPR106-169: transparent
+completed-bar event families filtered by causal KNN neighbors whose labels
+include future net return and path quality/adverse excursion, not only
+fixed-hold direction. The artifact-only runner uses WPR106-96 verified
+BTCUSDT/ETHUSDT 15m bars and 1m aggTrade context through May 2026, but all
+event thresholds, feature packs, KNN parameters, path-label rules, filters,
+ranking, and selection use only 2024-01-01 through 2026-04-30. It precomputes
+24 NumPy KNN caches over 18,179 BTCUSDT and 17,978 ETHUSDT query rows, then
+evaluates 93,312 pre-May rows across two symbols, six transparent event
+templates, two KNN feature packs, 8/16/32-bar holds, Lorentzian/Euclidean
+distances, 11/31 neighbors, all/Asia/US sessions, 1/3/5 target raw events per
+active day, long/short/both side modes, path-good-rate and mean-neighbor-return
+filters, and 1/3/5 accepted-trade daily caps. The screen finds 21,314 positive
+pre-May rows, 2,928 annual-target rows, 79 loose rows, and zero strict rows.
+The fixed selected set contains 79 loose rows with median +0.211822 pre-May
+net return, 61 to 280 trades, 22 to 28 active months, six to eight losing
+months, and median 1.067797 trades per active day. May 2026 benchmark rejects
+the selected set: zero selected rows are May-positive, 25 are May-negative, 54
+are flat because no fixed-filter May trades pass, best May return is 0.000000,
+worst is -0.016655, and no May row has positive cost-stress survival. The best
+pre-May row is ETHUSDT short momentum continuation with +0.895150 pre-May net,
+but it has seven losing months and 2024 annual losses of 4, so it remains
+research-only negative evidence. WPR106-170 rejects this path-quality KNN
+event-veto formulation as candidate-ready, portfolio-ready, or
+promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-171 local follow-up update: WPR106-171 continues the broad
+2024-forward search by revisiting the WPR106-153 intrabar order-flow family
+with independent completed-bar market-state gates rather than defending the
+rejected BTC sparse side-veto path. The artifact-only runner uses WPR106-153
+selected trade ledgers plus WPR106-96 BTCUSDT/ETHUSDT 15m bars and 1m aggTrade
+context through May 2026, but all gate thresholds, daily-cap choices, ranking,
+and selection use only 2024-01-01 through 2026-04-30. It evaluates 6,600
+pre-May rows from 100 WPR106-153 source rows, 22 fixed state gates, and 1/3/5
+accepted-trade daily caps, preserving source costs and source overlap handling.
+The grid finds 5,115 positive pre-May rows, 219 annual-target rows, 1,615 loose
+rows, and zero strict rows. The fixed selected set contains 100 loose rows with
+median +0.781872 pre-May net return, best +1.059577, worst +0.233917, and no
+negative selected pre-May rows, but selection is duplicate-heavy because source
+cap variants and new caps often leave the same accepted trade set unchanged.
+May 2026 benchmark is mixed and not candidate-ready: 46 selected rows are
+May-positive, 51 May-negative, 3 May-flat, best +0.069661, worst -0.057689,
+and median -0.001737. The useful diagnostic pocket is ETHUSDT
+late-delta-flip fade under `shock_q80` or `volume_high_q70` gates, but it has
+small May trade support and no strict pre-May row. WPR106-171 rejects this
+market-state regime-gated intrabar-flow repair as candidate-ready,
+portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-172 local follow-up update: WPR106-172 runs a fresh
+artifact-only entry/exit screen after WPR106-171 by combining transparent
+completed-bar entry families with fixed-hold and conservative ATR barrier
+exits instead of repairing prior trade ledgers. The runner uses WPR106-96
+BTCUSDT/ETHUSDT 15m bars and 1m aggTrade context through May 2026, but all
+entry thresholds, regime filters, exit choices, daily caps, ranking, and
+selection use only 2024-01-01 through 2026-04-30. After bounded runtime
+narrowing, it evaluates 35,550 pre-May rows across two symbols, seven entry
+templates, two normalization windows, all/US sessions, five regime filters,
+long/short/both side modes, 1/3/5 target raw signals per day, fixed 16/32/64
+exits, conservative ATR barriers, and 1/3/5 accepted-trade daily caps. Same-bar
+ATR stop/target collisions count as stops. The grid finds 5,072 positive
+pre-May rows, 190 annual-target rows, 71 loose rows, and zero strict rows. The
+fixed selected set contains 71 loose rows with median +0.319864 pre-May net,
+best +1.114763, worst +0.057242, and no negative selected pre-May rows. May
+2026 benchmark rejects the fixed selected set as candidate-ready evidence: 5
+rows are May-positive, 10 May-negative, and 56 May-flat because no fixed-filter
+May trades occur; best May return is +0.022584, worst -0.074505, median
+0.000000, and the 15 active May rows have mean -0.012550. The best diagnostic
+pocket is ETHUSDT volatility-breakout with flow-confirm filtering and fixed
+64-bar exits, but no strict pre-May row exists and May activity is too sparse
+and negative on average. WPR106-172 rejects this adaptive barrier entry/exit
+screen as candidate-ready, portfolio-ready, or promotion-ready; no candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-173 local follow-up update: WPR106-173 tests explicit
+opposite-side anti-signal variants of the WPR106-172 transparent completed-bar
+entry families, with `long` and `short` side modes applied to actual
+anti-signal trade side rather than original score sign. The artifact-only
+runner uses WPR106-96 BTCUSDT/ETHUSDT 15m bars and 1m aggTrade context through
+May 2026, but all feature definitions, thresholds, regime filters, side
+policies, exits, daily caps, ranking, and selection use only 2024-01-01 through
+2026-04-30. It evaluates 35,550 pre-May rows across two symbols, seven entry
+templates, two normalization windows, all/US sessions, five regime filters,
+actual anti-signal long/short/both side modes, 1/3/5 target raw signals per
+day, fixed 16/32/64 exits, conservative ATR barriers, and 1/3/5 accepted-trade
+daily caps. Same-bar ATR stop/target collisions count as stops. The grid finds
+4,618 positive pre-May rows, 166 annual-target rows, 209 loose rows, and 14
+strict rows. All strict rows are ETHUSDT `vol_breakout_follow` anti-signals
+with `barrier_h32_tp2_sl1` exits. The fixed selected set contains 100 rows, 14
+strict and 86 loose, with median +0.894432 pre-May net, best +1.899726, worst
++0.170107, and no negative selected pre-May rows. May 2026 rejects the fixed
+selected set as candidate-ready evidence: 10 rows are May-positive, 42
+May-negative, and 48 May-flat because no fixed-filter May trades occur; best
+May return is +0.037054, worst -0.073293, and median 0.000000. The strict
+subset is worse: four strict rows are active in May and all four are negative,
+with active strict May mean -0.030600. WPR106-173 preserves opposite-side
+ETHUSDT volatility-breakout anti-signals with conservative ATR barriers as the
+first recent broad-screen strict pre-May diagnostic, but rejects them as
+candidate-ready, portfolio-ready, or promotion-ready because May does not
+confirm them; no candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-174 local follow-up update: WPR106-174 replays only the 14 fixed
+strict WPR106-173 ETHUSDT anti-signal descriptors on the fresh non-May
+WPR106-168 June 1-11 2026 holdout. WPR106-96 context through May is used only
+as rolling-feature warmup, WPR106-168 packet-local verified June 15m bars and
+1m aggTrade flow context provide the fresh holdout rows, and WPR106-173 regime
+thresholds are computed before moving the benchmark window to June so the
+2024-01-01 through 2026-04-30 tuning boundary remains intact. No May or June
+data is used for parameter choice, threshold choice, row inclusion, ranking, or
+selection. The same fixed rows that May rejected are all active in June: 13 are
+June-positive, one is June-negative, best June return is +0.059043, worst is
+-0.030856, median is +0.021485, and active mean is +0.020151. For comparison,
+the same rows had four active May rows, all four negative, with active mean
+-0.030600. WPR106-174 upgrades the WPR106-173 ETHUSDT volatility-breakout
+anti-signal family to a stronger research-only diagnostic that deserves
+source-level controls or a longer fresh post-May retest, but it remains
+not candidate-ready because May is still a failed benchmark and June covers
+only 11 calendar days; no candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-175 local follow-up update: WPR106-175 audits the WPR106-173
+strict ETHUSDT volatility-breakout anti-signal rows with fixed source-level
+controls after WPR106-174's positive fresh June replay. It imports the WPR106-173
+runner so score construction, exit labels, conservative ATR barrier behavior,
+overlap handling, daily caps, and costs stay identical, and it builds 504 fixed
+controls from the 14 strict descriptors across inverse/direct side policy,
+long/short/both side mode, `all`/`high_vol` regime, and 1/3/5 daily caps. All
+thresholds remain the WPR106-173 pre-May thresholds; no May or June data is used
+for parameter choice, threshold choice, row inclusion, ranking, filtering, or
+selection. The exact source descriptors reproduce WPR106-174 with May at four
+active rows, all four negative, and June at 14 active rows, 13 positive, one
+negative, median +0.021485. The broader control audit rejects the family as
+candidate-ready evidence because June is not specific to the anti-signal
+hypothesis: same-threshold direct-signal controls have zero strict pre-May rows
+but are stronger in June than inverse controls, with 216/252 positive direct
+rows, median +0.029270, and mean +0.033169, while May remains broadly negative
+with only 32/504 positive controls and 280/504 negative controls. Deduplication
+also reduces apparent independence: 504 controls collapse to 287 unique pre-May
+signal-side hashes, with 143 duplicate signal-side groups and a largest
+duplicate group of four controls. WPR106-175 keeps the ETHUSDT
+volatility-breakout anti-signal family research-only as a diagnostic requiring a
+longer fresh post-May window or a causal pre-May regime classifier before any
+further candidate discussion; no candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-176 local follow-up update: WPR106-176 tests a broader causal
+side-policy switch family after WPR106-175 showed June 1-11 2026 favored both
+direct and inverse same-threshold volatility-breakout controls. The
+artifact-only runner imports WPR106-173 feature, score, exit-label, overlap,
+daily-cap, cost, and metric helpers, then evaluates direct, inverse,
+high-volatility skip/switch, flow confirm/contra switch, trend aligned/contra
+switch, and range-compression skip rules over BTCUSDT/ETHUSDT completed 15m
+bars plus 1m aggTrade flow context. All score thresholds, policy rules, row
+inclusion, ranking, and selection use only 2024-01-01 through 2026-04-30; May
+2026 and WPR106-168 June 1-11 2026 are replayed only after fixed pre-May row
+selection. The grid evaluates 14,880 pre-May rows and finds 5,945 positive
+rows, 1,273 annual-target rows, 299 loose rows, and 10 strict rows. Selected
+rows are 10 strict and 90 loose, with all strict rows being ETHUSDT
+`vol_breakout_follow` variants using `barrier_h32_tp2_sl1`; strict policy rules
+are `inverse_high_vol_skip`, `inverse_all`, `inverse_high_vol_direct_else`, and
+`inverse_flow_confirm_direct_contra_skip`. May 2026 rejects the fixed selected
+set with 19 positive rows, 58 negative rows, 23 flat/no-trade rows, median
+-0.002036, and active mean -0.010022; the strict subset has zero May-positive
+rows, six May-negative rows, and four flat rows. June 1-11 2026 is broadly
+positive again with 81 selected rows positive, 19 negative, median +0.026792,
+and active mean +0.025377. WPR106-176 rejects the causal side-policy switch
+search as candidate-ready, portfolio-ready, or promotion-ready, preserving only
+loose direct/flow/trend switch rows as research-only diagnostics; no candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-177 local follow-up update: WPR106-177 deliberately moves away
+from the repeated ETHUSDT volatility-breakout cluster by excluding
+`vol_breakout_follow` and testing non-breakout flow, trend, range, wick,
+compression, and cross-symbol score variants. It imports WPR106-173 context,
+feature, exit, cost, overlap, daily-cap, and metric helpers plus WPR106-176
+replay helpers, but supplies new completed-bar score arrays for
+`flow_absorption_fade`, `flow_burst_nonbreakout_follow`,
+`range_zscore_flow_revert`, `trend_pullback_flow_resume`,
+`wick_absorption_reversal`, `compression_release_follow`, and
+`cross_relative_reversion`. All score definitions, thresholds, policy rules,
+row inclusion, ranking, and selection use only 2024-01-01 through 2026-04-30;
+May 2026 and WPR106-168 June 1-11 2026 are replay-only fixed benchmarks. The
+grid evaluates 60,480 pre-May rows, finds 10,930 positive rows, 287
+annual-target rows, 235 loose rows, and zero strict rows. The selected set
+contains 100 loose rows and no strict rows; best selected pre-May row is
+ETHUSDT `flow_absorption_fade` with `inverse_high_vol_skip`, `fixed_64`, daily
+cap 1, 221 trades, +1.496901 pre-May return, seven losing months, and full
+cost-stress survival. May rejects the selected set with 14 positive rows, 33
+negative rows, 53 flat/no-trade rows, median 0.000000, and active mean
+-0.016519; June 1-11 also rejects it on active rows with 32 positive rows, 48
+negative rows, 20 flat/no-trade rows, median 0.000000, and active mean
+-0.006525. WPR106-177 rejects the non-breakout search as candidate-ready,
+portfolio-ready, or promotion-ready, preserving only BTCUSDT
+`wick_absorption_reversal` under high-volatility inverse policy and ETHUSDT
+`flow_burst_nonbreakout_follow` short with trend switch as loose research-only
+diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-178 local follow-up update: WPR106-178 tests whether a
+pre-May-only monthly stability selector over the WPR106-176 and WPR106-177 full
+search universes can improve May transfer. It scores 75,360 rows using only
+2024-01-01 through 2026-04-30 metrics and monthly returns, with annual loss
+counts, active-month coverage, active 1-5 trades/day behavior, cost-stress
+survival, best-month share, return after dropping the best three months, and
+rolling 3/6-month minima. The selector finds 2,016 stability-candidate rows and
+selects 100 fixed rows: 49 from WPR106-176 and 51 from WPR106-177, with 5
+strict rows and 95 stability rows. Selected pre-May replay is cleaner than
+prior loose sets with 97 positive rows, 3 negative rows, median +0.967411, and
+active mean +0.958284, but behavior remains duplicate-heavy with 68 unique
+pre-May path hashes across 100 selected rows. May 2026 rejects the fixed
+selection with 24 positive rows, 45 negative rows, 31 flat/no-trade rows,
+median 0.000000, and active mean -0.015527. June 1-11 is improved but not
+sufficient: 69 positive rows, 31 negative rows, median +0.019182, and active
+mean +0.009868. Only five selected rows satisfy the target annual loss caps of
+at most two losing months in 2024, at most two in 2025, and at most one in 2026
+Jan-Apr; all five are from the already-rejected WPR106-176 ETHUSDT
+`vol_breakout_follow` cluster and have May mean -0.019544. WPR106-178 rejects
+the stability selector as candidate-ready, portfolio-ready, or promotion-ready,
+preserving BTCUSDT WPR106-176 `vol_breakout_follow` with
+`direct_flow_confirm_inverse_contra_skip` and ETHUSDT WPR106-177
+`cross_relative_reversion` only as research diagnostics; no candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-179 local follow-up update: WPR106-179 tests causal
+accepted-trade throttle overlays over the WPR106-178 selected accepted trade
+ledgers, without creating new entry signals or allowing skipped accepted trades
+to open later raw signals. Overlay selection uses only 2024-01-01 through
+2026-04-30 accepted trade history; May 2026 and WPR106-168 June 1-11 2026 are
+fixed benchmark-only replays after selection. The runner evaluates 28,800
+overlay descriptors across pre-May score tightening, best-side filtering,
+cooldowns after losing accepted trades, daily loss/count stops, and monthly
+loss stops. It finds 25,178 positive pre-May overlays, 1,863 annual-target
+overlays, 4,798 loose overlays, and 231 strict overlays, then selects 100 fixed
+overlays with 16 strict, one annual, and 83 overlay-tier rows. Selected
+pre-May replay is very clean at 100 positive rows, zero negative rows, median
++1.106529, and active mean +1.121298, but May rejects the fixed set with 7
+positive rows, 46 negative rows, 47 flat/no-trade rows, median 0.000000, and
+active mean -0.025601. June improves to 72 positive rows, 24 negative rows, 4
+flat/no-trade rows, median +0.024723, and active mean +0.015573, but this does
+not rescue the failed benchmark-only May transfer. WPR106-179 rejects the
+accepted-trade throttle overlay as candidate-ready, portfolio-ready, or
+promotion-ready, preserving only BTCUSDT WPR106-176 `vol_breakout_follow` with
+the best May overlay and ETHUSDT June-positive groups as research-only
+diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-180 local follow-up update: WPR106-180 revisits the discarded
+WPR106-131 realized-volatility term-structure family with a May-blind repair
+around quiet-trend pullback, volatility-expansion follow, compression-breakout
+follow, volatility-shock fade, and term-structure reversal variants. It reuses
+WPR106-131/WPR106-126 completed-bar alignment and accounting, adds daily caps,
+fixed and adaptive score-decay exits, flip/loss guards, and volatility-loss
+guards, and selects rows only from 2024-01-01 through 2026-04-30. The runner
+evaluates 129,600 BTCUSDT/ETHUSDT rows, finds 18,762 positive pre-May rows,
+1,270 annual-target rows, 391 loose rows, and zero strict rows. Annual-target
+rows are mostly too sparse; the only annual-target loose rows are ETHUSDT
+`quiet_trend_pullback` variants with 62 to 64 trades. The fixed selected set
+contains 100 pre-May-positive rows with median +0.601534 and active mean
++0.599311, but May 2026 rejects the repair with 12 positive rows, 88 negative
+rows, median -0.009113, active mean -0.014822, best +0.077562, and worst
+-0.108927; every `dropout_repair` selected row loses in May. WPR106-180 rejects
+the volatility-term adaptive-exit repair as candidate-ready, portfolio-ready,
+or promotion-ready, preserving ETHUSDT `vol_expansion_follow` fixed-hold
+May-positive rows and ETHUSDT `quiet_trend_pullback` annual-target diagnostics
+only as research clues; no candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-181 local follow-up update: WPR106-181 revisits the discarded
+WPR106-129 opening-range and WPR106-130 prior-day level/gap families with a
+May-blind confluence repair. It combines opening-range signals with prior-day
+high/low/close/VWAP, overnight gap, session, flow, and volatility context,
+uses daily caps of 1/3/5, and selects rows only from 2024-01-01 through
+2026-04-30. The runner evaluates 51,840 BTCUSDT/ETHUSDT rows, finds 6,223
+positive pre-May rows, 21 annual-target rows, 196 loose rows, and zero strict
+rows. The annual-target rows are all ETHUSDT EU `or_gap_continuation` variants
+with 41 trades, so they are too sparse for the requested active profile. The
+fixed selected set contains 100 pre-May-positive rows with median +0.486439
+and active mean +0.407773, but May 2026 rejects the confluence repair with 13
+positive rows, 87 negative rows, median -0.009593, active mean -0.009877, best
++0.010523, and worst -0.046390; the `dropout_repair` tier is 0 positive and
+19 negative in May. WPR106-181 rejects the opening-range/prior-day confluence
+repair as candidate-ready, portfolio-ready, or promotion-ready, preserving
+ETHUSDT EU `or_gap_continuation` only as a research clue; no candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-182 local follow-up update: WPR106-182 revisits the
+Lorentzian/KNN family with a materially different multi-horizon analog
+consensus label geometry. It reuses WPR106-126 completed-bar context,
+alignment, cost, overlap, daily-cap, and metrics helpers, builds pre-May-only
+normalized feature packs, requires causal neighbor labels whose exits complete
+before each query row, freezes May query neighbor pools to labels completed
+before 2026-05-01, and selects rows only from 2024-01-01 through 2026-04-30.
+The runner evaluates 13,824 BTCUSDT/ETHUSDT rows across feature packs,
+8/32 and 16/32 horizon pairs, Lorentzian and Euclidean distance, lookbacks,
+neighbor counts, sessions, consensus filters, side modes, target signal rates
+of 1/3/5 per day, and daily caps of 1/3/5. It finds 1,557 positive pre-May
+rows, zero annual-target rows, five loose rows, and zero strict rows. The
+fixed selected set contains only five loose ETHUSDT `regime_gap_session`
+rows, with selected pre-May median +0.366823 and active mean +0.253427. May
+2026 rejects the fixed set with zero positive rows, three negative rows, two
+flat/inactive rows, median -0.018024, active mean -0.018024, best 0.000000,
+and worst -0.018024; Euclidean long rows lose in May and Lorentzian long rows
+are inactive. WPR106-182 rejects the multi-horizon KNN consensus variant as
+candidate-ready, portfolio-ready, or promotion-ready, preserving only the
+ETHUSDT `regime_gap_session` Euclidean-long pocket as a research clue; no
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts passed; contracts reported 460 passed.
+Current WPR106-183 local follow-up update: WPR106-183 tests a transparent
+multi-timeframe VWAP/residual state family after the WPR106-182 KNN rejection.
+It reuses WPR106-126 context, costs, overlap, daily-cap, and metrics helpers,
+then builds packet-local completed-bar VWAP distance, EMA trend, rolling
+volatility state, wick/flow behavior, and BTC/ETH residual features with May
+excluded from all threshold, filter, side, hold, daily-cap, ranking, and
+selection choices. To keep the search broad without wasting replay compute,
+the runner screens 165,720 daily-cap-3 rows, finding 28,568 positive pre-May
+rows, 45 annual-target rows, 447 loose rows, and zero strict rows, then expands
+a 1,228-row source pool across daily caps 1/3/5 for 3,684 full pre-May replay
+rows. The full replay has 3,653 positive rows, 129 annual-target rows,
+1,240 loose rows, and zero strict rows. The fixed selected set contains
+100 pre-May-positive rows, 90 `dropout_repair` and 10 `loose`, with median
++1.011917 and active mean +0.837380 pre-May, but May 2026 rejects it with
+24 positive rows, 76 negative rows, median -0.031082, active mean -0.027420,
+best +0.019486, and worst -0.094876. Selected behavior is duplicate-heavy:
+100 selected rows collapse to 63 unique pre-May trade-path hashes and 31 May
+trade-path hashes. WPR106-183 rejects the multi-timeframe VWAP/residual state
+family as candidate-ready, portfolio-ready, or promotion-ready, preserving
+only BTCUSDT `squeeze_release_follow` direct-long EU residual-extreme
+compressed flow-contra 64-bar rows and small BTC residual/session-VWAP
+May-positive pockets as research clues; no candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-184 local follow-up update: WPR106-184 tests whether the
+WPR106-183 multi-timeframe VWAP/residual state family can survive a strictly
+May-blind behavior-deduped selector. It loads the WPR106-183 full replay
+ranking, replays 3,409 eligible source rows with pre-May accepted-trade
+ledgers, hashes exact pre-May accepted-trade paths, and deduplicates to 1,823
+behavior representatives. All replay eligibility, path hashing, representative
+choice, ranking, diversity caps, annual losing-month diagnostics, rolling-floor
+diagnostics, active-rate controls, and row selection use only 2024-01-01
+through 2026-04-30; May 2026 remains benchmark-only after the fixed selected
+set is written. The deduplicated pool has 1,823 positive pre-May
+representatives, four annual-target rows, 677 loose rows, and zero strict rows.
+The fixed selected set contains 100 rows, with 77 `dedup_dropout_repair` and
+23 `dedup_loose` rows, and fixes 100 unique pre-May trade-path hashes. Selected
+pre-May replay is clean at 100 positive rows, zero negative rows, median
++0.884393, and active mean +0.784029. May 2026 rejects the fixed selected set
+with 21 positive rows, 79 negative rows, median -0.026900, active mean
+-0.029790, best +0.028018, worst -0.094876, and aggregate selected May total
+-2.979006 across 639 trades. WPR106-184 rejects the behavior-deduped WPR106-183
+selector as candidate-ready, portfolio-ready, or promotion-ready, preserving
+only BTCUSDT session-VWAP/residual/squeeze pockets as research-only diagnostic
+clues. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts passed; contracts reported 460
+passed.
+Current WPR106-185 local follow-up update: WPR106-185 tests a different broad
+family after the WPR106-184 behavior-deduped selector rejection: causal
+prior-month calendar/session/flow profiles over BTCUSDT and ETHUSDT 15m bars
+with completed-bar volatility, trend, cross-symbol residual, and aggTrade-flow
+state. Profiles for each evaluation month are learned only from earlier
+months; May 2026 profiles are frozen from evidence through 2026-04-30. The
+first broad 4,320-row attempt was stopped before artifacts because profile
+recomputation was too slow, then the runner was narrowed to a staged 864-row
+screen and patched to cache forward returns plus period masks per hold. The
+screen finds 174 positive pre-May rows, 12 annual-target sparse rows, 16 loose
+rows, and zero strict rows. A 152-row source pool expands across daily caps
+1/3/5 for 456 full replay rows, with 445 positive rows, zero annual-target
+rows, 49 loose rows, and zero strict rows. The fixed selected set contains 72
+rows, with 33 `loose` and 39 `positive_stability` rows, and selected pre-May
+replay is clean at 72 positive rows, zero negative rows, median +0.451598, and
+active mean +0.507759. May 2026 rejects the fixed set with 21 positive rows, 51
+negative rows, median -0.009405, active mean -0.015629, best +0.012527, worst
+-0.105538, and aggregate selected May total -1.125269 across 427 trades.
+WPR106-185 rejects the causal calendar-flow profile family as candidate-ready,
+portfolio-ready, or promotion-ready, preserving only a small BTCUSDT day/hour
+short profile pocket as a research-only diagnostic clue. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-186 local follow-up update: WPR106-186 tests causal
+market-state transition edges after WPR106-185 rejected calendar-flow profiles.
+It reuses WPR106-183/WPR106-126 source loading, completed-bar features, overlap
+handling, daily caps, costs, and metrics, plus WPR106-185 prior-month-only
+rolling profile helpers. State profiles combine completed-bar volatility,
+trend, VWAP displacement, BTC/ETH residual, wick, session, and aggTrade-flow
+states; each evaluation month learns only from earlier months, and May 2026 is
+frozen to evidence through 2026-04-30. The runner evaluates 1,296 screen rows,
+finding 37 positive pre-May rows, 15 annual-target sparse/weak rows, zero loose
+rows, and zero strict rows. A 34-row source pool expands across daily caps
+1/3/5 for 102 full replay rows, with 89 positive rows, zero annual-target rows,
+zero loose rows, and zero strict rows. The fixed selected set contains 34
+`positive_stability` fallback rows and selected pre-May replay is 34 positive,
+zero negative, median +0.221411, and active mean +0.234561. May 2026 is mixed:
+18 positive rows, 16 negative rows, median +0.008596, but active mean
+-0.019641, worst -0.155169, and aggregate selected May total -0.667796 across
+439 trades. WPR106-186 rejects the state-transition family as candidate-ready,
+portfolio-ready, or promotion-ready because no loose/strict pre-May row exists
+and selected rows have 10 to 14 losing pre-May months. It preserves BTCUSDT
+`transition_vol_flow_trend` short rows as a research-only diagnostic clue; the
+best row had +0.255860 pre-May over 189 trades and +0.055395 May over 12
+trades, but also 12 pre-May losing months and negative drop-best-three-month
+return. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts passed; contracts reported 460
+passed.
+Current WPR106-187 local follow-up update: WPR106-187 tests whether recent
+rejected families from WPR106-180 through WPR106-186 can combine into stable
+overlap-aware portfolios using only pre-May source behavior. It loads 511
+selected source metric rows and selected trade artifacts, computes exact
+pre-May accepted-trade path hashes, deduplicates to 281 source representatives,
+and generates deterministic equal-source portfolios from pre-May quality,
+loss-complement, and packet-diversity scoring. An initial broader portfolio
+generation pass was stopped before portfolio artifacts because complement
+scoring was too slow; the completed run uses the top 60 behavior-deduplicated
+sources, 25 seeds, 2/3-member portfolios, and daily caps 1/3/5. It evaluates
+144 portfolio rows, finding 144 positive pre-May rows, zero annual-target rows,
+134 loose rows, and zero strict rows. The fixed selected set contains 31 rows,
+with 29 `loose` and two `positive_stability` rows, and selected pre-May replay
+is 31 positive, zero negative, median +0.572010, and active mean +0.601865.
+May 2026 rejects every selected portfolio: zero positive rows, 31 negative
+rows, median -0.033519, active mean -0.032355, best -0.015019, worst
+-0.056857, and aggregate selected May total -1.002990 across 346 trades.
+WPR106-187 rejects recent-family behavior portfolios as candidate-ready,
+portfolio-ready, or promotion-ready; pre-May selection concentrated in WPR106-183
+ETHUSDT rolling-VWAP extension sources, with the most-used source appearing in
+all 31 selected portfolios. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+passed; contracts reported 460 passed.
+Current WPR106-188 local follow-up update: WPR106-188 controls the WPR106-187
+source-concentration failure by excluding or capping WPR106-183/WPR106-184
+VWAP/residual sources before any May benchmark is run. It reuses the WPR106-187
+trade accounting, embedded source costs, same-symbol overlap handling, daily
+caps, monthly diagnostics, and cost-stress logic, then generates
+`exclude_vwap`, `cap_one_vwap`, and `packet_balanced` portfolios from
+pre-May-only diagnostics. It loads 511 source metric rows, deduplicates to 281
+source representatives, identifies 106 dominant WPR106-183/WPR106-184
+representatives and 175 non-dominant representatives, and evaluates 4,665
+portfolio rows. All 4,665 rows are positive pre-May, with 74 annual-target rows,
+2,939 loose rows, and 74 strict rows. The fixed selected set contains 100 rows:
+16 strict and 84 loose, with 45 `exclude_vwap`, 32 `cap_one_vwap`, and 23
+`packet_balanced` rows. Selected pre-May replay is 100 positive, zero negative,
+median +0.692091, and active mean +0.714204, but May 2026 rejects the fixed set
+with three positive rows, 97 negative rows, median -0.027960, active mean
+-0.030845, best +0.001586, and worst -0.082318. `exclude_vwap` and
+`cap_one_vwap` have zero May-positive selected rows; `packet_balanced` has only
+three tiny May-positive loose rows. WPR106-188 rejects diversity-capped
+recent-family portfolios as candidate-ready, portfolio-ready, or
+promotion-ready. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts passed; contracts reported
+460 passed.
+Current WPR106-189 local follow-up update: WPR106-189 tests whether stricter
+pre-May rolling-quarter and month-stability selection can rescue the WPR106-188
+portfolio universe without using May for thresholds, scoring, row inclusion, or
+tie-breaking. It loads the 4,665 WPR106-188 portfolio rows and computes
+pre-May-only rolling three-month floors, rolling six-month floors,
+calendar-quarter returns, a 2026-April stub, negative-period counts,
+worst-period return, best-period concentration, drop-best-month returns, and
+latest-four-month behavior. It finds 162 quarter-strict rows, with negative
+period counts ranging from zero to five, then selects a fixed 100-row set: 38
+`quarter_strict`, 47 `quarter_loose`, and 15 `rolling_floor`, split across 38
+`exclude_vwap`, 37 `packet_balanced`, and 25 `cap_one_vwap` rows. Selected
+pre-May replay is 100 positive, zero negative, median +0.641989, and active
+mean +0.664281, but May 2026 rejects the fixed set with six positive rows, 94
+negative rows, median -0.026537, active mean -0.027378, best +0.001586, and
+worst -0.067318. The quarter-strict subset has all six May-positive rows but
+still has 32 negative rows and median -0.016819. WPR106-189 rejects the
+pre-May rolling-quarter selector as candidate-ready, portfolio-ready, or
+promotion-ready and records that selectors over the WPR106-180 through
+WPR106-186 recent-family portfolio universe are not producing meaningful May
+transfer. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts passed; contracts reported 460
+passed.
+Current WPR106-190 local follow-up update: WPR106-190 pivots back to the
+Lorentzian/KNN family with a different model formulation: KNN-generated
+directional confidence entries rather than KNN as a veto over transparent event
+signals. It imports WPR106-170 helpers for the WPR106-96 BTCUSDT/ETHUSDT 15m
+and aggTrade context, feature matrices, Lorentzian/Euclidean distance,
+completed-label causal neighbor pools, path labels, trade accounting, monthly
+metrics, and cost-stress diagnostics. An initial broader 373,248-row grid was
+stopped before aggregate artifacts after exceeding a 20-minute command timeout
+during pre-May evaluation; KNN caches had completed, and the completed bounded
+run kept the stronger confidence slice with `min_confidence_margin=0.0006`,
+`min_good_spread=0.08`, and `recent_gate=none`. The bounded run evaluates
+23,328 rows, finding 6,014 positive pre-May rows, 5,276 annual-target rows, 11
+loose rows, and zero strict rows. The fixed selected set contains 100 rows: 8
+loose and 92 `positive_stability`, with 93 ETHUSDT rows, 7 BTCUSDT rows, and
+prior modes split across 51 `knn_only`, 31 `direct_prior`, and 18
+`inverse_prior`. Selected pre-May replay is 100 positive, zero negative, median
++0.347297, and active mean +0.352858. May 2026 benchmark replay has 25
+positive rows, 2 negative rows, and 73 flat/no-trade rows, with active mean
++0.005054, best +0.011793, and worst -0.015137. WPR106-190 rejects the bounded
+directional-KNN confidence entry search as candidate-ready, portfolio-ready, or
+promotion-ready because there are zero strict pre-May rows, selected rows are
+mostly fallback stability rows, many ETHUSDT short rows have 11 to 15 pre-May
+losing months, and the best May row is a one-trade result. It preserves ETHUSDT
+short directional-KNN behavior, especially KNN-only and inverse
+volatility-breakout-prior variants, as a research-only diagnostic for a
+follow-up May-blind stability repair or source-level control. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts passed; contracts reported 460 passed.
+Current WPR106-191 local follow-up update: WPR106-191 tests whether
+May-blind accepted-trade overlays can repair WPR106-190 without creating new
+entries. It loads the fixed WPR106-190 selected pre-May and May trade ledgers,
+then applies pre-May calibrated KNN confidence quantiles, good-spread
+quantiles, session filters, extra accepted-trade daily caps, and causal
+prior-month health gates. All overlay thresholds, gates, row ranking, recent
+activity floors, and selection use only 2024-01-01 through 2026-04-30; May
+2026 is benchmark-only after fixed selection. The final run evaluates 19,200
+overlay rows, finding 9,110 positive pre-May rows, 4,320 annual-target rows,
+156 loose rows, and zero strict rows. The selected set contains 100 ETHUSDT
+rows, with 70 loose and 30 `positive_stability` rows. Selected pre-May replay
+is 100 positive rows, zero negative rows, median +0.343498, active mean
++0.365477, best +0.770810, and worst +0.124099. May rejects the repair by
+complete inactivity: 0 active rows, 0 positive rows, 0 negative rows, and 100
+flat/no-trade rows. WPR106-191 rejects accepted-trade overlays over the
+WPR106-190 selected set as candidate-ready, portfolio-ready, or
+promotion-ready because the repair removes the useful WPR106-190 May activity
+instead of stabilizing it. No new entries, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation are recorded in the stage report.
+Current WPR106-192 local follow-up update: WPR106-192 tests a fresh non-KNN
+causal state/motif lookup source family over WPR106-96 BTCUSDT/ETHUSDT 15m and
+aggTrade-flow context. It encodes completed-bar motif keys for recent
+bar-path, trend/pullback, cross-symbol residual, wick/flow absorption, session,
+and flow states, then uses cumulative prior-history lookup tables for long and
+short mean net return and path-good rate. All motif definitions, buckets,
+holds, lookbacks, side modes, session filters, thresholds, daily caps, row
+ranking, and selection use only 2024-01-01 through 2026-04-30; May 2026 is
+benchmark-only after fixed selection, with lookup history frozen to pre-May
+labels only. A broader 64,800-row pass timed out after 15 minutes at 55,000
+pre-May rows before aggregate artifacts; the bounded final run evaluates 5,184
+rows in 118.17 seconds, finding 242 positive pre-May rows, 43 annual-target
+rows, zero loose rows, and zero strict rows. The fixed selected set contains
+74 fallback `positive_recent_stability` rows, 62 ETHUSDT and 12 BTCUSDT.
+Selected pre-May replay is 74 positive rows, zero negative rows, median
++0.205355, active mean +0.223349, best +0.489121, and worst +0.028659. May
+benchmark stays active, unlike WPR106-191, with all 74 rows trading, 45
+positive rows, 29 negative rows, median +0.008759, active mean +0.015506, best
++0.090413, and worst -0.030529. WPR106-192 rejects the bounded motif lookup
+family as candidate-ready, portfolio-ready, or promotion-ready because there
+are zero strict/loose pre-May rows, annual-target rows are sparse and stale,
+the strongest May-positive ETHUSDT trend-pullback rows have excessive pre-May
+losing months and large drawdowns, and all selected BTCUSDT rows are
+May-negative. It preserves ETHUSDT US-session `trend_pullback_clock` active
+May transfer as a research-only diagnostic. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+validation are recorded in the stage report.
+Current WPR106-193 local follow-up update: WPR106-193 tests whether
+conservative path-managed exits can repair WPR106-192's active May motif clue
+without changing the fixed May-blind source entries. It rebuilds the WPR106-192
+motif lookup state, keeps the 74 selected motif source rows fixed, and
+evaluates the fixed-hold baseline plus primary-bar stop/target exits with
+stop-first same-bar sequencing, half/full maximum holds, and same-symbol
+overlap blocking based on the actual exit index. All exit-policy choices,
+ranking, and selection use only 2024-01-01 through 2026-04-30; May 2026 is
+benchmark-only after fixed selection. The run evaluates 2,442 exit rows,
+finding 524 positive pre-May rows, zero annual-target rows, five loose rows,
+and zero strict rows. The five loose rows are BTCUSDT `flow_absorption`
+stop/target variants with lower drawdown, but they fail latest-four-month
+activity and annual-target standards. The fixed selected set contains 97
+fallback `positive_recent_stability` rows, 88 ETHUSDT and 9 BTCUSDT, with 62
+fixed-hold and 35 stop/target rows. Selected pre-May replay is 97 positive
+rows, zero negative rows, median +0.201987, active mean +0.209225, best
++0.489121, and worst +0.028659. May benchmark is weaker than WPR106-192:
+all 97 rows are active, but 46 are positive and 51 negative, with median
+-0.002639, active mean +0.004805, best +0.090413, and worst -0.074075. The
+best May row remains the original ETHUSDT `trend_pullback_clock` fixed-hold
+baseline, while selected stop/target rows have May median -0.004568 and 7
+positive / 28 negative rows. WPR106-193 rejects motif path-managed exits as
+candidate-ready, portfolio-ready, or promotion-ready because simple stop/target
+exits reduce some drawdowns but do not repair monthly stability or May
+transfer. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts validation are recorded in the stage
+report.
+Current WPR106-194 local follow-up update: WPR106-194 tests a fresh
+order-flow style source family using WPR106-96 1m aggTrade-flow profiles inside
+completed 15m bars. It builds early/mid/late flow imbalance, late-flow
+acceleration, late quote-volume concentration, total quote/trade-count burst,
+and signed late-pressure features, then combines them with completed-bar
+return, wick, trend, volatility, and cross-symbol residual context. All feature
+choice, threshold calibration, hold/session/side/daily-cap choice, ranking,
+and selection use only 2024-01-01 through 2026-04-30; May 2026 is
+benchmark-only after fixed selection. The run evaluates 4,320 rows in 78.14
+seconds, finding 280 positive pre-May rows, zero annual-target rows, zero
+loose rows, and zero strict rows. The fixed selected set contains 100 fallback
+`positive_recent_stability` rows, 89 ETHUSDT and 11 BTCUSDT, with selected
+pre-May replay at 100 positive rows, zero negative rows, median +0.184677,
+active mean +0.233582, best +0.821519, and worst +0.050271. May rejects the
+selected set: all 100 rows are active, but only 22 are positive and 78
+negative, with median -0.010404, active mean -0.008656, best +0.078131, and
+worst -0.049117. The best May row is ETHUSDT EU-session
+`late_flow_exhaustion_fade`, 32-bar hold, both-sided daily-cap-1, but it has
+14 pre-May losing months, seven losing months in 2024, five in 2025, two in
+2026 Jan-Apr, negative median trade return, max drawdown -0.465964, and only
+50% cost-stress survival. WPR106-194 rejects the intrabar flow burst profile
+family as candidate-ready, portfolio-ready, or promotion-ready and preserves
+the ETHUSDT EU `late_flow_exhaustion_fade` pocket only as a research
+diagnostic. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts validation are recorded in
+the stage report.
+Current WPR106-195 local follow-up update: WPR106-195 tests BTC/ETH
+equal-notional relative-value pair entries using causal rolling residuals,
+cross-symbol flow divergence, volatility state, and session filters. Positive
+pair side means long target and short hedge; negative side means short target
+and long hedge; gross return is 50% target leg plus 50% hedge leg, with WPR106
+pair-notional round-trip costs. All residual windows, templates, thresholds,
+hold/session/side/daily-cap choices, ranking, and selection use only
+2024-01-01 through 2026-04-30; May 2026 is benchmark-only after fixed
+selection. The run evaluates 8,640 rows in 83.39 seconds, finding 564 positive
+pre-May rows, 52 annual-target rows, zero loose rows, and zero strict rows.
+The annual-target rows are sparse and stale, with median trade counts of 10 to
+15 and none passing latest-four-month floors of at least three active months
+and 20 trades. The fixed selected set contains 15 fallback
+`positive_recent_stability` rows, 8 BTCUSDT-target and 7 ETHUSDT-target, with
+selected pre-May replay at 15 positive rows, zero negative rows, median
++0.104935, active mean +0.122760, best +0.192660, and worst +0.058794. May
+rejects every selected row: 0 positive, 15 negative, median -0.012385, active
+mean -0.016748, best -0.002851, and worst -0.030679. WPR106-195 rejects the
+cross-asset residual spread family as candidate-ready, portfolio-ready, or
+promotion-ready. It preserves the diagnostic that pair spreads reduce drawdown
+and can produce sparse annual-target pockets, but active rows did not transfer
+to May and annual-target rows were not sufficiently active. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts validation are recorded in the stage report.
+Current WPR106-196 local follow-up update: WPR106-196 tests causal
+completed-bar anchored range/day-structure entries over WPR106-96 BTCUSDT and
+ETHUSDT context, using shifted prior-day levels, completed opening ranges,
+intraday VWAP residual, shifted multi-day range location, current day high/low
+so far, completed-bar flow, wick, volume, and volatility state. All feature
+thresholds, state filters, hold/session/side/daily-cap choices, row ranking,
+and selection use only 2024-01-01 through 2026-04-30, with May 2026
+benchmark-only after fixed pre-May selection. An initial unclosed broader run
+exposed duplicate prior-day/VWAP trade paths from irrelevant anchor knobs, so
+the final authoritative runner uses template-relevant anchor variants only and
+evaluates 51,840 rows in 431.94 seconds. It finds 8,900 positive pre-May rows,
+1,458 annual-target rows, 85 loose rows, and zero strict rows. The fixed
+selected set contains 100 ETHUSDT rows, 92 `positive_recent_stability` and
+eight `loose_recent`, with 72 `opening_range_breakout_follow` and 28
+`prior_day_breakout_follow` rows. Selected pre-May replay is 100 positive
+rows, zero negative rows, median +0.856864, active mean +0.876398, best
++1.196304, and worst +0.597246. May benchmark rejects the fixed set: 100
+active rows, 36 positive, 64 negative, median -0.007769, active mean
+-0.009575, best +0.062069, and worst -0.052891. The best May row
+`day196-b707d26e4b8fa963` is an ETHUSDT opening-range-breakout short with
++1.006399 pre-May over 176 trades, 28 active months, max drawdown -0.150763,
+100% cost-stress survival, and +0.062069 in May over seven trades, but it has
+10 pre-May losing months, including five in 2024 and four in 2025. WPR106-196
+rejects anchored range/day-structure entries as candidate-ready,
+portfolio-ready, or promotion-ready, while preserving the ETHUSDT
+opening-range short-follow pocket as a research-only clue for narrower
+stability/control follow-up. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-197 local follow-up update: WPR106-197 follows up the
+WPR106-196 ETHUSDT opening-range short diagnostic with May-blind causal state
+filters, stronger pre-May score thresholds, and prior-month health gates. All
+opening-window, hold, threshold, threshold-multiplier, state-filter,
+health-gate, session, daily-cap, ranking, and selection choices use only
+2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed
+pre-May selection. Health gates are causal: a month can only be enabled from
+prior-month or prior-rolling-month raw strategy behavior, and May gate state
+is computed only from pre-May history. The run evaluates 138,240 rows in
+1,167.54 seconds, finding 73,904 positive pre-May rows, 28,568 annual-target
+rows, 1,966 loose rows, and zero strict rows. The fixed selected set contains
+100 `annual_target_control` rows, with 79 `prev_month_positive` and 21
+`rolling_3_loss_count_le1` health gates. Selected pre-May replay is 100
+positive rows, zero negative rows, median +0.847369, active mean +0.845733,
+best +1.105636, and worst +0.726895. May benchmark improves materially over
+WPR106-196: 62 active rows, 55 positive rows, seven negative rows, 38 flat
+rows, median +0.004472, active mean +0.023551, best +0.055974, and worst
+-0.006421. The best May row `or197-bc838835e95dc29d` is an ETHUSDT
+opening-range short with controlled-downside-extension filter and
+`prev_month_positive` health gate; it records +0.787461 pre-May over
+73 trades, 16 active months, 12 inactive months, three losing active months,
+max drawdown -0.073845, Sortino +1.157944, 100% cost-stress survival, and
++0.055974 in May over six trades. Long-only controls are weak, with pre-May
+median -0.027666 and May mean -0.000273, while both-sided controls overlap
+the selected short behavior. WPR106-197 remains rejected as candidate-ready,
+portfolio-ready, or promotion-ready because there are zero strict rows,
+selected rows rely on health gates that create many inactive months, the best
+May row has only 16 active pre-May months, and many annual-target rows are
+sparse. It preserves the controlled-downside ETHUSDT opening-range short plus
+causal health-gate repair as the strongest current research-only lead. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts validation passed.
+Current WPR106-198 local follow-up update: WPR106-198 behavior-deduplicates
+and controls the WPR106-197 ETHUSDT opening-range short repair without using
+May 2026 for tuning. Source-pool filters, pre-May replay, exact accepted-trade
+behavior hashes, selected-row inclusion, controls, ranking, and thresholds use
+only 2024-01-01 through 2026-04-30; May 2026 remains benchmark-only after the
+fixed selected set exists. The packet replays 1,818 WPR106-197 source-pool
+rows, behavior-dedupes them to 1,011 representatives, and selects 100 rows.
+Selected pre-May replay has 100 positive rows, zero negative rows, median
++0.736564, active mean +0.720171, 19 annual-target rows, 96 loose rows, and
+zero strict rows. May benchmark weakens the confirmation: 84 active rows, 48
+positive rows, 36 negative rows, 16 flat rows, median 0.000000, active mean
++0.008183, best +0.056746, and worst -0.048005. Four selected rows tie for the
+best May result; the summary representative `or198-76e752a4e51c7f11` records
++0.822889 pre-May over 57 trades, 20 active months, eight inactive months,
+four losing months, max drawdown -0.051303, Sortino +1.497782, 100%
+cost-stress survival, and +0.056746 in May over three trades. Controls weaken
+the causal health-gate explanation: the no-health ablation has 100 May-active
+rows, 58 positive rows, zero flat rows, and May median +0.004472, while the
+inverse-health diagnostic is not dead. Long-only controls remain weak, so
+short-side asymmetry is preserved only as a diagnostic. WPR106-198 rejects the
+health-gated behavior-confirmation set as candidate-ready, portfolio-ready, or
+promotion-ready because there are zero strict rows, median selected losing
+months remains five, inactive months still drive the repair, and May transfer
+is mixed. It preserves controlled-downside ETHUSDT opening-range short
+behavior as research-only diagnostic evidence. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-199 local follow-up update: WPR106-199 moves beyond the
+rejected opening-range health-gate repair by pooling recent selected evidence
+from WPR106-190 through WPR106-198 into a post-190 cross-family behavior
+portfolio search. Source loading, exact accepted-trade behavior hashes,
+top-per-packet source seeds, source packet/source ID caps, portfolio
+construction, ranking, and selected-row inclusion use only 2024-01-01 through
+2026-04-30; May 2026 remains benchmark-only after fixed selection. The source
+library contains 786 selected source metric rows and 422 behavior-deduped
+representatives across directional KNN, KNN repair, motif lookup, motif exits,
+intrabar flow, pair spread, anchored/day-structure, and opening-range short
+families. The portfolio funnel evaluates 903 pre-May portfolio rows, all
+positive, with 53 annual-target/strict rows and 575 loose rows. The fixed
+selected set contains 38 rows: 10 strict, 20 loose, and eight
+positive-stability rows. Selected pre-May replay is 38 positive rows, zero
+negative rows, median +0.623546, active mean +0.619484, best +0.826019, and
+worst +0.390723. May 2026 rejects the broad selected set with 13 positive
+rows, 25 negative rows, zero flat rows, median -0.006735, active mean
+-0.006911, best +0.014893, and worst -0.034259. The strict tier remains a
+diagnostic pocket: 10 rows, seven May-positive, three May-negative, May median
++0.006134, and median pre-May losing months 4.5, generally combining
+WPR106-196/WPR106-197 behavior with one WPR106-190 or WPR106-191 KNN source.
+WPR106-199 rejects the broad post-190 cross-family portfolio set as
+candidate-ready, portfolio-ready, or promotion-ready because the full selected
+set fails May and source concentration/ablation/baseline/stability/gate
+evidence is incomplete. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-200 local follow-up update: WPR106-200 audits the WPR106-199
+strict-tier diagnostic with deterministic source ablations and controls before
+treating it as a lead. The 10 WPR106-199 strict parent portfolios are fixed
+from pre-May evidence; base, source-only, leave-one-source-out, opening-only,
+no-KNN, KNN-only, no-non-opening, non-opening-only, no-WPR106-196,
+no-WPR106-197, pair-only, and no-pair variants are constructed without May
+2026. The packet evaluates 150 variants. Base strict rows reproduce with
+pre-May median +0.653902, 10/10 positive rows, median losing months 4.5, and
+May median +0.006134 with 7/10 May-positive rows. KNN/non-opening sources do
+not explain the strict pocket: no-KNN-like controls improve median pre-May
+return by +0.123850 and median May return by +0.004206 versus base, while
+KNN-only controls have pre-May median +0.588163, median losing months 11, and
+May median 0.000000. Pair-only controls have May median -0.030679. The best
+May variant is WPR106-197 source-only `WPR106-197:or197-aaf5acc56f96eddc`,
+with +0.907051 pre-May over 68 trades, 19 active months, three losing months,
+100% cost-stress survival, and +0.053605 May over four trades; it remains
+diagnostic-only because it is inactive for nine pre-May months and lacks
+independent source-level ablation, transparent baselines, stability-region
+evidence, and candidate-pack gates. WPR106-200 rejects the WPR106-199 strict
+tier as a cross-family KNN complementarity lead and preserves WPR106-196 plus
+WPR106-197 opening-only and WPR106-197 source-only behavior as research-only
+diagnostics. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts validation passed.
+Current WPR106-201 local follow-up update: WPR106-201 audits the WPR106-197
+ETHUSDT opening-range source pocket isolated by WPR106-200 to test whether it
+can be repaired into a more active and month-stable research lead without
+using May 2026 for tuning. The packet evaluates a bounded 21,600-row
+May-blind active-coverage grid around the source pocket, preserving the two
+WPR106-197 source anchors `or197-aaf5acc56f96eddc` and
+`or197-f37732bbc7bd4db6` as reference-only rows. The grid finds 17,472
+positive pre-May rows, 3,535 annual-target rows, 3,496 rows with at least 24
+active pre-May months, 1,030 loose rows, and zero strict rows; no positive row
+combines at least 24 active months with the annual loss-month target. The
+fixed selected set has 100 positive pre-May rows, median pre-May return
++0.714290, median active months 22, median inactive months 6, median losing
+months 6, zero strict rows, and one annual-target row. May benchmark is mixed:
+75 active rows, 43 positive, 32 negative, 25 flat, median May return 0.000000,
+active mean +0.000878, best +0.023197, and worst -0.026205. The sparse
+WPR106-197 reference anchors remain profitable but inactive, with median
++0.958549 pre-May, median 19 active months, median nine inactive months,
+median 3.5 losing months, and median May +0.050189. WPR106-201 rejects the
+opening-range source active-coverage repair as candidate-ready, portfolio-ready,
+or promotion-ready because active repairs trade away the desired monthly
+stability and do not produce convincing May transfer. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts validation passed.
+Current WPR106-202 local follow-up update: WPR106-202 tests accepted-trade
+risk/throttle overlays over the fixed WPR106-192 causal motif selected source
+rows, following WPR106-193's negative exit-repair result. It uses only
+2024-01-01 through 2026-04-30 for overlay construction, ranking, and selection,
+then benchmarks May 2026 after the fixed selected set exists. The packet
+evaluates 17,766 overlay rows across side filters, motif-quality filters,
+effective daily caps, and causal prior-month health gates. It finds 10,089
+positive pre-May rows, 4,812 annual-target rows, 32 loose rows, and zero strict
+rows; no positive row reaches at least 20 active months with five or fewer
+losing months, and no positive annual-target row reaches at least 20 active
+months. The fixed selected set contains 100 ETHUSDT `trend_pullback_clock`
+`positive_recent_throttle` rows, all positive pre-May, with median return
++0.766617, median active months 28, median losing months 10, median inactive
+months 0, zero strict rows, and zero annual-target rows. May benchmark improves
+versus WPR106-192 with 100 active rows, 98 positive, two negative, median May
++0.027644, active mean +0.018009, best +0.039212, and worst -0.008458. The
+best stability/May row `motif202-00860ffdbf2eb058` records +0.720677 pre-May
+over 103 trades, 23 active months, seven losing months, max drawdown
+-0.067553, 100% cost-stress survival, and +0.039212 in May over five trades,
+but remains diagnostic-only because it misses the requested annual loss-month
+stability profile. WPR106-202 rejects motif risk throttles as candidate-ready,
+portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-203 local follow-up update: WPR106-203 combines fixed
+WPR106-201 opening-range short diagnostics and fixed WPR106-202 motif
+risk-throttle diagnostics in a May-blind cross-diagnostic component portfolio.
+It uses only 2024-01-01 through 2026-04-30 for component-pool construction,
+behavior deduplication, portfolio weighting, same-symbol overlap blocking,
+daily caps, causal prior-month health gates, ranking, and selected-row
+inclusion; May 2026 remains benchmark-only after the fixed selected set exists.
+After an initial broader cross-product run timed out before final ranking
+artifacts, the bounded completed run evaluates 3,600 rows from 10 opening
+components and 10 motif components, finding 3,600 positive pre-May rows, 1,309
+annual-target rows, 922 loose rows, and 116 strict rows. The fixed selected set
+contains 100 strict component-portfolio rows, median pre-May return +0.812433,
+active mean +0.807436, median active months 25, median inactive months 3,
+median losing months 4, and 100 annual-target rows. May benchmark is positive
+across the selected set with 100 active rows, 100 positive rows, zero negative
+rows, median May return +0.018368, active mean +0.017915, best +0.025316, and
+worst +0.013304. Best stability row `port203-9d00a85ae9eed7fc` combines
+opening component `or201-d092f14fcee5eeaf` with motif component
+`motif202-00860ffdbf2eb058` at 0.60/0.40 weight, daily cap 1, time priority,
+and rolling 6-month loss-count <= 2; it records +0.763664 pre-May over 187
+trades, 25 active months, two losing months, max drawdown -0.043528, 100%
+cost-stress survival, annual loss-month counts of 0/1/1 for 2024/2025/2026
+Jan-Apr, and +0.013304 in May over eight trades. WPR106-203 is preserved as
+the strongest current research-only component-portfolio diagnostic, but it is
+not candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready
+because source-level ablations, leave-one-component-out controls,
+weight-neighborhood tests, negative controls, transparent baselines, broader
+stability-region evidence, and candidate-pack gate materialization remain
+missing. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts validation passed.
+Current WPR106-204 local follow-up update: WPR106-204 audits the WPR106-203
+component-portfolio lead with fixed May-blind source-only, parameter-neighbor,
+component-swap, and bounded return-permutation controls. It fixes WPR106-203
+selected parents and component pools, constructs all controls from 2024-01-01
+through 2026-04-30 evidence only, and uses May 2026 only as benchmark after
+the fixed control universe exists. The packet evaluates 2,922 controls, all
+positive pre-May, with median pre-May return +0.790345, median active months
+25, median losing months 5, 1,803 annual-target rows, and 1,328 strict-like
+rows. WPR106-203 base replay reproduces 100/100 strict-like rows. Source-only
+controls produce zero strict-like rows across 200 positive rows; motif-component
+swaps produce zero strict-like rows across 900 positive rows. All 1,328
+strict-like controls use canonical motif component `motif202-00860ffdbf2eb058`,
+and zero strict-like controls use an alternate motif component. Opening-component
+swaps, priority neighbors, weight neighbors, daily-cap neighbors, and no-health
+ablations show a broad strict-like region only while that canonical motif is
+present. The bounded top-10 parent return-permutation control produces 18
+strict-like rows, all motif-return permutations using the same canonical motif,
+so exact motif timing remains unproven. May benchmark across fixed controls has
+2,771 positive rows, 115 negative rows, 36 flat rows, median May return
++0.018368, and active mean +0.017089. WPR106-204 keeps WPR106-203 alive as a
+research-only diagnostic component portfolio, but does not make it
+candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready because
+strict-like behavior remains fully concentrated in one post-selected motif
+component and broader negative controls/candidate gates remain missing. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts validation passed.
+Current WPR106-205 local follow-up update: WPR106-205 falsifies the canonical
+motif dependency left by WPR106-204 with artifact-level controls over all 100
+WPR106-203 selected parents. It fixes the selected parents and WPR106-201 /
+WPR106-202 component trades, constructs controls from 2024-01-01 through
+2026-04-30 evidence only, and uses May 2026 only as benchmark after the fixed
+control universe exists. The packet evaluates 2,200 controls, with 2,182
+positive pre-May rows, 18 negative rows, median pre-May return +0.802069,
+median active months 25, median losing months 4, 1,324 annual-target rows, and
+1,210 strict-like rows. Base replay reproduces 100/100 strict-like rows, but
+non-base artifact controls also produce 1,110 strict-like rows: 310/500
+motif-return shuffles, 152/300 motif-return rotations, 440/600 motif timestamp
+shifts, and 200/200 motif global/month mean return baselines are strict-like.
+Controls that remove or invert motif return contribution weaken the pocket:
+motif zero-return has 8/100 strict-like rows, motif sign-flip has 0/100
+strict-like rows with 18 negative rows, and opening-return shuffles have
+0/300 strict-like rows. May benchmark across all fixed controls has 1,964
+positive rows, 78 negative rows, 158 flat rows, median May return +0.018368,
+and active mean +0.015858. WPR106-205 rejects a timing-specific or
+exact-return-sequence claim for the canonical motif portfolio pocket at the
+artifact level: the canonical motif return contribution matters, but constant,
+shuffled, shifted, and rotated controls preserve strict-like stability too
+often. WPR106-203/WPR106-204 are demoted to research-only diagnostic evidence,
+not candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready
+leads. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, CUDA speedup claim, or promotion claim exists. Focused
+script compile, compileall, and contracts validation passed.
+Current WPR106-206 local follow-up update: WPR106-206 restarts the broad
+2024-forward artifact search after WPR106-205 by scanning existing selected
+trade artifacts across prior WPR106 families while excluding WPR106-203 through
+WPR106-205 and canonical motif row `motif202-00860ffdbf2eb058`. It loads 68
+source artifact directories and 4,133 source rows, behavior-dedupes to 2,604
+noncanonical pre-May rows, and uses only 2024-01-01 through 2026-04-30 for
+ranking and selected-row inclusion; May 2026 remains benchmark-only. All 2,604
+deduped rows are positive pre-May, with 157 annual-target rows and 45
+strict-like rows. The fixed selected set contains 150 rows: 45 strict
+noncanonical sources, 8 annual-target sources, and 97 positive active sources;
+median selected pre-May return is +1.204596 with median active months 28 and
+median losing months 5. May rejects the selected set with 22 positive rows,
+107 negative rows, 21 flat rows, median May return -0.018163, and active mean
+-0.034232. Strongest pre-May rows come from WPR106-139 calendar/session
+artifacts but fail May; only four strict-like selected rows are May-positive,
+all from the old WPR106-199 post-190 composite pocket that already requires
+source-level controls. The best May row is a WPR106-133 cross-symbol relative
+strength row with May +0.065272, but it has seven pre-May losing months and
+fails the annual target. WPR106-206 rejects the broad noncanonical artifact
+scout set as candidate-ready, portfolio-ready, paper/live-ready, or
+promotion-ready; useful follow-up is fresh calendar/session source
+reconstruction or cross-symbol lead-lag / anchored-VWAP transfer repair with
+May still held out. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-207 local follow-up update: WPR106-207 tests whether the
+WPR106-133 cross-symbol lead-lag and WPR106-128 anchored-VWAP families with
+May-transfer hints can be repaired by pre-May-only row scoring, behavior
+deduplication, and overlap-aware small portfolios. It loads 52 anchored-VWAP
+selected rows with 12,263 pre-May accepted trades and 59 lead-lag selected
+rows with 17,305 pre-May accepted trades, recomputes metrics from trade-level
+gross return and round-trip cost, behavior-dedupes 111 source rows to 92 rows,
+and uses only 2024-01-01 through 2026-04-30 for component/portfolio selection;
+May 2026 remains benchmark-only after frozen selections exist. No individual
+component meets strict or annual-target repair. The runner generates 35,420
+small portfolios from the top 22 deduped components, with 535 strict pre-May
+portfolios, 670 annual-target portfolios, and 17,669 loose portfolios. The
+fixed selected set contains 60 strict annual-target portfolios with median
+pre-May return +1.064106, median losing months 3.5, best selected pre-May
+return +1.116917, worst selected max drawdown -0.064251, and active member
+rates inside the requested range. May rejects the repair: selected components
+are mixed with 15 positive and 20 negative rows, median component May
+-0.005001, best component May +0.065272 from the already-known WPR106-133
+`leadlag-18708dffa1413dce` row that had seven pre-May losing months, while
+selected portfolios are 0 positive, 60 negative, 0 flat, with median May
+-0.022084, best May -0.020186, and worst May -0.023982. WPR106-207 rejects
+lead-lag / anchored-VWAP transfer repair as candidate-ready, portfolio-ready,
+paper/live-ready, or promotion-ready; useful negative evidence is that
+pre-May-only composition can hide source-row instability in these two families
+but does not transfer to May. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-208 local follow-up update: WPR106-208 falsifies the WPR106-139
+strict calendar/session pocket with source-level train-window sensitivity
+controls. It fixes the 17 WPR106-139 strict selected candidate rows and
+changes only the pre-May calendar profile training window: full pre-May, 2024
+only, 2025 only, 2024-through-2025, and recent 2025-H2 through 2026-April.
+Candidate templates, thresholds, holds, session filters, volatility filters,
+and flow filters remain fixed from WPR106-139; profile-control selection uses
+only 2024-01-01 through 2026-04-30 pseudo-OOS evidence, with May 2026 loaded
+only after the fixed selected controls exist. The runner rebuilds BTCUSDT and
+ETHUSDT archive contexts, evaluates 25 cached feature sets, and writes 510
+non-May control-window rows. Among 51 primary pseudo-OOS rows, 36 are
+positive, 4 pass strict pseudo-OOS controls, and 22 pass loose pseudo-OOS
+controls. The fixed selected control set has 22 controls, median pseudo-OOS
+return +0.173659, and median pseudo-OOS losing months 1. May rejects the set:
+1 positive, 19 negative, 2 flat, median May -0.064568, best May +0.010172,
+and worst May -0.134535; all four strict pseudo-OOS controls lose in May.
+WPR106-208 rejects the WPR106-139 strict calendar/session pocket as
+candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready;
+useful evidence is that alternate pre-May train windows can produce
+pseudo-OOS positives, but those controls still do not transfer to May. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts validation passed.
+Current WPR106-209 local follow-up update: WPR106-209 tests a new cross-flow
+exhaustion transfer repair after WPR106-208, using WPR106-153/WPR106-154
+artifact helpers but keeping all new score, gate, ranking, and behavior
+de-duplication logic local to the WPR106-209 artifact tree. It combines
+BTCUSDT/ETHUSDT completed-bar 1m aggTrade intrabar features into leader/target
+flow synchronization, target late-flow exhaustion, flow/price divergence,
+relative flow gaps, absorption, and session/state gates. All thresholds, row
+ranking, preselection, and accepted-trade behavior de-duplication use only
+2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed
+selected rows exist. The runner evaluates 93,312 pre-May rows across both
+leader-target directions, 96/384-bar normalization windows, 8/16/32-bar
+holds, all/EU/US sessions, six templates, six state gates, 1/2/3/5 target
+signals per day, 1/3/5 daily caps, and prior-month loss throttles. It finds
+3,197 positive pre-May rows, 324 loose rows, zero annual-target rows, and zero
+strict rows, then preselects 118 rows and behavior-dedupes them to 25 fixed
+selected rows. Selected pre-May replay is 25 positive rows with median return
++0.319612, best +0.672164, and worst +0.127749. May rejects the set as a
+candidate lead: 9 positive rows, 12 negative rows, 4 flat rows, median May
+0.000000, best +0.062942, and worst -0.088245. The best pre-May/May row is
+BTCUSDT-led ETHUSDT `relative_gap_absorption_reversion`, but it has only 21
+active pre-May months and 2024/2025/2026 Jan-April losing-month counts of
+4/3/0, so it fails the annual stability target. WPR106-209 rejects cross-flow
+exhaustion transfer repair as candidate-ready, portfolio-ready,
+paper/live-ready, or promotion-ready; useful diagnostic evidence remains in
+BTCUSDT-led ETHUSDT relative-flow absorption reversion and leader-late
+transfer, but both still require a genuinely new pre-May-only stability
+mechanism. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts validation passed.
+Current WPR106-210 local follow-up update: WPR106-210 revisits the discarded
+WPR106-190 directional KNN confidence-entry universe with stricter pre-May
+stability reselection rather than new shared KNN code. It loads the full
+WPR106-190 pre-May ranking/monthly evidence, adds latest Jan-April 2026
+coverage, drop-best-month robustness, rolling three/six-month floors,
+consecutive losing-month clusters, and active-month median-return diagnostics,
+then preselects rows from 2024-01-01 through 2026-04-30 only before replaying
+accepted trades and behavior-deduplicating by exact pre-May trade path. The
+source universe has 23,328 rows, 6,014 positive pre-May rows, 2,396 positive
+annual-target rows, 11 loose rows, and zero strict rows, but zero positive
+annual-target rows combine at least 20 active months and 60 trades, proving
+the apparent annual-target pool is sparse. WPR106-210 preselects 240 rows and
+behavior-dedupes them to 100 fixed selected rows: 96 annual-sparse controls
+and four loose-recent-stability rows, 58 ETHUSDT and 42 BTCUSDT. Selected
+pre-May replay has 100 positive rows, median return +0.082670, active mean
++0.087520, best +0.347297, and worst +0.011914. May rejects the fixed set:
+only one row is active, with 0 positive rows, 1 negative row, 99 flat rows,
+median May 0.000000, active mean May -0.000946, and worst May -0.000946. The
+loose ETHUSDT short directional-KNN rows are May-inactive, while the single
+active annual-sparse BTCUSDT row loses. WPR106-210 rejects directional KNN
+stability reselection as candidate-ready, portfolio-ready, paper/live-ready,
+or promotion-ready; useful evidence is that WPR106-190's annual-target count
+was sparse and active KNN rows still lack May participation under stricter
+pre-May controls. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts validation passed.
+Current WPR106-211 local follow-up update: WPR106-211 revisits the rejected
+WPR106-173/WPR106-175 ETHUSDT volatility-breakout anti-signal family with an
+artifact-only causal regime and trade-health gate overlay. It starts from the
+504 fixed WPR106-175 source-control descriptors, reuses WPR106-173 score,
+exit, overlap, daily-cap, ATR barrier, and cost accounting, and evaluates
+28,224 gated variants across seven completed-bar state gates and eight causal
+prior-history health gates. All ranking, scoring, gate construction,
+preselection, and behavior de-duplication use only 2024-01-01 through
+2026-04-30; May 2026 remains benchmark-only after fixed selected rows exist.
+The pre-May grid has 13,850 positive rows, 6,660 annual-target rows, 4,980
+loose rows, and 1,047 strict rows. WPR106-211 preselects 320 rows and
+behavior-dedupes them to 97 strict-stable selected rows, all inverse-signal
+variants. Selected pre-May replay has 97/97 positive rows, median return
++1.277867, active mean +1.323948, best +1.800202, and worst +0.941856. May
+rejects the fixed set with 0 positive rows, 66 negative rows, 31 flat rows,
+median May -0.012779, active mean May -0.033615, 3,220 total May trades across
+active selected rows, and worst May -0.106343. WPR106-211 rejects the
+anti-signal regime gate repair as candidate-ready, portfolio-ready,
+paper/live-ready, or promotion-ready; useful evidence is falsification that
+causal completed-bar state gates and prior-history health throttles strengthen
+pre-May appearance but do not repair May transfer. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts validation passed.
+Current WPR106-212 local follow-up update: WPR106-212 rebuilds the WPR106-192
+causal motif lookup family from first-principles market-derived features
+rather than defending the WPR106-202/WPR106-203 artifact-level canonical motif
+component. It reuses WPR106-170 contexts, completed-bar components,
+future-path labels, WPR106-192 rolling lookup statistics, costs, overlap
+blocking, daily caps, and metrics, while changing only packet-local motif
+keys, bucket thresholds, motif bases, and selection diagnostics. All motif
+construction, scoring, thresholding, row inclusion, and behavior
+de-duplication use only 2024-01-01 through 2026-04-30; May 2026 remains
+benchmark-only after fixed selected rows exist. It evaluates 62,208 pre-May
+rows across BTCUSDT/ETHUSDT, eight motif bases, three bucket profiles, three
+holds, three lookbacks, motif-quality thresholds, sessions, side modes, and
+daily caps. The pre-May universe has 7,231 positive rows, 3,923 annual-target
+rows, 48 loose rows, and zero strict rows; no positive annual-target row has
+at least 20 active months and 60 trades. After preselecting 260 rows and
+behavior-deduping exact accepted trade paths, the selected set has 100 rows:
+26 loose-recent rows and 74 positive-active controls. Selected pre-May replay
+has 100/100 positive rows, median +0.652000, active mean +0.606318, median 28
+active months, median 454.5 trades, and median 1.0 trades/day, but median 11
+losing months, median annual loss counts of 5/4/1 for 2024/2025/2026 Jan-Apr,
+and median max drawdown -0.310155. May is mixed-positive, with 55 positive,
+34 negative, and 11 flat selected rows, median May +0.009616, active mean May
++0.020021, best May +0.109590, and worst May -0.162522. WPR106-212 rejects
+expanded causal motif lookup as candidate-ready, portfolio-ready,
+paper/live-ready, or promotion-ready; useful evidence is that ETHUSDT
+trend-clock motif variants can transfer to May, but they still fail the
+pre-May month-to-month stability target. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, CUDA speedup claim,
+or promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-213 local follow-up update: WPR106-213 tests a source-level
+regime-conditioned Lorentzian/KNN variant rather than defending rejected sparse
+side-veto rows or post-filtering WPR106-190 selected rows. It imports WPR106-170
+helpers for WPR106-96 contexts, completed-bar components, future-path labels,
+KNN prediction, costs, overlap blocking, daily caps, monthly metrics, and May
+label freezing, while changing only packet-local feature packs, regime buckets,
+confidence scoring, priors, and selection diagnostics. All feature choice,
+regime bucket choice, KNN parameters, thresholds, row scoring, preselection,
+and behavior de-duplication use only 2024-01-01 through 2026-04-30; May 2026
+remains benchmark-only after fixed selected rows exist. The search evaluates
+233,280 pre-May rows across BTCUSDT/ETHUSDT, three feature packs, two holds,
+two lookbacks, Lorentzian/Euclidean distance, k values, sessions, regime
+buckets, target signal rates, side modes, prior modes, and daily caps. It finds
+50,353 positive pre-May rows, 25,087 positive annual-target rows, 38 loose
+rows, and zero strict rows; no positive annual-target row also has at least 20
+active months and 60 trades. After preselecting 257 rows and
+behavior-deduplicating exact accepted trade paths, the fixed selected set has
+100 rows: 11 loose-recent rows, five annual-active controls, and 84
+active-positive controls. Selected pre-May replay has 100/100 positive rows,
+median +0.208518, active mean +0.242349, best +0.758411, worst +0.095671,
+median 95 trades, median 28 active months, median 11 losing months, median
+annual loss counts 5/5/1 for 2024/2025/2026 Jan-April, and median max drawdown
+-0.123522. May is mixed-negative after fixed pre-May selection, with 58 active
+rows, 25 positive rows, 33 negative rows, 42 flat rows, median May 0.000000,
+active mean May -0.001058, best May +0.028810, and worst May -0.021312.
+WPR106-213 rejects regime-conditioned Lorentzian/KNN as candidate-ready,
+portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that
+ETHUSDT KNN remains more plausible than BTCUSDT in this formulation, Euclidean
+controls were less negative in selected May rows than Lorentzian rows, and
+active May-positive KNN behavior still lacks the requested pre-May
+month-to-month stability. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-214 local follow-up update: WPR106-214 tests whether the
+WPR106-203 opening/motif component-portfolio clue survives after excluding the
+falsified WPR106-202 canonical motif component and replacing it with
+WPR106-212 first-principles expanded motif rows. It loads fixed WPR106-201
+opening selected trades and WPR106-212 expanded motif selected trades; all
+component-pool construction, behavior dedupe, weights, priority modes, health
+gates, daily caps, scoring, and selection use pre-May evidence only; May 2026
+is benchmark-only after fixed selected rows exist. The search evaluates 35,280
+rows from 14 opening and 14 motif components, finding 33,957 positive rows, 941
+annual-target rows, 3,740 loose rows, zero strict rows, and no positive
+annual-target row with at least 24 active months and 100 trades. The fixed
+selected set has 120 rows: 71 loose replacement portfolios and 49 positive
+controls. Selected pre-May replay has 120/120 positive rows, median +0.595252,
+active mean +0.587335, best +0.728425, worst +0.425413, median 539.5 trades,
+median 22 active months, median six inactive months, median four losing months,
+58 annual-target rows, and zero strict rows. May is mixed-positive after fixed
+pre-May selection, with 120 active rows, 94 positive rows, 26 negative rows,
+median May +0.026679, active mean May +0.016878, best May +0.041949, and worst
+May -0.032651. WPR106-214 rejects the transparent motif replacement portfolio
+as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready;
+useful evidence is that replacement motif components preserve May-positive
+complementarity, but active coverage still fails the strict profile, with the
+strongest clue in `motif212-3dcf42d12d3b150f` plus WPR106-201 opening rows at
+0.60/0.40 weights and `prev_month_positive` health gating. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts validation passed.
+Current WPR106-215 local follow-up update: WPR106-215 tests a bounded
+cross-family active-coverage portfolio scout across selected trade artifacts
+from WPR106-187, WPR106-188, WPR106-199, WPR106-201, WPR106-209, WPR106-212,
+WPR106-213, and WPR106-214. It normalizes trade-level rows, builds a 66-row
+component pool and 130 pair/triple/quad bundles, and evaluates 6,240 pre-May
+portfolio configs with equal/component-score weights, daily caps 1/2/3/5,
+time/component-score priorities, causal prior-month health gates, and
+per-symbol no-overlap handling. All component ranking, bundle construction,
+config choice, scoring, and selected-row inclusion use 2024-01-01 through
+2026-04-30 only; May 2026 is loaded only after 160 fixed selected rows exist.
+The pre-May grid finds 6,228 positive rows, 2,103 annual-target rows, 5,397
+loose rows, 938 strict rows, and 938 positive annual-target rows with at least
+24 active months and 150 trades. The selected set has 160 strict rows, 160/160
+positive pre-May, median +0.587955, active mean +0.616418, median 517 trades,
+median 28 active months, median zero inactive months, and median three losing
+months. May rejects the fixed set with 25 positive rows, 135 negative rows,
+median May -0.014480, active mean May -0.010988, best May +0.025054, and worst
+May -0.023263. WPR106-215 rejects the cross-family active-coverage portfolio
+scout as candidate-ready, portfolio-ready, paper/live-ready, or
+promotion-ready; useful evidence is that WPR106-188 plus WPR106-201 dominates
+pre-May strict selection but fails May, while the May-positive WPR106-201 plus
+WPR106-214 bucket is non-independent because WPR106-214 already contains
+WPR106-201 opening components. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-216 local follow-up update: WPR106-216 audits WPR106-215 for
+hidden component-lineage reuse before interpreting its May-positive sub-bucket.
+It annotates all 6,240 WPR106-215 pre-May rows with exact lineage overlap,
+source-packet lineage collision, and embedded WPR106-201/WPR106-212 lineage
+inside WPR106-214 components, then reselects fixed rows from pre-May evidence
+only. The audit finds 6,096 exact-lineage-clean rows, 4,320
+source-packet-lineage-clean rows, 878 strict exact-lineage-clean rows, 524
+strict source-packet-lineage-clean rows, and 336 WPR106-214 plus WPR106-201
+lineage-collision rows. The fixed selected set has 160
+strict_source_packet_lineage_clean rows, 160/160 positive pre-May, median
++0.567698, active mean +0.596533, median 454 trades, median 24 active months,
+median four inactive months, and median three losing months. May rejects the
+fixed set with 5 positive rows, 155 negative rows, median May -0.014582,
+active mean May -0.015450, best May +0.015794, and worst May -0.023263.
+WPR106-216 rejects lineage-controlled cross-family reselection as
+candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful
+evidence is that the WPR106-215 WPR106-201 plus WPR106-214 May-positive bucket
+is confirmed lineage-collided, while WPR106-188 plus WPR106-201 remains strong
+strict pre-May but fails May. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-217 local follow-up update: WPR106-217 tests whether WPR106-215
+and WPR106-216 failed May because pre-May selection still under-weighted
+temporal pseudo-holdout behavior. It reselects only from WPR106-216's
+lineage-annotated WPR106-215 pre-May ranking, adds 2024/2025/2026 Jan-April
+return and loss-month diagnostics, 2025-H2 and latest-four-month return,
+rolling three/six/nine-month floors, drop-best robustness, consecutive
+loss-month counts, recent active coverage, and completed-quarter diagnostics,
+then writes fixed selected rows before loading May 2026. The pre-May universe
+has 6,240 temporal-ranked rows and 3,400 base lineage-clean positive rows; the
+fixed set has 160 unique trade paths across seven component-packet buckets,
+with six ultra temporal rows, 80 strict recent temporal rows, and 74 positive
+temporal controls. Selected pre-May replay has 160/160 positive rows, median
++0.609648, active mean +0.614881, median 507 trades, median 28 active months,
+and median four losing months; selected temporal medians are 2024/2025/2026
+Jan-April loss-month counts 2/1/0, 2025-H2 return +0.081999, rolling-six-month
+floor +0.056545, and drop-best-three-month return +0.395055. May rejects the
+fixed set with 13 positive rows, 145 negative rows, two flat rows, median May
+-0.014772, active mean May -0.014885, best May +0.018860, and worst May
+-0.030136. WPR106-217 rejects lineage-clean temporal pseudo-holdout reselection
+as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready;
+useful evidence is that WPR106-188 plus WPR106-214 remains the only
+May-positive source bucket but is mixed with median May -0.000548, while every
+other selected source bucket has zero May-positive rows. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts validation passed.
+Current WPR106-218 local follow-up update: WPR106-218 moves one layer earlier
+than WPR106-215 through WPR106-217 by applying causal source-component gates
+before portfolio composition. It loads all 66 WPR106-215 source components
+from WPR106-187, WPR106-188, WPR106-199, WPR106-201, WPR106-209, WPR106-212,
+WPR106-213, and WPR106-214; generates 5,020 pre-May source-gated variants
+across all/long/short side filters, all/Asia/Europe/US/weekday/weekend entry
+filters, and none/previous-month/rolling-three/two-loss-month causal gates;
+selects 48 source variants; builds 100 pair/triple bundles; and evaluates
+4,800 pre-May portfolio rows with equal/component-score weights, daily caps
+1/2/3/5, time/component-score priority, and portfolio health gates. An initial
+10,560-row portfolio grid hit the local command timeout, so final compute kept
+the same filter/parameter spaces and reduced only bundle count. All ranking,
+component scoring, bundle construction, and selected-row inclusion use
+2024-01-01 through 2026-04-30, with May loaded only after fixed selected rows
+are written. The pre-May grid has 4,800 positive rows, 3,015 annual-target
+rows, and 2,380 strict rows. The fixed set has 160 rows, 152
+strict_source_gated rows, median pre-May +0.504960, active mean +0.529398,
+median 447 trades, median 28 active months, median three losing months, median
+1.002950 trades per active day, and median 2024/2025/2026 Jan-April
+loss-month counts 1/2/0. May rejects the fixed set with 33 positive rows, 127
+negative rows, median May -0.001138, active mean May -0.004798, best May
++0.003611, and worst May -0.029666. WPR106-218 rejects source-component causal
+gate sweep as candidate-ready, portfolio-ready, paper/live-ready, or
+promotion-ready; useful evidence is that source-before-portfolio gating is
+directionally better than another artifact-level reselection but still has no
+selected bucket with positive median May, with the least-bad WPR106-188 plus
+WPR106-199 bucket at 21 positive and 25 negative May rows and median May
+-0.000202. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, CUDA speedup claim, or promotion claim exists.
+Focused script compile, compileall, and contracts validation passed.
+Current WPR106-219 local follow-up update: WPR106-219 revisits the discarded
+anti-signal idea broadly across the WPR106-215 source component pool. It
+evaluates costed inverse variants and same-direction controls over 66 source
+components, all/long/short side filters, all/Asia/Europe/US/weekday/weekend
+entry filters, and none/previous-month/rolling-three/two-loss-month source
+gates; inverse accounting flips gross return and side while retaining
+round-trip cost. All transform choice, filtering, scoring, thresholding, and
+selected-row inclusion use 2024-01-01 through 2026-04-30, with May loaded only
+after fixed selected rows are written. The run evaluates 14,256
+source/filter/gate combinations, materializes 8,754 pre-May variant rows,
+including 3,734 inverse rows, finds 4,584 positive pre-May rows but only 90
+positive inverse rows, 1,846 annual-target rows, and 18 strict rows. The fixed
+selected set has only 14 rows, all same_direction_control and zero inverse
+rows, with median pre-May +0.693067, active mean +0.740465, median 301 trades,
+median 27 active months, median four losing months, and median 1.0 trade per
+active day. May is mixed-flat with six positive rows, six negative rows, two
+flat rows, median May 0.0, active mean May +0.000475, best May +0.012206, and
+worst May -0.009359. WPR106-219 rejects broad source inversion control as
+candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful
+evidence is that broad costed anti-signal inversion is falsified for the
+WPR106-215 source pool because no inverse row is strict or selected, while the
+small WPR106-199 same-direction control clue is diagnostic only. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts validation passed.
+Current WPR106-220 local follow-up update: WPR106-220 expands the only useful
+WPR106-219 clue by testing full WPR106-199 same-direction source controls
+against WPR106-188 as a negative-control source packet. It loads 38 WPR106-199
+primary candidates and 100 WPR106-188 control candidates directly from their
+source artifacts, not just the reduced WPR106-215 component pool; evaluates
+all/long/short side filters, all/Asia/Europe/US/weekday/weekend/Asia-Europe/
+Europe-US time filters, and causal none/previous-month/rolling-three/
+rolling-six/same-calendar-month source gates. All source choice, filtering,
+gating, scoring, thresholding, behavior de-duplication, and selected-row
+inclusion use 2024-01-01 through 2026-04-30, with May loaded only after fixed
+selected rows and selected pre-May replay artifacts are written. The run
+evaluates 26,496 source/filter/gate combinations, materializes 24,632 pre-May
+variant rows, finds 21,833 positive pre-May rows, 3,157 annual-target rows, and
+152 strict rows. The fixed selected set has 120 rows, with 80 WPR106-199 rows
+and 40 WPR106-188 rows; selected pre-May has 120/120 positive rows, median
++0.637255, active mean +0.637288, median 318 trades, median 26 active months,
+median four losing months, 59 strict rows, and 83 annual-target rows. May
+rejects the broad expansion with 29 positive rows, 86 negative rows, five flat
+rows, median May -0.005859, active mean May -0.007629, best May +0.014893, and
+worst May -0.053315. WPR106-188 fails as expected with zero May-positive rows
+and median May -0.010860; WPR106-199 is also negative overall at 29 positive,
+46 negative, five flat, and median May -0.001815. The only positive sub-bucket
+is 21 `wpr199_strict_stable` all-session rows across nine original components,
+with 12 May-positive, seven May-negative, two flat, and median May +0.006134;
+it remains diagnostic only because the full WPR106-199 expansion fails. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts validation passed.
+Current WPR106-221 local follow-up update: WPR106-221 revisits the WPR106-214
+transparent motif replacement family from a different angle by adding causal
+fallback sleeves in months where the primary opening-plus-motif sleeve is
+gate-disabled. It loads only WPR106-201 opening-range and WPR106-212
+expanded-motif pre-May artifacts before selection; May trades are loaded only
+after fixed selected rows and selected pre-May replay artifacts are written.
+The compact diagnostic grid uses six opening components, six motif components,
+two opening fallback components, two motif fallback components, primary
+previous-month-positive or rolling-three gates, fallback none or rolling-three
+gates, primary allocations 0.70/0.85, opening weights 0.60/0.75, daily caps 1
+or 2, and primary-first/time priorities. It evaluates 13,824 pre-May rows,
+finds 13,534 positive rows, 24 annual-target rows, 7,404 loose rows, and zero
+strict rows. The fixed selected set has 140 `loose_active_fallback_repair`
+rows, 140/140 positive pre-May, median +0.446878, active mean +0.416701,
+median 651 trades, median 27 active months, median one inactive month, median
+six losing months, zero strict rows, and zero annual-target rows. May remains
+positive with 113 positive rows, 27 negative rows, median May +0.011323,
+active mean May +0.010638, best May +0.027940, and worst May -0.027753. Six
+selected rows have all 28 pre-May months active and five total losing months,
+and all six are May-positive with median May +0.012536, but they still have
+three losing months in 2024 and miss the requested annual loss-month profile.
+WPR106-221 rejects active fallback repair as candidate-ready, portfolio-ready,
+paper/live-ready, or promotion-ready; useful evidence is that primary
+previous-month-positive replacement behavior plus opening fallback repairs
+activity and May transfer, while annual loss-month count remains the blocker.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, CUDA speedup claim, or promotion claim exists. Focused script
+compile, compileall, and contracts validation passed.
+Current WPR106-222 local follow-up update: WPR106-222 revisits the
+Lorentzian/KNN family from source-level evidence using selected WPR106-190
+directional KNN and WPR106-213 regime-conditioned Lorentzian/KNN trade paths.
+It normalizes those paths into the WPR106-215 costed source-component
+portfolio shape, applies all/long/short side filters, all/Asia/Europe/US/late
+US/non-US/weekday/weekend time filters, causal previous-month/rolling-three/
+rolling-six/two-loss source gates, single/pair/triple KNN bundles, daily caps
+1/2/3/5, equal or component-score weights, time or component-score priority,
+and portfolio health gates. All source choice, filtering, gate construction,
+bundle construction, scoring, thresholding, behavior de-duplication, and
+selected-row inclusion use only 2024-01-01 through 2026-04-30, with May loaded
+only after fixed selected rows are written. The run loads 200 KNN source
+components, searches 84, materializes 5,518 source-gated variants, selects 60
+variants, builds 266 bundles, and evaluates 17,024 pre-May portfolio rows;
+all 17,024 rows are positive, with 4,686 annual-target rows and 380 strict
+rows. The fixed selected set has 160 rows, including 63 strict repair rows,
+61 stable-active repair rows, 31 positive controls, and five annual repair
+rows; selected pre-May replay has 160/160 positive rows, median +0.464644,
+active mean +0.488391, median 267 trades, median 24 active months, median four
+inactive months, median five losing months, 68 strict rows, and 111
+annual-target rows. May is benchmark-only and has 137 active positive rows,
+zero negative rows, 23 flat rows, median May +0.001407, active mean May
++0.001413, best May +0.009924, and median May trade count one across 175
+total selected May trades. WPR106-222 is not candidate-ready,
+portfolio-ready, paper/live-ready, or promotion-ready because May transfer is
+too sparse, median selected rows still have four inactive pre-May months, and
+no selected row combines all 28 active pre-May months with five or fewer
+losing months. Useful evidence is that source-before-portfolio KNN gates and
+mixed WPR106-190/WPR106-213 pairs materially improve the pre-May annual loss
+profile and produce nonnegative fixed May benchmarks, so the next KNN work
+should generate denser source paths or change features/model code rather than
+only post-filter these old artifacts. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Focused script compile, compileall, and contracts
+validation passed.
+Current WPR106-223 local follow-up update: WPR106-223 follows WPR106-222 by
+changing the KNN source-generation layer instead of only post-filtering old
+selected artifacts. It runs a fresh ETHUSDT dense KNN source search with
+packet-local `flow_wick_density`, `trend_residual_density`,
+`cross_event_density`, and `wick_reversal_pressure` feature packs; 8/16-bar
+holds; 384/768-bar lookbacks; Lorentzian/Euclidean distances; k values 7, 17,
+and 31; all/Europe/US sessions; all/flow-pressure/reversal-pressure regimes;
+2/5/8 target KNN signals per day; daily caps 1/2/5; and causal monthly gates
+applied after base-row preselection. All thresholding, base-row selection,
+monthly-gate selection, behavior de-duplication, and fixed-row inclusion use
+only 2024-01-01 through 2026-04-30. May prediction caches are computed only
+after fixed selected rows are written. The run uses NumPy KNN prediction
+caches, not CUDA, and makes no speedup claim. It evaluates 139,968 pre-May
+base rows, finds 18,619 positive rows, 8,089 annual-target rows, 24 loose
+rows, and zero strict rows; replays 44 base rows across monthly gates, yielding
+220 gated rows, 196 positive rows, 28 annual-target rows, 42 loose rows, and
+zero strict rows. The fixed selected set has 71 rows, 70 positive controls and
+one stable-active row; selected pre-May replay has 71/71 positive rows, median
++0.200877, active mean +0.254229, median 212 trades, median 24 active months,
+median four inactive months, median eight losing months, five annual-target
+rows, and zero strict rows. May benchmark has 43 active positive rows, zero
+negative rows, 28 flat rows, median May +0.001341, active mean May +0.004476,
+best May +0.022261, median May trade count two, and 120 total selected May
+trades. WPR106-223 is rejected as candidate-ready, portfolio-ready,
+paper/live-ready, or promotion-ready because denser KNN source generation
+improves May participation but degrades pre-May loss-month stability; the five
+annual-target selected rows are May-flat and no selected row combines 24+
+active months with five or fewer losing months. Useful evidence is that
+`flow_wick_density` transfers best, while denser KNN now needs feature/label
+or exit changes that reduce losing-month frequency before monthly gates. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, CUDA speedup claim, or promotion claim exists. Focused script compile,
+compileall, and contracts validation passed.
+Current WPR106-224 local follow-up update: WPR106-224 follows WPR106-223 by
+testing packet-local path-managed exits over the fixed WPR106-223 dense KNN
+selected signal paths, without changing shared strategy, backtest, execution,
+sizing, runtime, or candidate-pack code. All exit-policy choice, scoring,
+thresholding, selection, and behavior de-duplication use only WPR106-223
+selected pre-May rows and trades from 2024-01-01 through 2026-04-30. May 2026
+WPR106-223 selected trades are loaded only after fixed WPR106-224 selected
+rows are written. The exit grid evaluates fixed-hold controls, stop-only
+policies at 0.0035/0.0060/0.0100/0.0150/0.0220 gross return, target-only
+policies at the same levels, and conservative target/stop combinations that
+treat paths reaching both barriers as stop-first. The run uses existing
+side-specific path favorable/adverse returns, not CUDA, and makes no speedup
+claim. It evaluates 36 exit policies across 71 source selected rows and 21,060
+source selected pre-May trades, yielding 2,556 pre-May policy rows, 552
+positive rows, 16 annual-target rows, 82 loose rows, and zero strict rows. The
+fixed selected set has 140 rows: 127 positive path-exit controls, 12
+stable-active path-exit repairs, and one annual path-exit repair, with 59
+target-only rows, 46 stop-only rows, 34 fixed-hold controls, and one
+target/stop row. Selected pre-May replay has 140/140 positive rows, median
++0.314421, active mean +0.350790, best/worst +0.732345/+0.047895, median 219
+trades, median 21 active months, median seven inactive months, median seven
+losing months, 16 annual-target rows, and zero strict rows. Two selected rows
+reach at least 24 active months with five or fewer losing months, but both
+miss the annual target because 2025 still has four losing months. May
+benchmark is nonnegative with 73 active positive rows, zero negative rows, 67
+flat rows, median May +0.000994, active mean May +0.006685, best/worst May
++0.022261/0.000000, median May trade count one, and 224 total selected May
+trades. WPR106-224 is rejected as candidate-ready, portfolio-ready,
+paper/live-ready, or promotion-ready because path-managed exits improve
+WPR106-223 median pre-May return and reduce median losing months from eight
+to seven, but strict rows remain absent, median active coverage drops to 21
+months, annual-target count stays small, and the best near-misses still fail
+annual loss distribution. Useful evidence is that simple target-only exits
+look more promising than target/stop combinations, `flow_wick_density` with
+two-loss-month veto remains the best dense KNN transfer family, and the
+remaining blocker is 2025 loss clustering plus active coverage before exits.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, CUDA speedup claim, or promotion claim exists. Focused script
+compile, compileall, and contracts validation passed.
+Current WPR106-225 local follow-up update: WPR106-225 follows WPR106-220
+through WPR106-224 by testing whether selected costed paths from different
+families can complement each other's loss clusters and improve month-to-month
+stability. It is an artifact-level portfolio search over closed selected
+trade paths from WPR106-220, WPR106-221, WPR106-222, and WPR106-224. All
+source preselection, portfolio construction, overlap handling, daily-cap
+choice, scoring, thresholding, and selected-row inclusion use only
+2024-01-01 through 2026-04-30. May 2026 source trades are loaded only after
+fixed WPR106-225 selected rows and selected pre-May replay artifacts are
+written. The runner preselects 56 source components, 14 per source group, and
+evaluates singles plus cross-family pairs, triples, and quads with equal,
+stability-weighted, and loss-complement-weighted allocations, same-symbol
+no-overlap handling, and portfolio daily caps of 2, 3, and 5 trades/day. It
+uses packet-local replay only, not CUDA, and makes no speedup claim. The final
+bounded grid evaluates 14,040 pre-May portfolio specs, with 13,914 positive
+rows, 10,648 loose rows, 4,236 annual-target rows, and 1,569 strict rows. The
+fixed selected set has 180 rows: 80 strict cross-family complements, 60
+annual cross-family complements, and 40 stable-active cross-family
+complements. Selected pre-May replay has 180/180 positive rows, median
++0.612399, active mean +0.631866, best/worst +0.913561/+0.518973, median 502
+trades, 81,925 total selected pre-May trades, median 27 active months, median
+four losing months, 140 annual-target rows, and 80 strict rows. However every
+selected portfolio includes WPR106-220; source-group buckets are 70
+WPR220+WPR222+WPR224 rows, 52 WPR220+WPR222 rows, 44 WPR220+WPR224 rows, and
+14 WPR220 single controls. May benchmark rejects the packet with 180 active
+rows, only two positive rows, 178 negative rows, median May -0.005795, active
+mean May -0.006737, best/worst May +0.008411/-0.018541, median May trade count
+17, and 3,080 total selected May trades. Only the two May-positive selected
+rows are WPR106-220 single controls; every selected cross-family complement is
+negative in May. Residual pre-May loss clusters also remain: 2025-12 is losing
+for 176 selected rows, 2026-03 for 165 rows, 2024-03 for 107 rows, and
+2025-01 for 96 rows. WPR106-225 is rejected as candidate-ready,
+portfolio-ready, paper/live-ready, or promotion-ready because the strong
+pre-May strict/annual profile does not transfer to May and is dominated by a
+source family with benchmark-transfer risk. Useful evidence is that WPR106-220
+should remain a control or ablation source rather than a dominant selector
+source, and future complement work needs pre-May source-family caps or
+source-family pseudo-holdouts before selecting portfolios. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, CUDA
+speedup claim, or promotion claim exists. Focused script compile, compileall,
+and contracts validation passed.
+Current WPR106-226 local follow-up update: WPR106-226 is a documentation-only
+catalog packet for the WPR106-220 through WPR106-225 2024-forward research
+sequence. It found that WPR106-220 through WPR106-225 work packet and stage
+report markdown files were NUL-filled, while the summary JSONs, Parquet
+artifacts, and ledger rows remained usable. WPR106-226 reconstructed those
+packet/report markdown anchors from preserved evidence, added
+`docs/research_knowledge/WPR106-220-225-2024-forward-results-and-leads-catalog.md`,
+linked it from `docs/research_knowledge/README.md` and `docs/ACTIVE_INDEX.md`,
+and recorded the results, tests, artifact locations, rejected interpretations,
+remaining research leads, and control/falsification outcomes. The catalog
+keeps all WPR106-220 through WPR106-225 outputs rejected as candidate-ready,
+portfolio-ready, paper/live-ready, and promotion-ready. Remaining
+research-only leads are WPR106-221 transparent motif active fallback,
+WPR106-222 source-before-portfolio directional KNN gates, WPR106-223/WPR106-224
+`flow_wick_density` dense KNN with target-only exit diagnostics, and a future
+pre-May source-family pseudo-holdout selector that prevents WPR106-220 control
+dominance before May benchmarking. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, CUDA speedup claim, or
+promotion claim exists. Documentation-only validation passed with package
+compileall and contracts reporting 460 passed.
+Current WPR106-228 local follow-up update: WPR106-228 adds the first isolated
+Rapid Strategy Iteration Sandbox foundation under
+`src/tradingbotsuite/research_sandbox/`. The sandbox is a 2024+ idea-triage
+layer beside, not inside, the strict historical research cycle. It adds
+non-promotable specs and boundary metadata, deterministic run/trial/request
+hashing, strategy catalog intake, Binance/OKX/Bybit/Hyperliquid/local venue
+archive descriptors, vectorized fixed-hold sweeps with next-bar entry and
+round-trip costs, compact manifest/Parquet/JSON result storage, evidence
+request descriptors, a sandbox research contract, and a sandbox config
+template. Import-boundary coverage now includes `research_sandbox`. Validation
+passed with 7 sandbox tests, 11 import-boundary tests, package compileall, and
+461 contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, or promotion claim exists.
+Current WPR106-229 local follow-up update: WPR106-229 makes the sandbox
+runnable from the canonical CLI through `run-rapid-strategy-sandbox`. The
+command is registered as research-owned, rejects live mode through the existing
+preflight path, resolves outputs under the configured research output root,
+loads sandbox run specs, strategy catalogs, venue archive descriptors, and local
+market frames, then writes sandbox manifests, Parquet summaries/rankings, and
+evidence-request descriptors. The local loader supports normalized CSV, TSV,
+JSON, JSONL, Parquet, direct Binance Vision kline CSV, and Binance Vision kline
+ZIP files, while descriptors can carry `data_path` for local archive-backed
+iteration. Validation passed with 13 sandbox tests, 8 CLI boundary tests, 11
+import-boundary tests, package compileall, and 461 contract tests after one
+transient Windows socket/event-loop setup error reran cleanly. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write, or
+promotion claim exists.
+Current WPR106-230 local follow-up update: WPR106-230 adds the sandbox-only
+strategy blueprint catalog compiler. Existing repo strategy JSON configs,
+strategy-family matrix payloads, CSV/TSV/Parquet/JSON catalogs, and
+spreadsheet-like lead workbooks can now compile into deterministic static proxy
+strategy rows when no precomputed `signal_column` exists. Built-in proxies
+cover completed-bar close momentum, range reversion, and volatility breakout,
+and fixed-hold sweeps materialize those signals only after the 2024+ sandbox
+market window is applied so older rows cannot influence signals or metrics. A
+standard-library `.xlsx` fallback handles spreadsheet lead intake when
+`openpyxl` is unavailable. Focused validation passed with 20 sandbox tests, 11
+import-boundary tests, package compileall, a real `configs/strategies` smoke
+that compiled 30 rows, and a real Excel-audit smoke that compiled 17 rows
+through the fallback path. The full contract baseline passed once before the
+Excel fallback edit, then repeated post-fallback attempts reached 460 passed
+tests and failed only during asyncio event-loop fixture setup with Windows
+`WinError 10055` socket resource exhaustion before the affected test body ran.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, or promotion claim exists.
+Current WPR106-231 local follow-up update: WPR106-231 adds bounded
+strategy/exit/filter sweep grids to the sandbox. Run specs now support typed
+exit variants for fixed hold, target-only, stop-only, and conservative
+target/stop primary-bar proxies, plus completed-row filter variants that layer
+beside a strategy's base filter. Exit/filter variant payloads are included in
+deterministic trial IDs and result payloads, target/stop exits require `high`
+and `low` data and block when missing, and conservative same-bar target/stop
+ambiguity is recorded as stop-first. Validation passed with 25 sandbox tests,
+11 import-boundary tests, package compileall, and 461 contract tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, or promotion claim exists.
+Current WPR106-232 local follow-up update: WPR106-232 adds descriptor-routed
+multi-venue archive execution to the sandbox. Venue descriptors can now carry
+portable relative or absolute `data_path` values, multiple descriptors can run
+in one CLI or API sweep without shared `--market-data`, each descriptor is
+loaded into its own normalized 2024+ market frame, and the combined rows are
+ranked globally across OKX/Bybit/Hyperliquid/Binance/local descriptor inputs.
+Result rows record `market_source` metadata and manifests include compact
+`market_sources` summaries; explicit `--market-data` remains only as a
+shared-frame smoke fallback. Validation passed with 30 sandbox tests, 11
+import-boundary tests, package compileall, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write, or
+promotion claim exists.
+Current WPR106-233 local follow-up update: WPR106-233 adds the sandbox artifact
+analytics CLI. `summarize-rapid-strategy-sandbox` is registered as
+research-owned, resolves `--run-dir` under the research output root, reads
+existing sandbox manifest/rankings/evidence-request artifacts, validates
+sandbox-only/non-promotable flags, writes `analysis_summary.json`, and returns
+status, venue, family, exit/filter, rejection reason, top-row, market-source,
+and evidence-request summaries. Validation passed with 33 sandbox tests, 9 CLI
+boundary tests, 11 import-boundary tests, package compileall, and 461 contract
+tests. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, or promotion claim exists.
+Current WPR106-234 local follow-up update: WPR106-234 adds the sandbox suite
+batch runner. `run-rapid-strategy-sandbox-suite` is registered as
+research-owned, resolves `--output-dir` under the research output root, loads
+portable suite specs with case paths relative to the suite file, runs multiple
+archive-routed sandbox cases, writes suite manifests plus JSON/Parquet indexes,
+and aggregates only sandbox evidence-request descriptors with suite/case/source
+context. Validation passed with 37 sandbox tests, 10 CLI boundary tests, 11
+import-boundary tests, package compileall, and 461 contract tests after one
+transient Windows asyncio socket setup error reran cleanly. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, strict
+cycle execution, or promotion claim exists.
+Current WPR106-235 local follow-up update: WPR106-235 adds hypothesis-level
+falsification indexes for sandbox runs and suites.
+`summarize-rapid-strategy-sandbox-hypotheses` is registered as research-owned,
+resolves `--run-dir` or `--suite-dir` under the research output root, validates
+sandbox manifests/rankings/evidence-request descriptors, writes JSON/Parquet
+hypothesis indexes, and labels hypotheses as strict-validation-requested,
+screened-positive-without-request, mixed/inconclusive, falsified, or blocked by
+missing inputs. Validation passed with 40 sandbox tests, 11 CLI boundary tests,
+11 import-boundary tests, package compileall, and 461 contract tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, strict cycle execution, or promotion claim exists.
+Current WPR106-236 local follow-up update: WPR106-236 adds descriptor-only
+strict-validation request bundles for sandbox runs and suites.
+`export-rapid-strategy-sandbox-validation-requests` is registered as
+research-owned, resolves `--run-dir`, `--suite-dir`, and optional `--output-dir`
+under the research output root, validates source sandbox manifests and
+evidence-request descriptors, dedupes requests deterministically, writes
+JSON/Parquet bundle descriptors, and records `run-historical-research-cycle` as
+the later strict validation command without executing it. Validation passed
+with 43 sandbox tests, 12 CLI boundary tests, 11 import-boundary tests, package
+compileall, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, strict cycle execution, or
+promotion claim exists.
+Current WPR106-237 local follow-up update: WPR106-237 adds the sandbox artifact
+catalog. `index-rapid-strategy-sandbox-artifacts` is registered as
+research-owned, resolves optional `--root-dir` and `--output-dir` under the
+research output root, scans known sandbox JSON artifact names, validates
+sandbox boundary flags before indexing artifact objects, and writes
+`sandbox_artifact_catalog.json` plus `sandbox_artifact_catalog.parquet` for
+agent navigation across runs, suites, analysis reports, hypothesis
+falsification indexes, and strict-validation request bundles. Validation passed
+with 45 sandbox tests, 13 CLI boundary tests, 11 import-boundary tests, package
+compileall, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, sandbox run execution, strict
+cycle execution, or promotion claim exists.
+Current WPR106-238 local follow-up update: WPR106-238 adds sandbox archive
+descriptor auditing. `audit-rapid-strategy-sandbox-archives` is registered as
+research-owned, resolves optional `--output-dir` under the research output
+root, reads local venue archive manifests and descriptor-local or shared smoke
+market data paths, and writes `archive_descriptor_audit.json` plus
+`archive_descriptor_audit.parquet` with 2024+ normalized row counts,
+descriptor-window row counts, OHLC availability, routing mode, and
+blocker/warning reasons. Repeated audits refresh the same deterministic audit
+artifact for agent preflight loops. Validation passed with 49 sandbox tests, 14 CLI
+boundary tests, 11 import-boundary tests, package compileall, and 461 contract
+tests. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, sandbox run execution, strict cycle execution, or promotion
+claim exists.
+Current WPR106-239 local follow-up update: WPR106-239 adds sandbox archive
+manifest building. `build-rapid-strategy-sandbox-archive-manifest` is
+registered as research-owned, resolves optional `--output-dir` under the
+research output root, scans local CSV/TSV/JSON/JSONL/Parquet/Binance-kline ZIP
+archive roots, filters through the existing 2024+ sandbox market-frame loader,
+infers or overrides venue/symbol/data-family/interval descriptor identity, and
+writes deterministic `venue_archives.json`,
+`archive_manifest_build_report.json`, and
+`archive_manifest_build_report.parquet` artifacts. The sandbox artifact catalog
+also discovers generated manifests and build reports. Focused validation passed
+with 52 sandbox tests, 15 CLI boundary tests, 11 import-boundary tests, and
+package compileall. The full contract baseline was attempted repeatedly but
+failed during pytest-asyncio event-loop socketpair setup with Windows
+`WinError 10055` before the affected async test body ran; `ISSUE-R106-026`
+records that local validation-environment blocker. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, sandbox run execution, strict cycle execution, or promotion claim
+exists.
+Current WPR106-240 local follow-up update: WPR106-240 adds a read-only global
+sandbox leaderboard. `rank-rapid-strategy-sandbox-artifacts` is registered as
+research-owned, resolves optional `--root-dir` and `--output-dir` under the
+research output root, scans existing sandbox run manifests/rankings/evidence
+requests, validates sandbox boundary flags, aggregates by hypothesis/family
+across runs, venues, symbols, exits, filters, and holding periods, and writes
+`sandbox_global_leaderboard.json` plus `sandbox_global_leaderboard.parquet` for
+agent navigation. Focused validation passed with 55 sandbox tests, 16 CLI
+boundary tests, 11 import-boundary tests, and package compileall. The full
+contract baseline remains blocked by `ISSUE-R106-026`: Windows `WinError 10055`
+during pytest-asyncio event-loop socketpair setup before the affected async
+test body ran. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, sandbox run execution, strict cycle execution, or
+promotion claim exists.
+Current WPR106-241 local follow-up update: WPR106-241 adds a sandbox strategy
+catalog materializer. `build-rapid-strategy-sandbox-strategy-catalog` is
+registered as research-owned, resolves optional `--output-dir` under the
+research output root, recursively scans local CSV/TSV/JSON/Parquet/XLSX/XLS
+strategy roots, reuses the existing strategy catalog loader/compiler for
+direct signal rows, spreadsheet-like lead catalogs, and repo strategy config
+JSON, and writes deterministic `strategy_catalog.json`,
+`strategy_catalog.parquet`, `strategy_catalog_build_report.json`, and
+`strategy_catalog_build_report.parquet` artifacts with skipped-source reasons.
+The generated strategy catalog JSON is directly loadable by the sandbox
+strategy loader, and the sandbox artifact catalog discovers generated catalogs
+and build reports. Focused validation passed with 58 sandbox tests, 17 CLI
+boundary tests, 11 import-boundary tests, and package compileall. The full
+contract baseline remains blocked by `ISSUE-R106-026`: Windows `WinError 10055`
+during pytest-asyncio event-loop socketpair setup before the affected async
+test body ran. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, sandbox run execution, strict cycle execution, or
+promotion claim exists.
+Current WPR106-242 local follow-up update: WPR106-242 adds a one-command
+sandbox agent iteration runner. `run-rapid-strategy-sandbox-iteration` is
+registered as research-owned, resolves optional `--output-dir` under the
+research output root, materializes or reuses sandbox strategy catalogs and
+venue archive manifests, runs the existing archive-backed sandbox sweep,
+writes run analysis and hypothesis falsification artifacts, exports
+descriptor-only strict-validation request bundles, refreshes the global
+leaderboard, and writes `sandbox_iteration_manifest.json` plus
+`sandbox_iteration_steps.parquet`. Repeated identical iterations return the
+existing iteration manifest instead of colliding with the run directory.
+Validation passed with 61 sandbox tests, 18 CLI boundary tests, 11
+import-boundary tests, package compileall, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, or promotion claim exists.
+Current WPR106-243 local follow-up update: WPR106-243 adds sandbox venue-export
+alias normalization for local archive-backed iteration. The sandbox market
+loader now normalizes common OKX short OHLCV fields, Bybit `startTime` and
+`openPrice`/`closePrice` fields, and Hyperliquid `time`/`px`/`sz` trade fields
+into canonical `timestamp`, `open`, `high`, `low`, `close`, and `volume`
+columns while preserving original columns where safe. Archive manifest build
+rows and archive descriptor audit rows now record alias metadata. Focused
+validation passed with 65 sandbox tests, 11 import-boundary tests, and package
+compileall. The full contract baseline remains blocked by `ISSUE-R106-026`:
+Windows `WinError 10055` during pytest-asyncio event-loop socketpair setup
+before the affected async test body ran after 460 passing tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, or promotion claim exists.
+Current WPR106-244 local follow-up update: WPR106-244 adds a sandbox
+compatibility preflight. `preflight-rapid-strategy-sandbox` is registered as
+research-owned, resolves optional `--output-dir` under the research output
+root, loads sandbox run specs, strategy catalogs, and venue archive manifests,
+normalizes each venue frame through the existing 2024+ sandbox loader,
+materializes blueprint signals inside the filtered window, and writes
+`sandbox_compatibility_preflight.json` plus
+`sandbox_compatibility_preflight.parquet` with strategy/venue runnable and
+blocked trial estimates. Blockers explicitly report missing data paths, missing
+files, loader failures, empty 2024+ windows, missing signal/filter columns, and
+missing high/low columns required by target/stop exits. Validation passed with
+67 sandbox tests, 19 CLI boundary tests, 11 import-boundary tests, package
+compileall, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, sandbox
+sweep execution, strict cycle execution, or promotion claim exists.
+Current WPR106-245 local follow-up update: WPR106-245 makes compatibility
+preflight a first-class step in one-command sandbox agent iterations.
+`run-rapid-strategy-sandbox-iteration` now runs the preflight after
+strategy/archive/spec resolution and before archive sweep execution, writes the
+preflight artifacts under the iteration directory, records preflight
+paths/counts in `sandbox_iteration_manifest.json`, and adds a
+`compatibility_preflight` row to `sandbox_iteration_steps.parquet`. If
+preflight proves there are zero runnable trials, the iteration writes a final
+`blocked_by_preflight` manifest and skips archive sweep, analysis, hypothesis
+falsification, validation-request bundle export, and leaderboard refresh.
+Validation passed with 68 sandbox tests, 11 import-boundary tests, package
+compileall, and 461 contract tests on rerun after one known Windows
+pytest-asyncio `WinError 10055` socket setup failure at 460 passed tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, or promotion claim exists.
+Current WPR106-246 local follow-up update: WPR106-246 makes compatibility
+preflight a first-class step in sandbox suite execution. `run_sandbox_suite()`
+now preflights each case before archive sweep execution, writes case preflight
+artifacts under the suite directory, records preflight paths/counts in suite
+case-index rows and aggregate suite manifest fields, and marks zero-runnable
+cases as `blocked_by_preflight` without writing run manifests, analysis
+reports, or evidence-request descriptors for those cases. Suite hypothesis
+summarization skips intentional preflight-blocked rows while still rejecting
+malformed runnable rows missing run directories. Validation passed with 69
+sandbox tests, 11 import-boundary tests, package compileall, and 461 contract
+tests. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, provider download, strict cycle execution, or promotion
+claim exists.
+Current WPR106-247 local follow-up update: WPR106-247 improves sandbox sweep
+throughput by caching prepared strategy/filter signal masks per market frame.
+The fixed-hold sweep path now computes each signal/filter mask once for the
+prepared 2024+ market frame and reuses it across venues, exit variants, and
+holding periods, while preserving missing-column blockers, target/stop OHLC
+checks, deterministic trial IDs, scores, ranks, and sandbox boundary metadata.
+Focused validation proves a 24-trial two-filter/two-exit/three-hold/two-venue
+grid calls `_signal_mask()` only twice. Validation passed with 70 sandbox
+tests, 11 import-boundary tests, package compileall, and 461 contract tests on
+rerun after one known Windows pytest-asyncio `WinError 10055` socket setup
+failure at 460 passed tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, or promotion claim exists.
+Current WPR106-248 local follow-up update: WPR106-248 improves sandbox sweep
+throughput by preparing close, optional high/low, and entry-date arrays once
+per prepared 2024+ market frame. The fixed-hold sweep path now reuses those
+arrays across venues, filter variants, exit variants, and holding periods,
+while preserving missing-column blockers, target/stop OHLC checks,
+deterministic trial IDs, active-day counts, scores, ranks, and sandbox boundary
+metadata. Focused validation proves a 24-trial
+two-filter/two-exit/three-hold/two-venue grid calls
+`_prepared_market_arrays()` only once. Validation passed with 71 sandbox tests,
+11 import-boundary tests, package compileall, and 461 contract tests on rerun
+after one known Windows pytest-asyncio `WinError 10055` socket setup failure at
+460 passed tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, or
+promotion claim exists.
+Current WPR106-249 local follow-up update: WPR106-249 improves sandbox
+shared-market multi-venue sweep throughput by caching trial metrics per
+strategy/filter/exit/holding cell inside each prepared 2024+ market frame. The
+prepared sweep path now computes the first venue row through the existing
+trial path, then reuses metric/status fields for later venue descriptors that
+share the same market frame while recomputing venue-specific deterministic
+trial IDs and metadata. Descriptor-routed archive sweeps remain one prepared
+frame per venue descriptor and keep distinct venue returns separate. Focused
+validation proves a 24-row shared-market grid runs gross-return work 12 times,
+and a descriptor-routed two-frame test keeps OKX and Bybit returns distinct.
+Validation passed with 73 sandbox tests, 11 import-boundary tests, package
+compileall, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, descriptor
+archive loading change, strict cycle execution, or promotion claim exists.
+Current WPR106-250 local follow-up update: WPR106-250 improves sandbox
+target/stop exit sweep throughput by vectorizing primary-bar barrier windows.
+`_barrier_exit_prices()` now computes target and stop hit matrices with NumPy,
+selects first target-only and stop-only hits, preserves conservative
+target/stop stop-first behavior when both barriers touch on the same bar, and
+falls back to fixed-hold close when no barrier hits. Focused validation compares
+long and short vectorized results against a local reference loop and locks
+same-bar stop-first/no-hit fallback behavior. Validation passed with 75 sandbox
+tests, 11 import-boundary tests, package compileall, and 461 contract tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, descriptor archive loading change, strict cycle
+execution, or promotion claim exists.
+Current WPR106-251 local follow-up update: WPR106-251 improves sandbox suite
+agent workflow speed by adding explicit case-level parallelism.
+`run_sandbox_suite()` now accepts `max_workers`, defaults to serial behavior,
+runs independent cases through isolated preflight/run directories when more
+than one worker is requested, and sorts completed case outputs back into suite
+spec order before writing JSON/Parquet suite indexes, returned case results,
+and aggregated evidence-request descriptors. The
+`run-rapid-strategy-sandbox-suite` CLI now accepts `--max-workers` and records
+the selected value in the suite manifest and CLI payload. Validation passed
+with 76 sandbox tests, 11 import-boundary tests, package compileall, 19 live
+CLI boundary tests, and 461 contract tests on rerun after one known Windows
+pytest-asyncio `WinError 10055` socket setup failure at 460 passed tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, descriptor archive loading change, strict cycle
+execution, or promotion claim exists.
+Current WPR106-252 local follow-up update: WPR106-252 improves sandbox artifact
+reproducibility and handoff verification by adding SHA-256 and byte-size
+metadata for child run and suite artifacts. Run manifests now record integrity
+metadata for `summary.parquet`, `rankings.parquet`, `evidence_requests.json`,
+and `evidence_requests.parquet`; suite manifests record integrity metadata for
+`suite_index.json`, `suite_index.parquet`, `suite_evidence_requests.json`, and
+`suite_evidence_requests.parquet`. Manifest files are intentionally not hashed
+inside themselves, avoiding circular digests. Validation passed with 76 sandbox
+tests, 11 import-boundary tests, package compileall, and 461 contract tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, descriptor archive loading change, strict cycle
+execution, or promotion claim exists.
+Current WPR106-253 local follow-up update: WPR106-253 adds a read-only sandbox
+artifact-integrity verifier and `verify-rapid-strategy-sandbox-artifacts`
+research CLI command. It verifies existing run or suite child artifacts from a
+directory or manifest path against manifest-recorded SHA-256 and byte-size
+metadata, writes optional sandbox-only JSON/Parquet verification reports, and
+fails closed on missing metadata, missing files, or hash/size drift. Validation
+passed with 78 sandbox tests, 20 live CLI boundary tests, 11 import-boundary
+tests, package compileall, and 461 contract tests on rerun after one known
+Windows pytest-asyncio `WinError 10055` socket setup failure at 460 passed
+tests. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, provider download, descriptor archive loading change,
+strict cycle execution, source artifact mutation, or promotion claim exists.
+Current WPR106-254 local follow-up update: WPR106-254 surfaces read-only
+run/suite child artifact integrity status directly in sandbox artifact catalog
+rows. Catalog rows for `manifest.json` and `suite_manifest.json` now include
+verification status, checked/verified/failed counts, mismatched/missing counts,
+failed artifact keys, and failure reasons by reusing the WPR106-253 verifier in
+no-report mode; non-run/suite artifacts report `not_applicable`. Validation
+passed with 79 sandbox tests, 11 import-boundary tests, package compileall, and
+461 contract tests on rerun after one known Windows pytest-asyncio
+`WinError 10055` socket setup failure at 460 passed tests. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, descriptor archive loading change, strict cycle execution, verifier
+report write during cataloging, source artifact mutation, or promotion claim
+exists.
+Current WPR106-255 local follow-up update: WPR106-255 makes direct sandbox
+artifact consumers fail closed on stale or tampered run/suite child artifacts.
+Run analysis, run/suite hypothesis falsification, global leaderboard
+aggregation, and run/suite strict-validation request bundle export now verify
+manifest-recorded SHA-256 and byte-size metadata before reading compact
+Parquet/JSON child files. Validation passed with 81 sandbox tests, 11
+import-boundary tests, package compileall, and 461 contract tests on rerun
+after one known Windows pytest-asyncio `WinError 10055` socket setup failure at
+460 passed tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, descriptor archive loading
+change, strict cycle execution, source artifact mutation, or promotion claim
+exists.
+Current WPR106-256 local follow-up update: WPR106-256 makes cached
+one-command sandbox iteration reuse fail closed on stale or incomplete cached
+artifacts. Existing iteration manifests now validate referenced JSON/Parquet
+artifact existence, require cached JSON artifacts to retain sandbox boundary
+flags, and verify the referenced completed run manifest's child-artifact
+integrity before returning `reused_existing: true`. Validation passed with 7
+iteration-focused sandbox tests, 84 sandbox tests, 11 import-boundary tests,
+package compileall, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+descriptor archive loading change, strict cycle execution, source artifact
+mutation, or promotion claim exists.
+Current WPR106-257 local follow-up update: WPR106-257 records local source file
+SHA-256 and byte-size metadata in sandbox archive manifest build rows and
+generated venue archive descriptors. Archive manifest identity now includes
+source integrity, so unchanged local archive inputs remain idempotent while an
+in-place source file edit changes the generated manifest ID. Validation passed
+with 3 archive-manifest focused sandbox tests, 84 sandbox tests, 11
+import-boundary tests, package compileall, and 461 contract tests on rerun
+after one known Windows pytest-asyncio `WinError 10055` socket setup failure at
+460 passed tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, descriptor archive loading
+change, strict cycle execution, source artifact mutation, or promotion claim
+exists.
+Current WPR106-258 local follow-up update: WPR106-258 makes descriptor-routed
+archive consumers verify descriptor `source_integrity` before reading local
+archive files. Archive descriptor audit and compatibility preflight surface
+source-integrity mismatches as blocker reasons, archive-backed sweeps fail
+closed before reading changed source files, and shared-market-data smoke mode
+remains explicitly available. Validation passed with 2 source-integrity focused
+sandbox tests, 86 sandbox tests, 11 import-boundary tests, package compileall,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, descriptor
+archive loading change, strict cycle execution, source artifact mutation, or
+promotion claim exists.
+Current WPR106-259 local follow-up update: WPR106-259 adds compact
+`source_trial_context` metadata to sandbox evidence-request descriptors and
+preserves that context in strict-validation request bundle rows. Requests now
+carry source trial/run identity, hypothesis/family/source ID, venue, symbol,
+data family, signal column, side, holding period, exit/filter variant IDs,
+market timestamp bounds, descriptor routing metadata, and sandbox execution
+assumptions for faster agent handoff triage. Validation passed with 3 focused
+sandbox tests, 86 sandbox tests, 11 import-boundary tests, package compileall,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, descriptor
+archive loading change, strict cycle execution, source artifact mutation, or
+promotion claim exists.
+Current WPR106-260 local follow-up update: WPR106-260 adds sandbox archive
+coverage matrices that aggregate archive descriptor audit rows into
+venue/symbol/data-family/interval buckets with ready/blocked descriptor counts,
+row counts, market/window bounds, source paths, and blocker/warning counts.
+Coverage summaries reuse the archive audit path so 2024+ filtering,
+source-integrity blockers, shared-market-data smoke semantics, and loader
+failures stay consistent with audit, preflight, and sweeps; the sandbox
+artifact catalog discovers `archive_coverage_matrix.json`. Validation passed
+with 1 focused archive-coverage sandbox test, 87 sandbox tests, 11
+import-boundary tests, package compileall, and the isolated affected async
+contract test; the full contract baseline was attempted three times and each
+run reached 460 passed tests before the known Windows pytest-asyncio
+`WinError 10055` socket setup failure. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, descriptor
+archive loading change, strict cycle execution, source artifact mutation, or
+promotion claim exists.
+Current WPR106-261 local follow-up update: WPR106-261 exposes archive coverage
+matrices through the guarded `summarize-rapid-strategy-sandbox-archive-coverage`
+research CLI command. The command resolves output paths under the configured
+research output root, supports the existing shared-market-data smoke mode, is
+registered for live-mode rejection, and writes only sandbox archive coverage
+JSON/Parquet artifacts. Validation passed with 2 focused sandbox coverage
+tests, 2 focused live-boundary tests, 88 sandbox tests, 21 live CLI boundary
+tests, 11 import-boundary tests, package compileall, and 461 contract tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, descriptor archive loading change, strict cycle
+execution, source artifact mutation, or promotion claim exists.
+Current WPR106-262 local follow-up update: WPR106-262 makes archive coverage a
+first-class one-command sandbox agent iteration step. Iterations now write an
+archive coverage matrix before compatibility preflight, record coverage and
+source-audit paths/counts in completed and preflight-blocked manifests, include
+an archive-coverage step version in iteration identity, and require cached
+reuse to validate coverage/source-audit JSON boundary flags plus Parquet file
+existence before returning `reused_existing: true`. Validation passed with 5
+focused iteration tests, 90 sandbox tests, 11 import-boundary tests, package
+compileall, and 461 contract tests. `git diff --check` reported only existing
+LF-to-CRLF warnings and no whitespace errors. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+descriptor archive loading change, strict cycle execution, source artifact
+mutation, or promotion claim exists.
+Current WPR106-263 local follow-up update: WPR106-263 adds compact
+research-only agent briefs to one-command sandbox iterations. Iteration briefs
+write JSON/Parquet artifacts with next-action labels, reason codes, compact
+counts, top archive/preflight blockers, compact descriptor-only validation
+requests, artifact paths, and step summaries; completed request-bearing runs
+point agents to descriptor-only strict-validation request review, while
+preflight-blocked runs point agents to input/preflight repair. Iteration
+identity includes an agent-brief version, cached reuse validates brief JSON
+boundary flags and brief Parquet existence, and the artifact catalog discovers
+`agent_iteration_brief`. Validation passed with 5 focused iteration tests, 92
+sandbox tests, 11 import-boundary tests, and package compileall. The full
+contract baseline reached 460 passed tests and then hit known `ISSUE-R106-026`
+Windows `WinError 10055` during pytest-asyncio event-loop socketpair setup
+before the affected async test body; the isolated affected async contract test
+failed at the same socketpair setup point. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+descriptor archive loading change, strict cycle execution, source artifact
+mutation, or promotion claim exists.
+Current WPR106-264 local follow-up update: WPR106-264 adds a compact
+research-only sandbox iteration index over existing one-command iteration
+manifests and agent briefs. The new `build_sandbox_iteration_index()` API
+writes `sandbox_iteration_index.json` and Parquet rows with iteration status,
+next action, reason codes, brief status, coverage/preflight/result counts,
+descriptor-only request counts, blocker summaries, validation-request
+descriptors, and artifact paths; source manifests and loaded briefs must retain
+sandbox boundary flags, while missing brief files are surfaced as row status.
+The sandbox artifact catalog discovers `iteration_index`. Validation passed
+with 2 focused iteration-index tests, 94 sandbox tests, 11 import-boundary
+tests, package compileall, and 461 contract tests. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, descriptor archive loading change, strict cycle execution, source
+artifact mutation, or promotion claim exists.
+Current WPR106-265 local follow-up update: WPR106-265 exposes the sandbox
+iteration index through the guarded `index-rapid-strategy-sandbox-iterations`
+research CLI command. The command resolves optional root/output directories
+under the configured research output root, calls `build_sandbox_iteration_index`,
+is registered for live-mode rejection, and writes only sandbox iteration index
+JSON/Parquet artifacts. Validation passed with 3 focused sandbox iteration-index
+tests, 2 focused live-boundary tests, 95 sandbox tests, 22 live CLI boundary
+tests, 11 import-boundary tests, package compileall, and 461 contract tests. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, descriptor archive loading change, strict cycle
+execution, source artifact mutation, or promotion claim exists.
+Current WPR106-266 local follow-up update: WPR106-266 adds deterministic
+action queues to sandbox iteration index payloads. The derived queues surface
+request-bearing, preflight-repair, missing-brief, and rejection-review
+iterations with compact counts, blockers, validation-request descriptors, and
+artifact paths from existing index rows only. Validation passed with 2 focused
+iteration-index tests, 95 sandbox tests, 11 import-boundary tests, package
+compileall, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, descriptor
+archive loading change, strict cycle execution, source artifact mutation, or
+promotion claim exists.
+Current WPR106-267 local follow-up update: WPR106-267 adds content-derived
+identity inference to sandbox archive manifest building. Generic local archive
+files can now infer venue, symbol, data family, and interval from common
+OKX/Bybit/Hyperliquid export columns when overrides and path tokens do not
+identify them, and build-report rows expose the inference source for each
+identity field. Validation passed with 4 focused archive-manifest tests, 96
+sandbox tests, 11 import-boundary tests, package compileall, and 460
+non-affected contract tests with 1 known affected async setup test deselected.
+The full contract baseline reached 460 passed tests before known
+`ISSUE-R106-026` Windows `WinError 10055` pytest-asyncio socketpair setup
+failure, and the isolated affected setup reproduced the same failure. No
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, descriptor archive loading change, strict cycle
+execution, source artifact mutation, or promotion claim exists.
+Current WPR106-268 local follow-up update: WPR106-268 adds direct strategy
+catalog header-alias normalization before spreadsheet lead/proxy fallback.
+Alias-heavy existing sheets with headers such as `Hypothesis`,
+`Strategy Family`, `Signal`, and `Direction` now load as direct precomputed
+signal descriptors while preserving optional source, exit, filter, params,
+tags, and notes fields. Validation passed with 10 focused strategy-catalog
+tests, 98 sandbox tests, 11 import-boundary tests, package compileall, the
+isolated affected async contract test, and 460 non-affected contract tests with
+1 known affected async setup test deselected. Full one-shot contract attempts
+still reached 460 passed tests before known `ISSUE-R106-026` Windows
+`WinError 10055` pytest-asyncio socketpair setup failure. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, descriptor archive loading change, strict cycle execution, source
+artifact mutation, or promotion claim exists.
+Current WPR106-269 local follow-up update: WPR106-269 adds shared sandbox
+venue identity alias canonicalization for direct venue archive manifests and
+archive manifest builder overrides. Common local/export labels such as
+`binance_futures`, `okex`, `bybit_usdt_linear`, and `hl_perp` now normalize to
+canonical sandbox venues before descriptor validation, while unsupported venue
+values still fail closed. Validation passed with 10 focused alias/archive
+manifest tests, 104 sandbox tests, 11 import-boundary tests, package
+compileall, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, descriptor
+archive loading change, strict cycle execution, source artifact mutation, or
+promotion claim exists.
+Current WPR106-270 local follow-up update: WPR106-270 adds generated-spec
+recent-window presets to one-command sandbox agent iterations. Presets such as
+`recent_365d` resolve to concrete data windows before preflight, clip starts to
+the `2024-01-01` sandbox floor, and write `window_selection` metadata to the
+iteration manifest and agent brief. Spec-file runs reject recent-window
+overrides instead of silently rewriting explicit specs. Validation passed with
+4 focused recent-window/CLI tests, 107 sandbox tests, 22 live CLI boundary
+tests, 11 import-boundary tests, package compileall, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, descriptor archive loading change, strict
+cycle execution, source artifact mutation, or promotion claim exists.
+Current WPR106-271 local follow-up update: WPR106-271 filters archive-root
+manifest materialization to the resolved sandbox data window for one-command
+iterations. Local files whose normalized 2024+ bounds do not overlap the
+requested window are skipped before preflight with explicit
+`outside_requested_window` build-report rows. Validation passed with 2 focused
+archive-window tests, 109 sandbox tests, 11 import-boundary tests, package
+compileall with PYTHONPATH, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, descriptor
+archive loading change, strict cycle execution, source artifact mutation, or
+promotion claim exists.
+Current WPR106-272 local follow-up update: WPR106-272 makes sandbox archive
+audits and coverage matrices aware of the resolved requested data window.
+Existing venue archive manifests now expose requested-window row counts and
+`no_rows_in_requested_window` blockers before preflight or sweep execution.
+Validation passed with 6 focused requested-window/CLI tests, 112 sandbox
+tests, 22 live CLI boundary tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, source artifact mutation, or promotion claim exists.
+Current WPR106-273 local follow-up update: WPR106-273 adds requested-window
+archive coverage counts and an `archive_window_repair_queue` to sandbox
+iteration indexes. Iterations with `no_rows_in_requested_window` archive
+blockers now surface directly in the read-only agent action queues. Validation
+passed with 3 focused iteration-index tests, 113 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, source artifact
+mutation, or promotion claim exists.
+Current WPR106-274 local follow-up update: WPR106-274 writes full archive
+coverage blocker reason counts into one-command sandbox iteration manifests,
+agent briefs, and iteration indexes. Archive-window repair queues now use full
+blocker counts when available and fall back to bounded top blockers only for
+older artifacts. Validation passed with 3 focused iteration-index tests, 113
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict
+cycle execution, source artifact mutation, or promotion claim exists.
+Current WPR106-275 local follow-up update: WPR106-275 writes full preflight
+blocker reason counts into one-command sandbox agent briefs and iteration
+indexes while preserving bounded top preflight blockers for display. Iteration
+index rows and queue items now carry complete preflight repair context.
+Validation passed with 3 focused iteration-index tests, 113 sandbox tests,
+package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract
+tests. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, provider download, strict cycle execution, source artifact
+mutation, or promotion claim exists.
+Current WPR106-276 local follow-up update: WPR106-276 adds queue-level
+`action_queue_summaries` to sandbox iteration indexes and includes coverage and
+preflight status counts in action queue items. Queue summaries aggregate all
+matched rows, including rows beyond the visible queue cap, so agents can triage
+repair and request backlogs from one index manifest. Validation passed with 4
+focused iteration-index/action-queue tests, 114 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, source artifact
+mutation, or promotion claim exists.
+Current WPR106-277 local follow-up update: WPR106-277 adds materialized
+strategy-catalog and venue-archive source context to sandbox iteration index
+rows and action queue items. Rows and queue items now expose catalog/archive
+manifest paths, build-report paths, included/skipped strategy source counts,
+archive file counts, and archive skipped-file counts; queue summaries aggregate
+those source counts across all matched rows. Validation passed with 4 focused
+iteration-index/action-queue tests, 114 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source artifact mutation, or
+promotion claim exists.
+Current WPR106-278 local follow-up update: WPR106-278 adds read-only artifact
+availability diagnostics to sandbox iteration indexes. Rows, action queue
+items, and queue summaries now expose referenced/present/missing artifact
+counts and missing artifact keys, and indexes include an
+`artifact_repair_queue` for iterations whose referenced artifacts are missing.
+Validation passed with 5 focused iteration-index/action-queue tests, 115
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict
+cycle execution, source artifact mutation, integrity validation substitution,
+or promotion claim exists.
+Current WPR106-279 local follow-up update: WPR106-279 adds deterministic
+recommended action hints to sandbox iteration indexes. Rows and action queue
+items now expose primary and detailed recommended actions derived from existing
+brief status, artifact availability, archive/preflight blocker counts,
+descriptor-only validation requests, and rejection/block counts; queue
+summaries and top-level payloads include recommended-action rollups for faster
+agent triage. Validation passed with 5 focused iteration-index/action-queue
+tests, 115 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, source artifact mutation, validation execution, or
+promotion claim exists.
+Current WPR106-280 local follow-up update: WPR106-280 adds a global read-only
+`agent_action_plan` to sandbox iteration indexes. The plan is derived from row
+recommended actions and exposes deterministic action priorities, source queue
+labels, blocker/request context, relevant paths, and dependent-action markers
+so agents can start from one prioritized worklist. Validation passed with 5
+focused iteration-index/action-queue tests, 115 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, source artifact
+mutation, validation execution, or promotion claim exists.
+Current WPR106-281 local follow-up update: WPR106-281 writes the visible
+`agent_action_plan` from sandbox iteration indexes as
+`sandbox_iteration_agent_action_plan.parquet` and exposes
+`agent_action_plan_parquet_path` in the index payload so agents can filter the
+prioritized worklist without parsing nested JSON. Validation passed with 5
+focused iteration-index/action-queue tests, 115 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, source artifact
+mutation, validation execution, or promotion claim exists.
+Current WPR106-282 local follow-up update: WPR106-282 speeds up
+descriptor-routed archive sandbox sweeps by reusing trial metric work across
+venue descriptors that share the same explicit market source: shared
+market-data path, identical descriptor `data_path`, or the same in-memory
+market frame object. Distinct descriptor sources still compute separately, and
+venue-specific trial IDs/source metadata remain distinct. Validation passed
+with 3 focused cache tests, 116 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source artifact mutation, validation
+execution, or promotion claim exists.
+Current WPR106-283 local follow-up update: WPR106-283 speeds up
+descriptor-routed market-frame batch loading by caching loaded and normalized
+frames for identical resolved descriptor `data_path` values. Source integrity
+is still evaluated per descriptor before any cached frame is returned, repeated
+same-file hashing is cached inside the batch, distinct paths stay distinct, and
+pre-2024 rows remain filtered out. Validation passed with 12 focused loader
+tests, 118 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, source artifact mutation, validation execution, or
+promotion claim exists.
+Current WPR106-284 local follow-up update: WPR106-284 speeds up sandbox
+readiness loops by caching identical resolved market sources inside archive
+audit/coverage and compatibility preflight. Audit avoids repeated local file
+loads/normalization for repeated descriptor paths; preflight reuses loaded,
+windowed, and strategy-materialized frames; and both paths still evaluate
+source integrity per descriptor before cached market data is used. Validation
+passed with 14 focused cache tests, 8 archive/preflight-focused tests, 120
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, source artifact mutation, validation execution, or promotion claim
+exists.
+Current WPR106-285 local follow-up update: WPR106-285 adds a process-local
+`SandboxMarketDataCache` and passes one cache through one-command sandbox
+archive coverage, compatibility preflight, and archive sweep execution. A
+single local descriptor source is now read and normalized once across the
+active iteration path, while source integrity remains descriptor-scoped and
+the cache is not serialized into artifacts. Validation passed with 15 focused
+cache tests, 122 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, source artifact mutation, validation execution, or
+promotion claim exists.
+Current WPR106-286 local follow-up update: WPR106-286 speeds up archive-backed
+sandbox suite execution by passing one process-local `SandboxMarketDataCache`
+through sequential suite case preflight and archive sweep execution. Repeated
+shared local market sources are now read and normalized once across a
+sequential suite, while parallel suite execution keeps caches case-local.
+Suite artifacts record only cache-scope metadata, not cached data. Validation
+passed with 3 focused suite-cache tests, 123 sandbox tests, package compileall
+with PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source artifact mutation,
+validation execution, or promotion claim exists.
+Current WPR106-287 local follow-up update: WPR106-287 speeds up archive-backed
+sandbox suite execution by caching parsed sandbox run specs, strategy
+catalogs, and venue archive descriptor manifests by resolved local path inside
+sequential suite runs. Parallel suite execution keeps parsed-input caches
+case-local, and suite artifacts record only `input_cache_scope` metadata.
+Validation passed with 4 focused suite-cache tests, 124 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, source artifact
+mutation, validation execution, or promotion claim exists.
+Current WPR106-288 local follow-up update: WPR106-288 expands sandbox local
+archive intake to gzip-compressed CSV, TSV, JSON, and JSONL market-data
+exports. Archive manifest building now recognizes compound suffixes such as
+`.csv.gz`, includes loadable compressed OKX/Bybit/Hyperliquid-style local
+drops, records compound suffixes in build rows, and preserves source integrity
+against the compressed file itself. Validation passed with 5 focused
+gzip/archive-loader tests, 128 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source artifact mutation,
+validation execution, or promotion claim exists.
+Current WPR106-289 local follow-up update: WPR106-289 makes sandbox ZIP CSV
+loading header-aware so local venue-export ZIP members preserve columns for
+alias normalization and archive-manifest content inference while Binance
+Vision headerless kline ZIP support remains intact. Archive data-family path
+inference now uses token matches so names such as `market_export.zip` no
+longer infer `mark_index` from `market`. Validation passed with 7 focused
+ZIP/archive-loader tests, 130 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source artifact mutation,
+validation execution, or promotion claim exists.
+Current WPR106-290 local follow-up update: WPR106-290 fixes sandbox numeric
+timestamp normalization for local venue exports by inferring epoch seconds,
+milliseconds, microseconds, or nanoseconds by magnitude across all timestamp
+aliases before the 2024+ filter is applied. Compact `YYYYMMDD` values remain
+calendar dates. Validation passed with 4 focused timestamp tests, 134 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461
+contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, source
+artifact mutation, validation execution, or promotion claim exists.
+Current WPR106-291 local follow-up update: WPR106-291 expands sandbox local
+archive intake to `.ndjson` and `.ndjson.gz` newline-delimited JSON exports by
+reusing the existing JSONL loader path. Archive manifest building now
+recognizes both suffixes, records compound `.ndjson.gz` source suffixes, and
+preserves compressed-file source integrity metadata. Validation passed with 3
+focused NDJSON tests, 137 sandbox tests, package compileall with PYTHONPATH,
+11 import-boundary tests, and 461 contract tests. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, strict cycle execution, source artifact mutation, validation
+execution, or promotion claim exists.
+Current WPR106-292 local follow-up update: WPR106-292 expands sandbox ZIP
+archive loading beyond CSV-only members. ZIP files now load TSV, JSON, JSONL,
+or NDJSON market-data members when no CSV member is present, while ZIPs with
+CSV members still prefer CSV first to preserve Binance Vision and headered CSV
+venue-export behavior. Validation passed with 8 focused ZIP tests, 140 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461
+contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, source
+artifact mutation, validation execution, or promotion claim exists.
+Current WPR106-293 local follow-up update: WPR106-293 expands sandbox
+market-frame normalization for OKX/Bybit/Hyperliquid/local mark, index, and
+mid-price aliases such as `markPx`, `idxPx`, and `midPx`, and derives
+canonical `close` from bid/ask midpoint for book-style exports when no
+explicit close-like price column exists. Archive manifest build rows now expose
+derived-column metadata, and headered book exports with six or more columns no
+longer fall through to Binance headerless kline column assignment. Validation
+passed with 3 focused venue price-alias tests, 143 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, source artifact
+mutation, validation execution, or promotion claim exists.
+Current WPR106-294 local follow-up update: WPR106-294 expands sandbox local
+JSON intake for Hyperliquid-style nested `l2Book` payloads by flattening
+`levels` arrays into best bid/ask price and size columns, then reusing the
+existing bid/ask midpoint close derivation path for 2024+ archive audits,
+manifest building, preflights, and sweeps. ZIP JSON members use the same path,
+archive manifest build rows expose source-transformation metadata, and generic
+snapshot exports can infer `l2_book` data family from `l2Book` content hints or
+flattened book columns. Validation passed with 4 focused Hyperliquid L2 JSON
+tests, 147 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, source artifact mutation, validation execution, or
+promotion claim exists.
+Current WPR106-295 local follow-up update: WPR106-295 expands sandbox local
+archive intake to `.tar`, `.tar.gz`, and `.tgz` containers with
+CSV/TSV/JSON/JSONL/NDJSON market-data members. TAR/TGZ members are read in
+memory without extraction, use the same parser/normalization path as plain
+files and ZIP members, and are now included by archive manifest building with
+source integrity metadata. Validation passed with 3 focused TAR archive-loader
+tests, 150 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, source artifact mutation, validation execution, or
+promotion claim exists.
+Current WPR106-296 local follow-up update: WPR106-296 expands sandbox ZIP and
+TAR/TGZ member loading to detect gzip-compressed market-data members such as
+`.csv.gz`, `.json.gz`, `.jsonl.gz`, and `.ndjson.gz` by compound suffix.
+Compressed member payloads are decompressed in memory and parsed through the
+same local 2024+ normalization path while preserving CSV-first member priority.
+Validation passed with 3 focused compressed-container member tests, 153 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461
+contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, source
+artifact mutation, member extraction, validation execution, or promotion claim
+exists.
+Current WPR106-297 local follow-up update: WPR106-297 expands sandbox ZIP and
+TAR/TGZ loading from first-member-only to deterministic multimember loading.
+For each container, the loader selects the highest-priority available
+market-data suffix, reads every member of that selected suffix in member-name
+order, concatenates raw frames, and then applies the same 2024+ normalization
+path while keeping lower-priority member types out of the loaded frame. L2
+source-transformation counts are merged across member frames. Validation passed
+with 4 focused container multimember tests, 157 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, source artifact
+mutation, member extraction, validation execution, or promotion claim exists.
+Current WPR106-298 local follow-up update: WPR106-298 adds bounded container
+member-selection metadata to sandbox ZIP and TAR/TGZ loading. Normalization
+metadata and archive manifest build rows now expose container kind, selected
+member suffix, selected member count, selected member-name sample, available
+member suffix counts, and loadable member count so agents can audit chunked
+archive intake without reopening containers. Validation passed with 3 focused
+container member-metadata tests, 160 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source artifact mutation, member
+extraction, validation execution, or promotion claim exists.
+Current WPR106-299 local follow-up update: WPR106-299 propagates sandbox
+container member-selection metadata into archive descriptor audit rows and
+aggregates it in archive coverage buckets. Agent preflight loops can now see
+container kinds, selected suffixes, selected/loadable member totals, selected
+suffix counts, available suffix counts, and bounded member-name samples from
+audit and coverage artifacts without reopening build reports. Validation passed
+with 2 focused archive container audit/coverage tests, 162 sandbox tests,
+package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract
+tests. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, provider download, strict cycle execution, source artifact
+mutation, member extraction, validation execution, or promotion claim exists.
+Current WPR106-300 local follow-up update: WPR106-300 exposes bounded
+container member-selection diagnostics as first-class compatibility preflight
+row fields. Agents can now inspect ZIP/TAR container kind, selected suffix,
+selected member count, bounded member-name sample, available suffix counts, and
+loadable member count from preflight JSON/Parquet rows while trial estimates
+and blocker semantics remain unchanged. Validation passed with 1 focused
+preflight container-metadata test, 163 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source artifact mutation, member
+extraction, validation execution, or promotion claim exists.
+Current WPR106-301 local follow-up update: WPR106-301 propagates bounded
+container member-selection diagnostics from loaded archive-backed market frames
+into sandbox sweep `market_source` payloads and descriptor-only strict
+validation request bundle convenience fields. Agents can now inspect ZIP/TAR
+container kind, selected suffix, selected/loadable member counts, available
+suffix counts, and bounded member-name samples from run manifests, ranking
+metadata, evidence-request source context, and bundle JSON/Parquet rows.
+Validation passed with 1 focused archive-sweep container provenance test, 164
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, source artifact mutation, member extraction, validation execution,
+or promotion claim exists.
+Current WPR106-302 local follow-up update: WPR106-302 preserves compact source
+summaries for top descriptor-only validation requests in one-command sandbox
+iteration agent briefs, iteration index rows, strict-validation action queue
+items, and agent action-plan items. Agents can now triage request source
+routing, source paths, market bounds, and bounded ZIP/TAR selected-member
+diagnostics from the navigation artifacts without reopening request bundles.
+Validation passed with 1 focused ZIP-backed iteration/source-summary test, 165
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, source artifact mutation, member extraction, validation execution,
+or promotion claim exists.
+Current WPR106-303 local follow-up update: WPR106-303 loads every usable local
+`.xlsx/.xls` strategy workbook sheet instead of stopping at the first usable
+sheet. Direct strategy catalog sheets and spreadsheet-like lead sheets are
+aggregated into sandbox descriptor rows, while unsupported or notes-only sheets
+are skipped and reported. Strategy-catalog materializer build reports now expose
+compact workbook sheet diagnostics in JSON/Parquet source rows, including sheet
+count, included/skipped counts, strategy count, sheet status/kind counts,
+bounded sheet-name lists, and bounded per-sheet skip reasons. Validation passed
+with 2 focused workbook tests, 11 strategy catalog loader/materializer tests,
+167 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, source workbook mutation, validation execution, or promotion claim
+exists.
+Current WPR106-304 local follow-up update: WPR106-304 projects compact
+materialized strategy-source summaries into one-command sandbox iteration
+manifests, agent briefs, and iteration index rows. Agents can now inspect
+strategy source status/suffix counts, skipped-source reason counts,
+family/side/blueprint counts, workbook source counts, workbook sheet counts,
+sheet status/kind counts, bounded sheet-name samples, and bounded workbook
+source summaries without reopening strategy catalog build reports. Validation
+passed with 1 focused workbook-backed strategy-source summary test, 23
+agent-iteration/index tests, 168 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, strict cycle execution, source catalog/workbook mutation, validation
+execution, or promotion claim exists.
+Current WPR106-305 local follow-up update: WPR106-305 preserves direct workbook
+sheet provenance by defaulting direct strategy rows without explicit source IDs
+to `workbook_path#sheet_name`. Explicit source IDs remain authoritative, and
+materialized strategy catalogs/build reports preserve those direct workbook
+sheet source IDs. Validation passed with 1 focused direct workbook provenance
+test, 12 strategy catalog loader/materializer tests, 169 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, source workbook mutation,
+validation execution, or promotion claim exists.
+Current WPR106-306 local follow-up update: WPR106-306 exposes skipped
+materialized strategy catalog sources as first-class iteration-index repair
+work. Rows with skipped strategy sources or source skip reason counts now
+receive the `repair_strategy_catalog_sources` recommended action, indexes write
+a bounded `strategy_source_repair_queue`, queue summaries roll up
+strategy-source status/suffix/skip-reason counts, and agent action-plan items
+link source repair work back to that queue. Validation passed with 3 focused
+iteration-index queue tests, 169 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, source catalog mutation, validation
+execution, or promotion claim exists.
+Current WPR106-307 local follow-up update: WPR106-307 adds bounded skipped
+strategy-catalog source samples to one-command iteration strategy-source
+summaries, iteration-index rows, strategy-source repair queue items,
+recommended action details, and global agent action-plan items. Agents can now
+see source path, suffix, and skip reasons for bad catalog files directly from
+handoff artifacts without reopening materializer build reports. Action queue
+schema is version 8. Validation passed with 2 focused skipped-source/queue
+tests, 170 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, source catalog mutation, validation execution, or
+promotion claim exists.
+Current WPR106-308 local follow-up update: WPR106-308 adds bounded skipped
+archive-file samples to one-command iteration archive-source summaries, agent
+briefs, iteration-index rows, archive/preflight queue items, recommended action
+details, and global agent action-plan items. Agents can now see source path,
+source integrity metadata, requested-window bounds, and skip reasons for bad or
+out-of-window archive files directly from handoff artifacts without reopening
+archive manifest build reports. Action queue schema is version 9. Validation is
+passed with 2 focused archive-sample/queue tests, 4 focused iteration-index
+tests, 170 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, archive source mutation, validation execution, or
+promotion claim exists.
+Current WPR106-309 local follow-up update: WPR106-309 adds bounded
+archive-coverage blocker samples to one-command iteration manifests, agent
+briefs, iteration-index rows, archive-window/preflight queue items,
+recommended action details, and global agent action-plan items. Agents can now
+see blocked descriptor IDs, bounded source paths, blocker reason counts, and
+window evidence directly from handoff artifacts without reopening coverage
+matrices or source audits. Action queue schema is version 10. Validation passed
+with 3 focused archive-window/archive-sample/queue tests, 4 focused
+iteration-index tests, 170 sandbox tests, package compileall with PYTHONPATH,
+11 import-boundary tests, and 461 contract tests. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, strict cycle execution, archive manifest or source mutation,
+validation execution, or promotion claim exists.
+Current WPR106-310 local follow-up update: WPR106-310 adds bounded
+compatibility-preflight blocker samples to one-command iteration manifests,
+agent briefs, iteration-index rows, preflight repair queue items, recommended
+action details, and global agent action-plan items. Agents can now see blocked
+strategy/archive combinations, descriptor IDs, hypothesis IDs, signal/filter
+columns, source paths, blocker reason counts, trial estimates, and market
+column context directly from handoff artifacts without reopening preflight
+Parquet or JSON rows. Action queue schema is version 11. Validation passed with
+3 focused preflight/index/queue tests, 4 focused iteration-index tests, 170
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, validation
+execution, or promotion claim exists.
+Current WPR106-311 local follow-up update: WPR106-311 adds bounded
+rejection/falsification samples to completed one-command iteration manifests,
+agent briefs, iteration-index rows, rejection-review queue items, recommended
+action details, queue summaries, and global agent action-plan items. Agents can
+now see failed hypothesis IDs, falsification decisions, representative
+rejected or blocked trial IDs, compact metrics, tested exit/filter variants,
+and reason counts directly from handoff artifacts without reopening rankings
+or falsification Parquet rows. Action queue schema is version 12. Validation
+passed with 1 focused rejection/falsification sample test, 5 focused
+rejection/index tests, 171 sandbox tests, package compileall with PYTHONPATH,
+11 import-boundary tests, and 461 contract tests. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, strict cycle execution, strategy catalog or archive manifest/source
+mutation, validation execution, or promotion claim exists.
+Current WPR106-312 local follow-up update: WPR106-312 adds inert input replay
+context to one-command sandbox iteration manifests, agent briefs,
+iteration-index rows, action queue items, recommended action details, and
+global agent action-plan items. Agents can now see a deterministic replay
+context ID, command name, non-executing argv list, strategy/venue input
+modes, resolved paths or roots, data windows, and bounded run/build options
+directly from handoff artifacts. Action queue schema is version 13. Validation
+passed with 5 focused input-replay/index tests, 172 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, strategy catalog or
+archive manifest/source mutation, replay command execution, validation
+execution, or promotion claim exists.
+Current WPR106-313 local follow-up update: WPR106-313 materializes a dedicated
+descriptor-only input replay worklist from sandbox iteration indexes as JSON
+and Parquet. Agents can now query replay context IDs, argv-list command
+descriptors, input modes, resolved paths or roots, data windows, recommended
+action context, artifact availability, and compact counts without parsing
+nested index rows, queues, or action-plan items. The worklist is version 1 and
+the sandbox artifact catalog discovers it as `iteration_input_replay_worklist`.
+Validation passed with 1 focused input replay context/worklist test, 5 focused
+input replay/index tests, 172 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-314 local follow-up update: WPR106-314 adds replay input path
+readiness diagnostics to the sandbox iteration input replay worklist. Worklist
+rows now check only filesystem existence and expected file-vs-directory type
+for output/spec/catalog/archive replay references, expose present/missing/
+wrong-type counts, missing keys, bounded reference rows, and fail
+`input_replay_ready` closed when replay inputs are missing or invalid.
+Validation passed with 2 focused input replay path-readiness tests, 6 focused
+input replay/index tests, 173 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-315 local follow-up update: WPR106-315 adds venue/window rollups
+to sandbox iteration input replay worklist summaries. Agents can now see
+archive venue, symbol, data-family, interval, requested-window, composite
+archive bucket, and composite archive-window bucket counts, including ready and
+blocked subsets derived from `input_replay_ready`. Validation passed with
+2 focused input replay venue/window tests, 6 focused input replay/index tests,
+173 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary
+tests, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-316 local follow-up update: WPR106-316 adds duplicate
+replay-context diagnostics to sandbox iteration input replay worklist rows and
+summaries. Rows now expose duplicate group keys, per-row duplicate counts, and
+duplicate flags; summaries expose unique replay-context counts, duplicate
+group counts, duplicate item counts, duplicate group-key counts, and
+archive/window unique replay-context rollups. Validation passed with 3 focused
+input replay tests, 7 focused input replay/index tests, 174 sandbox tests,
+package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract
+tests. No candidate pack, paper/live artifact, order/sizing/runtime change,
+live config write, provider download, strict cycle execution, strategy catalog
+or archive manifest/source mutation, replay command execution, validation
+execution, or promotion claim exists.
+Current WPR106-317 local follow-up update: WPR106-317 adds a descriptor-only
+input replay batch plan to sandbox iteration indexes as JSON and Parquet.
+Agents can now use one ready representative argv-list descriptor per unique
+replay context while duplicate suppression, blocked replay rows, archive/window
+buckets, and path-readiness status remain summarized. The batch-plan JSON is
+registered in the sandbox artifact catalog as
+`iteration_input_replay_batch_plan`. Validation passed with 3 focused input
+replay tests, 7 focused input replay/index tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, strategy catalog or
+archive manifest/source mutation, replay command execution, validation
+execution, or promotion claim exists.
+Current WPR106-318 local follow-up update: WPR106-318 projects descriptor-only
+input replay batch-plan counts into sandbox artifact catalog rows. Catalog rows
+now expose source worklist item count, ready source item count, blocked source
+item count, suppressed duplicate source item count, plan item count, and unique
+ready replay-context count for agent triage without reopening every batch-plan
+JSON file. Validation passed with 3 focused input replay tests, 7 focused input
+replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH,
+11 import-boundary tests, and 461 contract tests. No candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, strict cycle execution, strategy catalog or archive manifest/source
+mutation, replay command execution, validation execution, or promotion claim
+exists.
+Current WPR106-319 local follow-up update: WPR106-319 adds top-level replay
+batch-plan rollups and a bounded replay batch-plan queue to sandbox artifact
+catalogs. Catalog payloads now summarize replay batch-plan artifact count,
+descriptor count, source/ready/blocked worklist rows, suppressed duplicates,
+unique ready replay-context count, and status counts, and queue replay
+batch-plan artifacts for agent triage. Validation passed with 3 focused input
+replay tests, 7 focused input replay/index tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, strategy catalog or
+archive manifest/source mutation, replay command execution, validation
+execution, or promotion claim exists.
+Current WPR106-320 local follow-up update: WPR106-320 projects descriptor-only
+input replay batch-plan ready/planned archive bucket and archive-window bucket
+count maps into sandbox artifact catalog rows, top-level replay batch-plan
+summaries, and bounded replay batch-plan queue items. Agents can now triage
+multi-venue replay coverage, including OKX/Bybit/Hyperliquid-style archive
+buckets, without reopening every batch-plan JSON. Validation passed with 3
+focused input replay tests, 7 focused input replay/index tests, 174 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461
+contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, strategy
+catalog or archive manifest/source mutation, replay command execution,
+validation execution, or promotion claim exists.
+Current WPR106-321 local follow-up update: WPR106-321 adds bounded archive
+bucket and archive-window bucket representative queues to sandbox artifact
+catalogs, derived only from already-indexed replay batch-plan catalog rows.
+Agents can now jump from a venue/window bucket to representative descriptor-only
+batch-plan artifacts without scanning every queue item or opening every
+batch-plan JSON. Validation passed with 3 focused input replay tests, 7 focused
+input replay/index tests, 174 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-322 local follow-up update: WPR106-322 writes compact replay
+bucket queue and bucket representative Parquet sidecars for sandbox artifact
+catalogs. Agents can now query venue/window-to-plan routing from flat Parquet
+rows, while blocked-only or no-bucket catalogs still write empty-schema
+sidecars for stable automation. Validation passed with 3 focused input replay
+tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall
+with PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-323 local follow-up update: WPR106-323 projects
+descriptor-only strict-validation request bundle counts into sandbox artifact
+catalog rows, adds a top-level strict-validation bundle summary, and exposes a
+bounded bundle queue for agent triage without opening every bundle JSON.
+Validation passed with 1 focused strict-validation bundle catalog test, 2
+artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH,
+11 import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, strategy catalog or archive manifest/source mutation,
+replay command execution, validation execution, or promotion claim exists.
+Current WPR106-324 local follow-up update: WPR106-324 writes a compact
+strict-validation bundle queue Parquet sidecar beside sandbox artifact catalog
+outputs. Agents can now query descriptor-only validation handoff bundles from
+flat rows, while no-bundle catalogs still write empty-schema sidecars for
+stable automation. Validation passed with 2 artifact-catalog tests, 174 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461
+contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, strategy
+catalog or archive manifest/source mutation, replay command execution,
+validation execution, or promotion claim exists.
+Current WPR106-325 local follow-up update: WPR106-325 writes a cross-bundle
+strict-validation descriptor Parquet sidecar from already-loaded sandbox bundle
+JSON payloads. Agents can now query individual descriptor-only validation
+requests, source trials, venues, symbols, market windows, source routing, and
+compact metrics from one flat catalog sidecar without opening each bundle JSON
+or bundle Parquet. Validation passed with 2 artifact-catalog tests, 174 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461
+contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, strategy
+catalog or archive manifest/source mutation, replay command execution,
+validation execution, or promotion claim exists.
+Current WPR106-326 local follow-up update: WPR106-326 adds a bounded
+strict-validation descriptor bucket queue and Parquet sidecar grouped by
+venue/symbol and venue/symbol/requested-validation. Agents can now see
+multi-venue descriptor-only validation request clusters, compact counts, top
+scores, and representative descriptor/source-trial/bundle IDs without scanning
+every descriptor row. Validation passed with 2 artifact-catalog tests, 174
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-327 local follow-up update: WPR106-327 writes a companion
+strict-validation descriptor bucket representative Parquet sidecar derived from
+the bounded descriptor bucket queue. Agents can now jump from venue/symbol and
+venue/symbol/requested-validation buckets to representative descriptor metadata,
+source trials, market windows, metrics, and routing fields without joining the
+full descriptor table first. Validation passed with 2 artifact-catalog tests,
+174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary
+tests, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-328 local follow-up update: WPR106-328 adds a bounded
+strict-validation descriptor priority queue and Parquet sidecar derived from
+already-flattened descriptor catalog rows. Agents can now start from the
+highest-priority descriptor-only evidence requests across bundles without
+scanning the full descriptor table first. Validation passed with 2
+artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH,
+11 import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, strategy catalog or archive manifest/source mutation,
+replay command execution, validation execution, or promotion claim exists.
+Current WPR106-329 local follow-up update: WPR106-329 writes a compact sandbox
+artifact catalog sidecar index Parquet file over catalog, replay batch-plan,
+and strict-validation Parquet outputs. Agents can now discover sidecar
+categories, names, roles, paths, row counts, and empty status without parsing
+the full catalog JSON first. Validation passed with 2 artifact-catalog tests,
+174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary
+tests, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-330 local follow-up update: WPR106-330 adds file existence,
+byte-size, and SHA-256 identity metadata to sandbox artifact catalog sidecar
+index rows after the catalog writer emits its companion Parquet sidecars.
+Agents can now verify catalog, replay batch-plan, and strict-validation
+sidecar files from the sidecar index without opening the full catalog JSON or
+recomputing the sidecar inventory. Validation passed with 2 artifact-catalog
+tests, 174 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, strategy catalog or archive manifest/source mutation,
+replay command execution, validation execution, or promotion claim exists.
+Current WPR106-331 local follow-up update: WPR106-331 projects existing
+sandbox iteration-index agent action plans into artifact catalog rows and a
+compact Parquet sidecar. Agents can now find cross-iteration repair, replay,
+rejection-review, and descriptor-only strict-validation work from the artifact
+catalog without opening every iteration index JSON first. Validation passed
+with 3 focused artifact/iteration catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, strategy catalog or
+archive manifest/source mutation, replay command execution, validation
+execution, or promotion claim exists.
+Current WPR106-332 local follow-up update: WPR106-332 adds a bounded sandbox
+artifact catalog iteration action-plan bucket sidecar grouped by action and
+source queue, with representative iteration IDs and compact counts. Agents can
+now see cross-iteration workflow buckets before scanning every action-plan row.
+Validation passed with 3 focused artifact/iteration catalog tests, 174 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461
+contract tests. No candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, strategy
+catalog or archive manifest/source mutation, replay command execution,
+validation execution, or promotion claim exists.
+Current WPR106-333 local follow-up update: WPR106-333 writes a companion
+sandbox artifact catalog iteration action-plan bucket representative Parquet
+sidecar. Agents can now jump from action/source-queue workflow buckets to
+representative iteration/action rows without joining the full action-plan
+sidecar first. Validation passed with 3 focused artifact/iteration catalog
+tests, 174 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, strategy catalog or archive manifest/source mutation,
+replay command execution, validation execution, or promotion claim exists.
+Current WPR106-334 local follow-up update: WPR106-334 adds bounded sandbox run
+analysis bucket rollups for venue, family, exit profile, exit variant, filter
+variant, and venue/family clusters. Agents can now triage promising or failing
+run clusters from `analysis_summary.json` without scanning every ranking row.
+Validation passed with 1 focused analysis test, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, strategy catalog or
+archive manifest/source mutation, replay command execution, validation
+execution, or promotion claim exists.
+Current WPR106-335 local follow-up update: WPR106-335 writes a compact sandbox
+artifact catalog analysis bucket rollup Parquet sidecar and registers it in
+the catalog sidecar index with post-write file identity metadata. Agents can
+now query venue, family, exit, filter, and venue/family analysis buckets across
+many sandbox runs without opening every `analysis_summary.json`. Validation
+passed with 2 focused artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No candidate pack, paper/live artifact, order/sizing/runtime change, live
+config write, provider download, strict cycle execution, strategy catalog or
+archive manifest/source mutation, replay command execution, validation
+execution, or promotion claim exists.
+Current WPR106-336 local follow-up update: WPR106-336 adds a sandbox global
+bucket leaderboard derived directly from integrity-checked run rankings and
+descriptor-only evidence requests. Global leaderboard artifacts now include
+bounded `top_buckets` in JSON and write
+`sandbox_global_bucket_leaderboard.parquet` for venue, symbol, venue/symbol,
+family, exit, filter, and venue/family clusters, even when per-run analysis
+reports are absent. Validation passed with 2 focused global leaderboard tests,
+174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary
+tests, and 461 contract tests. No candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-337 local follow-up update: WPR106-337 exposes global bucket
+leaderboard companion metadata on sandbox artifact catalog rows for
+`global_leaderboard` artifacts. Catalog JSON and Parquet rows now carry the
+bucket count, bounded top-bucket count/types, bucket decision-count map, and
+`sandbox_global_bucket_leaderboard.parquet` path from the loaded
+`sandbox_global_leaderboard.json` payload only. Validation passed with 2
+focused global leaderboard tests, 174 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, and 461 contract tests. No bucket Parquet
+read/recompute, candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, strategy
+catalog or archive manifest/source mutation, replay command execution,
+validation execution, or promotion claim exists.
+Current WPR106-338 local follow-up update: WPR106-338 writes
+`sandbox_artifact_catalog_global_bucket_top_buckets.parquet`, a catalog-owned
+sidecar that flattens bounded `top_buckets` rows from loaded
+`sandbox_global_leaderboard.json` payloads and registers the sidecar in the
+catalog sidecar index with post-write file identity metadata. Validation passed
+with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests,
+package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract
+tests. No full bucket Parquet read/recompute, candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, provider download,
+strict cycle execution, strategy catalog or archive manifest/source mutation,
+replay command execution, validation execution, or promotion claim exists.
+Current WPR106-339 local follow-up update: WPR106-339 writes
+`sandbox_artifact_catalog_global_top_hypotheses.parquet`, a catalog-owned
+sidecar that flattens bounded `top_hypotheses` rows from loaded
+`sandbox_global_leaderboard.json` payloads and registers the sidecar in the
+catalog sidecar index with post-write file identity metadata. The rows expose
+source leaderboard paths, hypothesis/family identity, tested dimensions,
+compact run/result/status counts, decision labels, representative best-trial
+metadata, descriptor-only evidence-request trial IDs, and non-authorizing
+boundary flags. Validation passed with 4 focused global-leaderboard/artifact
+catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No full leaderboard Parquet
+read/recompute, candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, strategy
+catalog or archive manifest/source mutation, replay command execution,
+validation execution, or promotion claim exists.
+Current WPR106-340 local follow-up update: WPR106-340 writes
+`sandbox_artifact_catalog_global_evidence_requests.parquet`, a catalog-owned
+sidecar that flattens bounded global leaderboard
+`top_hypotheses[*].evidence_request_trial_ids` rows from loaded
+`sandbox_global_leaderboard.json` payloads and registers the sidecar in the
+catalog sidecar index with post-write file identity metadata. The rows expose
+source leaderboard paths, evidence request trial/source IDs,
+requested-validation labels, hypothesis/family context, tested dimensions,
+compact counts, decision labels, reason counts, and non-authorizing boundary
+flags. Validation passed with 4 focused global-leaderboard/artifact catalog
+tests, 174 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, and 461 contract tests. No full leaderboard Parquet
+read/recompute, candidate pack, paper/live artifact, order/sizing/runtime
+change, live config write, provider download, strict cycle execution, strategy
+catalog or archive manifest/source mutation, replay command execution,
+validation execution, or promotion claim exists.
+Current WPR106-341 local follow-up update: WPR106-341 writes
+`sandbox_artifact_catalog_global_evidence_request_bucket_queue.parquet`, a
+catalog-owned sidecar derived from in-memory global evidence-request rows and
+registered in the catalog sidecar index with post-write file identity metadata.
+The queue groups descriptor-only global strict-validation request rows by
+requested validation, hypothesis, family, tested venue, tested symbol, tested
+venue/symbol, tested venue/family, and leaderboard decision, with compact
+counts and representative evidence-request trial IDs for agent routing.
+Validation passed with 4 focused global-leaderboard/artifact catalog tests, 174
+sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests,
+and 461 contract tests. No full leaderboard Parquet read/recompute, candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write,
+provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-342 local follow-up update: WPR106-342 writes
+`sandbox_artifact_catalog_global_evidence_request_bucket_representatives.parquet`,
+a catalog-owned representative sidecar derived from in-memory global
+evidence-request bucket queues and request rows and registered in the catalog
+sidecar index with post-write file identity metadata. The rows expose bucket
+identity, bucket queue rank, representative rank, evidence request trial/source
+IDs, hypothesis/family context, tested dimensions, source leaderboard paths,
+and non-authorizing boundary flags for direct agent navigation from global
+request buckets to concrete descriptor-only requests. Validation passed with 4
+focused global-leaderboard/artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No full leaderboard Parquet read/recompute, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-343 local follow-up update: WPR106-343 exposes compact global
+evidence-request metadata directly on sandbox global leaderboard catalog rows
+and the artifact catalog manifest. The row metadata is derived only from
+bounded `top_hypotheses` already present in loaded
+`sandbox_global_leaderboard.json` payloads; the manifest summary is derived
+only from in-memory global evidence-request rows, bucket queues, and
+representative rows produced during the same catalog write. Agents can see
+request counts, unique request-trial counts, requesting-hypothesis counts,
+requested-validation maps, leaderboard-decision maps, family maps, tested
+venue/symbol maps, bucket counts, and representative counts before opening any
+global evidence-request sidecar. Validation passed with 4 focused
+global-leaderboard/artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No full leaderboard Parquet read/recompute, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-344 local follow-up update: WPR106-344 writes
+`sandbox_artifact_catalog_global_evidence_request_priority_queue.parquet`, a
+bounded descriptor-only priority queue derived from in-memory global
+evidence-request rows produced from bounded global leaderboard JSON preview
+rows during the same catalog write. Agents can start from concrete top global
+strict-validation request trial IDs, source leaderboard paths, hypothesis and
+family context, tested venue/symbol context, compact metrics, decisions, and
+reason counts without scanning the full flat global request sidecar first. The
+queue is registered in the catalog sidecar index with post-write file identity
+metadata and is summarized in the catalog manifest. Validation passed with 4
+focused global-leaderboard/artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests.
+No full leaderboard Parquet read/recompute, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-345 local follow-up update: WPR106-345 adds bounded
+evidence-request source-context previews to sandbox global leaderboard top
+hypotheses from already-loaded per-run `evidence_requests.json` descriptors.
+Artifact catalog global evidence-request rows and the bounded priority queue
+now flatten compact source request IDs, source run paths, requested-validation
+labels, source market windows, routing/data-path/container metadata, compact
+source metrics, and source market/execution-assumption JSON fields when the
+preview is present. Catalog manifests also expose context availability and
+routing-count summaries so agents can route descriptor-only strict-validation
+work without reopening per-run request files. Validation passed with 4 focused
+global-leaderboard/artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and a direct
+trailing-whitespace scan of packet-touched files. No per-run evidence request
+file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-346 local follow-up update: WPR106-346 extends sandbox artifact
+catalog global evidence-request bucket queues and bucket representatives with
+source-context routing metadata from in-memory global request rows. Agents can
+now route descriptor-only strict-validation requests by source venue, source
+symbol, source venue/symbol, source data family, source interval, source venue
+descriptor, source routing mode, and source data path without scanning the full
+flat request sidecar or reopening per-run request files. Bucket
+representatives expose both bucket-level source keys and row-level source
+request/run/metric/routing context while preserving empty-schema Parquet
+behavior and all sandbox boundary flags. Validation passed with 4 focused
+global-leaderboard/artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and a direct
+trailing-whitespace scan of packet-touched files. No per-run evidence request
+file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-347 local follow-up update: WPR106-347 adds source-context
+count maps to the sandbox artifact catalog global evidence-request summary and
+top-level manifest fields from the same in-memory global request rows used for
+request, priority queue, bucket queue, and representative sidecars. Agents can
+inspect source venue, source symbol, source data family, source interval,
+source routing mode, source venue descriptor, and source data-path counts
+before opening bucket or flat request sidecars. Validation passed with 4
+focused global-leaderboard/artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and a direct
+trailing-whitespace scan of packet-touched files. No per-run evidence request
+file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-348 local follow-up update: WPR106-348 writes
+`sandbox_artifact_catalog_global_evidence_request_source_summary.parquet`, a
+compact descriptor-only Parquet sidecar flattened from the in-memory global
+evidence-request source summary. Agents can query global request source venue,
+source symbol, source data family, source interval, source routing mode, source
+venue descriptor, and source data-path availability from sidecar-indexed flat
+rows without opening the catalog JSON or full request sidecar. The sidecar is
+registered with post-write file identity. Validation passed with 4 focused
+global-leaderboard/artifact catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and a direct
+trailing-whitespace scan of packet-touched files. No per-run evidence request
+file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-349 local follow-up update: WPR106-349 enriches
+`sandbox_artifact_catalog_global_evidence_request_source_summary.parquet` with
+unique request-trial counts, source leaderboard counts, and source market
+start/end min/max bounds per source-context field/value row. The fields are
+derived from in-memory global evidence-request rows produced during the same
+catalog write, so agents can verify 2024+ source windows for source venue,
+source symbol, source data family, source interval, source routing mode, source
+venue descriptor, and source data path without scanning the full flat request
+sidecar. The sidecar remains sandbox-only, descriptor-only where applicable,
+observe-only, promotion-ready false, and candidate-pack-ineligible; validation
+passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox
+tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461
+contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and
+direct trailing-whitespace scan of packet-touched files; no per-run evidence
+request file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-350 local follow-up update: WPR106-350 enriches
+`sandbox_artifact_catalog_global_evidence_request_source_summary.parquet` with
+bounded representative evidence-request trial IDs, source trial IDs, source
+request IDs, source artifact paths, and source leaderboard JSON paths per
+source-context field/value row. The representative fields are derived from
+in-memory global evidence-request rows produced during the same catalog write,
+so agents can jump from source coverage and 2024+ window summaries to concrete
+descriptor-only request rows without opening bucket representative sidecars or
+scanning the full flat request sidecar first. The sidecar remains sandbox-only,
+descriptor-only where applicable, observe-only, promotion-ready false, and
+candidate-pack-ineligible; validation passed with 4 focused
+global-leaderboard/artifact-catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and direct
+trailing-whitespace scan of packet-touched files; no per-run evidence request
+file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-351 local follow-up update: WPR106-351 enriches
+`sandbox_artifact_catalog_global_evidence_request_source_summary.parquet` with
+compact best-context fields per source-context field/value row: best
+leaderboard rank, best global score, best source metric rank/score/net
+return/trade count, best evidence-request trial ID, best source trial ID, best
+hypothesis ID, and best family. The fields are derived from the same
+deterministically sorted in-memory global evidence-request rows used for
+source-summary representatives, so agents can prioritize source coverage
+queues before opening the full flat global request sidecar. The sidecar remains
+sandbox-only, descriptor-only where applicable, observe-only, promotion-ready
+false, and candidate-pack-ineligible; validation passed with 4 focused
+global-leaderboard/artifact-catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and direct
+trailing-whitespace scan of packet-touched files; no per-run evidence request
+file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-352 local follow-up update: WPR106-352 writes
+`sandbox_artifact_catalog_global_evidence_request_source_priority_queue.parquet`,
+a bounded cross-source priority queue derived only from in-memory global
+evidence-request source-summary rows. It sorts across source venue, source
+symbol, source data family, source interval, source routing mode, source venue
+descriptor, and source data path by best leaderboard/source metric context and
+compact counts, so agents can inspect the highest-priority source coverage rows
+without scanning the full flat global request sidecar or hand-sorting the
+source-summary sidecar. The sidecar is registered with post-write file identity
+and remains sandbox-only, descriptor-only where applicable, observe-only,
+promotion-ready false, and candidate-pack-ineligible; validation passed with 4
+focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package
+compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and direct
+trailing-whitespace scan of packet-touched files; no per-run evidence request
+file reopen during cataloging, full leaderboard Parquet read/recompute,
+candidate pack, paper/live artifact, order/sizing/runtime change, live config
+write, provider download, strict cycle execution, strategy catalog or archive
+manifest/source mutation, replay command execution, validation execution, or
+promotion claim exists.
+Current WPR106-353 local follow-up update: WPR106-353 adds deterministic agent
+navigation metadata to sandbox artifact catalog sidecar-index rows:
+`agent_read_order`, `agent_read_group`, `agent_first_read`, and
+`agent_navigation_hint`. The sidecar index now identifies first-read sidecars
+for catalog start, global source-priority triage, global evidence-request trial
+triage, strict-validation bundle triage, iteration action triage, and replay
+batch triage without requiring packet-history lookup or hard-coded filename
+order. The fields are read-only navigation metadata and remain sandbox-only,
+descriptor-only where applicable, observe-only, promotion-ready false, and
+candidate-pack-ineligible; validation passed with 2 focused artifact-catalog
+tests, 174 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, 461 contract tests, `git diff --check` with only
+existing LF-to-CRLF warnings, and direct trailing-whitespace scan of
+packet-touched files; no sidecar row-count change, sidecar payload schema
+change outside the sidecar index, scoring/ranking change, evidence-request
+selection change, per-run evidence request file reopen, full leaderboard
+Parquet read/recompute, candidate pack, paper/live artifact,
+order/sizing/runtime change, live config write, provider download, strict cycle
+execution, strategy catalog or archive manifest/source mutation, replay command
+execution, validation execution, or promotion claim exists.
+Current WPR106-354 local follow-up update: WPR106-354 adds
+`archive_coverage_venue_expansion_gaps.parquet` to sandbox archive coverage
+output. The sidecar compares OKX, Bybit, and Hyperliquid readiness for each
+observed market-symbol/data-family/interval group, labels targets as ready,
+mixed, blocked, or missing, and emits descriptor-only actions to use ready
+buckets, repair blocked/mixed buckets, or add missing target venue descriptors.
+The grouping uses compact market-symbol keys so Hyperliquid-style `BTC`
+coverage can be compared with OKX/Bybit-style `BTCUSDT` coverage during venue
+expansion triage. The fields are read-only archive coverage diagnostics and
+remain sandbox-only, descriptor-only, observe-only, promotion-ready false, and
+candidate-pack-ineligible; validation passed with 3 focused archive-coverage
+tests, 174 sandbox tests, package compileall with PYTHONPATH, 11
+import-boundary tests, 461 contract tests, `git diff --check` with only
+existing LF-to-CRLF warnings, and direct trailing-whitespace scan of
+packet-touched files; no archive descriptor loading change, market-frame
+normalization change, source-integrity change, coverage bucket status semantic
+change, preflight behavior change, replay readiness change, trial ID change,
+ranking/scoring change, evidence-request selection change, candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, provider
+download, strict cycle execution, strategy catalog or archive manifest/source
+mutation, replay command execution, validation execution, or promotion claim
+exists.
+Current WPR106-355 local follow-up update: WPR106-355 surfaces the
+WPR106-354 venue-expansion archive coverage sidecar in one-command sandbox
+iteration manifests, agent briefs, iteration index rows, action queues, and
+agent action plans. Handoff artifacts now expose the
+`archive_coverage_venue_expansion_gaps.parquet` path, target venues,
+ready/missing/blocked/mixed counts, descriptor-only target action counts,
+bounded actionable samples, the `venue_expansion_gap_queue`, and the
+`repair_or_add_venue_expansion_archives` planning action. Rejection-review
+actions remain available as secondary actions when sandbox rejections exist
+and no strict-validation requests are pending. Validation passed with 4
+focused iteration-index tests, 30 related agent-iteration/archive-coverage/
+action-queue/input-replay tests, 174 sandbox tests, package compileall with
+PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check`
+with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of
+packet-touched files. No archive descriptor creation, provider download,
+archive manifest/source mutation, sandbox sweep semantic change, replay
+command execution, strict validation execution, candidate pack, paper/live
+artifact, order/sizing/runtime change, live config write, trial ID change,
+ranking/scoring change, evidence-request selection change, or promotion claim
+exists.
+Current WPR106-356 local follow-up update: WPR106-356 adds
+`sandbox_artifact_catalog_iteration_venue_expansion_gap_worklist.parquet` to
+the sandbox artifact catalog. The sidecar is derived only from already-loaded
+iteration index `agent_action_plan` JSON items with
+`repair_or_add_venue_expansion_archives` actions and bounded venue-expansion
+gap samples. It exposes one descriptor-only worklist row per actionable OKX,
+Bybit, or Hyperliquid target venue gap, with iteration/action identity, source
+queues, path references, target venue, compact market-symbol key, data family,
+interval, target status/action, source coverage metadata, compact counts, and
+non-authorizing flags. The sidecar index marks it as a first-read iteration
+action-triage artifact and records post-write file identity; the catalog
+manifest exposes row count plus target venue/action/status/source-queue
+counts. Validation passed with 3 focused artifact-catalog/iteration-index
+tests, 174 sandbox tests, package compileall with PYTHONPATH, 461 contract
+tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct
+trailing-whitespace scan of packet-touched files. No archive descriptor
+creation, provider download, archive manifest/source mutation, sandbox sweep,
+replay command execution, strict validation execution, candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, trial ID
+change, ranking/scoring change, evidence-request selection change, or
+promotion claim exists.
+Current WPR106-357 local follow-up update: WPR106-357 adds
+`export-rapid-strategy-sandbox-venue-expansion-requests` and the
+`sandbox_venue_expansion_request_bundle.json` / `.parquet` artifacts. The
+exporter reads only an existing sandbox artifact catalog JSON and its
+venue-expansion gap worklist sidecar, dedupes actionable OKX, Bybit, and
+Hyperliquid archive descriptor repair/add targets by target venue, compact
+market-symbol key, data family, interval, target action, and target bucket, and
+preserves bounded source iteration IDs, run IDs, source queues, path references,
+coverage counts, blocker counts, and source references for agent handoff. The
+bundle registers in sandbox artifact catalog discovery as
+`venue_expansion_request_bundle`, records explicit false authorization flags for
+provider download, archive manifest writes, archive source mutation, replay
+execution, strict validation, and candidate-pack writes, and refuses pre-2024
+requested or observed market windows. Validation passed with 2 focused
+venue-expansion/iteration-index tests, 23 live CLI boundary tests, 175 sandbox
+tests, package compileall with PYTHONPATH, 461 contract tests,
+`git diff --check` with only existing LF-to-CRLF warnings, and direct
+trailing-whitespace scan of packet-touched files. No archive descriptor
+creation, provider download, archive manifest/source mutation, sandbox sweep,
+replay command execution, strict validation execution, candidate pack,
+paper/live artifact, order/sizing/runtime change, live config write, trial ID
+change, ranking/scoring change, evidence-request selection change, or
+promotion claim exists.
+Current WPR106-358 local follow-up update: WPR106-358 adds the visible
+next-agent sandbox self-audit handoff at
+`docs/NEXT_AGENT_HANDOFF_WPR106_358_SANDBOX_SELF_AUDIT.md` and links it from
+`docs/ACTIVE_INDEX.md`. The handoff records current sandbox rewrite state,
+latest validation evidence, worktree friction, incomplete development areas,
+and the recommended next packet for a descriptor-only local materializer that
+can consume venue-expansion request bundles and scan only user-provided local
+archive roots. This is documentation-only; no code, tests, configs, research
+artifacts, archive manifests, source archive files, live/runtime behavior,
+candidate-pack state, paper/live behavior, order/sizing/runtime change, live
+config write, or promotion state changed.
+Current WPR106-359 local follow-up update: WPR106-359 adds the visible
+first-look recommendation memo at `docs/SANDBOX_FIRST_LOOK_RECOMMENDATIONS.md`
+and links it from `docs/ACTIVE_INDEX.md`. The memo records that the prior
+sandbox self-audit is useful as a handoff but should not be treated as
+acceptance evidence, recommends audit-first posture before more sandbox feature
+development, and flags review-readiness risks such as dirty/untracked source
+coupling, generated output, broad subsystem size, and non-sandbox semantic
+diffs that need classification. This is documentation-only; it is not an
+implementation guideline, not a completed audit, and not authorization for a
+candidate pack, paper/live behavior, order/sizing/runtime change, live config
+write, or promotion state.
+Current WPR106-360 local follow-up update: WPR106-360 adds the master
+research-only completion roadmap at
+`docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` and links it from
+`docs/ACTIVE_INDEX.md`. The roadmap starts from the current dirty-tree and red
+targeted-test reality, makes Phase 0 repo-state and merge-coherence
+stabilization mandatory, and then sequences safety/provenance repairs, the
+local venue-expansion materializer, realistic closed-loop smoke evidence,
+strict-validation descriptor preflight, performance proof, and reviewable
+delivery. This is documentation-only; it does not implement commands, mutate
+archives or generated artifacts, execute validation beyond documentation
+checks, write candidate packs, create paper/live behavior, change
+order/sizing/runtime behavior, write live config, or change promotion state.
+Current WPR106-361 local follow-up update: WPR106-361 expands
+`docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` into a detailed
+autonomous-development guide. It now includes product definition, non-goals,
+target architecture, subsystem touchpoints, Phase 0 stabilization details,
+safety/provenance repair requirements, closed-loop sandbox guidance,
+strict-validation preflight guidance, performance proof requirements,
+suggested packet backlog, artifact rules, testing matrix, stop conditions,
+agent operating rules, and definition of done. This is documentation-only; it
+does not implement commands, mutate configs, tests, archives, generated
+artifacts, or source files, execute replay or strict validation, write
+candidate packs, create paper/live behavior, change order/sizing/runtime
+behavior, write live config, or change promotion state.
+Current WPR106-362 local follow-up update: WPR106-362 repairs the highest-risk
+post-audit sandbox safety and provenance blockers. Sandbox run IDs are now
+safe path components; run and suite output directories are contained under
+configured roots; nested free-form live/paper/order/sizing/promotion/
+candidate-pack authorization fields fail recursive boundary validation before
+run artifacts are written; descriptor-window intersections are enforced in
+preflight, shared-market sweeps, and descriptor-routed archive sweeps;
+manifest child artifact paths cannot escape their run or suite directory
+during integrity verification; trial IDs include decision-affecting thresholds
+and avoid local archive paths when logical source identity is available; proxy
+blueprint outputs are explicitly proxy-only; and `baseline_no_trade` compiles
+to non-active `no_trade_proxy`. Validation passed with 189 sandbox tests, 23
+live CLI boundary tests, package compileall, 461 contract tests, and the full
+suite at 1844 passed, 1 skipped, 1 existing XGBoost warning. No provider
+download, archive source mutation, strict-validation execution, candidate
+pack, paper/live artifact, order/sizing/runtime change, live config write, or
+promotion claim exists.
+Current WPR106-363 local follow-up update: WPR106-363 repairs the two
+post-audit red tests outside the sandbox package. `trend_following_v1` 4h and
+`range_reversion_v1` 12h spacing metadata now match the existing optimization
+contract, and large discovery resume manifests/snapshots count recovered
+completed trial IDs from durable state when full trial hydration is
+intentionally skipped. Focused optimization and discovery-runner validation
+passed, and the full suite passed at 1844 passed, 1 skipped, 1 existing
+XGBoost warning. Candidate gates, strict validation, candidate packs,
+paper/live behavior, order/sizing/runtime behavior, live config, and promotion
+state were not changed.
+Current WPR106-364 local follow-up update: WPR106-364 adds the Rapid Strategy
+Iteration Sandbox suite and live CLI boundary tests to the checked-in research
+validation workflow. CI now runs `tests/research_sandbox` and includes
+`tests/live/test_cli_boundary.py` in the live/artifact boundary step while
+preserving the prior contract and live/artifact checks. Local validation passed
+with 189 sandbox tests, 23 live CLI boundary tests, YAML parsing of the
+workflow, and the earlier full-suite result of 1844 passed, 1 skipped, 1
+existing XGBoost warning. This is workflow coverage only; it does not change
+source behavior, generated artifacts, archive manifests/sources, provider
+downloads, strict-validation execution, candidate packs, paper/live behavior,
+order/sizing/runtime behavior, live config, or promotion state.
+Current WPR106-365 local follow-up update: WPR106-365 classifies the coherent
+post-audit sandbox publication surface. The source/config/test files under
+`configs/sandbox`, `src/tradingbotsuite/research_sandbox`, and
+`tests/research_sandbox` must be kept together with the related WPR106-362
+through WPR106-365 documentation. `outputs/` remains ignored and clean.
+Broader inherited dirty/untracked operator, research, config, docs, cache, and
+experimental files remain out of scope and must not be swept into a sandbox
+publication without their own packet/review. This is documentation-only; it
+does not stage, commit, delete, revert, change source behavior, mutate
+generated artifacts or archives, download provider data, execute strict
+validation, write candidate packs, create paper/live behavior, touch
+order/sizing/runtime behavior, write live config, or change promotion state.
+Current WPR106-366 local follow-up update: WPR106-366 adds the descriptor-only
+local materializer for sandbox venue-expansion request bundles. The new
+`materialize-rapid-strategy-sandbox-venue-expansion-requests` research command
+reads a request bundle under the configured research output root, scans only
+explicitly supplied local archive roots, matches local files by canonical
+venue, compact symbol key, data family, interval, and requested 2024+ window
+overlap, and writes descriptor-candidate plus manifest-patch dry-run JSON/
+Parquet artifacts. Unmatched requests become blocker rows, pre-2024 request
+windows are refused, and the command does not write archive manifests or
+mutate source files. Validation passed with 3 focused materializer tests, 23
+live CLI boundary tests, 192 sandbox tests, package compileall, and 461
+contract tests. An ignored local smoke produced a completed sandbox iteration,
+iteration index, venue-expansion request bundle, and materializer dry-run with
+2 request rows, 1 Bybit descriptor candidate, and 1 blocked Hyperliquid
+request. No provider download, archive/source mutation, manifest write, replay
+execution, strict-validation execution, candidate pack, paper/live behavior,
+order/sizing/runtime behavior, live config write, candidate-evidence claim, or
+promotion state change exists.
+Current WPR106-367 local follow-up update: WPR106-367 registers WPR106-366
+materializer outputs in the sandbox artifact catalog. Catalog scans now
+discover `sandbox_venue_expansion_descriptor_candidates.json` as
+`venue_expansion_descriptor_candidates` and
+`sandbox_venue_expansion_manifest_patch_dry_run.json` as
+`venue_expansion_manifest_patch_dry_run`, with catalog row fields for
+materializer IDs, request counts, descriptor-candidate counts, dry-run patch
+rows, ready/blocked requests, archive scan counts, scan status/reason maps,
+output paths, and explicit false provider/archive mutation authorization and
+execution fields. Validation passed with 1 focused materializer-catalog test,
+193 sandbox tests, and package compileall. This catalogs existing artifacts
+only; it does not rerun materialization, download provider data, mutate source
+archive files, write or modify archive manifests, execute sandbox sweeps,
+execute strict validation, write candidate packs, create paper/live behavior,
+touch order/sizing/runtime behavior, write live config, claim candidate
+evidence, or change promotion state.
+Current WPR106-368 local follow-up update: WPR106-368 adds an explicit
+candidate-manifest export for venue-expansion descriptor candidates. The new
+`export-rapid-strategy-sandbox-venue-expansion-candidate-manifest` research
+command reads WPR106-366 descriptor-candidate JSON under the configured
+research output root and writes a new standalone sandbox `venue_archives.json`
+plus JSON/Parquet report under a deterministic manifest directory. Focused
+tests prove the manifest is loadable by existing descriptor intake and usable
+by archive coverage and compatibility preflight. Validation passed with 2
+candidate-manifest tests, 23 live CLI boundary tests, 195 sandbox tests,
+package compileall, and 461 contract tests. This writes only a new sandbox
+manifest/report; it does not mutate source archive files or existing archive
+manifests, download provider data, execute sandbox sweeps, execute strict
+validation, write candidate packs, create paper/live behavior, touch
+order/sizing/runtime behavior, write live config, claim candidate evidence, or
+change promotion state.
+Current WPR106-369 local follow-up update: WPR106-369 adds a fixture-level
+closed-loop regression for the venue-expansion sandbox workflow: request
+bundle, local materializer, candidate archive manifest, archive coverage,
+compatibility preflight, bounded archive-backed sandbox run, analysis,
+hypothesis falsification, descriptor-only strict-validation request bundle,
+and artifact catalog discovery. Validation passed with 1 focused fixture-smoke
+test, 196 sandbox tests, and `git diff --check` with existing LF-to-CRLF
+warnings only. This is workflow regression evidence only, not real-market
+archive evidence, candidate evidence, or promotion evidence; no provider
+download, source archive mutation, existing manifest mutation, strict
+validation execution, candidate pack, paper/live behavior, order/sizing/runtime
+behavior, live config write, candidate-evidence claim, or promotion state
+change exists.
+Current WPR106-370 local follow-up update: WPR106-370 adds
+`preflight-rapid-strategy-sandbox-validation-requests`, a descriptor-only
+strict-validation request-bundle import/preflight command. It writes
+`strict_validation_descriptor_preflight.json` and Parquet planning reports
+with `accepted_for_strict_validation_planning` rows and blocked rows for
+missing source context, missing archive identity, proxy-only strategies,
+missing validation requirements, pre-2024 windows, and candidate-pack or
+promotion flags. Boundary-unsafe bundles fail closed before output. Validation
+passed with 4 focused strict-validation preflight/CLI tests, 24 live CLI
+boundary tests, 200 sandbox tests, package compileall, and 461 contract tests.
+`git diff --check` passed with existing LF-to-CRLF warnings only.
+This is planning-only; it does not execute strict validation, write
+historical-cycle specs, write candidate packs, create paper/live behavior,
+touch order/sizing/runtime behavior, write live config, claim candidate
+evidence, or change promotion state.
+Current WPR106-371 local follow-up update: WPR106-371 adds
+`show-rapid-strategy-sandbox-next-action`, a first-read dashboard command that
+summarizes existing sandbox artifact catalogs and iteration indexes without
+recomputing evidence. It writes `sandbox_next_action_report.json` and Parquet
+navigation reports with iteration status, action queue counts, blockers,
+missing venue coverage, descriptor-only strict-validation queues,
+venue-expansion requests, artifact warnings, best-hypothesis sidecar pointers,
+next recommended packet type, and exact files to open next. Validation passed
+with 2 focused next-action dashboard tests, 25 live CLI boundary tests, 202
+sandbox tests, package compileall, and 461 contract tests. `git diff --check`
+passed with existing LF-to-CRLF warnings only. This is dashboard-only and
+read-only; it does not execute sandbox sweeps, artifact indexers,
+strict-validation preflight, strict validation, provider downloads, replay
+commands, candidate-pack writes, paper/live behavior, order/sizing/runtime
+behavior, live config writes, candidate-evidence claims, or promotion claims.
+Current WPR106-372 local follow-up update: WPR106-372 adds measurement-only
+throughput telemetry to one-command sandbox iteration manifests and
+`summarize-rapid-strategy-sandbox-throughput`, a report command over existing
+iteration manifests. Telemetry records total runtime, per-stage runtime,
+market-data frame and source-integrity cache counters, 2024+ rows loaded,
+source bytes read, workers requested/used, and traced peak memory when
+measurable. Reports write `sandbox_throughput_report.json`, iteration summary
+Parquet, and stage summary Parquet with missing-telemetry blockers,
+artifact-byte estimates, cache summaries, and bottleneck ranking while keeping
+`speedup_claimed: false`. Validation passed with 3 focused throughput tests,
+package compileall, 26 live CLI boundary tests, 205 sandbox tests, and 461
+contract tests. `git diff --check` passed with existing LF-to-CRLF warnings
+only. This is diagnostic-only; it does not alter trial identity, ranking,
+strategy signals, exit/fill semantics, archive routing, blockers,
+evidence-request selection, strict validation, candidate packs, paper/live
+behavior, order/sizing/runtime behavior, live config writes, candidate-evidence
+semantics, or promotion state.
+Current WPR106-373 local follow-up update: WPR106-373 resolves the post-audit
+`signal_bar_close_plus_latency` compatibility drift. The existing public source
+name again uses `signal_bar_close` as entry price after latency-based entry-bar
+selection, while the primary-open latency behavior remains available under the
+explicit `primary_bar_open_plus_latency` source name. Backtest manifests now
+map the old source to `signal_close_latency_fill` and the explicit open source
+to `primary_bar_latency_fill`; reference, vector, fake-CUDA R96, and fake-CUDA
+batched parity tests cover the source-name split. Focused validation passed
+with 22 simulator tests, 3 focused backtest-contract tests, 9 focused
+vector/fake-CUDA tests, and 6 focused CUDA-batched tests. Broader validation
+passed with package compileall, 109 backtesting tests with 1 skipped, 462
+contract tests, 205 sandbox tests, 26 live CLI boundary tests, and
+`git diff --check` with existing LF-to-CRLF warnings only. This compatibility
+repair does not change sandbox trial identity, sandbox ranking, archive
+routing, strict-validation behavior, candidate-pack gates, paper/live behavior,
+order/sizing/runtime behavior, live config writes, candidate-evidence
+semantics, or promotion state.
+Current WPR106-374 local follow-up update: WPR106-374 closes the post-audit
+sandbox catalog `exit_profile` semantics gap. Non-default direct catalog row
+exit profiles now run only against matching run-spec exit variants, and missing
+or unsupported matches fail closed in compatibility preflight and execution
+with explicit blockers. Default `fixed_hold` rows keep the existing normal
+run-spec exit-sweep behavior. Validation passed with 17 focused post-audit
+safety tests, package compileall, 208 sandbox tests, 26 live CLI boundary
+tests, 462 contract tests, and `git diff --check` with existing LF-to-CRLF
+warnings only. This repair does not add strategy logic, execute
+strict validation, write candidate packs, create paper/live signals, define
+sizing, place orders, change runtime mode, write live configuration, claim
+candidate evidence, or authorize promotion.
+Current WPR106-375 local follow-up update: WPR106-375 adds bounded-read
+guardrails to sandbox ZIP/TAR market-data container loading. Selected member
+count, per-member raw bytes, total selected raw bytes, and gzip decompression
+bytes are bounded with explicit fail-closed loader errors; accepted container
+normalization metadata records the active limits and selected-member declared
+byte totals. Validation passed with 4 focused container-limit tests, 212
+sandbox tests, package compileall, 26 live CLI boundary tests, and 462 contract
+tests plus `git diff --check` with existing LF-to-CRLF warnings only. This is
+a guardrail against unbounded local archive reads, not a full streaming
+throughput claim; no provider download, archive/source mutation, sandbox sweep
+semantic change, strict-validation execution, candidate pack, paper/live
+behavior, sizing/order/runtime behavior, live-config write, candidate-evidence
+claim, or promotion claim exists.
+Current WPR106-376 local follow-up update: WPR106-376 repairs a broad
+validation blocker in Binance Vision archive test fixtures. Repeated fixture
+ZIP generation now uses fixed ZIP member metadata so archive payload bytes and
+`.CHECKSUM` bytes are stable across calls, letting the duplicate-source-bars
+test reach the intended archive-quality failure instead of an incidental
+checksum mismatch. Validation passed with 2 focused fixture tests, direct retry
+of the transient async engine test, `tests\tradingbotsuite tests\integration`
+reporting 410 passed with 2 expected environment warnings, package compileall,
+and `git diff --check` with existing LF-to-CRLF warnings only.
+This is test-fixture determinism only; production downloader behavior,
+checksum validation, archive quality gates, sandbox behavior, candidate-pack
+gates, paper/live behavior, sizing/order/runtime behavior, live-config writes,
+candidate-evidence semantics, and promotion state are unchanged.
+Current WPR106-377 local follow-up update: WPR106-377 resolves the audit H1
+sandbox commit-coherence blocker for the classified sandbox package surface.
+The Git index now contains 35 intended files under
+`src/tradingbotsuite/research_sandbox`, `tests/research_sandbox`, and
+`configs/sandbox`; there are no remaining untracked files under those paths.
+Tracked `.pytest_cache` entries were removed from the index only while local
+cache files remain ignored. Validation passed with sandbox package import,
+CLI help, package compileall, 212 sandbox tests, and 26 live CLI boundary
+tests. `git diff --check` passed with existing LF-to-CRLF warnings only, and
+`git diff --cached --check` passed. This is publication/index hygiene only;
+sandbox runtime semantics, strict-validation execution, candidate packs,
+paper/live behavior, sizing/order/runtime behavior, live-config writes,
+candidate-evidence semantics, and promotion state are unchanged.
+Current WPR106-378 local follow-up update: WPR106-378 closes the post-audit
+workbook intake M2/M9 gaps. Legacy `.xls` strategy catalogs are now
+recognized but explicitly unsupported with
+`unsupported_legacy_xls_strategy_catalog`; materializer runs surface that as a
+skipped-source repair reason instead of silently accepting or ignoring it. The
+standard-library `.xlsx` fallback now bounds ZIP member count, per-member XML
+bytes, total parsed XML bytes, sheet count, shared-string count, row count,
+cell count, and column count, and accepted workbook diagnostics record the
+active fallback limits. Validation passed with 9 focused workbook tests, 216
+sandbox tests, package compileall, and 26 live CLI boundary tests. This is
+local catalog-intake guardrail work only; no provider download, source catalog
+mutation, sandbox sweep execution, strict-validation execution, candidate pack,
+paper/live behavior, sizing/order/runtime behavior, live-config write,
+candidate-evidence claim, or promotion claim exists.
+Current WPR106-379 local follow-up update: WPR106-379 closes the post-audit M5
+source-discovery cost gap for the sandbox. Strategy catalog materialization,
+archive manifest building, and global leaderboard run discovery now use shared
+deterministic bounded traversal that sorts one directory at a time and stops
+after the configured `max_files` or `max_runs` limit instead of sorting a full
+recursive tree first. Validation passed with 3 focused discovery-bound tests,
+219 sandbox tests, package compileall, and 26 live CLI boundary tests. This is
+local discovery traversal work only; no provider download, source catalog or
+archive mutation, sandbox sweep semantic change, strict-validation execution,
+candidate pack, paper/live behavior, sizing/order/runtime behavior,
+live-config write, candidate-evidence claim, or promotion claim exists.
+Current WPR106-380 local follow-up update: WPR106-380 closes the post-audit
+H10 CI coverage gap for the sandbox. The `research-validation` workflow now
+runs `tests/research_sandbox` and includes `tests/live/test_cli_boundary.py`
+with the existing live/artifact boundary tests. Validation passed locally with
+219 sandbox tests, 103 live/artifact boundary tests, package compileall, and
+staged diff hygiene. This is CI validation coverage only; no sandbox runtime
+semantic change, strict-validation execution, candidate pack, paper/live
+behavior, sizing/order/runtime behavior, live-config write, candidate-evidence
+claim, or promotion claim exists.
+Current WPR106-381 local follow-up update: WPR106-381 improves the sandbox
+next-action dashboard's first-read path after a local iteration run. When no
+artifact catalog or iteration index is available yet, the dashboard now uses
+bounded read-only discovery for `sandbox_iteration_manifest.json` files,
+recommends `index_rapid_strategy_sandbox_iterations`, and lists exact manifest
+paths to inspect next. Validation passed with 3 focused next-action tests, 220
+sandbox tests, package compileall, and 26 live CLI boundary tests. This is
+read-only dashboard guidance only; no sandbox sweep execution, artifact
+indexing, evidence recomputation, strict-validation execution, candidate pack,
+paper/live behavior, sizing/order/runtime behavior, live-config write,
+candidate-evidence claim, or promotion claim exists.
+Current WPR106-382 local follow-up update: WPR106-382 closes the sandbox CLI
+publication-coherence gap left after staging the sandbox package and tests. The
+canonical CLI parser/dispatch additions, research-command registry entries, and
+live CLI boundary containment tests are staged as a sandbox-only review surface;
+unrelated four-bar KNN command work in the same working-tree files remains
+unstaged. Validation passed with staged-index Python AST parsing, a staged
+CLI/registry four-bar reference scan returning no matches, 26 live CLI boundary
+tests, 220 sandbox tests, and package compileall. This is publication/coherence
+work only; no sandbox sweep execution, artifact indexing, evidence
+recomputation, strict-validation execution, candidate pack, paper/live
+behavior, sizing/order/runtime behavior, live-config write, candidate-evidence
+claim, or promotion claim exists.
+Current WPR106-383 local follow-up update: WPR106-383 resolves the broad-suite
+validation timeout found after the sandbox publication-coherence packets by
+bounding historical fixture cycle smoke tests that were executing
+production-sized checked-in research specs. The checked-in config assertions
+remain direct, but execution uses tmp specs with explicit small
+strategy/feature/window/search/compute bounds. Validation passed with the
+focused formerly hanging BTC fixture smoke, bounded BTC/ETH perp-context fixture
+smokes, the full historical fixture file, the full historical directory, the
+previously timed-out grouped slice, the remaining measured grouped slices, and
+the full suite reporting 1890 passed, 1 skipped, and 1 XGBoost device warning
+in 559.03 seconds. This is test/runtime-bounding work only; no production
+research-cycle behavior, strict-validation execution, candidate pack, sandbox
+artifact semantic change, paper/live behavior, sizing/order/runtime behavior,
+live-config write, candidate-evidence claim, or promotion claim exists.
+Current WPR106-384 local follow-up update: WPR106-384 closes the sandbox
+package-root import coupling gap from the audit by preserving the existing
+`tradingbotsuite.research_sandbox` root exports through lazy module resolution.
+Importing the package root no longer imports the full catalog/iteration/archive
+graph, while existing root import consumers keep working. Validation passed
+with 18 focused post-audit safety tests, 221 sandbox tests, a clean-interpreter
+import smoke showing `catalog` remains unloaded after root import and
+`DataWindow` access, 26 live CLI boundary tests, and package compileall. This
+is import-timing work only;
+no sandbox execution semantic change, strict-validation execution, candidate
+pack, paper/live behavior, sizing/order/runtime behavior, live-config write,
+candidate-evidence claim, or promotion claim exists.
+Current WPR106-385 local follow-up update: WPR106-385 reduces the audit H9
+full-memory pressure in descriptor-routed sandbox archive sweeps. Descriptor
+`data_path` sweeps now load one descriptor market frame at a time, execute that
+descriptor's trials, and apply global ranking once after all descriptor results
+are collected; shared-market-data sweeps still use one shared loaded frame.
+Validation passed with 4 focused archive-sweep tests, 222 sandbox tests, and
+package compileall. This is archive-sweep loading/ranking-order work only; no
+trial identity change, artifact schema change, strict-validation execution,
+candidate pack, paper/live behavior, sizing/order/runtime behavior,
+live-config write, candidate-evidence claim, or promotion claim exists.
+Current WPR106-386 local follow-up update: WPR106-386 reduces the audit H9
+dense barrier-exit memory pressure by batching primary-bar target/stop window
+matrices per bounded entry chunk. The original vectorized target-only,
+stop-only, and conservative target/stop logic now runs inside each batch, with
+stop-first same-bar behavior and no-hit fixed-hold fallback preserved.
+Validation passed with 3 focused barrier tests. This is barrier-exit temporary
+allocation-shape work only; full validation passed with 223 sandbox tests and
+package compileall. No trial identity change, ranking semantic change, artifact
+schema change, descriptor-window enforcement change, strict-validation
+execution, candidate pack, paper/live behavior, sizing/order/runtime behavior,
+live-config write, candidate-evidence claim, or promotion claim exists.
+Current WPR106-387 local follow-up update: WPR106-387 reduces the audit H9
+proxy-signal memory pressure by materializing identical blueprint proxy signal
+definitions into shared canonical market-frame columns for sandbox execution
+and compatibility preflight. Strategy descriptors keep their original
+`signal_column` values, while execution resolves those columns through frame
+alias metadata and reuses signal-mask cache keys by blueprint signal identity.
+Validation passed with 18 focused blueprint/signal/preflight tests, 226 sandbox
+tests, package compileall, 462 contract tests, 26 live CLI boundary tests, and
+the full suite at 1896 passed, 1 skipped, and 1 XGBoost device warning. This is
+in-memory proxy signal materialization and mask-cache reuse work only; no trial
+identity change, ranking semantic change, artifact schema change,
+descriptor-window enforcement change, strict-validation execution, candidate
+pack, paper/live behavior, sizing/order/runtime behavior, live-config write,
+candidate-evidence claim, or promotion claim exists.
+Last updated: 2026-06-20
 
 WPR106-32 active-index update: the current local checkout is `main`, treated as
 the migrated R106 research checkout mirror. `docs/ACTIVE_INDEX.md` is now the
@@ -1207,6 +6959,316 @@ WPR105-107 implementation note:
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR106-387-sandbox-proxy-signal-column-deduping | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/strategy_blueprints.py`, `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `src/tradingbotsuite/research_sandbox/preflight.py`, `tests/research_sandbox/test_sandbox_foundation.py`, `docs/work_packets/WPR106-387-sandbox-proxy-signal-column-deduping.md`, `docs/stage_reports/STAGE_R106_SANDBOX_PROXY_SIGNAL_COLUMN_DEDUPING_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Reduces audit H9 proxy-signal memory pressure by materializing identical blueprint proxy signal definitions into shared canonical market-frame columns for execution/preflight while preserving original strategy descriptors and trial identity inputs. Validation passed with 18 focused blueprint/signal/preflight tests, 226 sandbox tests, package compileall, 462 contract tests, 26 live CLI boundary tests, and the full suite at 1896 passed, 1 skipped, and 1 XGBoost device warning; no trial identity change, ranking semantic change, artifact schema change, descriptor-window enforcement change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-386-sandbox-barrier-exit-batched-windows | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `tests/research_sandbox/test_sandbox_foundation.py`, `docs/work_packets/WPR106-386-sandbox-barrier-exit-batched-windows.md`, `docs/stage_reports/STAGE_R106_SANDBOX_BARRIER_EXIT_BATCHED_WINDOWS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Reduces audit H9 dense barrier-exit memory pressure by batching primary-bar target/stop window matrices per bounded entry chunk while preserving target-only, stop-only, conservative target/stop, same-bar stop-first, and no-hit fixed-hold fallback semantics. Validation passed with 3 focused barrier tests, 223 sandbox tests, and package compileall; no trial identity change, ranking semantic change, artifact schema change, descriptor-window enforcement change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-385-sandbox-archive-sweep-sequential-descriptor-loading | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/runner.py`, `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `tests/research_sandbox/test_sandbox_foundation.py`, `docs/work_packets/WPR106-385-sandbox-archive-sweep-sequential-descriptor-loading.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_SWEEP_SEQUENTIAL_DESCRIPTOR_LOADING_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Reduces audit H9 descriptor-routed archive-sweep memory pressure by loading descriptor market frames sequentially and applying global ranking after collection, while preserving shared-market-data behavior and preloaded cache reuse. Validation passed with 4 focused archive-sweep tests, 222 sandbox tests, and package compileall; no trial identity change, artifact schema change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-384-sandbox-package-root-lazy-exports | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/__init__.py`, `tests/research_sandbox/test_post_audit_safety.py`, `docs/work_packets/WPR106-384-sandbox-package-root-lazy-exports.md`, `docs/stage_reports/STAGE_R106_SANDBOX_PACKAGE_ROOT_LAZY_EXPORTS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Closes the audit M7 sandbox package-root coupling gap by preserving existing root exports through lazy module resolution instead of eager imports of the full sandbox graph. Validation passed with 18 focused post-audit safety tests, 221 sandbox tests, a clean-interpreter import smoke showing `catalog` remains unloaded after root import and `DataWindow` access, 26 live CLI boundary tests, and package compileall; no sandbox execution semantic change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-383-historical-fixture-cycle-runtime-bound | Codex Research Agent | closed | `tests/historical/test_full_cycle_local_fixture_pack.py`, `docs/work_packets/WPR106-383-historical-fixture-cycle-runtime-bound.md`, `docs/stage_reports/STAGE_R106_HISTORICAL_FIXTURE_CYCLE_RUNTIME_BOUND_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Bounds historical fixture cycle smoke tests that were executing production-sized checked-in research specs while preserving direct checked-in config assertions and fixture-pack/non-synthetic contracts. Validation passed with the focused formerly hanging BTC fixture smoke, bounded BTC/ETH perp-context fixture smokes, the full historical fixture file, the full historical directory, grouped slices, and the full suite at 1890 passed, 1 skipped, and 1 XGBoost device warning in 559.03 seconds; no production research-cycle behavior, strict-validation execution, candidate pack, sandbox artifact semantic change, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-382-sandbox-cli-publication-coherence | Codex Research Agent | closed | `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/live/test_cli_boundary.py`, `docs/work_packets/WPR106-382-sandbox-cli-publication-coherence.md`, `docs/stage_reports/STAGE_R106_SANDBOX_CLI_PUBLICATION_COHERENCE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Completes staged sandbox CLI publication coherence by staging sandbox-only canonical CLI parser/dispatch additions, research-command registry entries, and live CLI output-root containment tests while leaving unrelated four-bar KNN command work unstaged. Validation passed with staged-index Python AST parsing, a staged CLI/registry four-bar reference scan returning no matches, 26 live CLI boundary tests, 220 sandbox tests, and package compileall; no sandbox sweep execution, artifact indexing, evidence recomputation, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-381-sandbox-next-action-unindexed-iteration-manifests | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/next_action.py`, `tests/research_sandbox/test_sandbox_foundation.py`, `docs/work_packets/WPR106-381-sandbox-next-action-unindexed-iteration-manifests.md`, `docs/stage_reports/STAGE_R106_SANDBOX_NEXT_ACTION_UNINDEXED_ITERATION_MANIFESTS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Improves the read-only next-action dashboard by detecting unindexed `sandbox_iteration_manifest.json` files when no artifact catalog or iteration index exists yet, recommending iteration indexing, and listing exact manifest paths to inspect next. Validation passed with 3 focused next-action tests, 220 sandbox tests, package compileall, and 26 live CLI boundary tests; no sandbox sweep execution, artifact indexing, evidence recomputation, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-380-sandbox-ci-validation-coverage | Codex Research Agent | closed | `.github/workflows/research-validation.yml`, `docs/work_packets/WPR106-380-sandbox-ci-validation-coverage.md`, `docs/stage_reports/STAGE_R106_SANDBOX_CI_VALIDATION_COVERAGE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Closes the audit H10 CI coverage gap by adding `tests/research_sandbox` and `tests/live/test_cli_boundary.py` to the research-validation workflow. Validation passed with 219 sandbox tests, 103 live/artifact boundary tests, package compileall, and staged diff hygiene; no sandbox runtime semantic change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-379-sandbox-source-discovery-bounds | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/discovery.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `src/tradingbotsuite/research_sandbox/leaderboard.py`, `src/tradingbotsuite/research_sandbox/strategy_catalog_materializer.py`, `tests/research_sandbox/test_sandbox_foundation.py`, `docs/contracts/sandbox_research_contract.md`, `docs/work_packets/WPR106-379-sandbox-source-discovery-bounds.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SOURCE_DISCOVERY_BOUNDS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Closes the audit M5 discovery-cost gap by replacing full-tree recursive sorting in strategy catalog materialization, archive manifest building, and global leaderboard run discovery with shared deterministic bounded traversal that stops after configured source/run limits. Validation passed with 3 focused discovery-bound tests, 219 sandbox tests, package compileall, and 26 live CLI boundary tests; no provider download, source catalog or archive mutation, sandbox sweep semantic change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-378-sandbox-workbook-intake-bounds-and-xls-policy | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/intake.py`, `src/tradingbotsuite/research_sandbox/strategy_catalog_materializer.py`, `tests/research_sandbox/test_sandbox_foundation.py`, `docs/contracts/sandbox_research_contract.md`, `docs/work_packets/WPR106-378-sandbox-workbook-intake-bounds-and-xls-policy.md`, `docs/stage_reports/STAGE_R106_SANDBOX_WORKBOOK_INTAKE_BOUNDS_AND_XLS_POLICY_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Closes the audit M2/M9 workbook intake gaps by making legacy `.xls` strategy catalogs explicitly unsupported and by bounding the standard-library `.xlsx` fallback parser for ZIP member count, per-member XML bytes, total parsed XML bytes, sheet count, shared-string count, row count, cell count, and column count. Materializer skipped-source rows now surface the `.xls` repair reason, and accepted workbook diagnostics record active fallback limits. Validation passed with 9 focused workbook tests, 216 sandbox tests, package compileall, and 26 live CLI boundary tests; no provider download, source catalog mutation, sandbox sweep execution, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-377-sandbox-publication-coherence | Codex Research Agent | closed | `.gitignore`, `.pytest_cache/**` index removal only, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `configs/sandbox/**`, `docs/contracts/sandbox_research_contract.md`, `docs/work_packets/WPR106-377-sandbox-publication-coherence.md`, `docs/stage_reports/STAGE_R106_SANDBOX_PUBLICATION_COHERENCE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Resolves the audit H1 sandbox commit-coherence blocker by adding the 35 intended sandbox package/test/config files to the Git index, leaving no untracked files under those paths, and removing tracked `.pytest_cache` entries from the index only. Validation passed with sandbox package import, CLI help, package compileall, 212 sandbox tests, 26 live CLI boundary tests, `git diff --check` with existing LF-to-CRLF warnings only, and `git diff --cached --check`; no sandbox runtime semantic change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-376-deterministic-archive-fixture-checksums | Codex Research Agent | closed | `tests/tradingbotsuite/test_market_data_collection.py`, `docs/work_packets/WPR106-376-deterministic-archive-fixture-checksums.md`, `docs/stage_reports/STAGE_R106_DETERMINISTIC_ARCHIVE_FIXTURE_CHECKSUMS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Makes Binance Vision archive test ZIP payload generation byte-stable across repeated archive and `.CHECKSUM` fixture fetches by using fixed ZIP member metadata, so the duplicate-source-bars regression reaches the intended archive-quality failure rather than an incidental checksum mismatch. Validation passed with 2 focused fixture tests, direct retry of the transient async engine test, `tests\tradingbotsuite tests\integration` reporting 410 passed with 2 expected environment warnings, package compileall, and `git diff --check` with existing LF-to-CRLF warnings only; production downloader behavior, checksum validation, archive quality gates, sandbox behavior, candidate-pack gates, paper/live behavior, sizing/order/runtime behavior, live-config writes, candidate-evidence semantics, and promotion state are unchanged. |
+| WPR106-375-sandbox-container-loader-bounds | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/market_data.py`, `tests/research_sandbox/test_market_data_container_limits.py`, `docs/contracts/sandbox_research_contract.md`, `docs/work_packets/WPR106-375-sandbox-container-loader-bounds.md`, `docs/stage_reports/STAGE_R106_SANDBOX_CONTAINER_LOADER_BOUNDS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds bounded-read guardrails to sandbox ZIP/TAR market-data container loading: selected member counts, per-member raw bytes, total selected raw bytes, and gzip decompression bytes now fail closed with explicit loader errors when limits are exceeded, and accepted container metadata records active limits plus selected-member declared byte totals. Validation passed with 4 focused container-limit tests, 212 sandbox tests, package compileall, 26 live CLI boundary tests, 462 contract tests, and `git diff --check` with existing LF-to-CRLF warnings only; this is not a full streaming throughput claim and adds no provider download, archive/source mutation, sandbox sweep semantic change, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim. |
+| WPR106-374-sandbox-catalog-exit-profile-semantics | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `src/tradingbotsuite/research_sandbox/preflight.py`, `tests/research_sandbox/test_post_audit_safety.py`, `docs/contracts/sandbox_research_contract.md`, `docs/work_packets/WPR106-374-sandbox-catalog-exit-profile-semantics.md`, `docs/stage_reports/STAGE_R106_SANDBOX_CATALOG_EXIT_PROFILE_SEMANTICS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Closes the sandbox catalog `exit_profile` drift by making non-default direct catalog row exit profiles run only against matching run-spec exit variants, while missing or unsupported matches fail closed in preflight and execution with explicit blockers. Default `fixed_hold` rows preserve existing normal run-spec exit-sweep behavior. Validation passed with 17 focused post-audit safety tests, package compileall, 208 sandbox tests, 26 live CLI boundary tests, 462 contract tests, and `git diff --check` with existing LF-to-CRLF warnings only; no new strategy logic, strict-validation execution, candidate pack, paper/live artifact, sizing/order/runtime behavior, live-config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-373-backtest-fill-semantics-compatibility | Codex Research Agent | closed | `src/tradingbotsuite/backtesting/engine.py`, `src/tradingbotsuite/backtesting/execution_sim.py`, `src/tradingbotsuite/backtesting/vector_engine.py`, `src/tradingbotsuite/backtesting/cuda_engine.py`, `src/tradingbotsuite/backtesting/cuda_batched_engine.py`, `tests/unit/test_execution_simulator.py`, `tests/backtesting/**`, `tests/contracts/test_backtest_contracts.py`, `docs/contracts/boundary_contract.md`, `docs/work_packets/WPR106-373-backtest-fill-semantics-compatibility.md`, `docs/stage_reports/STAGE_R106_BACKTEST_FILL_SEMANTICS_COMPATIBILITY_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Restores `signal_bar_close_plus_latency` to signal-close pricing after latency-based entry-bar selection, adds explicit `primary_bar_open_plus_latency` for primary-open latency fills, maps manifests to `signal_close_latency_fill` versus `primary_bar_latency_fill`, and extends reference/vector/fake-CUDA/fake-CUDA-batched parity coverage. Focused validation passed with 22 simulator tests, 3 focused backtest-contract tests, 9 focused vector/fake-CUDA tests, and 6 focused CUDA-batched tests. Broader validation passed with package compileall, 109 backtesting tests with 1 skipped, 462 contract tests, 205 sandbox tests, 26 live CLI boundary tests, and `git diff --check` with existing LF-to-CRLF warnings only; no sandbox trial identity, sandbox ranking, archive routing, strict-validation behavior, candidate-pack gate, paper/live behavior, order/sizing/runtime behavior, live-config write, candidate-evidence semantics, or promotion behavior changed. |
+| WPR106-372-sandbox-throughput-telemetry-report | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/throughput.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py`, `docs/contracts/sandbox_research_contract.md`, `docs/contracts/boundary_contract.md`, `docs/work_packets/WPR106-372-sandbox-throughput-telemetry-report.md`, `docs/stage_reports/STAGE_R106_SANDBOX_THROUGHPUT_TELEMETRY_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds measurement-only throughput telemetry to one-command sandbox iteration manifests and `summarize-rapid-strategy-sandbox-throughput` for existing iteration manifests. Reports write `sandbox_throughput_report.json`, iteration summary Parquet, and stage summary Parquet with runtime, cache, memory, artifact-byte, missing-telemetry, and bottleneck diagnostics while keeping `speedup_claimed: false`. Validation passed with 3 focused throughput tests, package compileall, 26 live CLI boundary tests, 205 sandbox tests, 461 contract tests, and `git diff --check` with existing LF-to-CRLF warnings only; no trial identity, ranking, strategy signal, exit/fill, archive routing, blocker, evidence-request, strict-validation, candidate-pack, paper/live, order/sizing/runtime, live-config, candidate-evidence, or promotion behavior changed. |
+| WPR106-371-sandbox-next-action-dashboard | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/next_action.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py`, `docs/contracts/sandbox_research_contract.md`, `docs/contracts/boundary_contract.md`, `docs/work_packets/WPR106-371-sandbox-next-action-dashboard.md`, `docs/stage_reports/STAGE_R106_SANDBOX_NEXT_ACTION_DASHBOARD_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds `show-rapid-strategy-sandbox-next-action`, a read-only first-read dashboard that summarizes existing sandbox artifact catalog and iteration index JSON artifacts into `sandbox_next_action_report.json` and Parquet navigation reports. Reports include iteration status, queue counts, blockers, missing venue coverage, descriptor-only strict-validation queues, venue-expansion requests, artifact warnings, best-hypothesis sidecar pointers, next packet type, and exact files to open next. Validation passed with 2 focused next-action tests, 25 live CLI boundary tests, 202 sandbox tests, package compileall, 461 contract tests, and `git diff --check` with existing LF-to-CRLF warnings only; no sandbox sweep, artifact indexer, strict-validation preflight, strict validation, provider download, replay command, candidate pack, paper/live behavior, order/sizing/runtime change, live config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-370-sandbox-strict-validation-descriptor-preflight | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/strict_validation_preflight.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py`, `docs/contracts/sandbox_research_contract.md`, `docs/contracts/boundary_contract.md`, `docs/work_packets/WPR106-370-sandbox-strict-validation-descriptor-preflight.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_VALIDATION_DESCRIPTOR_PREFLIGHT_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds `preflight-rapid-strategy-sandbox-validation-requests`, a descriptor-only strict-validation request-bundle import/preflight command that writes strict-validation descriptor preflight JSON/Parquet planning reports with accepted-for-planning rows and blocked rows for missing source context, missing archive identity, proxy-only strategies, missing validation requirements, pre-2024 windows, and candidate-pack/promotion flags. Validation passed with 4 focused strict-validation preflight/CLI tests, 24 live CLI boundary tests, 200 sandbox tests, package compileall, 461 contract tests, and `git diff --check` with existing LF-to-CRLF warnings only; no strict-validation execution, historical-cycle spec write, candidate pack, paper/live behavior, order/sizing/runtime change, live config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-369-sandbox-end-to-end-venue-expansion-fixture-smoke | Codex Research Agent | closed | `tests/research_sandbox/**`, `docs/work_packets/WPR106-369-sandbox-end-to-end-venue-expansion-fixture-smoke.md`, `docs/stage_reports/STAGE_R106_SANDBOX_END_TO_END_VENUE_EXPANSION_FIXTURE_SMOKE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds a fixture-level closed-loop regression for request bundle -> local materializer -> candidate manifest -> coverage -> preflight -> bounded archive-backed sandbox run -> analysis/falsification -> descriptor-only strict-validation request bundle -> artifact catalog. Validation passed with 1 focused fixture-smoke test, 196 sandbox tests, and `git diff --check` with existing LF-to-CRLF warnings only; fixture workflow evidence only, with no real-market evidence, provider download, source archive mutation, existing manifest mutation, strict-validation execution, candidate pack, paper/live behavior, order/sizing/runtime change, live config write, candidate-evidence claim, or promotion claim. |
+| WPR106-368-sandbox-venue-expansion-candidate-manifest-export | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/venue_expansion_materializer.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py`, `docs/contracts/sandbox_research_contract.md`, `docs/contracts/boundary_contract.md`, `docs/work_packets/WPR106-368-sandbox-venue-expansion-candidate-manifest-export.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VENUE_EXPANSION_CANDIDATE_MANIFEST_EXPORT_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds `export-rapid-strategy-sandbox-venue-expansion-candidate-manifest`, which converts validated WPR106-366 descriptor candidates into a new standalone sandbox `venue_archives.json` manifest plus JSON/Parquet report under the research output root. Validation passed with 2 focused candidate-manifest tests, 23 live CLI boundary tests, 195 sandbox tests, package compileall, and 461 contract tests; no source archive mutation, existing manifest mutation, provider download, sandbox sweep execution, strict-validation execution, candidate pack, paper/live behavior, order/sizing/runtime change, live config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-367-sandbox-venue-expansion-materializer-catalog-discovery | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**`, `docs/work_packets/WPR106-367-sandbox-venue-expansion-materializer-catalog-discovery.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VENUE_EXPANSION_MATERIALIZER_CATALOG_DISCOVERY_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Registers WPR106-366 materializer descriptor-candidate and manifest-patch dry-run JSON artifacts in the sandbox artifact catalog and exposes materializer request/candidate/ready/blocked/scan/output-path/non-authorizing fields on catalog rows. Validation passed with 1 focused materializer-catalog test, 193 sandbox tests, and package compileall; no materializer rerun, provider download, source archive mutation, archive manifest write, sandbox sweep execution, strict-validation execution, candidate pack, paper/live behavior, order/sizing/runtime change, live config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-366-sandbox-venue-expansion-local-materializer | Codex Research Agent | closed | `src/tradingbotsuite/research_sandbox/venue_expansion_materializer.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py`, `docs/contracts/sandbox_research_contract.md`, `docs/contracts/boundary_contract.md`, `docs/work_packets/WPR106-366-sandbox-venue-expansion-local-materializer.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VENUE_EXPANSION_LOCAL_MATERIALIZER_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds `materialize-rapid-strategy-sandbox-venue-expansion-requests`, a descriptor-only local materializer that reads sandbox venue-expansion request bundles, scans explicit local archive roots, writes descriptor-candidate JSON/Parquet and manifest-patch dry-run JSON/Parquet, reports unmatched request blockers, and refuses pre-2024 request windows. Validation passed with 3 focused materializer tests, 23 live CLI boundary tests, 192 sandbox tests, package compileall, 461 contract tests, and an ignored local smoke that produced 2 materializer request rows, 1 Bybit descriptor candidate, and 1 blocked Hyperliquid request; no provider download, archive/source mutation, manifest write, replay execution, strict-validation execution, candidate pack, paper/live behavior, order/sizing/runtime change, live config write, candidate-evidence claim, or promotion claim exists. |
+| WPR106-365-sandbox-commit-coherence-classification | Codex Research Agent | closed | `docs/work_packets/WPR106-365-sandbox-commit-coherence-classification.md`, `docs/stage_reports/STAGE_R106_SANDBOX_COMMIT_COHERENCE_CLASSIFICATION_REPORT.md`, `docs/research_knowledge/WPR106-365-sandbox-commit-surface-classification.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Classifies the coherent sandbox publication surface as `configs/sandbox`, `src/tradingbotsuite/research_sandbox`, and `tests/research_sandbox` plus related WPR106-362 through WPR106-365 packet/report docs; records that `outputs/` is ignored and clean, and that broader inherited dirty/untracked work remains out of scope. Validation confirmed the expected 30 sandbox source/config/test paths and no untracked `outputs/` paths; documentation-only with no staging/commit/delete/revert, source behavior change, generated artifact/archive mutation, provider download, strict-validation execution, candidate pack, paper/live behavior, order/sizing/runtime change, live config write, or promotion claim. |
+| WPR106-364-sandbox-ci-boundary-coverage | Codex Research Agent | closed | `.github/workflows/research-validation.yml`, `docs/work_packets/WPR106-364-sandbox-ci-boundary-coverage.md`, `docs/stage_reports/STAGE_R106_SANDBOX_CI_BOUNDARY_COVERAGE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds `tests/research_sandbox` and `tests/live/test_cli_boundary.py` to the checked-in research validation workflow while preserving contracts and prior live/artifact boundary checks. Validation passed with 189 sandbox tests, 23 live CLI boundary tests, workflow YAML parsing, and earlier full suite `1844 passed, 1 skipped, 1 warning`; workflow-only change with no source behavior, generated artifact, archive manifest/source mutation, provider download, strict-validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim. |
+| WPR106-363-red-test-repair-strategy-discovery-resume | Codex Research Agent | closed | `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/research_discovery/runner.py`, `tests/optimization/test_search_space_expansion.py`, `tests/research_discovery/test_discovery_runner.py`, `docs/work_packets/WPR106-363-red-test-repair-strategy-discovery-resume.md`, `docs/stage_reports/STAGE_R106_RED_TEST_REPAIR_STRATEGY_DISCOVERY_RESUME_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Repairs the two audit-reported red tests outside the sandbox package: 4h `trend_following_v1` and 12h `range_reversion_v1` spacing metadata match the existing optimization contract, and large discovery resume manifests/snapshots count recovered completed trial IDs from durable state without forcing full trial hydration. Validation passed with focused optimization/discovery tests, touched test files, 189 sandbox tests, 23 live CLI boundary tests, package compileall, 461 contract tests, and full suite `1844 passed, 1 skipped, 1 warning`; no candidate gate weakening, candidate pack, strict-validation execution, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-362-post-audit-sandbox-safety-coherence | Codex Research Agent | closed | `.gitignore`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `docs/work_packets/WPR106-362-post-audit-sandbox-safety-coherence.md`, `docs/stage_reports/STAGE_R106_POST_AUDIT_SANDBOX_SAFETY_COHERENCE_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Repairs post-audit sandbox safety/provenance blockers: `/outputs/` ignore hygiene, path-safe run IDs, run/suite output-root containment, recursive nested boundary rejection, pre-write boundary validation, descriptor-window enforcement in preflight/execution, manifest child artifact path containment, decision-affecting/path-independent trial identity, explicit proxy-only metadata, and non-active `baseline_no_trade` proxy behavior. Validation passed with 14 focused post-audit tests, 189 sandbox tests, 23 live CLI boundary tests, package compileall, 461 contract tests, and full suite `1844 passed, 1 skipped, 1 warning`; no provider download, archive source mutation, strict-validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-361-research-engine-completion-roadmap-expansion | Codex Research Agent | closed | `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md`, `docs/work_packets/WPR106-361-research-engine-completion-roadmap-expansion.md`, `docs/stage_reports/STAGE_R106_RESEARCH_ENGINE_COMPLETION_ROADMAP_EXPANSION_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Expands the master research-only completion roadmap into a detailed autonomous-development guide with product definition, non-goals, target architecture, subsystem touchpoints, Phase 0 stabilization checklist, safety/provenance repair specs, closed-loop sandbox guidance, strict-validation preflight guidance, performance proof requirements, suggested packet backlog, artifact rules, testing matrix, stop conditions, agent operating rules, and definition of done; documentation-only with no code, config, test, generated artifact, archive manifest/source mutation, provider download, replay execution, strict-validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim. |
+| WPR106-360-research-engine-completion-roadmap | Codex Research Agent | closed | `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md`, `docs/work_packets/WPR106-360-research-engine-completion-roadmap.md`, `docs/stage_reports/STAGE_R106_RESEARCH_ENGINE_COMPLETION_ROADMAP_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds one authoritative research-only completion roadmap for ResearchEngineDeluxe; opens with current dirty-tree and targeted red-test reality; makes Phase 0 repo-state audit, commit coherence, generated-output quarantine, CI coverage, red-test repair, and keep/split/drop classification mandatory before more feature work; sequences future safety/provenance repairs, local venue-expansion materialization, realistic closed-loop smoke, strict-validation descriptor preflight, performance proof, and reviewable delivery; documentation-only with no code, config, test, generated artifact, archive manifest/source mutation, provider download, replay execution, strict-validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim. |
+| WPR106-359-sandbox-first-look-recommendations | Codex Research Agent | closed | `docs/SANDBOX_FIRST_LOOK_RECOMMENDATIONS.md`, `docs/work_packets/WPR106-359-sandbox-first-look-recommendations.md`, `docs/stage_reports/STAGE_R106_SANDBOX_FIRST_LOOK_RECOMMENDATIONS_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds a visible first-look recommendation memo that treats the prior sandbox self-audit as a useful handoff but not acceptance evidence; recommends audit-first posture before more sandbox feature development; flags review-readiness risks around dirty/untracked source coupling, generated output, broad subsystem/test size, and non-sandbox semantic diffs; documentation-only recommendation note with no code, configs, tests, generated artifacts, archive manifest/source mutation, provider download, replay command execution, validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, promotion claim, completed audit claim, or implementation authorization. |
+| WPR106-358-sandbox-self-audit-next-agent-handoff | Codex Research Agent | closed | `docs/NEXT_AGENT_HANDOFF_WPR106_358_SANDBOX_SELF_AUDIT.md`, `docs/work_packets/WPR106-358-sandbox-self-audit-next-agent-handoff.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SELF_AUDIT_NEXT_AGENT_HANDOFF_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds a visible next-agent self-audit for the rapid strategy iteration sandbox rewrite and links it from the first-read active index; records current sandbox state, latest WPR106-357 validation evidence, worktree friction, incomplete development areas, and the recommended next packet for a descriptor-only local materializer consuming venue-expansion request bundles; documentation-only change with no code, configs, tests, generated artifacts, archive manifest/source mutation, provider download, replay command execution, validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim. |
+| WPR106-357-sandbox-venue-expansion-request-bundle | Codex Research Agent | closed | `docs/work_packets/WPR106-357-sandbox-venue-expansion-request-bundle.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VENUE_EXPANSION_REQUEST_BUNDLE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/contracts/boundary_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/venue_expansion_requests.py`, `src/tradingbotsuite/research_sandbox/catalog.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds `export-rapid-strategy-sandbox-venue-expansion-requests` plus `sandbox_venue_expansion_request_bundle.json` and `.parquet`, a descriptor-only archive-intake handoff derived only from an existing sandbox artifact catalog and its venue-expansion gap worklist sidecar; dedupes actionable OKX, Bybit, and Hyperliquid archive descriptor repair/add requests by target venue, compact market-symbol key, data family, interval, target action, and target bucket while preserving bounded source iteration, queue, path, coverage, blocker, and reference metadata; registers bundle discovery as `venue_expansion_request_bundle`; keeps provider download, archive manifest write, archive source mutation, replay execution, strict-validation, and candidate-pack authorization false; refuses pre-2024 requested/observed market windows; validation passed with 2 focused venue-expansion/iteration-index tests, 23 live CLI boundary tests, 175 sandbox tests, package compileall with PYTHONPATH, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no archive descriptor creation, provider download, archive manifest/source mutation, sandbox sweep semantic change, replay command execution, validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-356-sandbox-artifact-catalog-venue-expansion-gap-worklist | Codex Research Agent | closed | `docs/work_packets/WPR106-356-sandbox-artifact-catalog-venue-expansion-gap-worklist.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_VENUE_EXPANSION_GAP_WORKLIST_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds `sandbox_artifact_catalog_iteration_venue_expansion_gap_worklist.parquet`, a compact first-read catalog sidecar derived only from already-loaded iteration index action-plan venue-expansion samples; exposes one descriptor-only worklist row per actionable OKX, Bybit, or Hyperliquid archive repair/add target with iteration/action identity, source queues, path references, target venue/status/action, compact market-symbol/data-family/interval fields, source coverage metadata, compact counts, and non-authorizing flags; registers the sidecar with post-write file identity and top-level catalog counts; preserves archive descriptors, archive manifests/source files, provider/download behavior, preflight and sweep semantics, replay execution, strict validation, candidate-pack state, paper/live behavior, trial IDs, ranking/scoring, evidence-request selection, promotion state, 2024+ sandbox boundaries, and sandbox-only non-promotable outputs; validation passed with 3 focused artifact-catalog/iteration-index tests, 174 sandbox tests, package compileall with PYTHONPATH, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no archive descriptor creation, provider download, archive manifest/source mutation, sandbox sweep semantic change, replay command execution, validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-355-sandbox-iteration-venue-expansion-gap-handoff | Codex Research Agent | closed | `docs/work_packets/WPR106-355-sandbox-iteration-venue-expansion-gap-handoff.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_VENUE_EXPANSION_GAP_HANDOFF_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Surfaces the WPR106-354 venue-expansion archive coverage sidecar in one-command sandbox iteration manifests, agent briefs, iteration index rows, action queues, and agent action plans; exposes the venue-expansion sidecar path, target venue list, status/action counts, actionable gap counts, bounded samples, `venue_expansion_gap_queue`, and descriptor-only `repair_or_add_venue_expansion_archives` planning action; preserves archive descriptors, archive manifests and source files, provider/download behavior, preflight and sweep semantics, replay execution, strict validation, candidate-pack state, paper/live behavior, trial IDs, ranking/scoring, evidence-request selection, promotion state, 2024+ sandbox boundaries, and sandbox-only non-promotable outputs; validation passed with 4 focused iteration-index tests, 30 related agent-iteration/archive-coverage/action-queue/input-replay tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no archive descriptor creation, provider download, archive manifest/source mutation, sandbox sweep semantic change, replay command execution, validation execution, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-354-sandbox-archive-coverage-venue-expansion-gaps | Codex Research Agent | closed | `docs/work_packets/WPR106-354-sandbox-archive-coverage-venue-expansion-gaps.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_COVERAGE_VENUE_EXPANSION_GAPS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/archive_coverage.py`, `tests/research_sandbox/**` | Adds `archive_coverage_venue_expansion_gaps.parquet`, a compact archive coverage sidecar derived only from in-memory coverage rows, comparing OKX, Bybit, and Hyperliquid readiness by compact market-symbol key, data family, and interval; rows label target venues as ready, mixed, blocked, or missing and emit descriptor-only actions to use ready buckets, repair blocked/mixed buckets, or add missing target venue descriptors; preserves archive descriptor loading, market-frame normalization, source-integrity checks, coverage bucket status semantics, preflight behavior, replay readiness, trial IDs, ranking/scoring, evidence-request selection, candidate-pack state, promotion state, 2024+ sandbox boundaries, and sandbox-only non-promotable outputs; validation passed with 3 focused archive-coverage tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no sandbox sweep, replay command execution, strict validation, provider download, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, strategy catalog mutation, archive manifest/source mutation, or promotion claim exists. |
+| WPR106-353-sandbox-artifact-catalog-agent-navigation-index | Codex Research Agent | closed | `docs/work_packets/WPR106-353-sandbox-artifact-catalog-agent-navigation-index.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_AGENT_NAVIGATION_INDEX_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds deterministic agent navigation metadata to sandbox artifact catalog sidecar-index rows: `agent_read_order`, `agent_read_group`, `agent_first_read`, and `agent_navigation_hint`, with explicit first-read routing for the artifact catalog, global source-priority queue, global evidence-request priority queue, strict-validation descriptor queue, iteration action plan, and replay batch queue, plus deterministic category fallbacks for supporting sidecars; preserves sidecar row counts, sidecar payload schemas outside the sidecar index, artifact discovery, sandbox scoring, ranking math, falsification decisions, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 2 focused artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-352-sandbox-global-evidence-request-source-priority-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-352-sandbox-global-evidence-request-source-priority-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_EVIDENCE_REQUEST_SOURCE_PRIORITY_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_evidence_request_source_priority_queue.parquet`, a bounded cross-source priority queue derived only from in-memory global evidence-request source-summary rows and registered in the sidecar index with post-write file identity, so agents can inspect the highest-priority source venue, source symbol, source data family, source interval, source routing mode, source venue descriptor, and source data-path coverage rows without scanning the full flat global request sidecar or hand-sorting the source-summary sidecar; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-351-sandbox-global-evidence-request-source-summary-best-context | Codex Research Agent | closed | `docs/work_packets/WPR106-351-sandbox-global-evidence-request-source-summary-best-context.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_EVIDENCE_REQUEST_SOURCE_SUMMARY_BEST_CONTEXT_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Enriches `sandbox_artifact_catalog_global_evidence_request_source_summary.parquet` with compact best-context fields per source-context field/value row, including best leaderboard rank, best global score, best source metric rank/score/net return/trade count, best evidence-request trial ID, best source trial ID, best hypothesis ID, and best family, derived only from deterministically sorted in-memory global evidence-request rows produced during the same catalog write, so agents can prioritize source coverage queues before opening the full flat global request sidecar; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-350-sandbox-global-evidence-request-source-summary-representatives | Codex Research Agent | closed | `docs/work_packets/WPR106-350-sandbox-global-evidence-request-source-summary-representatives.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_EVIDENCE_REQUEST_SOURCE_SUMMARY_REPRESENTATIVES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Enriches `sandbox_artifact_catalog_global_evidence_request_source_summary.parquet` with bounded representative evidence-request trial IDs, source trial IDs, source request IDs, source artifact paths, and source leaderboard JSON paths per source-context field/value row, derived only from in-memory global evidence-request rows produced during the same catalog write, so agents can jump from source coverage and 2024+ source-window summaries to concrete descriptor-only request rows without opening bucket representative sidecars or scanning the full flat request sidecar first; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-349-sandbox-global-evidence-request-source-window-summary | Codex Research Agent | closed | `docs/work_packets/WPR106-349-sandbox-global-evidence-request-source-window-summary.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_EVIDENCE_REQUEST_SOURCE_WINDOW_SUMMARY_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Enriches `sandbox_artifact_catalog_global_evidence_request_source_summary.parquet` with unique request-trial counts, source leaderboard counts, and source market start/end min/max bounds per source-context field/value row, derived only from in-memory global evidence-request rows produced during the same catalog write, so agents can verify 2024+ source windows by source venue, source symbol, source data family, source interval, source routing mode, source venue descriptor, and source data path without scanning the full flat request sidecar; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-348-sandbox-global-evidence-request-source-summary-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-348-sandbox-global-evidence-request-source-summary-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_EVIDENCE_REQUEST_SOURCE_SUMMARY_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_evidence_request_source_summary.parquet`, a compact descriptor-only Parquet sidecar flattened from the in-memory global evidence-request source summary, so agents can query source venue, source symbol, source data family, source interval, source routing mode, source venue descriptor, and source data-path availability without opening the catalog JSON or full flat request sidecar; registers the sidecar in the catalog sidecar index with post-write file identity; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-347-sandbox-global-evidence-request-source-summary | Codex Research Agent | closed | `docs/work_packets/WPR106-347-sandbox-global-evidence-request-source-summary.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_EVIDENCE_REQUEST_SOURCE_SUMMARY_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds source-context count maps to the sandbox artifact catalog global evidence-request summary and top-level manifest fields, exposing source venue, source symbol, source data family, source interval, source routing mode, source venue descriptor, and source data-path counts from in-memory global request rows so agents can decide which source-context queues are worth opening before scanning bucket or flat request sidecars; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-346-sandbox-global-evidence-request-source-buckets | Codex Research Agent | closed | `docs/work_packets/WPR106-346-sandbox-global-evidence-request-source-buckets.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_EVIDENCE_REQUEST_SOURCE_BUCKETS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Extends sandbox artifact catalog global evidence-request bucket queues and bucket representatives with source-context routing fields from in-memory global request rows, adding descriptor-only buckets for source venue, source symbol, source venue/symbol, source data family, source interval, source venue descriptor, source routing mode, and source data path so agents can route strict-validation requests without scanning the full flat request table or reopening per-run evidence request files; exposes bucket-level source keys and row-level source request/run/metric/routing context in representative rows; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-345-sandbox-global-leaderboard-evidence-request-source-context | Codex Research Agent | closed | `docs/work_packets/WPR106-345-sandbox-global-leaderboard-evidence-request-source-context.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_LEADERBOARD_EVIDENCE_REQUEST_SOURCE_CONTEXT_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/leaderboard.py`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds bounded 50-row evidence-request source-context previews to sandbox global leaderboard top hypotheses from already-loaded per-run evidence request descriptors and flattens compact source request IDs, source run paths, requested-validation labels, market windows, routing/data-path/container metadata, compact source metrics, source market JSON, and execution-assumption JSON into artifact catalog global evidence-request rows and the bounded priority queue; exposes catalog context availability and routing-count summaries; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, 461 contract tests, `git diff --check` with only existing LF-to-CRLF warnings, and direct trailing-whitespace scan of packet-touched files; no per-run evidence request file reopen during cataloging, full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-344-sandbox-artifact-catalog-global-evidence-request-priority-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-344-sandbox-artifact-catalog-global-evidence-request-priority-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_EVIDENCE_REQUEST_PRIORITY_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_evidence_request_priority_queue.parquet` by projecting bounded top concrete descriptor-only global strict-validation request rows from in-memory global evidence-request rows, so agents can inspect top request trial IDs, source leaderboard paths, hypothesis/family context, tested venue/symbol context, compact metrics, decisions, and reason counts without scanning the full flat global request sidecar first; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-343-sandbox-artifact-catalog-global-evidence-request-metadata | Codex Research Agent | closed | `docs/work_packets/WPR106-343-sandbox-artifact-catalog-global-evidence-request-metadata.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_EVIDENCE_REQUEST_METADATA_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Exposes compact global evidence-request metadata directly on sandbox global leaderboard catalog rows and the artifact catalog manifest, so agents can see request counts, unique request-trial counts, requesting-hypothesis counts, requested-validation maps, leaderboard-decision maps, family maps, tested venue/symbol maps, bucket counts, and representative counts before opening any global evidence-request sidecar; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-342-sandbox-artifact-catalog-global-evidence-request-bucket-representatives | Codex Research Agent | closed | `docs/work_packets/WPR106-342-sandbox-artifact-catalog-global-evidence-request-bucket-representatives.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_EVIDENCE_REQUEST_BUCKET_REPRESENTATIVES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_evidence_request_bucket_representatives.parquet` by projecting representative request rows from in-memory global evidence-request bucket queues and request rows, so agents can jump from requested-validation, hypothesis, family, tested-venue, tested-symbol, tested-venue/symbol, tested-venue/family, and leaderboard-decision buckets to concrete descriptor-only evidence-request trial IDs without joining the full flat request sidecar first; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-341-sandbox-artifact-catalog-global-evidence-request-bucket-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-341-sandbox-artifact-catalog-global-evidence-request-bucket-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_EVIDENCE_REQUEST_BUCKET_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_evidence_request_bucket_queue.parquet` by grouping in-memory global evidence-request rows into bounded requested-validation, hypothesis, family, tested-venue, tested-symbol, tested-venue/symbol, tested-venue/family, and leaderboard-decision buckets, so agents can route descriptor-only strict-validation request clusters without scanning the full flat request sidecar first; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-340-sandbox-artifact-catalog-global-evidence-request-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-340-sandbox-artifact-catalog-global-evidence-request-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_EVIDENCE_REQUEST_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_evidence_requests.parquet` by flattening bounded global leaderboard `top_hypotheses[*].evidence_request_trial_ids` from loaded sandbox global leaderboard JSON payloads and registers it in the catalog sidecar index with post-write file identity metadata, so agents can route descriptor-only strict-validation request trial IDs from catalog output without opening each leaderboard JSON, companion leaderboard Parquet, or parsing list-valued top-hypothesis cells; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-339-sandbox-artifact-catalog-global-top-hypotheses-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-339-sandbox-artifact-catalog-global-top-hypotheses-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_TOP_HYPOTHESES_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_top_hypotheses.parquet` by flattening bounded `top_hypotheses` rows from loaded sandbox global leaderboard JSON payloads and registers it in the catalog sidecar index with post-write file identity metadata, so agents can query cross-run hypothesis ranking, falsification state, representative trial metadata, and descriptor-only evidence-request IDs from catalog output without opening each leaderboard JSON or companion leaderboard Parquet; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no full leaderboard Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-338-sandbox-artifact-catalog-global-bucket-top-buckets-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-338-sandbox-artifact-catalog-global-bucket-top-buckets-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_BUCKET_TOP_BUCKETS_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_global_bucket_top_buckets.parquet` by flattening bounded `top_buckets` rows from loaded sandbox global leaderboard JSON payloads and registers it in the catalog sidecar index with post-write file identity metadata, so agents can query cross-run venue, symbol, family, exit, filter, venue/symbol, and venue/family bucket leaders from catalog output without opening each leaderboard JSON or companion bucket Parquet; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 4 focused global-leaderboard/artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no full bucket Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-337-sandbox-artifact-catalog-global-bucket-leaderboard-metadata | Codex Research Agent | closed | `docs/work_packets/WPR106-337-sandbox-artifact-catalog-global-bucket-leaderboard-metadata.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_GLOBAL_BUCKET_LEADERBOARD_METADATA_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Exposes global bucket leaderboard companion metadata on sandbox artifact catalog rows for `global_leaderboard` artifacts, including bucket count, bounded top-bucket count/types, bucket decision-count map, and `sandbox_global_bucket_leaderboard.parquet` path from the loaded leaderboard JSON only; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 2 focused global leaderboard tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no bucket Parquet read/recompute, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-336-sandbox-global-bucket-leaderboard | Codex Research Agent | closed | `docs/work_packets/WPR106-336-sandbox-global-bucket-leaderboard.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_BUCKET_LEADERBOARD_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/leaderboard.py`, `tests/research_sandbox/**` | Adds `sandbox_global_bucket_leaderboard.parquet` and bounded `top_buckets` JSON preview rows to sandbox global leaderboard artifacts, ranking venue, symbol, venue/symbol, family, exit, filter, and venue/family clusters directly from integrity-checked run rankings and descriptor-only evidence requests even when per-run analysis reports are absent; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, and sandbox-only non-promotable outputs; validation passed with 2 focused global leaderboard tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-335-sandbox-artifact-catalog-analysis-bucket-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-335-sandbox-artifact-catalog-analysis-bucket-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_ANALYSIS_BUCKET_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes `sandbox_artifact_catalog_analysis_bucket_rollups.parquet` with flattened run analysis bucket rollups and registers it in the catalog sidecar index with post-write file identity metadata, so agents can query venue, family, exit, filter, and venue/family analysis buckets across many sandbox runs without opening every `analysis_summary.json`; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, strict-validation descriptor queues, artifact catalog sidecar identity, and sandbox-only non-promotable outputs; validation passed with 2 focused artifact catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-334-sandbox-analysis-bucket-rollups | Codex Research Agent | closed | `docs/work_packets/WPR106-334-sandbox-analysis-bucket-rollups.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ANALYSIS_BUCKET_ROLLUPS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/analytics.py`, `tests/research_sandbox/**` | Adds bounded sandbox run analysis bucket rollups for venue, family, exit profile, exit variant, filter variant, and venue/family clusters, so agents can triage promising or failing run clusters from `analysis_summary.json` without scanning every ranking row; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, strict-validation descriptor queues, artifact catalog sidecars, and sandbox-only non-promotable outputs; validation passed with 1 focused analysis test, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-333-sandbox-artifact-catalog-iteration-action-bucket-representatives | Codex Research Agent | closed | `docs/work_packets/WPR106-333-sandbox-artifact-catalog-iteration-action-bucket-representatives.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_ITERATION_ACTION_BUCKET_REPRESENTATIVES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes a companion sandbox artifact catalog iteration action-plan bucket representative Parquet sidecar, so agents can jump from action/source-queue workflow buckets to representative iteration/action rows without joining the full action-plan sidecar first; registers the sidecar in the catalog sidecar index with post-write file identity metadata; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, strict-validation descriptor queues, and sandbox-only non-promotable outputs; validation passed with 3 focused artifact/iteration catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-332-sandbox-artifact-catalog-iteration-action-bucket-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-332-sandbox-artifact-catalog-iteration-action-bucket-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_ITERATION_ACTION_BUCKET_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds a bounded sandbox artifact catalog iteration action-plan bucket sidecar grouped by action and source queue, with representative iteration IDs and compact counts, so agents can see cross-iteration workflow buckets before scanning every action-plan row; registers the sidecar in the catalog sidecar index with post-write file identity metadata; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, strict-validation descriptor queues, and sandbox-only non-promotable outputs; validation passed with 3 focused artifact/iteration catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-331-sandbox-artifact-catalog-iteration-action-plan-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-331-sandbox-artifact-catalog-iteration-action-plan-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_ITERATION_ACTION_PLAN_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Projects existing sandbox iteration-index agent action plans into artifact catalog rows and a compact Parquet sidecar, so agents can find cross-iteration repair, replay, rejection-review, and descriptor-only strict-validation work from the artifact catalog without opening every iteration index JSON first; registers the sidecar in the catalog sidecar index with post-write file identity metadata; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, evidence-request selection, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, strict-validation descriptor queues, and sandbox-only non-promotable outputs; validation passed with 3 focused artifact/iteration catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-330-sandbox-artifact-catalog-sidecar-file-identity | Codex Research Agent | closed | `docs/work_packets/WPR106-330-sandbox-artifact-catalog-sidecar-file-identity.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_SIDECAR_FILE_IDENTITY_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds file existence, byte-size, and SHA-256 identity metadata to sandbox artifact catalog sidecar index rows after companion Parquet sidecars are written, so agents can verify catalog, replay batch-plan, and strict-validation sidecar files without opening the full catalog JSON or recomputing sidecar inventories; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, strict-validation descriptor queues, replay sidecars, and sandbox-only non-promotable outputs; validation passed with 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-329-sandbox-artifact-catalog-sidecar-index | Codex Research Agent | closed | `docs/work_packets/WPR106-329-sandbox-artifact-catalog-sidecar-index.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_SIDECAR_INDEX_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes a compact sandbox artifact catalog sidecar index Parquet file over catalog, replay batch-plan, and strict-validation sidecar outputs, so agents can discover sidecar categories, names, roles, paths, row counts, and empty status without parsing the full catalog JSON first; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, strict-validation descriptor queues, replay sidecars, and sandbox-only non-promotable outputs; validation passed with 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-328-sandbox-strict-validation-descriptor-priority-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-328-sandbox-strict-validation-descriptor-priority-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_VALIDATION_DESCRIPTOR_PRIORITY_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds a bounded strict-validation descriptor priority queue and Parquet sidecar derived only from already-flattened descriptor catalog rows, so agents can start from the highest-priority descriptor-only evidence requests across bundles without scanning the full descriptor table first; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, descriptor bucket queues, and sandbox-only non-promotable outputs; validation passed with 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-327-sandbox-strict-validation-descriptor-bucket-representatives | Codex Research Agent | closed | `docs/work_packets/WPR106-327-sandbox-strict-validation-descriptor-bucket-representatives.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_VALIDATION_DESCRIPTOR_BUCKET_REPRESENTATIVES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes a companion strict-validation descriptor bucket representative Parquet sidecar derived only from bounded descriptor bucket queue representatives, so agents can jump from venue/symbol and venue/symbol/requested-validation buckets to representative descriptor metadata, source trials, market windows, metrics, and routing fields without joining the full descriptor table first; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-326-sandbox-strict-validation-descriptor-bucket-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-326-sandbox-strict-validation-descriptor-bucket-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_VALIDATION_DESCRIPTOR_BUCKET_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds a bounded strict-validation descriptor bucket queue and Parquet sidecar grouped by venue/symbol and venue/symbol/requested-validation, derived only from already-flattened descriptor catalog rows, so agents can see multi-venue descriptor-only validation request clusters, compact counts, top scores, and representative descriptor/source-trial/bundle IDs without scanning every descriptor row; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-325-sandbox-strict-validation-descriptor-catalog-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-325-sandbox-strict-validation-descriptor-catalog-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_VALIDATION_DESCRIPTOR_CATALOG_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes a cross-bundle strict-validation descriptor Parquet sidecar beside sandbox artifact catalog outputs, derived only from already-loaded strict-validation bundle JSON payloads, so agents can query individual descriptor-only validation requests, source trials, venues, symbols, market windows, source routing, and compact metrics from flat rows without opening each bundle JSON or bundle Parquet; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-324-sandbox-strict-validation-bundle-parquet-sidecar | Codex Research Agent | closed | `docs/work_packets/WPR106-324-sandbox-strict-validation-bundle-parquet-sidecar.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_VALIDATION_BUNDLE_PARQUET_SIDECAR_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes a compact strict-validation bundle queue Parquet sidecar beside sandbox artifact catalog JSON/Parquet outputs, derived only from the bounded catalog queue, so agents can query descriptor-only validation handoff bundles from flat rows while no-bundle catalogs still write empty-schema sidecars; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-323-sandbox-artifact-catalog-strict-validation-bundle-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-323-sandbox-artifact-catalog-strict-validation-bundle-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_STRICT_VALIDATION_BUNDLE_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Projects descriptor-only strict-validation request bundle counts into sandbox artifact catalog rows, adds a top-level strict-validation bundle summary, and exposes a bounded bundle queue for agent triage without opening every bundle JSON; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 1 focused strict-validation bundle catalog test, 2 artifact-catalog tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-322-sandbox-artifact-catalog-replay-bucket-parquet-sidecars | Codex Research Agent | closed | `docs/work_packets/WPR106-322-sandbox-artifact-catalog-replay-bucket-parquet-sidecars.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_REPLAY_BUCKET_PARQUET_SIDECARS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Writes compact replay batch-plan bucket queue and bucket representative Parquet sidecars beside sandbox artifact catalog JSON/Parquet outputs, derived only from bounded catalog queues, so agents can query venue/window-to-plan routing from flat Parquet rows while blocked-only or no-bucket catalogs still write empty-schema sidecars; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused input replay tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-321-sandbox-artifact-catalog-replay-bucket-representatives | Codex Research Agent | closed | `docs/work_packets/WPR106-321-sandbox-artifact-catalog-replay-bucket-representatives.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_REPLAY_BUCKET_REPRESENTATIVES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds bounded archive bucket and archive-window bucket representative queues to sandbox artifact catalogs, derived only from already-indexed replay batch-plan catalog rows, so agents can jump from a venue/window bucket to representative descriptor-only batch-plan artifacts without scanning every queue item or opening every batch-plan JSON; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused input replay tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-320-sandbox-artifact-catalog-replay-batch-plan-archive-buckets | Codex Research Agent | closed | `docs/work_packets/WPR106-320-sandbox-artifact-catalog-replay-batch-plan-archive-buckets.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_REPLAY_BATCH_PLAN_ARCHIVE_BUCKETS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Projects descriptor-only input replay batch-plan ready/planned archive bucket and archive-window bucket count maps into sandbox artifact catalog rows, top-level replay batch-plan summaries, and bounded replay batch-plan queue items, derived only from already-loaded batch-plan JSON payloads and summaries for multi-venue agent triage without opening every batch-plan JSON; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused input replay tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-319-sandbox-artifact-catalog-replay-batch-plan-rollups | Codex Research Agent | closed | `docs/work_packets/WPR106-319-sandbox-artifact-catalog-replay-batch-plan-rollups.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_REPLAY_BATCH_PLAN_ROLLUPS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds top-level replay batch-plan rollups and a bounded replay batch-plan queue to sandbox artifact catalogs, including replay batch-plan artifact count, descriptor count, source/ready/blocked worklist rows, suppressed duplicates, unique ready replay-context count, status counts, and queued artifact paths derived only from catalog rows; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused input replay tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-318-sandbox-artifact-catalog-replay-batch-plan-counts | Codex Research Agent | closed | `docs/work_packets/WPR106-318-sandbox-artifact-catalog-replay-batch-plan-counts.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_REPLAY_BATCH_PLAN_COUNTS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Projects descriptor-only input replay batch-plan counts into sandbox artifact catalog rows, including source worklist item count, ready source item count, blocked source item count, suppressed duplicate source item count, plan item count, and unique ready replay-context count derived only from the already-loaded batch-plan JSON payload and summary; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused input replay tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-317-sandbox-iteration-input-replay-batch-plan | Codex Research Agent | closed | `docs/work_packets/WPR106-317-sandbox-iteration-input-replay-batch-plan.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INPUT_REPLAY_BATCH_PLAN_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds a descriptor-only input replay batch plan to sandbox iteration indexes as JSON and Parquet, including one ready representative argv-list descriptor per unique replay context, duplicate suppression summaries, blocked replay row summaries, archive/window buckets, and path-readiness status; registers the batch-plan JSON with the sandbox artifact catalog as `iteration_input_replay_batch_plan`; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, replay readiness, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused input replay tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-316-sandbox-iteration-input-replay-dedupe-groups | Codex Research Agent | closed | `docs/work_packets/WPR106-316-sandbox-iteration-input-replay-dedupe-groups.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INPUT_REPLAY_DEDUPE_GROUPS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds duplicate replay-context diagnostics to sandbox iteration input replay worklist rows and summaries, including duplicate group keys, per-row duplicate counts, duplicate flags, unique replay-context counts, duplicate group counts, duplicate item counts, duplicate group-key counts, and archive/window unique replay-context rollups; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused input replay tests, 7 focused input replay/index tests, 174 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-315-sandbox-iteration-input-replay-venue-window-rollups | Codex Research Agent | closed | `docs/work_packets/WPR106-315-sandbox-iteration-input-replay-venue-window-rollups.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INPUT_REPLAY_VENUE_WINDOW_ROLLUPS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds venue/window rollups to sandbox iteration input replay worklist summaries, including archive venue, symbol, data-family, interval, requested-window, composite archive bucket, and composite archive-window bucket counts with ready and blocked subsets derived from `input_replay_ready`; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 focused input replay venue/window tests, 6 focused input replay/index tests, 173 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-314-sandbox-iteration-input-replay-path-readiness | Codex Research Agent | closed | `docs/work_packets/WPR106-314-sandbox-iteration-input-replay-path-readiness.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INPUT_REPLAY_PATH_READINESS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds replay input path readiness diagnostics to sandbox iteration input replay worklist rows and summaries; checks only filesystem existence and expected file-vs-directory type for output/spec/catalog/archive replay references, exposes present/missing/wrong-type counts, missing keys, bounded reference rows, path status rollups, and fails `input_replay_ready` closed when replay inputs are missing or invalid; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 focused input replay path-readiness tests, 6 focused input replay/index tests, 173 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-313-sandbox-iteration-input-replay-worklist | Codex Research Agent | closed | `docs/work_packets/WPR106-313-sandbox-iteration-input-replay-worklist.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INPUT_REPLAY_WORKLIST_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Materializes a dedicated descriptor-only input replay worklist from sandbox iteration indexes as `sandbox_iteration_input_replay_worklist.json` and `.parquet`; worklist rows flatten replay context IDs, argv-list command descriptors, strategy/venue input modes, resolved paths or roots, data windows, recommended action context, artifact availability, and compact counts for queryable agent replay/refresh handoffs; registers the worklist JSON with the sandbox artifact catalog as `iteration_input_replay_worklist`; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 1 focused input replay context/worklist test, 5 focused input replay/index tests, 172 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-312-sandbox-iteration-input-replay-context | Codex Research Agent | closed | `docs/work_packets/WPR106-312-sandbox-iteration-input-replay-context.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INPUT_REPLAY_CONTEXT_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds inert one-command input replay context to sandbox iteration manifests, agent briefs, iteration-index rows, action queue items, recommended action details, and agent action-plan items; context includes replay context ID, command name, non-executing argv list, strategy/venue input modes, resolved paths or roots, data windows, and bounded run/build options for agent reproduction/refresh handoffs; bumps action queue schema to version 13; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 5 focused input-replay/index tests, 172 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, replay command execution, validation execution, or promotion claim exists. |
+| WPR106-311-sandbox-rejection-falsification-samples | Codex Research Agent | closed | `docs/work_packets/WPR106-311-sandbox-rejection-falsification-samples.md`, `docs/stage_reports/STAGE_R106_SANDBOX_REJECTION_FALSIFICATION_SAMPLES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds bounded rejection/falsification samples with failed hypothesis IDs, falsification decisions/reasons, representative rejected or blocked trial IDs, compact metrics, tested exit/filter variants, source IDs, and compact reason counts to completed one-command iteration manifests, agent briefs, iteration-index rows, rejection-review queue items, recommended action details, queue summaries, and agent action-plan items; bumps action queue schema to version 12; preserves sandbox scoring, ranking math, falsification decisions, blocker/rejection semantics, trial IDs, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, preflight behavior, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 1 focused rejection/falsification sample test, 5 focused rejection/index tests, 171 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, validation execution, or promotion claim exists. |
+| WPR106-310-sandbox-preflight-blocker-samples | Codex Research Agent | closed | `docs/work_packets/WPR106-310-sandbox-preflight-blocker-samples.md`, `docs/stage_reports/STAGE_R106_SANDBOX_PREFLIGHT_BLOCKER_SAMPLES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds bounded compatibility-preflight blocker samples with descriptor IDs, hypothesis IDs, signal/filter columns, source paths, blocker reason counts, trial estimates, active signal count, market row counts, and bounded market-column context to one-command iteration manifests, agent briefs, iteration-index rows, preflight repair queue items, recommended action details, and agent action-plan items; bumps action queue schema to version 11; preserves compatibility-preflight blocker semantics, trial estimates, strategy rows, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, sweep execution, ranking math, blocker semantics, eligibility flags, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused preflight/index/queue tests, 4 focused iteration-index tests, 170 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, strategy catalog mutation, archive manifest/source mutation, validation execution, or promotion claim exists. |
+| WPR106-309-sandbox-archive-coverage-blocker-samples | Codex Research Agent | closed | `docs/work_packets/WPR106-309-sandbox-archive-coverage-blocker-samples.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_COVERAGE_BLOCKER_SAMPLES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds bounded archive-coverage blocker samples with coverage key, blocked descriptor IDs, bounded source paths, blocker reason counts, observed/declared/requested window metadata, and requested-window row counts to one-command iteration manifests, agent briefs, iteration-index rows, archive-window/preflight queue items, recommended action details, and agent action-plan items; bumps action queue schema to version 10; preserves archive audit semantics, archive coverage readiness semantics, venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive routing, sweep execution, preflight estimates, ranking math, blocker semantics, eligibility flags, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused archive-window/archive-sample/queue tests, 4 focused iteration-index tests, 170 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, archive manifest/source mutation, validation execution, or promotion claim exists. |
+| WPR106-308-sandbox-archive-skipped-file-samples | Codex Research Agent | closed | `docs/work_packets/WPR106-308-sandbox-archive-skipped-file-samples.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_SKIPPED_FILE_SAMPLES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds bounded skipped archive-file samples with source path, suffix, source integrity metadata, normalized/window metadata, requested-window bounds, and skip reasons to one-command archive-source summaries, agent briefs, iteration-index rows, archive/preflight queue items, recommended action details, and agent action-plan items; bumps action queue schema to version 9; preserves venue archive descriptors, 2024+ sandbox boundaries, source-integrity behavior, archive coverage semantics, archive routing, sweep execution, preflight estimates, ranking math, blocker semantics, eligibility flags, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 focused archive-sample/queue tests, 4 focused iteration-index tests, 170 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, archive source mutation, validation execution, or promotion claim exists. |
+| WPR106-307-sandbox-strategy-skipped-source-samples | Codex Research Agent | closed | `docs/work_packets/WPR106-307-sandbox-strategy-skipped-source-samples.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRATEGY_SKIPPED_SOURCE_SAMPLES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds bounded skipped strategy-catalog source samples with source path, suffix, and skip reasons to one-command strategy-source summaries, iteration-index rows, `strategy_source_repair_queue` items, recommended action details, and agent action-plan items; bumps action queue schema to version 8; preserves materialized strategy rows, 2024+ sandbox boundaries, source-integrity behavior, archive routing, sweep execution, preflight estimates, ranking math, blocker semantics, eligibility flags, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 focused skipped-source/queue tests, 170 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source catalog mutation, validation execution, or promotion claim exists. |
+| WPR106-306-sandbox-strategy-source-repair-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-306-sandbox-strategy-source-repair-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRATEGY_SOURCE_REPAIR_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds `repair_strategy_catalog_sources` recommended actions and a bounded `strategy_source_repair_queue` for iteration rows whose indexed materialized strategy-source metadata reports skipped catalog sources or source skip reason counts; queue items, queue summaries, and agent action-plan items preserve compact strategy-source status/suffix/skip-reason counts for agent repair loops; bumps action queue schema to version 7; preserves materialized strategy rows, 2024+ sandbox boundaries, source-integrity behavior, archive routing, sweep execution, preflight estimates, ranking math, blocker semantics, eligibility flags, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 3 focused iteration-index queue tests, 169 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source catalog mutation, validation execution, or promotion claim exists. |
+| WPR106-305-sandbox-direct-workbook-sheet-provenance | Codex Research Agent | closed | `docs/work_packets/WPR106-305-sandbox-direct-workbook-sheet-provenance.md`, `docs/stage_reports/STAGE_R106_SANDBOX_DIRECT_WORKBOOK_SHEET_PROVENANCE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/intake.py`, `tests/research_sandbox/**` | Preserves direct workbook sheet provenance by defaulting direct strategy rows without explicit source IDs to `workbook_path#sheet_name`, while preserving explicit source IDs exactly; materialized strategy catalogs and build reports retain those direct workbook source IDs; preserves non-workbook direct catalog behavior, 2024+ sandbox boundaries, source-integrity behavior, archive routing, sweep execution, preflight estimates, ranking math, blocker semantics, eligibility flags, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 1 focused direct workbook provenance test, 12 strategy catalog loader/materializer tests, 169 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source workbook mutation, validation execution, or promotion claim exists. |
+| WPR106-304-sandbox-iteration-strategy-source-summaries | Codex Research Agent | closed | `docs/work_packets/WPR106-304-sandbox-iteration-strategy-source-summaries.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_STRATEGY_SOURCE_SUMMARIES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Projects compact materialized strategy-source summaries into one-command sandbox iteration manifests, agent briefs, and iteration index rows; exposes source status/suffix counts, skipped-source reason counts, family/side/blueprint counts, workbook source counts, workbook sheet counts, sheet status/kind counts, bounded sheet-name samples, and bounded workbook source summaries without reopening strategy catalog build reports; preserves 2024+ filtering, source-integrity behavior, archive routing, materialized strategy rows, trial IDs, preflight estimates, ranking math, blocker semantics, eligibility flags, evidence-request selection, deterministic descriptor IDs, and sandbox-only boundaries; validation passed with 1 focused workbook-backed strategy-source summary test, 23 agent-iteration/index tests, 168 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source catalog/workbook mutation, validation execution, or promotion claim exists. |
+| WPR106-303-sandbox-workbook-strategy-catalog-sheets | Codex Research Agent | closed | `docs/work_packets/WPR106-303-sandbox-workbook-strategy-catalog-sheets.md`, `docs/stage_reports/STAGE_R106_SANDBOX_WORKBOOK_STRATEGY_CATALOG_SHEETS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/intake.py`, `src/tradingbotsuite/research_sandbox/strategy_catalog_materializer.py`, `tests/research_sandbox/**` | Loads every usable local `.xlsx/.xls` strategy workbook sheet instead of stopping at the first usable sheet; aggregates direct strategy catalog sheets and spreadsheet-like lead sheets into sandbox descriptor rows; reports unsupported or notes-only sheets as compact workbook diagnostics in strategy-catalog materializer JSON/Parquet build rows; preserves 2024+ sandbox boundaries, source-integrity behavior, trial identity for existing direct row payloads, ranking math, blocker semantics, eligibility flags, evidence-request selection, and sandbox-only non-promotable outputs; validation passed with 2 focused workbook tests, 11 strategy catalog loader/materializer tests, 167 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source workbook mutation, validation execution, or promotion claim exists. |
+| WPR106-302-sandbox-iteration-brief-source-summaries | Codex Research Agent | closed | `docs/work_packets/WPR106-302-sandbox-iteration-brief-source-summaries.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_BRIEF_SOURCE_SUMMARIES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `tests/research_sandbox/**` | Preserves compact source routing, source path, market bounds, and bounded ZIP/TAR container member-selection diagnostics for top descriptor-only validation requests in one-command sandbox iteration briefs, iteration index rows, strict-validation action queues, and agent action-plan items; preserves 2024+ filtering, source-integrity checks, archive routing, trial IDs, ranking math, blocker semantics, eligibility flags, evidence-request selection, deterministic descriptor IDs, and sandbox-only boundaries; validation passed with 1 focused ZIP-backed iteration/source-summary test, 165 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, member extraction, validation execution, or promotion claim exists. |
+| WPR106-301-sandbox-run-source-container-metadata | Codex Research Agent | closed | `docs/work_packets/WPR106-301-sandbox-run-source-container-metadata.md`, `docs/stage_reports/STAGE_R106_SANDBOX_RUN_SOURCE_CONTAINER_METADATA_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/runner.py`, `src/tradingbotsuite/research_sandbox/validation_bundle.py`, `tests/research_sandbox/**` | Propagates bounded ZIP/TAR container member-selection diagnostics from loaded market-frame normalization metadata into archive sweep `market_source` payloads and descriptor-only strict-validation request bundle convenience fields; preserves 2024+ filtering, source-integrity checks, archive routing, trial IDs, ranking math, blocker semantics, eligibility flags, evidence-request selection, deterministic descriptor IDs, and sandbox-only boundaries; validation passed with 1 focused archive-sweep container provenance test, 164 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, member extraction, validation execution, or promotion claim exists. |
+| WPR106-300-sandbox-preflight-container-metadata | Codex Research Agent | closed | `docs/work_packets/WPR106-300-sandbox-preflight-container-metadata.md`, `docs/stage_reports/STAGE_R106_SANDBOX_PREFLIGHT_CONTAINER_METADATA_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/preflight.py`, `tests/research_sandbox/**` | Projects bounded ZIP/TAR container member-selection diagnostics into compatibility preflight rows as searchable JSON/Parquet fields, including container kind, selected member suffix/count, selected member-name sample, available suffix counts, and loadable member count; preserves 2024+ filtering, source-integrity checks, preflight trial estimates, blocker semantics, deterministic descriptor/trial IDs, and sandbox-only boundaries; validation passed with 1 focused preflight container-metadata test, 163 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, member extraction, validation execution, or promotion claim exists. |
+| WPR106-299-sandbox-archive-container-audit-coverage | Codex Research Agent | closed | `docs/work_packets/WPR106-299-sandbox-archive-container-audit-coverage.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_CONTAINER_AUDIT_COVERAGE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/archive_audit.py`, `src/tradingbotsuite/research_sandbox/archive_coverage.py`, `tests/research_sandbox/**` | Propagates bounded ZIP/TAR container member-selection metadata into archive descriptor audit rows and aggregates it in archive coverage buckets, including container kinds, selected suffixes, selected/loadable member totals, selected suffix counts, available suffix counts, and bounded member-name samples; preserves readiness blockers, source integrity, 2024+ filtering, coverage bucket identity, deterministic descriptor/trial IDs, and sandbox-only boundaries; validation passed with 2 focused archive container audit/coverage tests, 162 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, member extraction, validation execution, or promotion claim exists. |
+| WPR106-298-sandbox-container-member-metadata | Codex Research Agent | closed | `docs/work_packets/WPR106-298-sandbox-container-member-metadata.md`, `docs/stage_reports/STAGE_R106_SANDBOX_CONTAINER_MEMBER_METADATA_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds bounded ZIP/TAR container member-selection metadata to sandbox normalization metadata and archive manifest build rows, including container kind, selected member suffix/count, selected member-name sample, available suffix counts, and loadable member count; preserves selected-suffix loading semantics, 2024+ filtering, source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; validation passed with 3 focused container member-metadata tests, 160 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, member extraction, validation execution, or promotion claim exists. |
+| WPR106-297-sandbox-container-multimember-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-297-sandbox-container-multimember-loader.md`, `docs/stage_reports/STAGE_R106_SANDBOX_CONTAINER_MULTIMEMBER_LOADER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `tests/research_sandbox/**` | Changes ZIP/TAR loading from first-member-only to deterministic multimember loading for the selected highest-priority market-data suffix, concatenates selected member frames before 2024+ normalization, preserves lower-priority member isolation, merges L2 source-transformation row counts, and keeps source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries intact; validation passed with 4 focused container multimember tests, 157 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, member extraction, validation execution, or promotion claim exists. |
+| WPR106-296-sandbox-compressed-container-members | Codex Research Agent | closed | `docs/work_packets/WPR106-296-sandbox-compressed-container-members.md`, `docs/stage_reports/STAGE_R106_SANDBOX_COMPRESSED_CONTAINER_MEMBERS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds compound-suffix detection for gzip-compressed ZIP/TAR market-data members such as `.csv.gz`, `.json.gz`, `.jsonl.gz`, and `.ndjson.gz`, decompresses member payloads in memory, reuses existing CSV/TSV/JSON/JSONL/NDJSON parser and 2024+ normalization paths, and preserves CSV-first priority, source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; validation passed with 3 focused compressed-container member tests, 153 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, member extraction, validation execution, or promotion claim exists. |
+| WPR106-295-sandbox-tar-archive-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-295-sandbox-tar-archive-loader.md`, `docs/stage_reports/STAGE_R106_SANDBOX_TAR_ARCHIVE_LOADER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds local `.tar`, `.tar.gz`, and `.tgz` archive loading for CSV/TSV/JSON/JSONL/NDJSON market-data members, reads members in memory without extraction, reuses existing parser and 2024+ normalization paths, and registers TAR/TGZ suffixes for archive manifest building while preserving source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; validation passed with 3 focused TAR archive-loader tests, 150 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-294-sandbox-hyperliquid-l2-json-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-294-sandbox-hyperliquid-l2-json-loader.md`, `docs/stage_reports/STAGE_R106_SANDBOX_HYPERLIQUID_L2_JSON_LOADER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Flattens local Hyperliquid-style nested `l2Book` JSON payloads with `levels` arrays into deterministic best bid/ask columns, reuses midpoint close derivation for 2024+ sandbox archive audits/manifests/preflights/sweeps, supports ZIP JSON members through the same path, records source-transformation metadata in archive build rows, and infers `l2_book` data family from `l2Book` content hints or flattened book columns while preserving source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; validation passed with 4 focused Hyperliquid L2 JSON tests, 147 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-293-sandbox-venue-price-aliases | Codex Research Agent | closed | `docs/work_packets/WPR106-293-sandbox-venue-price-aliases.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VENUE_PRICE_ALIASES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds common mark/index/mid price aliases and deterministic bid/ask midpoint close derivation for book-style venue exports while preserving explicit close-like aliases first, 2024+ filtering, venue alias normalization, source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; archive build rows expose derived-column metadata, and headered book exports are no longer misclassified as headerless Binance kline rows; validation passed with 3 focused venue price-alias tests, 143 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-292-sandbox-zip-json-member-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-292-sandbox-zip-json-member-loader.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ZIP_JSON_MEMBER_LOADER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `tests/research_sandbox/**` | Expands sandbox ZIP archive loading beyond CSV-only members so ZIPs can load TSV, JSON, JSONL, or NDJSON market-data members when no CSV member is present, while preserving CSV-first behavior for Binance Vision/headered venue-export CSV ZIPs, 2024+ filtering, venue alias normalization, ZIP-file source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; validation passed with 8 focused ZIP tests, 140 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-291-sandbox-ndjson-archive-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-291-sandbox-ndjson-archive-loader.md`, `docs/stage_reports/STAGE_R106_SANDBOX_NDJSON_ARCHIVE_LOADER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds `.ndjson` and `.ndjson.gz` newline-delimited JSON local archive loading and archive-manifest inclusion by reusing the existing JSONL parser path while preserving 2024+ filtering, venue alias normalization, compressed-file source integrity, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; validation passed with 3 focused NDJSON tests, 137 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-290-sandbox-numeric-timestamp-unit-normalizer | Codex Research Agent | closed | `docs/work_packets/WPR106-290-sandbox-numeric-timestamp-unit-normalizer.md`, `docs/stage_reports/STAGE_R106_SANDBOX_NUMERIC_TIMESTAMP_UNIT_NORMALIZER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `tests/research_sandbox/**` | Interprets numeric timestamp aliases as epoch seconds, milliseconds, microseconds, or nanoseconds by magnitude before 2024+ filtering while preserving compact `YYYYMMDD` calendar dates, deterministic descriptor/trial IDs, blocker semantics, and sandbox-only boundaries; validation passed with 4 focused timestamp tests, 134 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-289-sandbox-header-aware-zip-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-289-sandbox-header-aware-zip-loader.md`, `docs/stage_reports/STAGE_R106_SANDBOX_HEADER_AWARE_ZIP_LOADER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Makes ZIP CSV loading header-aware for local venue-export archives while preserving Binance Vision headerless ZIP support and tightening archive data-family path inference to avoid `market` -> `mark_index` false positives; validation passed with 7 focused ZIP/archive-loader tests, 130 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-288-sandbox-gzip-archive-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-288-sandbox-gzip-archive-loader.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GZIP_ARCHIVE_LOADER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds local gzip-compressed CSV/TSV/JSON/JSONL archive loading and archive-manifest inclusion for compound suffixes such as `.csv.gz` while preserving 2024+ filtering, venue alias normalization, compressed-file source integrity, deterministic descriptor/trial IDs, and sandbox-only boundaries; validation passed with 5 focused gzip/archive-loader tests, 128 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-287-sandbox-suite-input-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-287-sandbox-suite-input-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SUITE_INPUT_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/suite.py`, `tests/research_sandbox/**` | Reuses parsed sandbox run specs, strategy catalogs, and venue archive descriptors by resolved local path across sequential sandbox suite cases while keeping parallel suite input caches case-local and preserving trial IDs, rankings, market-source metadata, blocker semantics, case ordering, and non-serialized cache state; validation passed with 4 focused suite-cache tests, 124 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-286-sandbox-suite-market-data-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-286-sandbox-suite-market-data-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SUITE_MARKET_DATA_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/suite.py`, `tests/research_sandbox/**` | Reuses a process-local market-data cache across sequential sandbox suite case preflight and archive sweep execution while keeping parallel suite caches case-local and preserving trial IDs, rankings, market-source metadata, blocker semantics, case ordering, and non-serialized cache state; validation passed with 3 focused suite-cache tests, 123 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-285-sandbox-iteration-market-data-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-285-sandbox-iteration-market-data-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_MARKET_DATA_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_audit.py`, `src/tradingbotsuite/research_sandbox/archive_coverage.py`, `src/tradingbotsuite/research_sandbox/preflight.py`, `src/tradingbotsuite/research_sandbox/runner.py`, `src/tradingbotsuite/research_sandbox/iteration.py`, `tests/research_sandbox/**` | Adds process-local market-data cache reuse across one-command archive coverage, compatibility preflight, and archive sweep execution while preserving descriptor-scoped source integrity, trial IDs, rankings, market-source metadata, blocker semantics, and non-serialized cache state; validation passed with 15 focused cache tests, 122 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-284-sandbox-readiness-source-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-284-sandbox-readiness-source-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_READINESS_SOURCE_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_audit.py`, `src/tradingbotsuite/research_sandbox/preflight.py`, `tests/research_sandbox/**` | Caches identical resolved market sources inside archive audit/coverage and compatibility preflight while preserving per-descriptor source-integrity checks, descriptor-specific rows, requested-window blockers, trial estimates, shared-market-data smoke behavior, and 2024+ filtering; validation passed with 14 focused cache tests, 8 archive/preflight-focused tests, 120 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-283-sandbox-descriptor-market-frame-load-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-283-sandbox-descriptor-market-frame-load-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_DESCRIPTOR_MARKET_FRAME_LOAD_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `tests/research_sandbox/**` | Caches loaded and normalized market frames for identical resolved descriptor `data_path` values while preserving per-descriptor source-integrity checks, distinct frames for distinct paths, missing-path fail-closed behavior, and 2024+ filtering; validation passed with 12 focused loader tests, 118 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-282-sandbox-descriptor-source-metric-reuse | Codex Research Agent | closed | `docs/work_packets/WPR106-282-sandbox-descriptor-source-metric-reuse.md`, `docs/stage_reports/STAGE_R106_SANDBOX_DESCRIPTOR_SOURCE_METRIC_REUSE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `tests/research_sandbox/**` | Reuses trial metric work across descriptor-routed venue descriptors that share an explicit market source while preserving separate computation for distinct descriptor sources and distinct venue trial IDs/source metadata; validation passed with 3 focused cache tests, 116 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-281-sandbox-iteration-agent-action-plan-parquet | Codex Research Agent | closed | `docs/work_packets/WPR106-281-sandbox-iteration-agent-action-plan-parquet.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_AGENT_ACTION_PLAN_PARQUET_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Writes the visible `agent_action_plan` as `sandbox_iteration_agent_action_plan.parquet` and exposes `agent_action_plan_parquet_path` in the sandbox iteration index payload; validation passed with 5 focused iteration-index/action-queue tests, 115 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-280-sandbox-iteration-agent-action-plan | Codex Research Agent | closed | `docs/work_packets/WPR106-280-sandbox-iteration-agent-action-plan.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_AGENT_ACTION_PLAN_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds a global read-only `agent_action_plan` to sandbox iteration indexes, derived from row recommended actions with deterministic priorities, source queue labels, blocker/request context, relevant paths, and dependent-action markers; validation passed with 5 focused iteration-index/action-queue tests, 115 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-279-sandbox-iteration-recommended-actions | Codex Research Agent | closed | `docs/work_packets/WPR106-279-sandbox-iteration-recommended-actions.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_RECOMMENDED_ACTIONS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds deterministic recommended action hints to sandbox iteration index rows, action queue items, queue summaries, and top-level payloads; validation passed with 5 focused iteration-index/action-queue tests, 115 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, validation execution, or promotion claim exists. |
+| WPR106-278-sandbox-iteration-artifact-availability-index | Codex Research Agent | closed | `docs/work_packets/WPR106-278-sandbox-iteration-artifact-availability-index.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_ARTIFACT_AVAILABILITY_INDEX_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds read-only artifact availability diagnostics to sandbox iteration index rows, action queue items, and queue summaries, including referenced/present/missing artifact counts, missing artifact keys, top-level availability totals, and an `artifact_repair_queue` for missing referenced artifacts; validation passed with 5 focused iteration-index/action-queue tests, 115 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, integrity validation substitution, or promotion claim exists. |
+| WPR106-277-sandbox-iteration-source-context-index | Codex Research Agent | closed | `docs/work_packets/WPR106-277-sandbox-iteration-source-context-index.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_SOURCE_CONTEXT_INDEX_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds materialized strategy-catalog and venue-archive source context to sandbox iteration index rows and action queue items, including catalog/archive manifest paths, build-report paths, included/skipped strategy source counts, archive file counts, and archive skipped-file counts; queue summaries aggregate those source counts across all matched rows; validation passed with 4 focused iteration-index/action-queue tests, 114 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-276-sandbox-action-queue-rollups | Codex Research Agent | closed | `docs/work_packets/WPR106-276-sandbox-action-queue-rollups.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ACTION_QUEUE_ROLLUPS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds queue-level `action_queue_summaries` to sandbox iteration indexes and coverage/preflight status counts to queue items so agents can triage full matched queue backlogs beyond the visible queue cap; validation passed with 4 focused iteration-index/action-queue tests, 114 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-275-sandbox-full-preflight-blocker-counts | Codex Research Agent | closed | `docs/work_packets/WPR106-275-sandbox-full-preflight-blocker-counts.md`, `docs/stage_reports/STAGE_R106_SANDBOX_FULL_PREFLIGHT_BLOCKER_COUNTS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds full preflight blocker reason counts to agent briefs, iteration index rows, and action queue items so repair queues do not depend on bounded top-blocker summaries; validation passed with 3 focused iteration-index tests, 113 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-274-sandbox-full-archive-blocker-counts | Codex Research Agent | closed | `docs/work_packets/WPR106-274-sandbox-full-archive-blocker-counts.md`, `docs/stage_reports/STAGE_R106_SANDBOX_FULL_ARCHIVE_BLOCKER_COUNTS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds full archive coverage blocker reason counts to iteration manifests, briefs, and indexes so archive-window repair queues do not depend on bounded top-blocker summaries; validation passed with 3 focused iteration-index tests, 113 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-273-sandbox-iteration-index-archive-window-queue | Codex Research Agent | closed | `docs/work_packets/WPR106-273-sandbox-iteration-index-archive-window-queue.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INDEX_ARCHIVE_WINDOW_QUEUE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds requested-window archive coverage counts and an `archive_window_repair_queue` to read-only sandbox iteration indexes; validation passed with 3 focused iteration-index tests, 113 sandbox tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-272-sandbox-archive-coverage-requested-window | Codex Research Agent | closed | `docs/work_packets/WPR106-272-sandbox-archive-coverage-requested-window.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_COVERAGE_REQUESTED_WINDOW_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research_sandbox/archive_audit.py`, `src/tradingbotsuite/research_sandbox/archive_coverage.py`, `src/tradingbotsuite/research_sandbox/iteration.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds requested-window diagnostics to archive audit/coverage artifacts and passes one-command iteration data windows into coverage for existing venue archive manifests; validation passed with 6 focused requested-window/CLI tests, 112 sandbox tests, 22 live CLI boundary tests, package compileall with PYTHONPATH, 11 import-boundary tests, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-271-sandbox-archive-manifest-window-filter | Codex Research Agent | closed | `docs/work_packets/WPR106-271-sandbox-archive-manifest-window-filter.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_MANIFEST_WINDOW_FILTER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `src/tradingbotsuite/research_sandbox/iteration.py`, `tests/research_sandbox/**` | Adds optional requested-window filtering to sandbox archive manifest building and passes the resolved iteration data window into archive-root materialization; files outside the requested window become explicit `outside_requested_window` skipped rows; validation passed with 2 focused archive-window tests, 109 sandbox tests, 11 import-boundary tests, package compileall with PYTHONPATH, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-270-sandbox-iteration-recent-window-presets | Codex Research Agent | closed | `docs/work_packets/WPR106-270-sandbox-iteration-recent-window-presets.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_RECENT_WINDOW_PRESETS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/main.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds generated-spec recent-window presets for one-command sandbox agent iterations; `recent_365d` and related presets resolve before preflight, clip to the 2024 sandbox floor, and write `window_selection` metadata to manifests and briefs; spec-file runs reject recent-window overrides; validation passed with 4 focused recent-window/CLI tests, 107 sandbox tests, 22 live CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-269-sandbox-venue-identity-aliases | Codex Research Agent | closed | `docs/work_packets/WPR106-269-sandbox-venue-identity-aliases.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VENUE_IDENTITY_ALIASES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/spec.py`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds shared sandbox venue identity alias canonicalization for direct venue archive manifests and archive manifest builder overrides; common local/export labels such as `binance_futures`, `okex`, `bybit_usdt_linear`, and `hl_perp` normalize to canonical sandbox venues before validation; unsupported venue values still fail closed; validation passed with 10 focused alias/archive-manifest tests, 104 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-268-sandbox-strategy-catalog-header-aliases | Codex Research Agent | closed | `docs/work_packets/WPR106-268-sandbox-strategy-catalog-header-aliases.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRATEGY_CATALOG_HEADER_ALIASES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/intake.py`, `tests/research_sandbox/**` | Adds direct strategy catalog header-alias normalization for human spreadsheet headers before spreadsheet lead/proxy fallback; alias-heavy sheets with hypothesis/family/signal/side/source/exit/filter/params/tags/notes fields load as direct precomputed-signal descriptors; validation passed with 10 focused strategy-catalog tests, 98 sandbox tests, 11 import-boundary tests, package compileall, the isolated affected async contract test, and 460 non-affected contract tests with 1 known affected async setup test deselected; full one-shot contracts reached 460 passed tests before known `ISSUE-R106-026` Windows `WinError 10055` pytest-asyncio socketpair setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-267-sandbox-archive-content-identity-inference | Codex Research Agent | closed | `docs/work_packets/WPR106-267-sandbox-archive-content-identity-inference.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_CONTENT_IDENTITY_INFERENCE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `tests/research_sandbox/**` | Adds content-derived archive descriptor identity inference for generic local archive filenames using venue/exchange/provider/source, symbol/instrument/coin/base/quote, interval/bar/timeframe, and data-family/channel/type hints; build-report rows expose inference-source fields; validation passed with 4 focused archive-manifest tests, 96 sandbox tests, 11 import-boundary tests, package compileall, and 460 non-affected contract tests with 1 known affected async setup test deselected; full contracts reached 460 passed tests before known `ISSUE-R106-026` Windows `WinError 10055` pytest-asyncio socketpair setup failure, and the isolated affected setup reproduced the same failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-266-sandbox-iteration-action-queues | Codex Research Agent | closed | `docs/work_packets/WPR106-266-sandbox-iteration-action-queues.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_ACTION_QUEUES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `tests/research_sandbox/**` | Adds deterministic action queues to `build_sandbox_iteration_index()` payloads for strict-validation requests, preflight repairs, missing briefs, and rejection reviews; queue entries are compact sandbox-boundary summaries derived from existing index rows with counts, blockers, validation-request descriptors, and artifact paths; validation passed with 2 focused iteration-index tests, 95 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-265-sandbox-iteration-index-cli | Codex Research Agent | closed | `docs/work_packets/WPR106-265-sandbox-iteration-index-cli.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INDEX_CLI_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds the guarded `index-rapid-strategy-sandbox-iterations` research CLI command; root/output paths stay under the configured research output root; command calls `build_sandbox_iteration_index()` and writes only sandbox iteration index JSON/Parquet artifacts; command is registered as research-owned and rejected in live mode; validation passed with 3 focused sandbox iteration-index tests, 2 focused live-boundary tests, 95 sandbox tests, 22 live CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-264-sandbox-iteration-index | Codex Research Agent | closed | `docs/work_packets/WPR106-264-sandbox-iteration-index.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_INDEX_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration_index.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds `build_sandbox_iteration_index()` to scan existing one-command sandbox iteration manifests and agent briefs into `sandbox_iteration_index.json` and Parquet rows with status, next action, reason codes, brief availability, coverage/preflight/result counts, descriptor-only request counts, blockers, validation-request descriptors, and artifact paths; source manifests and loaded briefs must retain sandbox boundary flags; catalog discovers `iteration_index`; validation passed with 2 focused iteration-index tests, 94 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-263-sandbox-iteration-agent-brief | Codex Research Agent | closed | `docs/work_packets/WPR106-263-sandbox-iteration-agent-brief.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_AGENT_BRIEF_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds compact research-only one-command sandbox iteration briefs with next-action labels, reason codes, counts, top archive/preflight blockers, top descriptor-only validation requests, artifact paths, and step summaries; cached iteration reuse validates brief JSON boundary flags and brief Parquet existence; artifact catalog discovers `agent_iteration_brief`; validation passed with 5 focused iteration tests, 92 sandbox tests, 11 import-boundary tests, and package compileall; full contract baseline reached 460 passed tests and then hit known `ISSUE-R106-026` Windows `WinError 10055` during pytest-asyncio socketpair setup before the affected async test body, and the isolated affected async test failed at the same setup point; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-262-sandbox-iteration-archive-coverage-step | Codex Research Agent | closed | `docs/work_packets/WPR106-262-sandbox-iteration-archive-coverage-step.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_ARCHIVE_COVERAGE_STEP_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `tests/research_sandbox/**` | Adds archive coverage as a first-class one-command sandbox agent iteration step before compatibility preflight; completed and preflight-blocked manifests record coverage/source-audit paths and counts; cached iteration reuse validates coverage/source-audit JSON boundary flags and Parquet existence; iteration identity includes an archive-coverage step version so older manifests lacking coverage evidence are not silently reused; validation passed with 5 focused iteration tests, 90 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; `git diff --check` reported only existing LF-to-CRLF warnings and no whitespace errors; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-261-sandbox-archive-coverage-cli | Codex Research Agent | closed | `docs/work_packets/WPR106-261-sandbox-archive-coverage-cli.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_COVERAGE_CLI_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds the guarded `summarize-rapid-strategy-sandbox-archive-coverage` research CLI command for archive coverage matrices; command output stays under the configured research output root, supports shared-market-data smoke mode, writes only sandbox coverage JSON/Parquet artifacts, is registered as research-owned, and is rejected in live mode; validation passed with 2 focused sandbox coverage tests, 2 focused live-boundary tests, 88 sandbox tests, 21 live CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-260-sandbox-archive-coverage-matrix | Codex Research Agent | closed | `docs/work_packets/WPR106-260-sandbox-archive-coverage-matrix.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_COVERAGE_MATRIX_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/archive_coverage.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Adds read-only sandbox archive coverage matrices that reuse archive descriptor audit evidence and group descriptors by venue, symbol, data family, and interval with ready/blocked descriptor counts, row counts, market/window bounds, source paths, and blocker/warning counts; catalog indexes `archive_coverage_matrix.json`; validation passed with 1 focused archive-coverage sandbox test, 87 sandbox tests, 11 import-boundary tests, package compileall, and the isolated affected async contract test; full contract baseline attempts reached 460 passed tests before known Windows pytest-asyncio `WinError 10055` socket setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-259-sandbox-strict-request-source-context | Codex Research Agent | closed | `docs/work_packets/WPR106-259-sandbox-strict-request-source-context.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_REQUEST_SOURCE_CONTEXT_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/evidence_request.py`, `src/tradingbotsuite/research_sandbox/validation_bundle.py`, `tests/research_sandbox/**` | Adds compact `source_trial_context` metadata to sandbox evidence-request descriptors and strict-validation request bundle rows, including source run/trial identity, hypothesis/family/source ID, venue, symbol, data family, signal column, side, holding period, exit/filter variant IDs, market timestamp bounds, descriptor routing metadata, and sandbox execution assumptions; request IDs remain deterministic from source run/trial validation-request identity; validation passed with 3 focused sandbox tests, 86 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-258-sandbox-archive-source-integrity-guard | Codex Research Agent | closed | `docs/work_packets/WPR106-258-sandbox-archive-source-integrity-guard.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_SOURCE_INTEGRITY_GUARD_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/market_data.py`, `src/tradingbotsuite/research_sandbox/archive_audit.py`, `src/tradingbotsuite/research_sandbox/preflight.py`, `tests/research_sandbox/**` | Makes descriptor-routed archive consumers verify descriptor `source_integrity` before reading local archive files; archive audit and compatibility preflight report source-integrity mismatches as blocker reasons; archive-backed sweeps fail closed before reading changed source files; shared-market-data smoke mode remains available; validation passed with 2 source-integrity focused sandbox tests, 86 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-257-sandbox-archive-source-integrity-metadata | Codex Research Agent | closed | `docs/work_packets/WPR106-257-sandbox-archive-source-integrity-metadata.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_SOURCE_INTEGRITY_METADATA_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/archive_manifest.py`, `src/tradingbotsuite/research_sandbox/spec.py`, `src/tradingbotsuite/research_sandbox/intake.py`, `tests/research_sandbox/**` | Records local source file SHA-256 and byte-size metadata in sandbox archive manifest build rows and generated venue archive descriptors; archive manifest identity now includes source integrity so unchanged local archive inputs remain idempotent while in-place source edits change the manifest ID; older descriptor manifests without source integrity still load; validation passed with 3 archive-manifest focused sandbox tests, 84 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-256-sandbox-iteration-cache-integrity-reuse | Codex Research Agent | closed | `docs/work_packets/WPR106-256-sandbox-iteration-cache-integrity-reuse.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_CACHE_INTEGRITY_REUSE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `tests/research_sandbox/**` | Makes cached one-command sandbox iteration reuse validate referenced artifacts before returning `reused_existing: true`; cached JSON artifacts must exist and retain sandbox boundary flags, cached Parquet artifacts must exist, and completed cached iterations verify the referenced run manifest's child-artifact integrity; validation passed with 7 iteration-focused sandbox tests, 84 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-255-sandbox-integrity-guarded-artifact-consumers | Codex Research Agent | closed | `docs/work_packets/WPR106-255-sandbox-integrity-guarded-artifact-consumers.md`, `docs/stage_reports/STAGE_R106_SANDBOX_INTEGRITY_GUARDED_ARTIFACT_CONSUMERS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/integrity.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/research_sandbox/analytics.py`, `src/tradingbotsuite/research_sandbox/falsification.py`, `src/tradingbotsuite/research_sandbox/leaderboard.py`, `src/tradingbotsuite/research_sandbox/validation_bundle.py`, `tests/research_sandbox/**` | Adds `require_sandbox_artifact_integrity()` as a no-report fail-closed guard and wires it into run analysis, run/suite hypothesis falsification, global leaderboard aggregation, and run/suite strict-validation request bundle export before reading compact child Parquet/JSON files; tampered run/suite child artifacts now stop derived report or bundle writes; validation passed with 81 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-254-sandbox-artifact-catalog-integrity-status | Codex Research Agent | closed | `docs/work_packets/WPR106-254-sandbox-artifact-catalog-integrity-status.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_INTEGRITY_STATUS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/catalog.py`, `tests/research_sandbox/**` | Surfaces read-only run/suite child artifact integrity status in sandbox artifact catalog rows; run and suite manifest rows include verification status, checked/verified/failed counts, mismatched/missing counts, failed artifact keys, and failure reasons; non-run/suite artifacts remain `not_applicable`; catalog indexing reuses the verifier in no-report mode and does not mutate source artifacts; validation passed with 79 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, verifier report write during cataloging, source artifact mutation, or promotion claim exists. |
+| WPR106-253-sandbox-artifact-integrity-verifier | Codex Research Agent | closed | `docs/work_packets/WPR106-253-sandbox-artifact-integrity-verifier.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_INTEGRITY_VERIFIER_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/integrity.py`, `src/tradingbotsuite/research_sandbox/__init__.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds a read-only sandbox artifact-integrity verifier API and `verify-rapid-strategy-sandbox-artifacts` research CLI command; verifies existing run/suite directories or manifest paths against manifest-recorded SHA-256 and byte-size metadata; writes optional sandbox-only JSON/Parquet verification reports; fails closed on missing integrity metadata, missing artifact paths, missing files, and hash/size mismatches; validates target/output paths under the configured research output root; validation passed with 78 sandbox tests, 20 live CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, source artifact mutation, or promotion claim exists. |
+| WPR106-252-sandbox-artifact-integrity-hashes | Codex Research Agent | closed | `docs/work_packets/WPR106-252-sandbox-artifact-integrity-hashes.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_INTEGRITY_HASHES_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/store.py`, `src/tradingbotsuite/research_sandbox/suite.py`, `tests/research_sandbox/**` | Adds SHA-256 and byte-size integrity metadata for sandbox run child artifacts and suite child artifacts; run manifests cover `summary.parquet`, `rankings.parquet`, `evidence_requests.json`, and `evidence_requests.parquet`; suite manifests cover `suite_index.json`, `suite_index.parquet`, `suite_evidence_requests.json`, and `suite_evidence_requests.parquet`; avoids self-referential manifest hashes; preserves artifact paths, schemas, trial IDs, rankings, descriptor-only evidence requests, and sandbox boundary metadata; validation passed with 76 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, or promotion claim exists. |
+| WPR106-251-sandbox-parallel-suite-runner | Codex Research Agent | closed | `docs/work_packets/WPR106-251-sandbox-parallel-suite-runner.md`, `docs/stage_reports/STAGE_R106_SANDBOX_PARALLEL_SUITE_RUNNER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/suite.py`, `src/tradingbotsuite/main.py`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds explicit `max_workers` case-level parallelism to sandbox suites and the `run-rapid-strategy-sandbox-suite` CLI; preserves serial default behavior, isolated per-case preflight/run directories, blocked-by-preflight semantics, descriptor-routed archive behavior, deterministic suite-spec ordering for JSON/Parquet indexes, returned case results, and aggregated descriptor-only evidence requests; records `max_workers` in suite manifests and CLI payloads; validation passed with 76 sandbox tests, 11 import-boundary tests, package compileall, 19 live CLI boundary tests, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, or promotion claim exists. |
+| WPR106-250-sandbox-vectorized-barrier-exits | Codex Research Agent | closed | `docs/work_packets/WPR106-250-sandbox-vectorized-barrier-exits.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VECTORIZED_BARRIER_EXITS_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `tests/research_sandbox/**` | Vectorizes sandbox primary-bar target/stop exit pricing; computes barrier hit windows with NumPy instead of nested per-trade/per-bar scans; preserves long/short target-only, stop-only, and conservative target/stop semantics, same-bar stop-first handling, no-hit fixed-hold fallback, missing-OHLC blockers, deterministic trial IDs, scores, ranks, and sandbox boundary metadata; focused validation compares vectorized barrier exits against a local reference loop and locks stop-first/no-hit fallback behavior; validation passed with 75 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, or promotion claim exists. |
+| WPR106-249-sandbox-shared-market-metric-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-249-sandbox-shared-market-metric-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SHARED_MARKET_METRIC_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `tests/research_sandbox/**` | Adds shared-market trial metric caching to sandbox fixed-hold sweeps; computes each strategy/filter/exit/holding outcome once per prepared 2024+ market frame and reuses metrics across venue descriptors that explicitly share that frame; recomputes venue-specific deterministic trial IDs and metadata; preserves descriptor-routed per-venue archive frames, missing-column blockers, target/stop OHLC checks, deterministic trial IDs, active-day counts, scores, ranks, and sandbox boundary metadata; focused validation proves a 24-row shared-market grid runs `_gross_returns()` 12 times and a descriptor-routed two-frame test keeps venue metrics distinct; validation passed with 73 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, descriptor archive loading change, strict-cycle execution, or promotion claim exists. |
+| WPR106-248-sandbox-sweep-market-array-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-248-sandbox-sweep-market-array-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SWEEP_MARKET_ARRAY_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `tests/research_sandbox/**` | Adds prepared-market numeric array caching to sandbox fixed-hold sweeps; computes close, optional high/low, and entry-date arrays once per prepared 2024+ market frame and reuses them across venues, filter variants, exit variants, and holding periods; preserves missing-column blockers, target/stop OHLC checks, deterministic trial IDs, active-day counts, scores, ranks, and sandbox boundary metadata; focused validation proves a 24-trial two-filter/two-exit/three-hold/two-venue grid calls `_prepared_market_arrays()` only once; validation passed with 71 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, or promotion claim exists. |
+| WPR106-247-sandbox-sweep-mask-cache | Codex Research Agent | closed | `docs/work_packets/WPR106-247-sandbox-sweep-mask-cache.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SWEEP_MASK_CACHE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/fast_backtest.py`, `tests/research_sandbox/**` | Adds prepared-market signal/filter mask caching to sandbox fixed-hold sweeps; computes each strategy/filter mask once per prepared 2024+ market frame and reuses it across venues, exit variants, and holding periods; preserves missing-column blockers, target/stop OHLC checks, deterministic trial IDs, scores, ranks, and sandbox boundary metadata; focused validation proves a 24-trial two-filter/two-exit/three-hold/two-venue grid calls `_signal_mask()` only twice; validation passed with 70 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, or promotion claim exists. |
+| WPR106-246-sandbox-suite-preflight-gate | Codex Research Agent | closed | `docs/work_packets/WPR106-246-sandbox-suite-preflight-gate.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SUITE_PREFLIGHT_GATE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/falsification.py`, `src/tradingbotsuite/research_sandbox/suite.py`, `src/tradingbotsuite/main.py`, `tests/research_sandbox/**` | Makes compatibility preflight a first-class sandbox suite step; preflights each case before archive sweep execution; writes case preflight artifacts under the suite directory; records preflight JSON/Parquet paths, status counts, runnable/blocked trial estimates, and blocker reason counts in suite case-index rows; adds suite-level completed/skipped case counts and aggregate preflight counts; preserves runnable case sweep/analysis/evidence-request behavior; marks zero-runnable cases as `blocked_by_preflight` without writing run artifacts or evidence requests; validation passed with 69 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, or promotion claim exists. |
+| WPR106-245-sandbox-iteration-preflight-gate | Codex Research Agent | closed | `docs/work_packets/WPR106-245-sandbox-iteration-preflight-gate.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ITERATION_PREFLIGHT_GATE_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/iteration.py`, `tests/research_sandbox/**` | Makes compatibility preflight a first-class one-command sandbox iteration step; writes preflight artifacts under the iteration directory; records preflight JSON/Parquet paths, status counts, runnable/blocked trial estimates, and blocker reason counts in `sandbox_iteration_manifest.json`; adds `compatibility_preflight` to `sandbox_iteration_steps.parquet`; preserves existing sweep/analysis/falsification/descriptor-only validation bundle/leaderboard behavior when runnable trials exist; writes a `blocked_by_preflight` final manifest and skips downstream steps when preflight proves zero runnable trials; validation passed with 68 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests on rerun after one known Windows `WinError 10055` pytest-asyncio setup failure; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, or promotion claim exists. |
+| WPR106-244-sandbox-compatibility-preflight | Codex Research Agent | closed | `docs/work_packets/WPR106-244-sandbox-compatibility-preflight.md`, `docs/stage_reports/STAGE_R106_SANDBOX_COMPATIBILITY_PREFLIGHT_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds sandbox compatibility preflight API and the `preflight-rapid-strategy-sandbox` research CLI command; loads run specs, strategy catalogs, and venue archive manifests; normalizes each venue frame through the existing 2024+ sandbox loader; materializes blueprint signals inside the filtered window; writes deterministic `sandbox_compatibility_preflight.json` and `sandbox_compatibility_preflight.parquet` artifacts with strategy/venue runnable and blocked trial estimates plus explicit blocker reasons for missing data paths, missing files, loader failures, empty windows, missing signal/filter columns, and missing OHLC required by target/stop exits; makes preflight artifacts discoverable by the sandbox artifact catalog; validation passed with 67 sandbox tests, 19 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, sandbox sweep execution, strict-cycle execution, or promotion claim exists. |
+| WPR106-243-sandbox-venue-export-normalizer | Codex Research Agent | closed | `docs/work_packets/WPR106-243-sandbox-venue-export-normalizer.md`, `docs/stage_reports/STAGE_R106_SANDBOX_VENUE_EXPORT_NORMALIZER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**` | Adds sandbox market-frame alias normalization for common local OKX, Bybit, and Hyperliquid exports; normalizes timestamp/OHLCV/price aliases into canonical `timestamp`, `open`, `high`, `low`, `close`, and `volume` columns while preserving safe original columns; records alias metadata in archive manifest build rows and archive descriptor audit rows; preserves the 2024+ filter and fail-closed missing timestamp/close behavior; focused validation passed with 65 sandbox tests, 11 import-boundary tests, and package compileall; full contract baseline remains blocked by `ISSUE-R106-026` Windows `WinError 10055` pytest-asyncio socketpair setup failure before the affected async test body ran after 460 passing tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, or promotion claim exists. |
+| WPR106-242-sandbox-agent-iteration-runner | Codex Research Agent | closed | `docs/work_packets/WPR106-242-sandbox-agent-iteration-runner.md`, `docs/stage_reports/STAGE_R106_SANDBOX_AGENT_ITERATION_RUNNER_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds one-command sandbox agent iteration orchestration plus the `run-rapid-strategy-sandbox-iteration` research CLI command; materializes or reuses sandbox strategy catalogs and venue archive manifests, runs the existing archive-backed sandbox sweep, writes run analysis, hypothesis falsification, descriptor-only strict-validation request bundles, global leaderboard artifacts, `sandbox_iteration_manifest.json`, and `sandbox_iteration_steps.parquet`; repeated identical iterations return the existing manifest instead of colliding with the run directory; focused and baseline validation passed with 61 sandbox tests, 18 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, strict-cycle execution, or promotion claim exists. |
+| WPR106-241-sandbox-strategy-catalog-materializer | Codex Research Agent | closed | `docs/work_packets/WPR106-241-sandbox-strategy-catalog-materializer.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRATEGY_CATALOG_MATERIALIZER_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds local sandbox strategy catalog materialization plus the `build-rapid-strategy-sandbox-strategy-catalog` research CLI command; scans local CSV/TSV/JSON/Parquet/XLSX/XLS strategy roots, reuses existing strategy intake for direct signal rows, spreadsheet-like lead rows, and repo strategy configs, writes deterministic loadable `strategy_catalog.json`, `strategy_catalog.parquet`, `strategy_catalog_build_report.json`, and `strategy_catalog_build_report.parquet` artifacts, reports skipped files with reasons, and makes generated catalogs/reports discoverable by the sandbox artifact catalog; focused validation passed with 58 sandbox tests, 17 CLI boundary tests, 11 import-boundary tests, and package compileall; full contract baseline remains blocked by `ISSUE-R106-026` Windows `WinError 10055` pytest-asyncio socketpair setup failure before the affected async test body ran; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, sandbox run execution, strict-cycle execution, or promotion claim exists. |
+| WPR106-240-sandbox-global-leaderboard | Codex Research Agent | closed | `docs/work_packets/WPR106-240-sandbox-global-leaderboard.md`, `docs/stage_reports/STAGE_R106_SANDBOX_GLOBAL_LEADERBOARD_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds read-only global sandbox leaderboard generation plus the `rank-rapid-strategy-sandbox-artifacts` research CLI command; scans existing sandbox run manifests/rankings/evidence requests under the research output root, validates sandbox boundary flags, aggregates by hypothesis/family across runs, venues, symbols, exits, filters, and holding periods, writes compact `sandbox_global_leaderboard.json` and `sandbox_global_leaderboard.parquet` artifacts, and makes generated leaderboard reports discoverable by the sandbox artifact catalog; focused validation passed with 55 sandbox tests, 16 CLI boundary tests, 11 import-boundary tests, and package compileall; full contract baseline remains blocked by `ISSUE-R106-026` Windows `WinError 10055` pytest-asyncio socketpair setup failure before the affected async test body ran; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, sandbox run execution, strict-cycle execution, or promotion claim exists. |
+| WPR106-239-sandbox-archive-manifest-builder | Codex Research Agent | closed | `docs/work_packets/WPR106-239-sandbox-archive-manifest-builder.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_MANIFEST_BUILDER_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds local sandbox archive manifest building plus the `build-rapid-strategy-sandbox-archive-manifest` research CLI command; scans local CSV/TSV/JSON/JSONL/Parquet/Binance-kline ZIP roots, filters through the 2024+ sandbox market-frame loader, infers or overrides venue/symbol/data-family/interval identity, writes deterministic `venue_archives.json`, `archive_manifest_build_report.json`, and `archive_manifest_build_report.parquet` artifacts, reports skipped files with reasons, and makes generated manifests/reports discoverable by the sandbox artifact catalog; focused validation passed with 52 sandbox tests, 15 CLI boundary tests, 11 import-boundary tests, and package compileall; full contract baseline was blocked by repeated Windows `WinError 10055` pytest-asyncio socketpair setup failures before the affected async test body ran and is tracked as `ISSUE-R106-026`; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, provider download, sandbox run execution, strict-cycle execution, or promotion claim exists. |
+| WPR106-238-sandbox-archive-descriptor-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-238-sandbox-archive-descriptor-audit.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARCHIVE_DESCRIPTOR_AUDIT_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds sandbox archive descriptor auditing plus the `audit-rapid-strategy-sandbox-archives` research CLI command; reads local venue archive manifests and descriptor-local or shared smoke market data paths under research-root output enforcement; writes JSON/Parquet audit artifacts with descriptor identity, venue, symbol, data family, interval, routing mode, source path, normalized 2024+ row counts, descriptor-window row counts, timestamp bounds, OHLC availability, status, blocker reasons, and warning reasons; repeated audits refresh the same deterministic artifact for agent preflight loops; validation passed with 49 sandbox tests, 14 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, sandbox run execution, strict-cycle execution, or promotion claim exists. |
+| WPR106-237-sandbox-artifact-catalog | Codex Research Agent | closed | `docs/work_packets/WPR106-237-sandbox-artifact-catalog.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_CATALOG_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds bounded sandbox artifact catalog scanning plus the `index-rapid-strategy-sandbox-artifacts` research CLI command; scans known sandbox JSON artifact names under the research output root; validates sandbox boundary flags before indexing; writes JSON/Parquet catalogs with artifact kind, source artifact family, paths, run/suite IDs, counts, strict-validation bundle metadata, and modification timestamps; validation passed with 45 sandbox tests, 13 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, sandbox run execution, strict-cycle execution, or promotion claim exists. |
+| WPR106-236-sandbox-strict-validation-request-bundle | Codex Research Agent | closed | `docs/work_packets/WPR106-236-sandbox-strict-validation-request-bundle.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRICT_VALIDATION_REQUEST_BUNDLE_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds run-level and suite-level descriptor-only strict-validation request bundles plus the `export-rapid-strategy-sandbox-validation-requests` research CLI command; validates source sandbox manifests and evidence-request descriptors; dedupes requests deterministically; writes JSON/Parquet handoff descriptors with source request/trial/run IDs, hypothesis/family/venue/symbol, required evidence, source metrics, provenance paths, and `run-historical-research-cycle` as the later strict validation command; validation passed with 43 sandbox tests, 12 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, strict-cycle execution, or promotion claim exists. |
+| WPR106-235-sandbox-hypothesis-falsification-index | Codex Research Agent | closed | `docs/work_packets/WPR106-235-sandbox-hypothesis-falsification-index.md`, `docs/stage_reports/STAGE_R106_SANDBOX_HYPOTHESIS_FALSIFICATION_INDEX_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds run-level and suite-level sandbox hypothesis falsification indexes plus the `summarize-rapid-strategy-sandbox-hypotheses` research CLI command; validates sandbox manifests, rankings, and evidence-request descriptors before grouping rows by hypothesis/family; writes JSON/Parquet reports with tested venues/symbols/exits/filters, best trial metrics, evidence-request trial IDs, blocker/rejection summaries, and sandbox falsification decisions; validation passed with 40 sandbox tests, 11 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, strict-cycle execution, or promotion claim exists. |
+| WPR106-234-sandbox-suite-batch-runner | Codex Research Agent | closed | `docs/work_packets/WPR106-234-sandbox-suite-batch-runner.md`, `docs/stage_reports/STAGE_R106_SANDBOX_SUITE_BATCH_RUNNER_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds the `run-rapid-strategy-sandbox-suite` research CLI command and suite API for executing multiple sandbox cases from a portable suite spec; resolves case paths relative to the suite file; writes suite manifest, JSON/Parquet case indexes, and aggregated evidence-request descriptor artifacts under the configured research output root; preserves sandbox-only/non-promotable boundary flags and rejects live-boundary flags in suite specs; validation passed with 37 sandbox tests, 10 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests after one transient Windows asyncio socket setup error reran cleanly; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, strict-cycle execution, or promotion claim exists. |
+| WPR106-233-sandbox-artifact-analytics-cli | Codex Research Agent | closed | `docs/work_packets/WPR106-233-sandbox-artifact-analytics-cli.md`, `docs/stage_reports/STAGE_R106_SANDBOX_ARTIFACT_ANALYTICS_CLI_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Adds the `summarize-rapid-strategy-sandbox` research CLI command for existing sandbox run artifacts under the research output root; reads manifest, rankings Parquet, and evidence-request descriptors; validates sandbox-only/non-promotable flags before summarizing; writes `analysis_summary.json`; returns status, venue, family, exit/filter, rejection reason, top-row, market-source, and evidence-request summaries; validation passed with 33 sandbox tests, 9 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-232-sandbox-multi-venue-archive-routing | Codex Research Agent | closed | `docs/work_packets/WPR106-232-sandbox-multi-venue-archive-routing.md`, `docs/stage_reports/STAGE_R106_SANDBOX_MULTI_VENUE_ARCHIVE_ROUTING_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**` | Adds descriptor-routed local archive sweeps so multiple venue descriptors can each load their own normalized 2024+ market frame from `data_path`, with descriptor-relative path resolution, combined global result ranking, CLI execution without shared `--market-data` when every descriptor has `data_path`, shared-frame smoke fallback preservation, result `market_source` metadata, and manifest `market_sources` summaries; focused validation passed with 30 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-231-sandbox-exit-filter-sweep-grid | Codex Research Agent | closed | `docs/work_packets/WPR106-231-sandbox-exit-filter-sweep-grid.md`, `docs/stage_reports/STAGE_R106_SANDBOX_EXIT_FILTER_SWEEP_GRID_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**` | Adds bounded sandbox strategy/exit/filter sweep grids with typed `ExitVariant` and `FilterVariant` run-spec objects; preserves default fixed-hold/base-filter behavior; supports fixed-hold, target-only, stop-only, and conservative target/stop primary-bar exit proxies; applies additional filter variants to completed rows after the 2024+ sandbox window; includes exit/filter variant payloads in deterministic trial IDs and result payload columns; blocks target/stop variants when `high`/`low` columns are missing; records stop-first same-bar target/stop ambiguity and exit/fill assumptions in metadata; validation passed with 25 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-230-sandbox-strategy-blueprint-catalog-compiler | Codex Research Agent | closed | `docs/work_packets/WPR106-230-sandbox-strategy-blueprint-catalog-compiler.md`, `docs/stage_reports/STAGE_R106_SANDBOX_STRATEGY_BLUEPRINT_CATALOG_COMPILER_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**` | Adds sandbox-only static strategy blueprint proxies for completed-bar close momentum, range reversion, and volatility breakout; compiles existing repo strategy JSON configs, strategy-family matrix payloads, and spreadsheet-like lead/catalog rows into deterministic non-promotable `StrategyCatalogRow` entries when no precomputed `signal_column` exists; materializes blueprint signals only after the 2024+ sandbox market window is applied; adds standard-library `.xlsx` fallback intake for environments without `openpyxl`; preserves direct precomputed-signal catalog behavior; focused validation passed with 20 sandbox tests, 11 import-boundary tests, package compileall, a real `configs/strategies` smoke compiling 30 rows, and a real Excel-audit smoke compiling 17 rows through the fallback path; the full contract baseline passed once before the Excel fallback edit, then repeated post-fallback attempts reached 460 passed tests and failed only during asyncio fixture setup with Windows `WinError 10055` socket resource exhaustion before the affected test body ran; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-229-rapid-strategy-sandbox-cli-and-archive-loader | Codex Research Agent | closed | `docs/work_packets/WPR106-229-rapid-strategy-sandbox-cli-and-archive-loader.md`, `docs/stage_reports/STAGE_R106_RAPID_STRATEGY_SANDBOX_CLI_AND_ARCHIVE_LOADER_REPORT.md`, `docs/contracts/boundary_contract.md`, `docs/contracts/sandbox_research_contract.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/live/test_cli_boundary.py` | Makes the isolated Rapid Strategy Iteration Sandbox runnable from canonical CLI through `run-rapid-strategy-sandbox`; registers the command as research-owned and live-mode guarded, resolves outputs under the configured research output root, loads sandbox run specs, strategy catalogs, venue archive descriptors, and local market data, supports descriptor `data_path`, and adds local market-frame loaders for CSV, TSV, JSON, JSONL, Parquet, direct Binance Vision kline CSV, and Binance Vision kline ZIP files; writes only sandbox manifests, Parquet summaries/rankings, and evidence-request descriptors; focused validation passed with 13 sandbox tests, 8 CLI boundary tests, 11 import-boundary tests, package compileall, and 461 contract tests after one transient Windows socket/event-loop setup error reran cleanly; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-228-rapid-strategy-iteration-sandbox-foundation | Codex Research Agent | closed | `docs/work_packets/WPR106-228-rapid-strategy-iteration-sandbox-foundation.md`, `docs/stage_reports/STAGE_R106_RAPID_STRATEGY_ITERATION_SANDBOX_FOUNDATION_REPORT.md`, `docs/contracts/sandbox_research_contract.md`, `configs/sandbox/rapid_strategy_iteration_sandbox_smoke_v1.json`, `src/tradingbotsuite/research_sandbox/**`, `tests/research_sandbox/**`, `tests/contracts/test_import_boundaries.py`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Adds the first isolated 2024+ Rapid Strategy Iteration Sandbox foundation as an idea-triage layer beside the strict historical research cycle; implements non-promotable specs and boundary metadata, deterministic run/trial/request IDs, CSV/TSV/JSON/Parquet/spreadsheet-like strategy catalog intake, Binance/OKX/Bybit/Hyperliquid/local venue archive descriptors, vectorized fixed-hold sweeps with completed-bar signals, next-bar entry, fixed-hold exit, and round-trip costs, immutable compact manifest/Parquet/JSON result storage, and evidence-request descriptors that ask only for later strict validation; import-boundary tests now cover `research_sandbox`; focused validation passed with 7 sandbox tests, 11 import-boundary tests, package compileall, and 461 contract tests; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, or promotion claim exists. |
+| WPR106-226-2024-forward-results-catalog-and-lead-docs | Codex Research Agent | closed | `docs/work_packets/WPR106-226-2024-forward-results-catalog-and-lead-docs.md`, `docs/stage_reports/STAGE_R106_2024_FORWARD_RESULTS_CATALOG_AND_LEAD_DOCS_REPORT.md`, `docs/research_knowledge/WPR106-220-225-2024-forward-results-and-leads-catalog.md`, `docs/research_knowledge/README.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, reconstructed WPR106-220 through WPR106-225 work packets and stage reports | Documentation-only catalog packet; discovered WPR106-220 through WPR106-225 work packet and stage report markdown files were NUL-filled while summary JSONs, Parquet artifacts, and ledger evidence remained usable; reconstructed those markdown anchors from preserved evidence; added a consolidated WPR106-220 through WPR106-225 2024-forward results/leads catalog covering packet/report/summary locations, pre-May selection evidence, May 2026 benchmark-only evidence, validation commands and pass status, artifact groups, rejected candidate/portfolio/promotion interpretations, remaining leads, and falsified/control paths; linked the catalog from `docs/research_knowledge/README.md` and `docs/ACTIVE_INDEX.md`; preserves the decision that no WPR106-220 through WPR106-225 output is candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; remaining research-only leads are WPR106-221 transparent motif active fallback, WPR106-222 source-before-portfolio directional KNN gating, WPR106-223/WPR106-224 `flow_wick_density` dense KNN with target-only exit diagnostics, and a future pre-May source-family pseudo-holdout selector; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; documentation-only validation passed with package compileall and contracts reporting 460 passed. |
+| WPR106-225-cross-family-loss-cluster-complement-search | Codex Research Agent | closed | `docs/work_packets/WPR106-225-cross-family-loss-cluster-complement-search.md`, `docs/stage_reports/STAGE_R106_CROSS_FAMILY_LOSS_CLUSTER_COMPLEMENT_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_225*/**` | Artifact-level cross-family portfolio search over selected costed trade paths from WPR106-220, WPR106-221, WPR106-222, and WPR106-224; all source preselection, portfolio construction, overlap handling, daily-cap choice, scoring, thresholding, and selected-row inclusion use only 2024-01-01 through 2026-04-30, with May 2026 source trades loaded only after fixed WPR106-225 selected rows and selected pre-May replay artifacts are written; preselects 56 source components, 14 per source group, and evaluates singles plus cross-family pairs, triples, and quads with equal, stability-weighted, and loss-complement-weighted allocations, same-symbol no-overlap handling, and portfolio daily caps 2/3/5; uses packet-local replay only, not CUDA, and makes no speedup claim; evaluates 14,040 pre-May portfolio specs, finding 13,914 positive rows, 10,648 loose rows, 4,236 annual-target rows, and 1,569 strict rows; fixed selected set has 180 rows, with 80 strict cross-family complements, 60 annual cross-family complements, and 40 stable-active cross-family complements; selected pre-May replay has 180/180 positive rows, median +0.612399, active mean +0.631866, best/worst +0.913561/+0.518973, median 502 trades, 81,925 total selected pre-May trades, median 27 active months, median four losing months, 140 annual-target rows, and 80 strict rows; every selected portfolio includes WPR106-220, with 70 WPR220+WPR222+WPR224 rows, 52 WPR220+WPR222 rows, 44 WPR220+WPR224 rows, and 14 WPR220 single controls; May benchmark rejects the packet with 180 active rows, two positive rows, 178 negative rows, median May -0.005795, active mean May -0.006737, best/worst May +0.008411/-0.018541, median May trade count 17, and 3,080 total selected May trades; only the two May-positive selected rows are WPR106-220 single controls, and every selected cross-family complement row is negative in May; residual pre-May loss clusters remain in 2025-12, 2026-03, 2024-03, and 2025-01; rejects candidate-ready, portfolio-ready, paper/live-ready, and promotion-ready interpretation because the strong pre-May strict/annual profile does not transfer to May and is dominated by a source family with benchmark-transfer risk; useful evidence is that WPR106-220 should remain a control or ablation source rather than a dominant selector source, and future complement work needs pre-May source-family caps or source-family pseudo-holdouts before selecting portfolios; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-224-dense-knn-path-managed-exit-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-224-dense-knn-path-managed-exit-repair.md`, `docs/stage_reports/STAGE_R106_DENSE_KNN_PATH_MANAGED_EXIT_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_224*/**` | Follows WPR106-223 by testing packet-local path-managed exits over fixed WPR106-223 dense KNN selected signal paths; all exit-policy choice, scoring, thresholding, selection, and behavior de-duplication use only WPR106-223 selected pre-May rows and trades from 2024-01-01 through 2026-04-30, with May 2026 selected trades loaded only after fixed WPR106-224 selected rows are written; evaluates fixed-hold controls, stop-only and target-only exits at 0.0035/0.0060/0.0100/0.0150/0.0220 gross returns, and conservative target/stop exits with stop-first treatment when both barriers are reachable; uses existing side-specific path favorable/adverse returns, not CUDA, and makes no speedup claim; evaluates 36 exit policies across 71 source selected rows and 21,060 source selected pre-May trades, yielding 2,556 pre-May policy rows, 552 positive rows, 16 annual-target rows, 82 loose rows, and zero strict rows; fixed selected set has 140 rows, with 127 positive path-exit controls, 12 stable-active path-exit repairs, one annual path-exit repair, 59 target-only rows, 46 stop-only rows, 34 fixed-hold controls, and one target/stop row; selected pre-May replay has 140/140 positive rows, median +0.314421, active mean +0.350790, best/worst +0.732345/+0.047895, median 219 trades, median 21 active months, median seven inactive months, median seven losing months, 16 annual-target rows, and zero strict rows; two selected rows reach at least 24 active months and five or fewer losing months, but both miss the annual target because 2025 still has four losing months; May benchmark has 73 active positive rows, zero negative rows, 67 flat rows, median May +0.000994, active mean May +0.006685, best/worst May +0.022261/0.000000, median May trade count one, and 224 total selected May trades; rejects candidate-ready, portfolio-ready, paper/live-ready, and promotion-ready interpretation because path-managed exits improve WPR106-223 median pre-May return and reduce median losing months from eight to seven, but strict rows remain absent, median active coverage drops to 21 months, annual-target count stays small, and the best near-misses still fail annual loss distribution; useful evidence is that simple target-only exits look more promising than target/stop combinations, `flow_wick_density` with two-loss-month veto remains the best dense KNN transfer family, and the remaining blocker is 2025 loss clustering plus active coverage before exits; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-223-dense-knn-source-generation-search | Codex Research Agent | closed | `docs/work_packets/WPR106-223-dense-knn-source-generation-search.md`, `docs/stage_reports/STAGE_R106_DENSE_KNN_SOURCE_GENERATION_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_223*/**` | Follows WPR106-222 by changing the KNN source-generation layer rather than only post-filtering old selected artifacts; runs a fresh ETHUSDT dense KNN source search with packet-local `flow_wick_density`, `trend_residual_density`, `cross_event_density`, and `wick_reversal_pressure` feature packs, 8/16-bar holds, 384/768-bar lookbacks, Lorentzian/Euclidean distances, k values 7/17/31, all/Europe/US sessions, all/flow-pressure/reversal-pressure regimes, 2/5/8 target KNN signals per day, daily caps 1/2/5, and causal monthly gates after base-row preselection; all thresholding, base-row selection, monthly-gate selection, behavior de-duplication, and fixed-row inclusion use only 2024-01-01 through 2026-04-30, with May prediction caches computed only after fixed selected rows are written; uses NumPy KNN prediction caches, not CUDA, and makes no speedup claim; evaluates 139,968 pre-May base rows, finding 18,619 positive rows, 8,089 annual-target rows, 24 loose rows, and zero strict rows; replays 44 base rows across monthly gates, yielding 220 gated rows, 196 positive rows, 28 annual-target rows, 42 loose rows, and zero strict rows; fixed selected set has 71 rows, 70 positive controls and one stable-active row; selected pre-May replay has 71/71 positive rows, median +0.200877, active mean +0.254229, median 212 trades, median 24 active months, median four inactive months, median eight losing months, five annual-target rows, and zero strict rows; May benchmark has 43 active positive rows, zero negative rows, 28 flat rows, median May +0.001341, active mean May +0.004476, best May +0.022261, median May trade count two, and 120 total selected May trades; rejects candidate-ready, portfolio-ready, paper/live-ready, and promotion-ready interpretation because denser KNN source generation improves May participation but degrades pre-May loss-month stability, annual-target selected rows are May-flat, and no selected row combines 24+ active months with five or fewer losing months; useful evidence is that `flow_wick_density` transfers best, while denser KNN now needs feature/label or exit changes that reduce losing-month frequency before monthly gates; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-222-directional-knn-source-stability-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-222-directional-knn-source-stability-repair.md`, `docs/stage_reports/STAGE_R106_DIRECTIONAL_KNN_SOURCE_STABILITY_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_222*/**` | Revisits the Lorentzian/KNN family from source-level evidence using selected WPR106-190 directional KNN and WPR106-213 regime-conditioned Lorentzian/KNN trade paths; normalizes them into the WPR106-215 costed component-portfolio shape; all source choice, side/time filtering, source gates, bundle construction, scoring, thresholding, behavior de-duplication, and selected-row inclusion use only 2024-01-01 through 2026-04-30, with May loaded only after fixed selected rows are written; evaluates all/long/short side filters, all/Asia/Europe/US/late-US/non-US/weekday/weekend time filters, causal previous-month/rolling-three/rolling-six/two-loss source gates, single/pair/triple KNN bundles, daily caps 1/2/3/5, equal or component-score weights, time or component-score priorities, and portfolio health gates; loads 200 source components, searches 84, materializes 5,518 source-gated variants, selects 60 variants, builds 266 bundles, and evaluates 17,024 pre-May portfolio rows; all 17,024 rows are positive, with 4,686 annual-target rows and 380 strict rows; fixed selected set has 160 rows, including 63 strict repair rows, 61 stable-active repair rows, 31 positive controls, and five annual repair rows; selected pre-May replay has 160/160 positive rows, median +0.464644, active mean +0.488391, median 267 trades, median 24 active months, median four inactive months, median five losing months, 68 strict rows, and 111 annual-target rows; May benchmark has 137 active positive rows, zero negative rows, 23 flat rows, median May +0.001407, active mean May +0.001413, best May +0.009924, and median May trade count one across 175 total selected May trades; rejects candidate-ready, portfolio-ready, paper/live-ready, and promotion-ready interpretation because May transfer is too sparse, median selected rows still have four inactive pre-May months, and no selected row combines all 28 active pre-May months with five or fewer losing months; useful evidence is that source-before-portfolio KNN gates and mixed WPR106-190/WPR106-213 pairs materially improve pre-May annual loss profile and nonnegative fixed May benchmark behavior, so the next KNN work should generate denser source paths or change features/model code rather than only post-filter old selected artifacts; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-221-transparent-motif-active-fallback-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-221-transparent-motif-active-fallback-repair.md`, `docs/stage_reports/STAGE_R106_TRANSPARENT_MOTIF_ACTIVE_FALLBACK_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_221*/**` | Revisits the WPR106-214 transparent motif replacement family by adding causal fallback sleeves in months where the primary opening-plus-motif sleeve is gate-disabled; loads only WPR106-201 opening-range and WPR106-212 expanded-motif pre-May artifacts before selection, with May trades loaded only after fixed selected rows and selected pre-May replay artifacts are written; compact diagnostic grid uses six opening components, six motif components, two opening fallback components, two motif fallback components, primary previous-month-positive or rolling-three gates, fallback none or rolling-three gates, primary allocations 0.70/0.85, opening weights 0.60/0.75, daily caps 1 or 2, and primary-first/time priorities; evaluates 13,824 pre-May rows, finds 13,534 positive rows, 24 annual-target rows, 7,404 loose rows, and zero strict rows; fixed selected set has 140 `loose_active_fallback_repair` rows, 140/140 positive pre-May, median +0.446878, active mean +0.416701, median 651 trades, median 27 active months, median one inactive month, median six losing months, zero strict rows, and zero annual-target rows; May remains positive with 113 positive rows, 27 negative rows, median May +0.011323, active mean May +0.010638, best May +0.027940, and worst May -0.027753; six selected rows have all 28 pre-May months active and five total losing months, and all six are May-positive with median May +0.012536, but they still have three losing months in 2024 and miss the requested annual loss-month profile; rejects active fallback repair as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that primary previous-month-positive replacement behavior plus opening fallback repairs activity and May transfer, while annual loss-month count remains the blocker; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-220-wpr199-source-control-stability-expansion | Codex Research Agent | closed | `docs/work_packets/WPR106-220-wpr199-source-control-stability-expansion.md`, `docs/stage_reports/STAGE_R106_WPR199_SOURCE_CONTROL_STABILITY_EXPANSION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_220*/**` | Expands the only useful WPR106-219 clue by testing full WPR106-199 same-direction source controls against WPR106-188 as a negative-control source packet; loads 38 WPR106-199 primary candidates and 100 WPR106-188 control candidates directly from their source artifacts, not just the reduced WPR106-215 component pool; evaluates all/long/short side filters, all/Asia/Europe/US/weekday/weekend/Asia-Europe/Europe-US time filters, and causal none/previous-month/rolling-three/rolling-six/same-calendar-month source gates; all source choice, filtering, gating, scoring, thresholding, behavior de-duplication, and selected-row inclusion use 2024-01-01 through 2026-04-30, with May loaded only after fixed selected rows and selected pre-May replay artifacts are written; evaluates 26,496 source/filter/gate combinations, materializes 24,632 pre-May variant rows, finds 21,833 positive pre-May rows, 3,157 annual-target rows, and 152 strict rows; fixed selected set has 120 rows, with 80 WPR106-199 rows and 40 WPR106-188 rows; selected pre-May has 120/120 positive rows, median +0.637255, active mean +0.637288, median 318 trades, median 26 active months, median four losing months, 59 strict rows, and 83 annual-target rows; May rejects the broad expansion with 29 positive rows, 86 negative rows, five flat rows, median May -0.005859, active mean May -0.007629, best May +0.014893, and worst May -0.053315; WPR106-188 fails as expected with zero May-positive rows and median May -0.010860; WPR106-199 is also negative overall at 29 positive, 46 negative, five flat, and median May -0.001815; the only positive sub-bucket is 21 `wpr199_strict_stable` all-session rows across nine original components, with 12 May-positive, seven May-negative, two flat, and median May +0.006134, but it remains diagnostic only because the full WPR106-199 expansion fails; rejects WPR106-199 source-control expansion as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-219-broad-source-inversion-control-sweep | Codex Research Agent | closed | `docs/work_packets/WPR106-219-broad-source-inversion-control-sweep.md`, `docs/stage_reports/STAGE_R106_BROAD_SOURCE_INVERSION_CONTROL_SWEEP_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_219*/**` | Revisits the discarded anti-signal idea broadly across the WPR106-215 source component pool; evaluates costed inverse variants and same-direction controls over 66 source components, all/long/short side filters, all/Asia/Europe/US/weekday/weekend entry filters, and none/previous-month/rolling-three/two-loss-month source gates; inverse accounting flips gross return and side while retaining round-trip cost; all transform choice, filtering, scoring, thresholding, and selected-row inclusion use 2024-01-01 through 2026-04-30, with May loaded only after fixed selected rows are written; evaluates 14,256 source/filter/gate combinations, materializes 8,754 pre-May variant rows, including 3,734 inverse rows, finds 4,584 positive pre-May rows but only 90 positive inverse rows, 1,846 annual-target rows, and 18 strict rows; fixed selected set has only 14 rows, all same_direction_control and zero inverse rows, with median pre-May +0.693067, active mean +0.740465, median 301 trades, median 27 active months, median four losing months, and median 1.0 trade per active day; May is mixed-flat with six positive rows, six negative rows, two flat rows, median May 0.0, active mean May +0.000475, best May +0.012206, and worst May -0.009359; rejects broad source inversion control as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that broad costed anti-signal inversion is falsified for the WPR106-215 source pool because no inverse row is strict or selected, while the small WPR106-199 same-direction control clue is diagnostic only; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-218-source-component-causal-gate-sweep | Codex Research Agent | closed | `docs/work_packets/WPR106-218-source-component-causal-gate-sweep.md`, `docs/stage_reports/STAGE_R106_SOURCE_COMPONENT_CAUSAL_GATE_SWEEP_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_218*/**` | Moves one layer earlier than WPR106-215 through WPR106-217 by applying causal source-component gates before portfolio composition; loads all 66 WPR106-215 source components from WPR106-187, WPR106-188, WPR106-199, WPR106-201, WPR106-209, WPR106-212, WPR106-213, and WPR106-214; generates 5,020 pre-May source-gated variants across all/long/short side filters, all/Asia/Europe/US/weekday/weekend entry filters, and none/previous-month/rolling-three/two-loss-month causal gates; selects 48 source variants; builds 100 pair/triple bundles; evaluates 4,800 pre-May portfolio rows with equal/component-score weights, daily caps 1/2/3/5, time/component-score priority, and portfolio health gates; an initial 10,560-row portfolio grid hit the local command timeout, so final compute kept the same filter/parameter spaces and reduced only bundle count; all ranking, component scoring, bundle construction, and selected-row inclusion use 2024-01-01 through 2026-04-30, with May loaded only after fixed selected rows are written; finds 4,800 positive pre-May rows, 3,015 annual-target rows, and 2,380 strict rows; fixed set has 160 rows, 152 strict_source_gated rows, median pre-May +0.504960, active mean +0.529398, median 447 trades, median 28 active months, median three losing months, median 1.002950 trades per active day, and median 2024/2025/2026 Jan-April loss-month counts 1/2/0; May rejects the fixed set with 33 positive rows, 127 negative rows, median May -0.001138, active mean May -0.004798, best May +0.003611, and worst May -0.029666; rejects source-component causal gate sweep as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that source-before-portfolio gating is directionally better than another artifact-level reselection but still has no selected bucket with positive median May, with the least-bad WPR106-188 plus WPR106-199 bucket at 21 positive and 25 negative May rows and median May -0.000202; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-217-lineage-clean-temporal-pseudo-holdout-reselection | Codex Research Agent | closed | `docs/work_packets/WPR106-217-lineage-clean-temporal-pseudo-holdout-reselection.md`, `docs/stage_reports/STAGE_R106_LINEAGE_CLEAN_TEMPORAL_PSEUDO_HOLDOUT_RESELECTION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_217*/**` | Tests whether WPR106-215/WPR106-216 failed May because pre-May selection under-weighted temporal pseudo-holdout behavior; reselects only from WPR106-216's lineage-annotated WPR106-215 pre-May ranking, adds 2024/2025/2026 Jan-April return and loss-month diagnostics, 2025-H2 and latest-four-month return, rolling three/six/nine-month floors, drop-best robustness, consecutive loss-month counts, recent active coverage, and completed-quarter diagnostics, then writes fixed selected rows before loading May 2026; finds 6,240 temporal-ranked rows, 3,400 base lineage-clean positive rows, and a fixed set of 160 unique trade paths across seven component-packet buckets, with six ultra temporal rows, 80 strict recent temporal rows, and 74 positive temporal controls; selected pre-May replay has 160/160 positive rows, median +0.609648, active mean +0.614881, median 507 trades, median 28 active months, and median four losing months; selected temporal medians are 2024/2025/2026 Jan-April loss-month counts 2/1/0, 2025-H2 return +0.081999, rolling-six-month floor +0.056545, and drop-best-three-month return +0.395055; May rejects the fixed set with 13 positive rows, 145 negative rows, two flat rows, median May -0.014772, active mean May -0.014885, best May +0.018860, and worst May -0.030136; rejects lineage-clean temporal pseudo-holdout reselection as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that WPR106-188 plus WPR106-214 remains the only May-positive source bucket but is mixed with median May -0.000548, while every other selected source bucket has zero May-positive rows; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-216-lineage-controlled-cross-family-reselection | Codex Research Agent | closed | `docs/work_packets/WPR106-216-lineage-controlled-cross-family-reselection.md`, `docs/stage_reports/STAGE_R106_LINEAGE_CONTROLLED_CROSS_FAMILY_RESELECTION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_216*/**` | Audits WPR106-215 for hidden component-lineage reuse before interpreting its May-positive sub-bucket; annotates all 6,240 WPR106-215 pre-May rows with exact lineage overlap, source-packet lineage collision, and embedded WPR106-201/WPR106-212 lineage inside WPR106-214 components, then reselects fixed rows from pre-May evidence only; finds 6,096 exact-lineage-clean rows, 4,320 source-packet-lineage-clean rows, 878 strict exact-lineage-clean rows, 524 strict source-packet-lineage-clean rows, and 336 WPR106-214 plus WPR106-201 lineage-collision rows; selected set has 160 strict_source_packet_lineage_clean rows, 160/160 positive pre-May, median +0.567698, active mean +0.596533, median 454 trades, median 24 active months, median four inactive months, and median three losing months; May rejects the fixed set with 5 positive rows, 155 negative rows, median May -0.014582, active mean May -0.015450, best May +0.015794, and worst May -0.023263; rejects lineage-controlled cross-family reselection as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that the WPR106-215 WPR106-201 plus WPR106-214 May-positive bucket is confirmed lineage-collided, while WPR106-188 plus WPR106-201 remains strong strict pre-May but fails May; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-215-cross-family-active-coverage-portfolio-scout | Codex Research Agent | closed | `docs/work_packets/WPR106-215-cross-family-active-coverage-portfolio-scout.md`, `docs/stage_reports/STAGE_R106_CROSS_FAMILY_ACTIVE_COVERAGE_PORTFOLIO_SCOUT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_215*/**` | Tests a bounded cross-family active-coverage portfolio scout across selected trade artifacts from WPR106-187, WPR106-188, WPR106-199, WPR106-201, WPR106-209, WPR106-212, WPR106-213, and WPR106-214; normalizes trade-level rows, builds a 66-row component pool and 130 pair/triple/quad bundles, and evaluates 6,240 pre-May portfolio configs with equal/component-score weights, daily caps 1/2/3/5, time/component-score priorities, causal prior-month health gates, and per-symbol no-overlap handling; all component ranking, bundle construction, config choice, scoring, and selected-row inclusion use only 2024-01-01 through 2026-04-30, with May 2026 loaded only after 160 fixed selected rows exist; the pre-May grid finds 6,228 positive rows, 2,103 annual-target rows, 5,397 loose rows, 938 strict rows, and 938 positive annual-target rows with at least 24 active months and 150 trades; selected set has 160 strict rows, 160/160 positive pre-May, median +0.587955, active mean +0.616418, median 517 trades, median 28 active months, median zero inactive months, and median three losing months; May rejects the fixed set with 25 positive rows, 135 negative rows, median May -0.014480, active mean May -0.010988, best May +0.025054, and worst May -0.023263; rejects cross-family active-coverage portfolios as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that WPR106-188 plus WPR106-201 dominates pre-May strict selection but fails May, while the May-positive WPR106-201 plus WPR106-214 bucket is non-independent because WPR106-214 already contains WPR106-201 opening components; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-214-transparent-motif-replacement-portfolio | Codex Research Agent | closed | `docs/work_packets/WPR106-214-transparent-motif-replacement-portfolio.md`, `docs/stage_reports/STAGE_R106_TRANSPARENT_MOTIF_REPLACEMENT_PORTFOLIO_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_214*/**` | Tests whether the WPR106-203 opening/motif component-portfolio clue survives after excluding the falsified WPR106-202 canonical motif component and replacing it with WPR106-212 first-principles expanded motif rows; loads fixed WPR106-201 opening selected trades and WPR106-212 expanded motif selected trades; all component-pool construction, behavior dedupe, weights, priority modes, health gates, daily caps, scoring, and selection use only 2024-01-01 through 2026-04-30 evidence, with May 2026 benchmark-only after fixed selected rows exist; evaluates 35,280 rows from 14 opening and 14 motif components; finds 33,957 positive rows, 941 annual-target rows, 3,740 loose rows, zero strict rows, and no positive annual-target row with at least 24 active months and 100 trades; selected 120 fixed rows: 71 loose replacement portfolios and 49 positive controls; selected pre-May replay has 120/120 positive rows, median +0.595252, active mean +0.587335, best +0.728425, worst +0.425413, median 539.5 trades, median 22 active months, median six inactive months, median four losing months, 58 annual-target rows, and zero strict rows; May is mixed-positive with 120 active rows, 94 positive rows, 26 negative rows, median May +0.026679, active mean May +0.016878, best May +0.041949, and worst May -0.032651; rejects the transparent motif replacement portfolio as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that replacement motif components preserve May-positive complementarity but active coverage still fails the strict profile, with strongest clue in `motif212-3dcf42d12d3b150f` plus WPR106-201 opening rows at 0.60/0.40 weights and `prev_month_positive` health gating; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-213-regime-conditioned-lorentzian-knn-search | Codex Research Agent | closed | `docs/work_packets/WPR106-213-regime-conditioned-lorentzian-knn-search.md`, `docs/stage_reports/STAGE_R106_REGIME_CONDITIONED_LORENTZIAN_KNN_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_213*/**` | Tests a source-level regime-conditioned Lorentzian/KNN variant rather than defending rejected sparse side-veto rows or post-filtering WPR106-190 selected rows; imports WPR106-170 helpers for WPR106-96 contexts, completed-bar components, future-path labels, KNN prediction, costs, overlap blocking, daily caps, monthly metrics, and May label freezing, while changing only packet-local feature packs, regime buckets, confidence scoring, priors, and selection diagnostics; all feature choice, regime bucket choice, KNN parameters, thresholds, row scoring, preselection, and behavior de-duplication use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selected rows exist; evaluates 233,280 pre-May rows across BTCUSDT/ETHUSDT, three feature packs, two holds, two lookbacks, Lorentzian/Euclidean distance, k values, sessions, regime buckets, target signal rates, side modes, prior modes, and daily caps; finds 50,353 positive pre-May rows, 25,087 positive annual-target rows, 38 loose rows, and zero strict rows, with no positive annual-target row also having at least 20 active months and 60 trades; preselects 257 rows and behavior-dedupes exact accepted trade paths to 100 fixed selected rows: 11 loose-recent rows, five annual-active controls, and 84 active-positive controls; selected pre-May replay has 100/100 positive rows, median +0.208518, active mean +0.242349, best +0.758411, worst +0.095671, median 95 trades, median 28 active months, median 11 losing months, median annual loss counts 5/5/1 for 2024/2025/2026 Jan-April, and median max drawdown -0.123522; May is mixed-negative with 58 active rows, 25 positive, 33 negative, and 42 flat selected rows, median May 0.000000, active mean May -0.001058, best May +0.028810, and worst May -0.021312; rejects regime-conditioned Lorentzian/KNN as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that ETHUSDT KNN remains more plausible than BTCUSDT in this formulation, Euclidean controls were less negative in selected May rows than Lorentzian rows, and active May-positive KNN behavior still lacks the requested pre-May month-to-month stability; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-212-expanded-causal-motif-lookup-search | Codex Research Agent | closed | `docs/work_packets/WPR106-212-expanded-causal-motif-lookup-search.md`, `docs/stage_reports/STAGE_R106_EXPANDED_CAUSAL_MOTIF_LOOKUP_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_212*/**` | Rebuilds the WPR106-192 causal motif lookup family from first-principles market-derived features rather than defending the WPR106-202/WPR106-203 artifact-level canonical motif component; reuses WPR106-170 contexts, completed-bar components, future-path labels, WPR106-192 rolling lookup statistics, costs, overlap blocking, daily caps, and metrics, while changing only packet-local motif keys, bucket thresholds, motif bases, and selection diagnostics; all motif construction, scoring, thresholding, row inclusion, and behavior de-duplication use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selected rows exist; evaluates 62,208 pre-May rows across BTCUSDT/ETHUSDT, eight motif bases, three bucket profiles, three holds, three lookbacks, motif-quality thresholds, sessions, side modes, and daily caps; finds 7,231 positive pre-May rows, 3,923 annual-target rows, 48 loose rows, and zero strict rows, with no positive annual-target row having at least 20 active months and 60 trades; preselects 260 rows and behavior-dedupes exact accepted trade paths to 100 selected rows: 26 loose-recent rows and 74 positive-active controls; selected pre-May replay has 100/100 positive rows, median +0.652000, active mean +0.606318, median 28 active months, median 454.5 trades, and median 1.0 trades/day, but median 11 losing months, median annual loss counts of 5/4/1 for 2024/2025/2026 Jan-Apr, and median max drawdown -0.310155; May is mixed-positive with 55 positive, 34 negative, and 11 flat selected rows, median May +0.009616, active mean May +0.020021, best May +0.109590, and worst May -0.162522; rejects expanded causal motif lookup as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that ETHUSDT trend-clock motif variants can transfer to May, but they still fail the pre-May month-to-month stability target; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-211-anti-signal-regime-gate-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-211-anti-signal-regime-gate-repair.md`, `docs/stage_reports/STAGE_R106_ANTI_SIGNAL_REGIME_GATE_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_211*/**` | Revisits the rejected WPR106-173/WPR106-175 ETHUSDT volatility-breakout anti-signal family with an artifact-only causal regime and trade-health gate overlay; starts from the 504 fixed WPR106-175 source-control descriptors, reuses WPR106-173 score, exit, overlap, daily-cap, ATR barrier, and cost accounting, and evaluates 28,224 gated variants across seven completed-bar state gates and eight causal prior-history health gates; all ranking, scoring, gate construction, preselection, and behavior de-duplication use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selected rows exist; the pre-May grid has 13,850 positive rows, 6,660 annual-target rows, 4,980 loose rows, and 1,047 strict rows; preselects 320 rows and behavior-dedupes them to 97 strict-stable selected rows, all inverse-signal variants; selected pre-May replay has 97/97 positive rows, median +1.277867, active mean +1.323948, best +1.800202, and worst +0.941856; May rejects the fixed set with 0 positive rows, 66 negative rows, 31 flat rows, median May -0.012779, active mean May -0.033615, 3,220 total May trades across active selected rows, and worst May -0.106343; rejects anti-signal regime gate repair as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is falsification that causal completed-bar state gates and prior-history health throttles strengthen pre-May appearance but do not repair May transfer; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-210-directional-knn-stability-reselection | Codex Research Agent | closed | `docs/work_packets/WPR106-210-directional-knn-stability-reselection.md`, `docs/stage_reports/STAGE_R106_DIRECTIONAL_KNN_STABILITY_RESELECTION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_210*/**` | Revisits the full WPR106-190 directional KNN confidence-entry universe with stricter pre-May-only stability reselection and behavior de-duplication; adds latest Jan-April 2026 coverage, drop-best-month robustness, rolling three/six-month floors, consecutive losing-month clusters, and active-month median-return diagnostics, then preselects rows from 2024-01-01 through 2026-04-30 only before replaying accepted trades and de-duplicating exact pre-May trade paths; source universe has 23,328 rows, 6,014 positive pre-May rows, 2,396 positive annual-target rows, 11 loose rows, and zero strict rows, but zero positive annual-target rows have at least 20 active months and 60 trades, proving the annual-target pool is sparse; preselects 240 rows and behavior-dedupes to 100 fixed selected rows, 96 annual-sparse controls and four loose-recent-stability rows; selected pre-May replay has 100 positive rows, median +0.082670, active mean +0.087520, best +0.347297, and worst +0.011914; May rejects the fixed set with only one active row, 0 positive rows, 1 negative row, 99 flat rows, median May 0.000000, active mean May -0.000946, and worst May -0.000946; rejects directional KNN stability reselection as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that WPR106-190's annual-target count was sparse and active KNN rows still lack May participation under stricter pre-May controls; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-209-cross-flow-exhaustion-transfer-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-209-cross-flow-exhaustion-transfer-repair.md`, `docs/stage_reports/STAGE_R106_CROSS_FLOW_EXHAUSTION_TRANSFER_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_209*/**` | Tests a new order-flow interaction family after WPR106-208 by combining WPR106-153/WPR106-154 BTCUSDT/ETHUSDT completed-bar 1m aggTrade intrabar features into cross-symbol flow synchronization, target late-flow exhaustion, flow/price divergence, relative flow-gap absorption, and session/state gates; all thresholds, state gates, row ranking, preselection, and behavior de-duplication use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selected rows exist; evaluates 93,312 pre-May rows across both leader-target directions, 96/384-bar normalization windows, 8/16/32-bar holds, all/EU/US sessions, six templates, six state gates, 1/2/3/5 target signals per day, 1/3/5 daily caps, and prior-month loss throttles; finds 3,197 positive pre-May rows, 324 loose rows, zero annual-target rows, and zero strict rows; preselects 118 rows and behavior-dedupes them to 25 fixed selected rows; selected pre-May replay has 25 positive rows, median +0.319612, best +0.672164, and worst +0.127749; May rejects the selected set with 9 positive rows, 12 negative rows, 4 flat rows, median May 0.000000, best +0.062942, and worst -0.088245; best pre-May/May row is BTCUSDT-led ETHUSDT `relative_gap_absorption_reversion`, but it has only 21 active pre-May months and 2024/2025/2026 Jan-April losing-month counts of 4/3/0, so it fails the annual stability target; rejects cross-flow exhaustion transfer repair as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful diagnostic evidence remains in BTCUSDT-led ETHUSDT relative-flow absorption reversion and leader-late transfer, but both still require a genuinely new pre-May-only stability mechanism; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-208-calendar-profile-train-window-control-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-208-calendar-profile-train-window-control-audit.md`, `docs/stage_reports/STAGE_R106_CALENDAR_PROFILE_TRAIN_WINDOW_CONTROL_AUDIT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_208*/**` | Falsifies the WPR106-139 strict calendar/session pocket with source-level train-window sensitivity controls; fixes the 17 WPR106-139 strict selected candidate rows and changes only the pre-May calendar profile training window across full pre-May, 2024-only, 2025-only, 2024-through-2025, and recent 2025-H2 through 2026-April fits; candidate templates, thresholds, holds, session filters, volatility filters, and flow filters remain fixed from WPR106-139, profile-control selection uses only 2024-01-01 through 2026-04-30 pseudo-OOS evidence, and May 2026 is loaded only after fixed selected controls exist; rebuilds BTCUSDT and ETHUSDT archive contexts, evaluates 25 cached feature sets, and writes 510 non-May control-window rows; among 51 primary pseudo-OOS rows, 36 are positive, 4 pass strict pseudo-OOS controls, and 22 pass loose pseudo-OOS controls; fixed selected control set has 22 controls, median pseudo-OOS return +0.173659, and median pseudo-OOS losing months 1; May rejects the set with 1 positive, 19 negative, 2 flat, median May -0.064568, best May +0.010172, and worst May -0.134535, and all four strict pseudo-OOS controls lose in May; rejects the WPR106-139 strict calendar/session pocket as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful evidence is that alternate pre-May train windows can produce pseudo-OOS positives, but those controls still do not transfer to May; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-207-leadlag-vwap-transfer-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-207-leadlag-vwap-transfer-repair.md`, `docs/stage_reports/STAGE_R106_LEADLAG_VWAP_TRANSFER_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_207*/**` | Tests whether WPR106-133 cross-symbol lead-lag and WPR106-128 anchored-VWAP families with May-transfer hints can be repaired by pre-May-only row scoring, behavior deduplication, and overlap-aware small portfolios; loads 52 anchored-VWAP rows with 12,263 pre-May accepted trades and 59 lead-lag rows with 17,305 pre-May accepted trades, recomputes metrics from trade-level gross return and round-trip cost, behavior-dedupes 111 rows to 92 rows, and uses only 2024-01-01 through 2026-04-30 for component/portfolio selection, with May 2026 benchmark-only after frozen selections exist; no individual component meets strict or annual-target repair; generates 35,420 portfolios from the top 22 deduped components, with 535 strict pre-May portfolios, 670 annual-target portfolios, and 17,669 loose portfolios; fixed selected set contains 60 strict annual-target portfolios with median pre-May return +1.064106, median losing months 3.5, best selected pre-May +1.116917, and worst selected max drawdown -0.064251; May rejects the repair because selected components are mixed at 15 positive/20 negative with median component May -0.005001 while selected portfolios are 0 positive, 60 negative, 0 flat, with median May -0.022084, best May -0.020186, and worst May -0.023982; rejects lead-lag / anchored-VWAP transfer repair as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful negative evidence is that pre-May-only composition can hide source-row instability in these two families but does not transfer to May; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-206-post205-broad-noncanonical-artifact-scout | Codex Research Agent | closed | `docs/work_packets/WPR106-206-post205-broad-noncanonical-artifact-scout.md`, `docs/stage_reports/STAGE_R106_POST205_BROAD_NONCANONICAL_ARTIFACT_SCOUT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_206*/**` | Restarts the broad 2024-forward artifact search after WPR106-205 by scanning existing selected trade artifacts across prior WPR106 families while excluding WPR106-203 through WPR106-205 and canonical motif row `motif202-00860ffdbf2eb058`; loads 68 source artifact directories and 4,133 source rows, behavior-dedupes to 2,604 noncanonical pre-May rows, and uses only 2024-01-01 through 2026-04-30 for ranking and selected-row inclusion, with May 2026 benchmark-only; all 2,604 deduped rows are positive pre-May, with 157 annual-target rows and 45 strict-like rows; fixed selected set contains 150 rows: 45 strict noncanonical sources, 8 annual-target sources, and 97 positive active sources; median selected pre-May return is +1.204596 with median active months 28 and median losing months 5; May rejects the selected set with 22 positive rows, 107 negative rows, 21 flat rows, median May -0.018163, and active mean -0.034232; strongest pre-May rows come from WPR106-139 calendar/session artifacts but fail May; only four strict-like selected rows are May-positive, all from old WPR106-199 post-190 composite rows that already require source-level controls; best May row is a WPR106-133 cross-symbol relative strength row with May +0.065272, but it has seven pre-May losing months and fails the annual target; rejects the broad noncanonical artifact scout set as candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready; useful follow-up is fresh calendar/session source reconstruction or cross-symbol lead-lag / anchored-VWAP transfer repair with May still held out; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-205-canonical-motif-timing-falsification | Codex Research Agent | closed | `docs/work_packets/WPR106-205-canonical-motif-timing-falsification.md`, `docs/stage_reports/STAGE_R106_CANONICAL_MOTIF_TIMING_FALSIFICATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_205*/**` | Falsifies the canonical motif dependency left by WPR106-204 with artifact-level controls over all 100 WPR106-203 selected parents; fixes selected parents and WPR106-201/WPR106-202 component trades, constructs controls from 2024-01-01 through 2026-04-30 evidence only, and uses May 2026 only as benchmark after the fixed control universe exists; evaluates 2,200 controls, with 2,182 positive pre-May rows, 18 negative rows, median pre-May return +0.802069, median active months 25, median losing months 4, 1,324 annual-target rows, and 1,210 strict-like rows; base replay reproduces 100/100 strict-like rows, but non-base artifact controls also produce 1,110 strict-like rows: 310/500 motif-return shuffles, 152/300 motif-return rotations, 440/600 motif timestamp shifts, and 200/200 motif global/month mean return baselines are strict-like; controls that remove or invert motif return contribution weaken the pocket, with motif zero-return at 8/100 strict-like rows, motif sign-flip at 0/100 strict-like rows with 18 negative rows, and opening-return shuffles at 0/300 strict-like rows; May benchmark across all fixed controls has 1,964 positive rows, 78 negative rows, 158 flat rows, median May +0.018368, and active mean +0.015858; rejects a timing-specific or exact-return-sequence claim for the canonical motif portfolio pocket at the artifact level because constant, shuffled, shifted, and rotated controls preserve strict-like stability too often; demotes WPR106-203/WPR106-204 to research-only diagnostic evidence, not candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready leads; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-204-wpr203-component-ablation-control-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-204-wpr203-component-ablation-control-audit.md`, `docs/stage_reports/STAGE_R106_WPR203_COMPONENT_ABLATION_CONTROL_AUDIT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_204*/**` | Audits the WPR106-203 component-portfolio lead with fixed May-blind source-only, parameter-neighbor, component-swap, and bounded return-permutation controls; fixes WPR106-203 selected parents and component pools, constructs all controls from 2024-01-01 through 2026-04-30 evidence only, and uses May 2026 only as benchmark after the fixed control universe exists; evaluates 2,922 controls, all positive pre-May, with median pre-May return +0.790345, median active months 25, median losing months 5, 1,803 annual-target rows, and 1,328 strict-like rows; WPR106-203 base replay reproduces 100/100 strict-like rows; source-only controls produce zero strict-like rows across 200 positive rows; motif-component swaps produce zero strict-like rows across 900 positive rows; all 1,328 strict-like controls use canonical motif component `motif202-00860ffdbf2eb058`, and zero strict-like controls use an alternate motif component; opening-component swaps, priority neighbors, weight neighbors, daily-cap neighbors, and no-health ablations show a broad strict-like region only while that canonical motif is present; bounded top-10 parent return-permutation controls produce 18 strict-like rows, all motif-return permutations using the same canonical motif, so exact motif timing remains unproven; May benchmark across fixed controls has 2,771 positive rows, 115 negative rows, 36 flat rows, median May +0.018368, and active mean +0.017089; keeps WPR106-203 alive as a research-only diagnostic component portfolio, but does not make it candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready because strict-like behavior remains fully concentrated in one post-selected motif component and broader negative controls/candidate gates remain missing; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-203-cross-diagnostic-component-portfolio | Codex Research Agent | closed | `docs/work_packets/WPR106-203-cross-diagnostic-component-portfolio.md`, `docs/stage_reports/STAGE_R106_CROSS_DIAGNOSTIC_COMPONENT_PORTFOLIO_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_203*/**` | Combines fixed WPR106-201 opening-range short diagnostics and fixed WPR106-202 motif risk-throttle diagnostics in a May-blind cross-diagnostic component portfolio; uses only 2024-01-01 through 2026-04-30 for component-pool construction, behavior deduplication, portfolio weighting, same-symbol overlap blocking, daily caps, causal prior-month health gates, ranking, and selected-row inclusion, with May 2026 benchmark-only after fixed selected rows exist; after an initial broader cross-product timeout before final ranking artifacts, evaluates a bounded 3,600-row grid from 10 opening components and 10 motif components; finds 3,600 positive pre-May rows, 1,309 annual-target rows, 922 loose rows, and 116 strict rows; fixed selected set contains 100 strict component-portfolio rows, median pre-May return +0.812433, active mean +0.807436, median active months 25, median inactive months 3, median losing months 4, and 100 annual-target rows; selected May benchmark has 100 active rows, 100 positive rows, zero negative rows, median May +0.018368, active mean +0.017915, best +0.025316, and worst +0.013304; best stability row `port203-9d00a85ae9eed7fc` combines `or201-d092f14fcee5eeaf` and `motif202-00860ffdbf2eb058` at 0.60/0.40 weight with daily cap 1, time priority, and rolling 6-month loss-count <= 2, recording +0.763664 pre-May over 187 trades, 25 active months, two losing months, max drawdown -0.043528, 100% cost-stress survival, annual loss-month counts 0/1/1 for 2024/2025/2026 Jan-Apr, and +0.013304 in May over eight trades; preserved as the strongest current research-only component-portfolio diagnostic but not candidate-ready, portfolio-ready, paper/live-ready, or promotion-ready because source-level ablations, leave-one-component-out controls, weight-neighborhood tests, negative controls, transparent baselines, broader stability-region evidence, and candidate-pack gate materialization remain missing; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-202-motif-risk-throttle-stability-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-202-motif-risk-throttle-stability-repair.md`, `docs/stage_reports/STAGE_R106_MOTIF_RISK_THROTTLE_STABILITY_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_202*/**` | Tests accepted-trade risk/throttle overlays over the fixed WPR106-192 causal motif selected source rows after WPR106-193's negative exit-repair result; uses only 2024-01-01 through 2026-04-30 for overlay construction, ranking, and selection, then benchmarks May 2026 after fixed selected overlays exist; evaluates 17,766 overlay rows across side filters, motif-quality filters, effective daily caps, and causal prior-month health gates; finds 10,089 positive pre-May rows, 4,812 annual-target rows, 32 loose rows, and zero strict rows; no positive row reaches at least 20 active months with five or fewer losing months, and no positive annual-target row reaches at least 20 active months; fixed selected set contains 100 ETHUSDT `trend_pullback_clock` `positive_recent_throttle` rows, all positive pre-May, with median return +0.766617, median active months 28, median losing months 10, median inactive months 0, zero strict rows, and zero annual-target rows; May benchmark improves versus WPR106-192 with 100 active rows, 98 positive, two negative, median May +0.027644, active mean +0.018009, best +0.039212, and worst -0.008458; best stability/May row `motif202-00860ffdbf2eb058` records +0.720677 pre-May over 103 trades, 23 active months, seven losing months, max drawdown -0.067553, 100% cost-stress survival, and +0.039212 in May over five trades, but remains diagnostic-only because it misses the requested annual loss-month stability profile; rejects motif risk throttles as candidate-ready, portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-201-opening-range-source-active-coverage-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-201-opening-range-source-active-coverage-repair.md`, `docs/stage_reports/STAGE_R106_OPENING_RANGE_SOURCE_ACTIVE_COVERAGE_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_201*/**` | Audits the WPR106-197 ETHUSDT opening-range source pocket isolated by WPR106-200 for an active-coverage/month-stability repair without using May 2026 for tuning; evaluates a bounded 21,600-row May-blind grid around the source pocket and preserves WPR106-197 source anchors `or197-aaf5acc56f96eddc` and `or197-f37732bbc7bd4db6` as reference-only rows; finds 17,472 positive pre-May rows, 3,535 annual-target rows, 3,496 rows with at least 24 active pre-May months, 1,030 loose rows, and zero strict rows; no positive row combines at least 24 active months with the annual loss-month target; fixed selected set has 100 positive pre-May rows, median pre-May return +0.714290, median active months 22, median inactive months 6, median losing months 6, zero strict rows, and one annual-target row; May benchmark is mixed with 75 active rows, 43 positive, 32 negative, 25 flat, median May return 0.000000, active mean +0.000878, best +0.023197, and worst -0.026205; sparse WPR106-197 reference anchors remain profitable but inactive, with median +0.958549 pre-May, median 19 active months, median nine inactive months, median 3.5 losing months, and median May +0.050189; rejects the opening-range source active-coverage repair as candidate-ready, portfolio-ready, or promotion-ready because active repairs trade away desired monthly stability and do not produce convincing May transfer; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-200-strict-cross-family-source-ablation-control | Codex Research Agent | closed | `docs/work_packets/WPR106-200-strict-cross-family-source-ablation-control.md`, `docs/stage_reports/STAGE_R106_STRICT_CROSS_FAMILY_SOURCE_ABLATION_CONTROL_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_200*/**` | Audits the WPR106-199 strict-tier diagnostic with deterministic source ablations and controls before treating it as a lead; fixes the 10 WPR106-199 strict parent portfolios from pre-May evidence and constructs base, source-only, leave-one-source-out, opening-only, no-KNN, KNN-only, no-non-opening, non-opening-only, no-WPR106-196, no-WPR106-197, pair-only, and no-pair variants without May 2026; evaluates 150 variants; base strict rows reproduce with pre-May median +0.653902, 10/10 positive rows, median losing months 4.5, and May median +0.006134 with 7/10 May-positive rows; KNN/non-opening sources do not explain the strict pocket because no-KNN-like controls improve median pre-May return by +0.123850 and median May return by +0.004206 versus base, while KNN-only controls have pre-May median +0.588163, median losing months 11, and May median 0.000000; pair-only controls have May median -0.030679; best May variant is WPR106-197 source-only `WPR106-197:or197-aaf5acc56f96eddc`, with +0.907051 pre-May over 68 trades, 19 active months, three losing months, 100% cost-stress survival, and +0.053605 May over four trades, but it remains diagnostic-only because it is inactive for nine pre-May months and lacks independent source-level ablation, transparent baselines, stability-region evidence, and candidate-pack gates; rejects the WPR106-199 strict tier as a cross-family KNN complementarity lead and preserves WPR106-196 plus WPR106-197 opening-only and WPR106-197 source-only behavior as research-only diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-199-post190-cross-family-behavior-portfolio | Codex Research Agent | closed | `docs/work_packets/WPR106-199-post190-cross-family-behavior-portfolio.md`, `docs/stage_reports/STAGE_R106_POST190_CROSS_FAMILY_BEHAVIOR_PORTFOLIO_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_199*/**` | Moves beyond the rejected opening-range health-gate repair by pooling recent selected evidence from WPR106-190 through WPR106-198 into a post-190 cross-family behavior portfolio search; source loading, exact accepted-trade behavior hashes, top-per-packet source seeds, source packet/source ID caps, portfolio construction, ranking, and selected-row inclusion use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selection; loads 786 selected source metric rows and 422 behavior-deduped representatives across directional KNN, KNN repair, motif lookup, motif exits, intrabar flow, pair spread, anchored/day-structure, and opening-range short families; evaluates 903 pre-May portfolio rows, all positive, with 53 annual-target/strict rows and 575 loose rows; fixed selected set contains 38 rows, including 10 strict, 20 loose, and eight positive-stability rows; selected pre-May replay has 38 positive rows, zero negative rows, median +0.623546, active mean +0.619484, best +0.826019, and worst +0.390723; May rejects the broad selected set with 13 positive rows, 25 negative rows, zero flat rows, median -0.006735, active mean -0.006911, best +0.014893, and worst -0.034259; strict tier remains a diagnostic pocket with 10 rows, seven May-positive, three May-negative, May median +0.006134, and median pre-May losing months 4.5, generally combining WPR106-196/WPR106-197 behavior with one WPR106-190 or WPR106-191 KNN source; rejects the broad post-190 cross-family portfolio set as candidate-ready, portfolio-ready, or promotion-ready because the full selected set fails May and source concentration/ablation/baseline/stability/gate evidence is incomplete; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-198-opening-range-short-behavior-confirmation | Codex Research Agent | closed | `docs/work_packets/WPR106-198-opening-range-short-behavior-confirmation.md`, `docs/stage_reports/STAGE_R106_OPENING_RANGE_SHORT_BEHAVIOR_CONFIRMATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_198*/**` | Behavior-deduplicates and controls the WPR106-197 ETHUSDT opening-range short repair without using May 2026 for tuning; source-pool filters, pre-May replay, exact accepted-trade behavior hashes, selected-row inclusion, controls, ranking, and thresholds use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selection; replays 1,818 WPR106-197 source-pool rows, behavior-dedupes them to 1,011 representatives, and selects 100 rows; selected pre-May replay has 100 positive rows, zero negative rows, median +0.736564, active mean +0.720171, 19 annual-target rows, 96 loose rows, and zero strict rows; May benchmark weakens confirmation with 84 active rows, 48 positive rows, 36 negative rows, 16 flat rows, median 0.000000, active mean +0.008183, best +0.056746, and worst -0.048005; four selected rows tie for best May return, with summary representative `or198-76e752a4e51c7f11` recording +0.822889 pre-May over 57 trades, 20 active months, eight inactive months, four losing months, max drawdown -0.051303, Sortino +1.497782, 100% cost-stress survival, and +0.056746 May over three trades; controls weaken the health-gate explanation because the no-health ablation has 100 May-active rows, 58 positive rows, zero flat rows, and May median +0.004472, while inverse-health remains active; long-only controls remain weak, preserving short-side asymmetry only as diagnostic evidence; rejects the health-gated behavior-confirmation set as candidate-ready, portfolio-ready, or promotion-ready because there are zero strict rows, median selected losing months remains five, inactive months still drive the repair, and May transfer is mixed; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-197-opening-range-short-stability-control | Codex Research Agent | closed | `docs/work_packets/WPR106-197-opening-range-short-stability-control.md`, `docs/stage_reports/STAGE_R106_OPENING_RANGE_SHORT_STABILITY_CONTROL_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_197*/**` | Follows up the WPR106-196 ETHUSDT opening-range short diagnostic with May-blind causal state filters, stronger pre-May score thresholds, and prior-month health gates; all opening-window, hold, threshold, threshold-multiplier, state-filter, health-gate, session, daily-cap, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; health gates are causal and May gate state is computed only from pre-May history; evaluates 138,240 rows in 1,167.54 seconds, finding 73,904 positive pre-May rows, 28,568 annual-target rows, 1,966 loose rows, and zero strict rows; fixed selected set contains 100 `annual_target_control` rows, with 79 `prev_month_positive` and 21 `rolling_3_loss_count_le1` health gates; selected pre-May replay is 100 positive rows, zero negative rows, median +0.847369, active mean +0.845733, best +1.105636, and worst +0.726895; May benchmark improves materially over WPR106-196, with 62 active rows, 55 positive rows, seven negative rows, 38 flat rows, median +0.004472, active mean +0.023551, best +0.055974, and worst -0.006421; best May row `or197-bc838835e95dc29d` is an ETHUSDT opening-range short with controlled-downside-extension filter and `prev_month_positive` health gate, recording +0.787461 pre-May over 73 trades, 16 active months, 12 inactive months, three losing active months, max drawdown -0.073845, Sortino +1.157944, 100% cost-stress survival, and +0.055974 in May over six trades; long-only controls are weak, while both-sided controls overlap the selected short behavior; remains rejected as candidate-ready, portfolio-ready, or promotion-ready because there are zero strict rows, selected rows rely on health gates that create many inactive months, the best May row has only 16 active pre-May months, and many annual-target rows are sparse; preserves the controlled-downside ETHUSDT opening-range short plus causal health-gate repair as the strongest current research-only lead; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-196-anchored-range-day-structure-search | Codex Research Agent | closed | `docs/work_packets/WPR106-196-anchored-range-day-structure-search.md`, `docs/stage_reports/STAGE_R106_ANCHORED_RANGE_DAY_STRUCTURE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_196*/**` | Tests causal completed-bar anchored range/day-structure entries over WPR106-96 BTCUSDT and ETHUSDT context, using shifted prior-day levels, completed opening ranges, intraday VWAP residual, shifted multi-day range location, current day high/low so far, completed-bar flow, wick, volume, and volatility state; all feature thresholds, state filters, hold/session/side/daily-cap choices, row ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; corrects duplicate-anchor evaluation before final evidence so template-relevant anchor variants only are searched; evaluates 51,840 rows in 431.94 seconds, finding 8,900 positive pre-May rows, 1,458 annual-target rows, 85 loose rows, and zero strict rows; fixed selected set contains 100 ETHUSDT rows, 92 `positive_recent_stability` and eight `loose_recent`, with 72 `opening_range_breakout_follow` and 28 `prior_day_breakout_follow` rows; selected pre-May replay is 100 positive rows, zero negative rows, median +0.856864, active mean +0.876398, best +1.196304, and worst +0.597246; May benchmark rejects the set with 100 active rows, 36 positive, 64 negative, median -0.007769, active mean -0.009575, best +0.062069, and worst -0.052891; best May row `day196-b707d26e4b8fa963` is an ETHUSDT opening-range-breakout short with +1.006399 pre-May over 176 trades, 28 active months, max drawdown -0.150763, 100% cost-stress survival, and +0.062069 in May over seven trades, but it has 10 pre-May losing months, including five in 2024 and four in 2025; rejects anchored range/day-structure entries as candidate-ready, portfolio-ready, or promotion-ready while preserving the ETHUSDT opening-range short-follow pocket as a research-only clue; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-195-cross-asset-residual-spread-search | Codex Research Agent | closed | `docs/work_packets/WPR106-195-cross-asset-residual-spread-search.md`, `docs/stage_reports/STAGE_R106_CROSS_ASSET_RESIDUAL_SPREAD_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_195*/**` | Tests BTC/ETH equal-notional relative-value pair entries using causal rolling residuals, cross-symbol flow divergence, volatility state, and session filters; positive pair side means long target and short hedge, negative side means short target and long hedge, and gross return is 50% target leg plus 50% hedge leg with WPR106 pair-notional round-trip costs; all residual windows, templates, thresholds, hold/session/side/daily-cap choices, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only; evaluates 8,640 rows in 83.39 seconds, finding 564 positive pre-May rows, 52 annual-target rows, zero loose rows, and zero strict rows; annual-target rows are sparse and stale, with median trade counts of 10 to 15 and none passing latest-four-month floors of at least three active months and 20 trades; fixed selected set contains 15 fallback `positive_recent_stability` rows, 8 BTCUSDT-target and 7 ETHUSDT-target, with selected pre-May replay at 15 positive rows, zero negative rows, median +0.104935, active mean +0.122760, best +0.192660, and worst +0.058794; May rejects every selected row, with 0 positive, 15 negative, median -0.012385, active mean -0.016748, best -0.002851, and worst -0.030679; rejects the cross-asset residual spread family as candidate-ready, portfolio-ready, or promotion-ready; preserves the diagnostic that pair spreads reduce drawdown and can produce sparse annual-target pockets, but active rows did not transfer to May and annual-target rows were not sufficiently active; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-194-intrabar-flow-burst-profile-search | Codex Research Agent | closed | `docs/work_packets/WPR106-194-intrabar-flow-burst-profile-search.md`, `docs/stage_reports/STAGE_R106_INTRABAR_FLOW_BURST_PROFILE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_194*/**` | Tests a fresh order-flow style source family using WPR106-96 1m aggTrade-flow profiles inside completed 15m bars; builds early/mid/late flow imbalance, late-flow acceleration, late quote-volume concentration, total quote/trade-count burst, and signed late-pressure features combined with completed-bar return, wick, trend, volatility, and cross-symbol residual context; all feature choice, threshold calibration, hold/session/side/daily-cap choice, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only; evaluates 4,320 rows in 78.14 seconds, finding 280 positive pre-May rows, zero annual-target rows, zero loose rows, and zero strict rows; fixed selected set contains 100 fallback `positive_recent_stability` rows, 89 ETHUSDT and 11 BTCUSDT, with selected pre-May replay at 100 positive rows, zero negative rows, median +0.184677, active mean +0.233582, best +0.821519, and worst +0.050271; May rejects the selected set, with all 100 rows active but only 22 positive and 78 negative, median -0.010404, active mean -0.008656, best +0.078131, and worst -0.049117; best May row is ETHUSDT EU-session `late_flow_exhaustion_fade`, 32-bar hold, both-sided daily-cap-1, but it has 14 pre-May losing months, seven losing months in 2024, five in 2025, two in 2026 Jan-Apr, negative median trade return, max drawdown -0.465964, and only 50% cost-stress survival; rejects the intrabar flow burst profile family as candidate-ready, portfolio-ready, or promotion-ready and preserves the ETHUSDT EU `late_flow_exhaustion_fade` pocket only as a research diagnostic; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-193-motif-path-managed-exit-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-193-motif-path-managed-exit-repair.md`, `docs/stage_reports/STAGE_R106_MOTIF_PATH_MANAGED_EXIT_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_193*/**` | Tests whether conservative path-managed exits can repair WPR106-192's active May motif clue without changing the fixed May-blind source entries; rebuilds WPR106-192 motif lookup state, keeps 74 selected motif source rows fixed, and evaluates the fixed-hold baseline plus primary-bar stop/target exits with stop-first same-bar sequencing, half/full maximum holds, and same-symbol overlap blocking based on actual exit index; all exit-policy choices, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only; evaluates 2,442 exit rows, finding 524 positive pre-May rows, zero annual-target rows, five loose rows, and zero strict rows; five loose rows are BTCUSDT `flow_absorption` stop/target variants with lower drawdown but insufficient latest-four-month activity and no annual-target pass; fixed selected set contains 97 fallback `positive_recent_stability` rows, 88 ETHUSDT and 9 BTCUSDT, with 62 fixed-hold and 35 stop/target rows; selected pre-May replay is 97 positive rows, zero negative rows, median +0.201987, active mean +0.209225, best +0.489121, and worst +0.028659; May benchmark is weaker than WPR106-192, with all 97 rows active but 46 positive and 51 negative, median -0.002639, active mean +0.004805, best +0.090413, and worst -0.074075; best May row remains the original ETHUSDT `trend_pullback_clock` fixed-hold baseline, while selected stop/target rows have May median -0.004568 and 7 positive / 28 negative rows; rejects motif path-managed exits as candidate-ready, portfolio-ready, or promotion-ready because simple stop/target exits reduce some drawdowns but do not repair monthly stability or May transfer; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-192-causal-state-motif-lookup-search | Codex Research Agent | closed | `docs/work_packets/WPR106-192-causal-state-motif-lookup-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_STATE_MOTIF_LOOKUP_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_192*/**` | Tests a fresh non-KNN causal state/motif lookup family over WPR106-96 BTCUSDT/ETHUSDT 15m and aggTrade-flow context; all motif definitions, feature buckets, holds, lookbacks, side modes, session filters, thresholds, daily caps, ranking, and selected-row inclusion use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only and lookup history frozen to pre-May labels; preserves a 64,800-row broad-pass timeout after 55,000 evaluated rows, then completes a bounded 5,184-row run in 118.17 seconds; finds 242 positive pre-May rows, 43 annual-target rows, zero loose rows, and zero strict rows; fixed selected set contains 74 fallback `positive_recent_stability` rows, 62 ETHUSDT and 12 BTCUSDT, with selected pre-May replay at 74 positive rows, zero negative rows, median +0.205355, active mean +0.223349, best +0.489121, and worst +0.028659; May benchmark remains active with all 74 rows trading, 45 positive rows, 29 negative rows, median +0.008759, active mean +0.015506, best +0.090413, and worst -0.030529; rejects the bounded motif lookup family as candidate-ready, portfolio-ready, or promotion-ready because there are zero strict/loose pre-May rows, annual-target rows are sparse and stale, the strongest May-positive ETHUSDT trend-pullback rows have excessive pre-May losing months and large drawdowns, and all selected BTCUSDT rows are May-negative; preserves ETHUSDT US-session `trend_pullback_clock` active May transfer as a research-only diagnostic; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-191-directional-knn-accepted-trade-stability-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-191-directional-knn-accepted-trade-stability-repair.md`, `docs/stage_reports/STAGE_R106_DIRECTIONAL_KNN_ACCEPTED_TRADE_STABILITY_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_191*/**` | Tests May-blind accepted-trade overlays over fixed WPR106-190 selected source rows without creating new entries; all confidence quantiles, good-spread quantiles, session filters, accepted-trade daily caps, causal monthly gates, recent-activity floors, ranking, and selected-row inclusion use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only; evaluates 19,200 overlay rows from 100 WPR106-190 source rows and finds 9,110 positive pre-May rows, 4,320 annual-target rows, 156 loose rows, and zero strict rows; fixed selected set contains 100 ETHUSDT rows, with 70 loose and 30 `positive_stability`, selected pre-May replay is 100 positive rows, zero negative rows, median +0.343498, active mean +0.365477, best +0.770810, and worst +0.124099; May benchmark rejects the repair by inactivity, with 0 active rows, 0 positive rows, 0 negative rows, and 100 flat/no-trade rows; rejects accepted-trade overlays over WPR106-190 as candidate-ready, portfolio-ready, or promotion-ready because the repair removes the useful WPR106-190 May activity instead of stabilizing it; no new entries, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-190-directional-knn-confidence-entry-search | Codex Research Agent | closed | `docs/work_packets/WPR106-190-directional-knn-confidence-entry-search.md`, `docs/stage_reports/STAGE_R106_DIRECTIONAL_KNN_CONFIDENCE_ENTRY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_190*/**` | Pivots back to Lorentzian/KNN with KNN-generated directional confidence entries instead of KNN as a veto over transparent event signals; all feature choices, KNN parameters, confidence thresholds, prior filters, ranking, daily-cap choice, and selection use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only; imports WPR106-170 helpers for WPR106-96 BTCUSDT/ETHUSDT 15m plus aggTrade context, feature matrices, distance, completed-label causal neighbor pools, path labels, trade accounting, monthly metrics, and cost-stress diagnostics; stops an initial 373,248-row broader grid before aggregate artifacts after a 20-minute timeout during pre-May evaluation, then completes a bounded stronger-confidence grid of 23,328 rows with `min_confidence_margin=0.0006`, `min_good_spread=0.08`, and `recent_gate=none`; finds 6,014 positive pre-May rows, 5,276 annual-target rows, 11 loose rows, and zero strict rows; fixed selected set contains 100 rows, with 8 loose and 92 `positive_stability`, 93 ETHUSDT rows, 7 BTCUSDT rows, and prior modes split across 51 `knn_only`, 31 `direct_prior`, and 18 `inverse_prior`; selected pre-May replay is 100 positive rows, zero negative rows, median +0.347297, active mean +0.352858, best +0.629334, and worst +0.124099; May benchmark has 25 positive rows, 2 negative rows, and 73 flat/no-trade rows, with active mean +0.005054, best +0.011793, and worst -0.015137; rejects the bounded directional-KNN confidence entry search as candidate-ready, portfolio-ready, or promotion-ready because there are zero strict pre-May rows, selected rows are mostly fallback stability rows, many ETHUSDT short rows have 11 to 15 pre-May losing months, and the best May row is a one-trade result; preserves ETHUSDT short directional-KNN behavior as a research-only diagnostic; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-189-pre-may-rolling-quarter-stability-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-189-pre-may-rolling-quarter-stability-selector.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_ROLLING_QUARTER_STABILITY_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_189*/**` | Tests whether stricter pre-May rolling-quarter and month-stability selection can rescue the WPR106-188 portfolio universe without using May for thresholds, scoring, row inclusion, or tie-breaking; loads 4,665 WPR106-188 portfolio rows and computes pre-May-only rolling three-month floors, rolling six-month floors, calendar-quarter returns, a 2026-April stub, negative-period counts, worst-period return, best-period concentration, drop-best-month returns, and latest-four-month behavior; finds 162 quarter-strict rows and selects a fixed 100-row set with 38 `quarter_strict`, 47 `quarter_loose`, and 15 `rolling_floor`, split across 38 `exclude_vwap`, 37 `packet_balanced`, and 25 `cap_one_vwap` rows; selected pre-May replay is 100 positive rows, zero negative rows, median +0.641989, active mean +0.664281, best +1.086975, and worst +0.316491, but May rejects the fixed set with six positive rows, 94 negative rows, median -0.026537, active mean -0.027378, best +0.001586, and worst -0.067318; quarter-strict rows contain all six May-positive rows but still have 32 negative rows and median -0.016819; rejects the pre-May rolling-quarter selector as candidate-ready, portfolio-ready, or promotion-ready and records that selectors over the WPR106-180 through WPR106-186 recent-family portfolio universe are not producing meaningful May transfer; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-188-diversity-capped-recent-family-portfolio-control | Codex Research Agent | closed | `docs/work_packets/WPR106-188-diversity-capped-recent-family-portfolio-control.md`, `docs/stage_reports/STAGE_R106_DIVERSITY_CAPPED_RECENT_FAMILY_PORTFOLIO_CONTROL_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_188*/**` | Controls the WPR106-187 source-concentration failure by excluding or capping WPR106-183/WPR106-184 VWAP/residual sources before any May benchmark is run; all source controls, portfolio construction, ranking, daily-cap choice, and fixed selection use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only after selection; reuses WPR106-187 trade accounting, embedded source costs, same-symbol overlap handling, monthly diagnostics, and cost-stress logic; loads 511 source metric rows, deduplicates to 281 source representatives, identifies 106 dominant WPR106-183/WPR106-184 representatives and 175 non-dominant representatives, and evaluates 4,665 portfolio rows across `exclude_vwap`, `cap_one_vwap`, and `packet_balanced` controls; all 4,665 rows are positive pre-May, with 74 annual-target rows, 2,939 loose rows, and 74 strict rows; fixed selected set contains 100 rows, with 16 strict and 84 loose, selected pre-May replay is 100 positive rows, zero negative rows, median +0.692091, active mean +0.714204, best +1.086975, and worst +0.503086, but May rejects the fixed set with three positive rows, 97 negative rows, median -0.027960, active mean -0.030845, best +0.001586, and worst -0.082318; `exclude_vwap` and `cap_one_vwap` have zero May-positive selected rows, while `packet_balanced` has only three tiny May-positive loose rows; rejects diversity-capped recent-family portfolios as candidate-ready, portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-187-recent-family-behavior-portfolio-search | Codex Research Agent | closed | `docs/work_packets/WPR106-187-recent-family-behavior-portfolio-search.md`, `docs/stage_reports/STAGE_R106_RECENT_FAMILY_BEHAVIOR_PORTFOLIO_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_187*/**` | Tests whether recent rejected families from WPR106-180 through WPR106-186 can combine into stable overlap-aware equal-source portfolios when selected strictly from pre-May behavior; all source scoring, behavior deduplication, portfolio construction, portfolio ranking, daily-cap choice, and selected-row inclusion use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only after selection; loads 511 source metric rows, deduplicates to 281 source representatives by exact pre-May accepted-trade path hash, stops an initial broader portfolio generation pass before portfolio artifacts because complement scoring is too slow, then completes a bounded run using the top 60 sources, 25 seeds, 2/3-member portfolios, quality/loss-complement/packet-diverse modes, and daily caps 1/3/5; evaluates 144 portfolio rows, finding 144 positive pre-May rows, zero annual-target rows, 134 loose rows, and zero strict rows; fixed selected set contains 31 rows, with 29 `loose` and two `positive_stability`, selected pre-May replay is 31 positive rows, zero negative rows, median +0.572010, active mean +0.601865, best +0.866785, and worst +0.407620, but May rejects every selected portfolio with zero positive rows, 31 negative rows, median -0.033519, active mean -0.032355, best -0.015019, worst -0.056857, and aggregate selected May total -1.002990 across 346 trades; rejects recent-family behavior portfolios as candidate-ready, portfolio-ready, or promotion-ready because selection concentrated in WPR106-183 ETHUSDT rolling-VWAP extension sources and all fixed portfolios lost in May; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-186-causal-state-transition-edge-search | Codex Research Agent | closed | `docs/work_packets/WPR106-186-causal-state-transition-edge-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_STATE_TRANSITION_EDGE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_186*/**` | Tests causal market-state transition edges over BTCUSDT and ETHUSDT 15m bars with completed-bar volatility, trend, VWAP displacement, BTC/ETH residual, wick, session, and aggTrade-flow states; all profile learning, row selection, ranking, and parameter choices use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only after selection; reuses WPR106-185 prior-month rolling profile helpers and WPR106-183/WPR106-126 completed-bar features/accounting; evaluates 1,296 screen rows, finding 37 positive pre-May rows, 15 annual-target sparse/weak rows, zero loose rows, and zero strict rows; expands a 34-row source pool across daily caps 1/3/5 for 102 full replay rows, with 89 positive rows, zero annual-target rows, zero loose rows, and zero strict rows; fixed selected set contains 34 `positive_stability` fallback rows, with selected pre-May replay at 34 positive rows, zero negative rows, median +0.221411, active mean +0.234561, best +0.511401, and worst +0.067338, but May is mixed at 18 positive rows, 16 negative rows, median +0.008596, active mean -0.019641, best +0.055395, worst -0.155169, and aggregate selected May total -0.667796 across 439 trades; rejects the state-transition family as candidate-ready, portfolio-ready, or promotion-ready, preserving only BTCUSDT `transition_vol_flow_trend` short rows as a research-only diagnostic clue; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-185-causal-calendar-flow-profile-search | Codex Research Agent | closed | `docs/work_packets/WPR106-185-causal-calendar-flow-profile-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_CALENDAR_FLOW_PROFILE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_185*/**` | Tests causal prior-month calendar/session/flow profiles over BTCUSDT and ETHUSDT 15m bars with completed-bar volatility, trend, cross-symbol residual, and aggTrade-flow state; all profile learning, row selection, ranking, and parameter choices use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only after selection; stops an initial 4,320-row attempt before artifacts because profile recomputation is too slow, then completes a staged 864-row cached screen with 174 positive pre-May rows, 12 annual-target sparse rows, 16 loose rows, and zero strict rows; expands a 152-row source pool across daily caps 1/3/5 for 456 full replay rows, with 445 positive rows, zero annual-target rows, 49 loose rows, and zero strict rows; fixed selected set contains 72 rows, 33 `loose` and 39 `positive_stability`, with selected pre-May replay at 72 positive rows, zero negative rows, median +0.451598, active mean +0.507759, best +0.980383, and worst +0.108446, but May rejects the fixed set with 21 positive rows, 51 negative rows, median -0.009405, active mean -0.015629, best +0.012527, worst -0.105538, and aggregate selected May total -1.125269 across 427 trades; rejects the causal calendar-flow profile family as candidate-ready, portfolio-ready, or promotion-ready, preserving only a small BTCUSDT day/hour short profile pocket as a research-only diagnostic clue; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-184-wpr183-behavior-deduped-selector-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-184-wpr183-behavior-deduped-selector-controls.md`, `docs/stage_reports/STAGE_R106_WPR183_BEHAVIOR_DEDUPED_SELECTOR_CONTROLS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_184*/**` | Tests whether the rejected WPR106-183 multi-timeframe VWAP/residual state family can improve May transfer with strictly pre-May behavior deduplication and selector controls; all replay eligibility, path hashing, representative choice, ranking, diversity caps, annual losing-month diagnostics, rolling-floor diagnostics, active-rate controls, and row selection use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only; replays 3,409 eligible WPR106-183 source rows with accepted-trade ledgers, finds 1,823 unique pre-May trade-path hashes, deduplicates to 1,823 positive representatives, and finds four annual-target rows, 677 loose rows, and zero strict rows; fixed selected set contains 100 rows, with 77 `dedup_dropout_repair` and 23 `dedup_loose`, and fixes 100 unique pre-May paths; selected pre-May replay has 100 positive rows, zero negative rows, median +0.884393, active mean +0.784029, best +1.460809, and worst +0.097654, but May rejects the fixed set with 21 positive rows, 79 negative rows, median -0.026900, active mean -0.029790, best +0.028018, worst -0.094876, and aggregate selected May total -2.979006 across 639 trades; rejects the behavior-deduped selector as candidate-ready, portfolio-ready, or promotion-ready, preserving only BTCUSDT session-VWAP/residual/squeeze May-positive pockets as research-only diagnostic clues; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-183-multitimeframe-vwap-residual-state-search | Codex Research Agent | closed | `docs/work_packets/WPR106-183-multitimeframe-vwap-residual-state-search.md`, `docs/stage_reports/STAGE_R106_MULTITIMEFRAME_VWAP_RESIDUAL_STATE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_183*/**` | Tests transparent completed-bar multi-timeframe VWAP distance, EMA trend, volatility state, wick/flow behavior, and BTC/ETH residual features after the WPR106-182 KNN rejection; all threshold, filter, side, hold, daily-cap, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 fixed as benchmark-only; screens 165,720 daily-cap-3 rows and finds 28,568 positive pre-May rows, 45 annual-target rows, 447 loose rows, and zero strict rows; expands a 1,228-row source pool across daily caps 1/3/5 for 3,684 full pre-May replay rows, with 3,653 positive rows, 129 annual-target rows, 1,240 loose rows, and zero strict rows; selected set contains 100 pre-May-positive rows, 90 `dropout_repair` and 10 `loose`, with median +1.011917 and active mean +0.837380 pre-May, but May rejects it with 24 positive rows, 76 negative rows, median -0.031082, active mean -0.027420, best +0.019486, and worst -0.094876; selected behavior is duplicate-heavy at 63 unique pre-May trade-path hashes and 31 May trade-path hashes across 100 rows; rejects the multi-timeframe VWAP/residual state family as candidate-ready, portfolio-ready, or promotion-ready, preserving only BTCUSDT `squeeze_release_follow` direct-long EU residual-extreme compressed flow-contra 64-bar rows and small BTC residual/session-VWAP May-positive pockets as research clues; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-182-multi-horizon-lorentzian-knn-consensus-search | Codex Research Agent | closed | `docs/work_packets/WPR106-182-multi-horizon-lorentzian-knn-consensus-search.md`, `docs/stage_reports/STAGE_R106_MULTI_HORIZON_LORENTZIAN_KNN_CONSENSUS_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_182*/**` | Revisits the Lorentzian/KNN family with multi-horizon analog consensus labels, pre-May-only feature normalization and threshold calibration, causal neighbor pools, May neighbor labels frozen to exits completed before 2026-05-01, Lorentzian and Euclidean distances, active target signal rates of 1/3/5 per day, and daily caps of 1/3/5; evaluates 13,824 BTCUSDT/ETHUSDT rows, finds 1,557 positive pre-May rows, zero annual-target rows, five loose rows, and zero strict rows; fixed selected set contains five loose ETHUSDT `regime_gap_session` rows with median +0.366823 and active mean +0.253427 pre-May, but May rejects the fixed set with zero positive rows, three negative rows, two flat/inactive rows, median -0.018024, active mean -0.018024, best 0.000000, and worst -0.018024; Euclidean long rows lose in May and Lorentzian long rows are inactive; rejects the multi-horizon KNN consensus variant as candidate-ready, portfolio-ready, or promotion-ready, preserving only the ETHUSDT `regime_gap_session` Euclidean-long pocket as a research clue; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-181-opening-range-prior-day-confluence-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-181-opening-range-prior-day-confluence-repair.md`, `docs/stage_reports/STAGE_R106_OPENING_RANGE_PRIOR_DAY_CONFLUENCE_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_181*/**` | Revisits the discarded WPR106-129 opening-range and WPR106-130 prior-day level/gap families with a May-blind confluence repair; combines opening-range signals with prior-day high/low/close/VWAP, overnight gap, session, flow, and volatility context, uses daily caps of 1/3/5, and selects rows only from 2024-01-01 through 2026-04-30; evaluates 51,840 BTCUSDT/ETHUSDT rows, finds 6,223 positive pre-May rows, 21 annual-target rows, 196 loose rows, and zero strict rows; annual-target rows are all ETHUSDT EU `or_gap_continuation` variants with 41 trades, so they are too sparse for the requested active profile; fixed selected set contains 100 pre-May-positive rows with median +0.486439 and active mean +0.407773, but May rejects the confluence repair with 13 positive rows, 87 negative rows, median -0.009593, active mean -0.009877, best +0.010523, and worst -0.046390; the `dropout_repair` tier is 0 positive and 19 negative in May; rejects the opening-range/prior-day confluence repair as candidate-ready, portfolio-ready, or promotion-ready, preserving ETHUSDT EU `or_gap_continuation` only as a research clue; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-180-volterm-quiet-trend-adaptive-exit-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-180-volterm-quiet-trend-adaptive-exit-repair.md`, `docs/stage_reports/STAGE_R106_VOLTERM_QUIET_TREND_ADAPTIVE_EXIT_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_180*/**` | Revisits the discarded WPR106-131 realized-volatility term-structure family with a May-blind repair around quiet-trend pullback, volatility-expansion follow, compression-breakout follow, volatility-shock fade, and term-structure reversal variants; reuses WPR106-131/WPR106-126 completed-bar alignment and accounting, adds daily caps, fixed and adaptive score-decay exits, flip/loss guards, and volatility-loss guards, and selects rows only from 2024-01-01 through 2026-04-30; evaluates 129,600 BTCUSDT/ETHUSDT rows, finds 18,762 positive pre-May rows, 1,270 annual-target rows, 391 loose rows, and zero strict rows; annual-target rows are mostly too sparse, with the only annual-target loose rows being ETHUSDT `quiet_trend_pullback` variants with 62 to 64 trades; fixed selected set contains 100 pre-May-positive rows with median +0.601534 and active mean +0.599311, but May rejects the repair with 12 positive rows, 88 negative rows, median -0.009113, active mean -0.014822, best +0.077562, and worst -0.108927; every `dropout_repair` selected row loses in May; rejects the volatility-term adaptive-exit repair as candidate-ready, portfolio-ready, or promotion-ready, preserving ETHUSDT `vol_expansion_follow` fixed-hold May-positive rows and ETHUSDT `quiet_trend_pullback` annual-target diagnostics only as research clues; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-179-causal-accepted-trade-throttle-overlay | Codex Research Agent | closed | `docs/work_packets/WPR106-179-causal-accepted-trade-throttle-overlay.md`, `docs/stage_reports/STAGE_R106_CAUSAL_ACCEPTED_TRADE_THROTTLE_OVERLAY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_179*/**` | Tests causal accepted-trade throttle overlays over the WPR106-178 selected accepted trade ledgers without creating new entry signals or allowing skipped accepted trades to open later raw signals; all overlay selection uses only 2024-01-01 through 2026-04-30 accepted trade history, with May 2026 and WPR106-168 June 1-11 2026 fixed as replay-only benchmarks; evaluates 28,800 overlay descriptors across pre-May score tightening, best-side filtering, cooldowns after losing accepted trades, daily loss/count stops, and monthly loss stops; finds 25,178 positive pre-May overlays, 1,863 annual-target overlays, 4,798 loose overlays, and 231 strict overlays, then selects 100 fixed overlays with 16 strict, one annual, and 83 overlay-tier rows; selected pre-May replay is clean at 100 positive rows, zero negative rows, median +1.106529, and active mean +1.121298, but May rejects the fixed set with 7 positive rows, 46 negative rows, 47 flat/no-trade rows, median 0.000000, and active mean -0.025601; June improves to 72 positive rows, 24 negative rows, 4 flat/no-trade rows, median +0.024723, and active mean +0.015573, but this does not rescue the failed benchmark-only May transfer; rejects the accepted-trade throttle overlay as candidate-ready, portfolio-ready, or promotion-ready, preserving only BTCUSDT WPR106-176 `vol_breakout_follow` with the best May overlay and ETHUSDT June-positive groups as research-only diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-178-pre-may-monthly-stability-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-178-pre-may-monthly-stability-selector.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_MONTHLY_STABILITY_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_178*/**` | Tests whether a pre-May-only monthly stability selector over the WPR106-176 and WPR106-177 full search universes can improve May transfer; scores 75,360 rows using only 2024-01-01 through 2026-04-30 metrics/monthly returns with annual loss counts, active-month coverage, active 1-5 trades/day behavior, cost-stress survival, best-month share, return after dropping best three months, and rolling 3/6-month minima; finds 2,016 stability-candidate rows and selects 100 fixed rows, 49 from WPR106-176 and 51 from WPR106-177, with 5 strict rows and 95 stability rows; selected pre-May replay is cleaner than prior loose sets with 97 positive rows, 3 negative rows, median +0.967411, and active mean +0.958284, but only 68 unique pre-May path hashes across 100 selected rows; May rejects the fixed selection with 24 positive rows, 45 negative rows, 31 flat/no-trade rows, median 0.000000, and active mean -0.015527; June 1-11 improves but does not rescue it, with 69 positive rows, 31 negative rows, median +0.019182, and active mean +0.009868; only five selected rows satisfy annual loss caps of at most 2 losing months in 2024, at most 2 in 2025, and at most 1 in 2026 Jan-Apr, all from the already-rejected WPR106-176 ETHUSDT `vol_breakout_follow` cluster with May mean -0.019544; rejects the stability selector as candidate-ready, portfolio-ready, or promotion-ready, preserving BTCUSDT WPR106-176 `vol_breakout_follow` with `direct_flow_confirm_inverse_contra_skip` and ETHUSDT WPR106-177 `cross_relative_reversion` only as research diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-177-non-breakout-flow-trend-range-rotation | Codex Research Agent | closed | `docs/work_packets/WPR106-177-non-breakout-flow-trend-range-rotation.md`, `docs/stage_reports/STAGE_R106_NON_BREAKOUT_FLOW_TREND_RANGE_ROTATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_177*/**` | Deliberately moves away from the repeated ETHUSDT volatility-breakout cluster by excluding `vol_breakout_follow` and testing non-breakout flow, trend, range, wick, compression, and cross-symbol score variants over BTCUSDT/ETHUSDT completed 15m bars plus 1m aggTrade flow context; all score definitions, thresholds, policy rules, row inclusion, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 and WPR106-168 June 1-11 2026 replay-only after fixed selection; evaluates 60,480 pre-May rows, finds 10,930 positive rows, 287 annual-target rows, 235 loose rows, and zero strict rows; selected set contains 100 loose rows and no strict rows, with best selected pre-May row ETHUSDT `flow_absorption_fade` using `inverse_high_vol_skip`, `fixed_64`, daily cap 1, 221 trades, +1.496901 pre-May return, seven losing months, and full cost-stress survival; May rejects the selected set with 14 positive rows, 33 negative rows, 53 flat/no-trade rows, median 0.000000, and active mean -0.016519; June 1-11 also rejects it on active rows with 32 positive rows, 48 negative rows, 20 flat/no-trade rows, median 0.000000, and active mean -0.006525; rejects the non-breakout search as candidate-ready, portfolio-ready, or promotion-ready, preserving only BTCUSDT `wick_absorption_reversal` under high-volatility inverse policy and ETHUSDT `flow_burst_nonbreakout_follow` short with trend switch as loose research-only diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-176-causal-side-policy-switch-search | Codex Research Agent | closed | `docs/work_packets/WPR106-176-causal-side-policy-switch-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_SIDE_POLICY_SWITCH_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_176*/**` | Tests a broader causal side-policy switch family after WPR106-175 showed June 1-11 2026 favored both direct and inverse same-threshold volatility-breakout controls; imports WPR106-173 feature, score, exit-label, overlap, daily-cap, cost, and metric helpers, then evaluates direct, inverse, high-volatility skip/switch, flow confirm/contra switch, trend aligned/contra switch, and range-compression skip rules over BTCUSDT/ETHUSDT completed 15m bars plus 1m aggTrade flow context; all thresholds, rules, row inclusion, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 and WPR106-168 June 1-11 2026 replayed only after fixed pre-May selection; evaluates 14,880 pre-May rows, finds 5,945 positive rows, 1,273 annual-target rows, 299 loose rows, and 10 strict rows; selected rows are 10 strict and 90 loose, with all strict rows being ETHUSDT `vol_breakout_follow` variants using `barrier_h32_tp2_sl1`; May rejects the fixed selected set with 19 positive rows, 58 negative rows, 23 flat/no-trade rows, median -0.002036, active mean -0.010022, and the strict subset at zero May-positive rows, six May-negative rows, and four flat rows; June is broadly positive again with 81 selected rows positive, 19 negative, median +0.026792, and active mean +0.025377; rejects the family as candidate-ready, portfolio-ready, or promotion-ready, preserving only loose direct/flow/trend switch rows as research-only diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-175-wpr173-strict-anti-signal-source-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-175-wpr173-strict-anti-signal-source-controls.md`, `docs/stage_reports/STAGE_R106_WPR173_STRICT_ANTI_SIGNAL_SOURCE_CONTROLS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_175*/**` | Audits the WPR106-173 strict ETHUSDT volatility-breakout anti-signal rows with fixed source-level controls after WPR106-174's positive fresh June replay; imports WPR106-173 accounting so score construction, exit labels, conservative ATR barriers, overlap handling, daily caps, and costs stay identical, then evaluates 504 fixed controls from the 14 strict descriptors across inverse/direct side policy, long/short/both side mode, `all`/`high_vol` regime, and 1/3/5 daily caps without recalibrating thresholds or using May/June for selection; exact source descriptors reproduce WPR106-174 with May at four active rows, all negative, and June at 14 active rows, 13 positive, one negative, median +0.021485; broader controls reject the family as candidate-ready because same-threshold direct-signal controls have zero strict pre-May rows but are stronger in June than inverse controls, with 216/252 direct rows June-positive, median +0.029270, and mean +0.033169, while May remains broadly negative at 32/504 positive and 280/504 negative controls; deduplication reduces independence with 504 controls collapsing to 287 unique pre-May signal-side hashes, 143 duplicate groups, and a largest duplicate group of four controls; keeps the family research-only as a diagnostic requiring a longer fresh post-May window or causal pre-May regime classifier before further candidate discussion; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-174-wpr173-strict-anti-signal-fresh-june-replay | Codex Research Agent | closed | `docs/work_packets/WPR106-174-wpr173-strict-anti-signal-fresh-june-replay.md`, `docs/stage_reports/STAGE_R106_WPR173_STRICT_ANTI_SIGNAL_FRESH_JUNE_REPLAY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_174*/**` | Replays only the 14 fixed strict WPR106-173 ETHUSDT anti-signal descriptors on the fresh non-May WPR106-168 June 1-11 2026 holdout, using WPR106-96 context through May only as rolling-feature warmup and WPR106-168 packet-local verified June 15m bars plus 1m aggTrade flow context as fresh holdout rows; computes WPR106-173 regime thresholds before moving the benchmark window to June, preserving the 2024-01-01 through 2026-04-30 tuning boundary, and uses no May or June data for parameter choice, threshold choice, row inclusion, ranking, or selection; June replay is materially better than WPR106-173 May for the same fixed rows, with all 14 rows active, 13 positive, one negative, best +0.059043, worst -0.030856, median +0.021485, and active mean +0.020151 versus May at four active rows, all four negative, active mean -0.030600; upgrades the ETHUSDT volatility-breakout anti-signal family to a stronger research-only diagnostic for source-level controls or longer fresh post-May retest, but keeps it not candidate-ready because May remains a failed benchmark and June covers only 11 calendar days; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-173-anti-signal-entry-exit-screen | Codex Research Agent | closed | `docs/work_packets/WPR106-173-anti-signal-entry-exit-screen.md`, `docs/stage_reports/STAGE_R106_ANTI_SIGNAL_ENTRY_EXIT_SCREEN_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_173*/**` | Tests explicit opposite-side anti-signal variants of WPR106-172 transparent completed-bar entry families over WPR106-96 BTCUSDT/ETHUSDT 15m bars and 1m aggTrade context through May 2026, with all feature definitions, thresholds, regime filters, side policies, exits, daily caps, ranking, and selection restricted to 2024-01-01 through 2026-04-30 and May 2026 benchmark-only after fixed selection; evaluates 35,550 pre-May rows across two symbols, seven entry templates, two normalization windows, all/US sessions, five regime filters, actual anti-signal long/short/both side modes, 1/3/5 target raw signals per day, fixed 16/32/64 exits, conservative ATR barriers where same-bar stop/target collisions count as stops, and 1/3/5 accepted-trade daily caps; finds 4,618 positive pre-May rows, 166 annual-target rows, 209 loose rows, and 14 strict rows, all strict rows being ETHUSDT `vol_breakout_follow` anti-signals with `barrier_h32_tp2_sl1` exits; selected rows are 14 strict and 86 loose with median +0.894432 pre-May net, best +1.899726, worst +0.170107; May benchmark rejects the fixed selected set with 10 positive rows, 42 negative rows, 48 flat/no-trade rows, best +0.037054, worst -0.073293, median 0.000000, and the active strict May subset at 0 positive and 4 negative with mean -0.030600; preserves opposite-side ETHUSDT volatility-breakout anti-signals with conservative ATR barriers as a research-only strict pre-May diagnostic, but rejects them as candidate-ready, portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-172-adaptive-barrier-entry-exit-screen | Codex Research Agent | closed | `docs/work_packets/WPR106-172-adaptive-barrier-entry-exit-screen.md`, `docs/stage_reports/STAGE_R106_ADAPTIVE_BARRIER_ENTRY_EXIT_SCREEN_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_172*/**` | Runs a fresh artifact-only completed-bar entry/exit screen over WPR106-96 BTCUSDT/ETHUSDT 15m bars and 1m aggTrade context through May 2026, with all entry thresholds, regime filters, exit choices, daily caps, ranking, and selection restricted to 2024-01-01 through 2026-04-30 and May 2026 benchmark-only after fixed selection; after bounded runtime narrowing, evaluates 35,550 pre-May rows across two symbols, seven entry templates, two normalization windows, all/US sessions, five regime filters, long/short/both side modes, 1/3/5 target raw signals per day, fixed 16/32/64 exits, conservative ATR barriers where same-bar stop/target collisions count as stops, and 1/3/5 accepted-trade daily caps; finds 5,072 positive pre-May rows, 190 annual-target rows, 71 loose rows, and zero strict rows; selected rows are all loose with median +0.319864 pre-May net, best +1.114763, worst +0.057242; May benchmark rejects the fixed selected set with 5 positive rows, 10 negative rows, 56 flat/no-trade rows, best +0.022584, worst -0.074505, median 0.000000, and active May mean -0.012550; preserves ETHUSDT volatility-breakout with flow-confirm filtering and fixed 64-bar exits as a research-only diagnostic pocket, but rejects the adaptive barrier entry/exit screen as candidate-ready, portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-171-market-state-regime-gated-intrabar-flow-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-171-market-state-regime-gated-intrabar-flow-repair.md`, `docs/stage_reports/STAGE_R106_MARKET_STATE_REGIME_GATED_INTRABAR_FLOW_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_171*/**` | Revisits WPR106-153 selected intrabar order-flow source rows with independent completed-bar market-state gates over WPR106-96 BTCUSDT/ETHUSDT 15m bars and 1m aggTrade context through May 2026; all gate thresholds, daily caps, ranking, and selection are restricted to 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selection; evaluates 6,600 pre-May rows from 100 WPR106-153 source rows, 22 fixed state gates, and 1/3/5 accepted-trade daily caps while preserving source costs and overlap handling; finds 5,115 positive pre-May rows, 219 annual-target rows, 1,615 loose rows, and zero strict rows; fixed selected rows are all loose with median +0.781872 pre-May net, best +1.059577, worst +0.233917, but duplicate-heavy because source and daily-cap variants often leave identical accepted trade sets; May benchmark is mixed and not candidate-ready with 46 positive rows, 51 negative rows, 3 flat rows, best +0.069661, worst -0.057689, and median -0.001737; preserves ETHUSDT late-delta-flip fade under `shock_q80` or `volume_high_q70` as a research-only diagnostic pocket, but rejects the market-state regime-gated intrabar-flow repair as candidate-ready, portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-170-path-quality-knn-event-veto-search | Codex Research Agent | closed | `docs/work_packets/WPR106-170-path-quality-knn-event-veto-search.md`, `docs/stage_reports/STAGE_R106_PATH_QUALITY_KNN_EVENT_VETO_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_170*/**` | Tests a materially different Lorentzian/KNN variant where transparent completed-bar event candidates are filtered by causal KNN neighbors labeled with side-adjusted future net return and path quality/adverse excursion rather than only fixed-hold direction; uses WPR106-96 verified BTCUSDT/ETHUSDT 15m bars and 1m aggTrade context through May 2026, with all event thresholds, KNN feature packs, label definitions, parameters, filters, ranking, and selection restricted to 2024-01-01 through 2026-04-30 and May 2026 benchmark-only after fixed selection; precomputes 24 NumPy KNN caches over 18,179 BTCUSDT and 17,978 ETHUSDT query rows, evaluates 93,312 pre-May rows across six transparent templates, two KNN feature packs, 8/16/32-bar holds, Lorentzian/Euclidean distances, 11/31 neighbors, all/Asia/US sessions, 1/3/5 target raw events per active day, long/short/both side modes, path-good-rate and mean-neighbor-return filters, and 1/3/5 accepted-trade daily caps; finds 21,314 positive pre-May rows, 2,928 annual-target rows, 79 loose rows, and zero strict rows; selected rows are all loose with median +0.211822 pre-May net, 61 to 280 trades, 22 to 28 active months, six to eight losing months, and median 1.067797 trades per active day; May benchmark rejects the fixed selected set with zero May-positive rows, 25 May-negative rows, 54 May-flat rows caused by no fixed-filter May trades, best 0.000000, worst -0.016655, median 0.000000, and zero rows with positive May cost-stress survival; best pre-May ETHUSDT short momentum-continuation row records +0.895150 pre-May net but seven losing months and 2024 annual losses of 4; rejects the path-quality KNN event-veto formulation as candidate-ready, portfolio-ready, or promotion-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-169-broad-bar-state-flow-interaction-screen | Codex Research Agent | closed | `docs/work_packets/WPR106-169-broad-bar-state-flow-interaction-screen.md`, `docs/stage_reports/STAGE_R106_BROAD_BAR_STATE_FLOW_INTERACTION_SCREEN_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_169*/**` | Runs an artifact-only broad completed-bar state, aggTrade-flow proxy, and cross-symbol interaction screen over BTCUSDT/ETHUSDT 15m WPR106-96 context from 2024-01-01 through 2026-04-30, with May 2026 excluded from feature/filter/threshold/hold/ranking/selection and used only as fixed benchmark; evaluates 248,832 pre-May rows across BTC/ETH, eight templates, 96/384/1536-bar normalization windows, 8/16/32/64-bar holds, all/Asia/EU/US sessions, all/high-range/compressed-prior vol gates, all/flow-confirm/flow-contra/flow-neutral flow gates, both/long/short side modes, 1/3/5 target raw signals per active day, and 1/3/5 accepted-trade daily caps; finds 40,753 positive pre-May rows, 2,042 annual-target rows, 384 loose rows, and zero strict rows; fixed top 100 selected rows are all loose and pre-May positive, with median +0.952125 pre-May net, 25 to 28 active months, 4 to 8 losing months, 79 to 485 trades, full pre-May cost-stress survival, and median one trade per active day; May benchmark for fixed selected rows is mixed and not candidate-ready with 31 positive, 69 negative, best +0.048723, worst -0.177795, median -0.042965, and 31 rows with positive May cost-stress survival; strongest follow-up clue is ETHUSDT Asia-session volatility-breakout continuation with flow-contra filtering, +0.811320 pre-May net and +0.048723 May net, but seven pre-May losing months, annual losses 3/3/1, and -0.265408 pre-May max drawdown keep it research-only; rejects the broad bar-state/flow interaction screen as candidate-ready, portfolio-ready, or promotion-ready because no strict pre-May row exists and selected-set May median is negative; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-168-post-may-non-may-holdout-availability-and-replay | Codex Research Agent | closed | `docs/work_packets/WPR106-168-post-may-non-may-holdout-availability-and-replay.md`, `docs/stage_reports/STAGE_R106_POST_MAY_NON_MAY_HOLDOUT_AVAILABILITY_AND_REPLAY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_168*/**` | Audits fresh post-May non-May Binance Vision availability for the WPR106-167 WPR146 threshold-5 descriptor and replays the frozen descriptor on the first complete June 2026 daily prefix; finds no local June BTCUSDT/ETHUSDT daily archives in the shared cache, but remote Binance Vision has complete 2026-06-01 through 2026-06-11 UTC BTC/ETH 15m kline, 1m kline, and aggTrade daily availability; downloads only the required BTC/ETH 15m kline and aggTrade files under the packet output tree, verifies all 44 checksums, builds packet-local 15m bar and 1m aggTrade-flow context, and replays the fixed WPR106-133 source parameters, raw cap 5, 17 fixed behavior representatives, and threshold-5 consensus without changing costs, thresholds, features, parameters, or selection criteria; May 2026 is not used for selection, KNN history, parameter choice, or threshold choice, only as chronological rolling-feature warm-up for later June bars; fresh June replay rejects the descriptor, with raw source, raw cap 5, and threshold-5 consensus all producing 6 trades, -0.030098 net return after costs, -0.056414 max drawdown, negative daily Sortino, one losing June month, and 0/4 cost-stress survival; the 17 fixed representatives are mixed at 10 positive and 7 negative, best +0.003022, worst -0.030098, median +0.001916, and mean -0.007561; closes the WPR146 threshold-5 defense path as negative fresh non-May holdout evidence and returns research to the broader 2024-forward search; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-167-wpr146-consensus-direct-rebuild | Codex Research Agent | closed | `docs/work_packets/WPR106-167-wpr146-consensus-direct-rebuild.md`, `docs/stage_reports/STAGE_R106_WPR146_CONSENSUS_DIRECT_REBUILD_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_167*/**` | Directly rebuilds the WPR106-166 behavior-consensus threshold 5 descriptor from WPR106-133 source trades, WPR106-136 feature cache, and fixed WPR106-146 behavior-representative KNN parameters; all fixed representatives and the threshold 5 rule come from pre-May evidence only, with May 2026 benchmark-only after the descriptor is frozen; re-evaluates 17 fixed behavior representatives, rebuilds raw cap-5, recomputes vote counts over raw cap-5 trades, and applies the fixed threshold 5 consensus rule; direct rebuild exactly reproduces WPR106-166 threshold 5 with 254 pre-May trades, 26 active months, two losing months, annual losses 1/1/0, +1.155278 pre-May net, -0.141007 max drawdown, best-month share 0.146280, full cost-stress survival, and +0.065272 May with 17 trades; all parity checks pass, including exact 17-representative trade-key parity for pre-May and May, exact raw cap-5 trade-key parity, and zero deltas for pre-May trade count, pre-May net return, pre-May losing months, May trade count, and May net return; proves the threshold-5 descriptor is reproducible from source trades and fixed KNN parameters, but rejects it as candidate-ready, portfolio-ready, or promotion-ready evidence because May remains the same raw WPR106-133 source path and is not a fresh independent holdout; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-166-wpr146-source-level-stability-ablation | Codex Research Agent | closed | `docs/work_packets/WPR106-166-wpr146-source-level-stability-ablation.md`, `docs/stage_reports/STAGE_R106_WPR146_SOURCE_LEVEL_STABILITY_ABLATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_166*/**` | Runs a source-level stability and ablation audit around the WPR106-146 cross-symbol relative-strength trade-veto clue; all behavior-deduped row selection, raw-source comparisons, consensus-filter thresholds, rolling diagnostics, side controls, and opposite-side controls use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed rows, controls, and thresholds are selected; loads WPR106-146 selected metrics/trades, behavior diagnostics, raw-source controls, side controls, and WPR106-136 accounting helpers; selects 17 behavior-deduped representatives from 48 selected rows and 17 unique pre-May behavior hashes; all 17 representatives are May-positive with best +0.067949, worst +0.015398, median +0.030569, and mean +0.037985; raw no-KNN cap 3/5 is already May-positive at +0.065272 and has +1.209539 pre-May net, but with seven pre-May losing months and annual losses 4/3/0; selected representatives are more stable but usually underperform raw total return, with pre-May selected-minus-raw negative for 16/17 representatives and May selected-minus-raw negative for 12/17 representatives; standalone long/short side controls fail pre-May profile checks, while opposite-side counterfactuals are uniformly negative both pre-May and May; the pre-May selected behavior-consensus threshold 5 filter is the clearest descriptor, with 254 pre-May trades, 26 active months, two losing months, annual losses 1/1/0, +1.155278 pre-May net, -0.141007 max drawdown, best-month share 0.146280, full cost-stress survival, and +0.065272 May with 17 trades; rejects the audit as candidate-ready, portfolio-ready, or promotion-ready evidence because May is not a fresh discovery holdout and the best May benchmark remains the raw WPR106-133 source path; preserves threshold-5 consensus as the best research-only descriptor for direct strategy rebuild and fresh non-May retest when later data is available; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-165-direct-pocket-pseudo-holdout-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-165-direct-pocket-pseudo-holdout-controls.md`, `docs/stage_reports/STAGE_R106_DIRECT_POCKET_PSEUDO_HOLDOUT_CONTROLS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_165*/**` | Tests the two narrow pockets that survived repeated broad selector summaries, WPR106-146 cross-symbol relative-strength trade-veto and WPR106-128 anchored VWAP flow-impulse, through direct pre-May pseudo-holdouts, matched controls, and simple equal-sleeve portfolios; because the target pockets were already noticed through prior May benchmark summaries, May 2026 is benchmark-only and not a fresh discovery holdout; all row scoring, pseudo-holdout diagnostics, control matching, portfolio construction, and ranking use only 2024-01-01 through 2026-04-30; rebuilds the WPR106-157 artifact universe with 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, 21,216 May trade rows, 1,915 behavior-deduplicated source rows, and 47 fixed target rows; selects 17 WPR106-146 rows and 30 WPR106-128 rows, then matches 47 controls; May row benchmark favors the fixed target set over controls, with target rows at 30 positive, 16 negative, 1 flat, best +0.067949, worst -0.107429, median +0.006251, mean +0.007892, versus controls at 7 positive, 40 negative, 0 flat, best +0.049556, worst -0.093512, median -0.022573, mean -0.023592; WPR106-146 is 17/17 May-positive with median +0.030569 and mean +0.037985, while WPR106-128 is rejected at row level with median -0.002686 and mean -0.009161; generates 872 portfolios and selects 52 fixed portfolios, where target-pocket portfolios are 28 positive and 0 negative in May with best +0.063858, worst +0.007776, median +0.023694, mean +0.024733, while matched-control portfolios are 0 positive and 24 negative with median -0.030822 and mean -0.026689; rejects the packet as candidate-ready, portfolio-ready, or promotion-ready evidence, rejects WPR106-128 as a direct May benchmark lead, and preserves WPR106-146 as the strongest research-only follow-up clue requiring fresh non-May retest, direct strategy rerun, causal ablations, side/opposite controls, cost/overlap stress, and candidate-gate evidence; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-164-pre-may-family-prototype-transfer-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-164-pre-may-family-prototype-transfer-controls.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_FAMILY_PROTOTYPE_TRANSFER_CONTROLS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_164*/**` | Tests whether packet/symbol/family/template prototypes can be selected from pre-May group-level evidence alone and transfer to May better than matched non-selected controls; all adverse-month/day diagnostics, prototype scoring, prototype selection, representative-row selection, control matching, and portfolio construction use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selection; rebuilds the WPR106-157 artifact universe with 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, 21,216 May trade rows, 1,915 behavior-deduplicated source rows, and 305 prototypes; finds 25 strict prototypes, 33 robust prototypes, and 105 watch prototypes; selects 32 fixed prototypes, 100 representative rows, and 100 matched controls; May rejects selected prototype rows and they underperform controls, with selected rows at 16 positive, 84 negative, 0 flat, best +0.047219, worst -0.133646, median -0.017170, mean -0.019284, versus controls at 16 positive, 79 negative, 5 flat, best +0.065272, worst -0.132690, median -0.015630, mean -0.015713; May rejects selected prototype portfolios with 0 positive, 39 negative, 0 flat, best -0.000192, worst -0.047466, median -0.018105, mean -0.020730, while matched-control portfolios are also rejected but less negative with 3 positive, 30 negative, best +0.002249, median -0.002445, mean -0.016344; rejects pre-May family/template prototype selection as candidate-ready, portfolio-ready, or promotion-ready; WPR106-146 relative-strength remains a narrow research-only pocket and WPR106-128 anchored VWAP remains a clue that did not pass this stricter pre-May prototype path; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-163-pre-may-adverse-regime-resilience-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-163-pre-may-adverse-regime-resilience-selector.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_ADVERSE_REGIME_RESILIENCE_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_163*/**` | Tests whether the broad WPR106 artifact universe can be selected by resilience to difficult pre-May months and day clusters rather than by aggregate PnL, component-pocket membership, or simple equal-sleeve construction; all adverse-month discovery, adverse-day discovery, row scoring, exposure caps, portfolio generation, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selection; rebuilds the WPR106-157 artifact universe with 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, 21,216 May trade rows, and 1,915 behavior-deduplicated source rows; discovers adverse months 2024-01, 2024-06, 2024-07, 2024-09, 2025-01, 2025-09, 2025-12, and 2026-04 plus 80 adverse day clusters; finds 84 strict adverse-resilience rows, 101 robust rows, and 1,083 watch rows; selects 100 fixed rows with 25 strict, 15 robust, and 60 watch rows; May rejects the fixed selected source rows with 30 positive, 68 negative, 2 flat, best +0.065272, worst -0.133646, median -0.006947, and mean -0.013354; generates 375 equal-sleeve portfolio candidates, selects 38 fixed portfolios, and May rejects those portfolios with 3 positive, 35 negative, 0 flat, best +0.011174, worst -0.045880, median -0.009557, and mean -0.014304; rejects adverse-regime resilience selection as candidate-ready, portfolio-ready, or promotion-ready while preserving research-only follow-up clues in WPR106-146 cross-symbol relative-strength trade-veto rows and WPR106-128 anchored VWAP flow-impulse rows; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-162-component-pocket-portfolio-overlap-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-162-component-pocket-portfolio-overlap-audit.md`, `docs/stage_reports/STAGE_R106_COMPONENT_POCKET_PORTFOLIO_OVERLAP_AUDIT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_162*/**` | Tests whether WPR106-161 component pockets become more stable as small equal-sleeve portfolios once source overlap, active trade rates, costs, and construction diversity are handled explicitly; all source matrices, portfolio generation, pre-May scoring, overlap diagnostics, exposure caps, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed selection; loads 162 source rows, generates 660 candidate portfolios, finds 415 strict pre-May portfolios and 637 robust pre-May portfolios, then selects 72 fixed portfolios under source and construction caps: 39 component-pocket portfolios and 33 matched-control portfolios; selected component-pocket portfolios have median pre-May total net +2.121019, median drop-best-three-month +1.451363, median 2026 Jan-Apr validation +0.388685, and median sleeve-average trades per active day 0.813184; matched controls have median pre-May total net +1.334584, median drop-best-three-month +0.987136, median validation +0.199268, and median sleeve-average trades per active day 0.625300; May rejects every fixed portfolio, with component pockets at 0 positive, 39 negative, 0 flat, best -0.005600, worst -0.069842, median -0.029799, mean -0.030960, and matched controls at 0 positive, 33 negative, 0 flat, best -0.009271, worst -0.103368, median -0.054215, mean -0.048921; rejects component-pocket portfolio construction as candidate-ready, portfolio-ready, or promotion-ready while confirming pockets are less bad than controls; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-161-pre-may-component-pocket-control-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-161-pre-may-component-pocket-control-audit.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_COMPONENT_POCKET_CONTROL_AUDIT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_161*/**` | Tests whether pre-May-defined component pockets transfer better than matched non-selected controls by reusing the broad WPR106 artifact universe, scoring rows with 2024-2025 search return/dropout robustness and 2026 Jan-Apr validation, aggregating components by packet/family/template, selecting components from pre-May evidence only, then matching controls by pre-May score, symbol, packet where possible, and trade-count scale; all row scoring, component scoring, control matching, exposure caps, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; includes 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, and 21,216 May trade rows; behavior-de-duplicates to 1,915 source rows, aggregates 249 component rows, selects 24 components, 81 component-pocket rows, and 81 matched-control rows; May shows component pockets are less bad than controls but still rejected, with component pockets at 19 positive, 60 negative, 2 flat, best +0.067949, worst -0.133646, median -0.015958, mean -0.015143, versus controls at 10 positive, 68 negative, 3 flat, best +0.027293, worst -0.132690, median -0.015520, mean -0.020810; rejects the component-pocket selector as candidate-ready, portfolio-ready, or promotion-ready, while preserving research-only follow-up evidence for WPR106-146 cross-symbol relative-strength trade-veto and small WPR106-119/WPR106-120 wick-fade pockets; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-160-pre-may-temporal-generalization-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-160-pre-may-temporal-generalization-selector.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_TEMPORAL_GENERALIZATION_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_160*/**` | Reranks the broad WPR106 artifact universe with 2024-2025 search history, fixed 2026 Jan-Apr pre-May validation, annual loss limits, search-period best-month dropout, rolling six-month search windows, active-rate/cost/drawdown filters, and packet/component/symbol/behavior exposure caps; all scoring, validation, dropout ranking, exposure caps, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; includes 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, and 21,216 May trade rows; behavior-de-duplicates to 1,915 source rows with 321 temporal-elite rows, 475 temporal-robust rows, and 873 validation-survivor rows; selects 100 fixed pre-May rows with 78 temporal-elite, 13 temporal-robust, and 9 validation-survivor rows, 85 to 985 trades, 21 to 28 active months, +0.048081 to +2.038350 2024-2025 search return, +0.000792 to +0.531043 2026 Jan-Apr validation return, and 0 to 2 validation losing months; May rejects the temporal selected set with 20 positive, 78 negative, 2 flat, best +0.067949, worst -0.133646, median -0.017037, and mean -0.019105; rejects the pre-May temporal generalization selector as candidate-ready, portfolio-ready, or promotion-ready, while preserving research-only follow-up pockets in WPR106-146 cross-symbol relative-strength trade-veto and WPR106-128 anchored VWAP rows; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-159-monthly-dropout-stability-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-159-monthly-dropout-stability-selector.md`, `docs/stage_reports/STAGE_R106_MONTHLY_DROPOUT_STABILITY_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_159*/**` | Reranks the broad WPR106 artifact universe with pre-May monthly dropout diagnostics, annual losing-month caps, best-month concentration controls, rolling three-month/six-month windows, early/late subperiod checks, and packet/component/symbol/behavior exposure caps; all scoring, annual loss limits, dropout ranking, exposure caps, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; includes 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, and 21,216 May trade rows; behavior-de-duplicates to 1,915 source rows with 326 monthly-elite rows, 442 dropout-robust rows, and 849 rolling-survivor rows; selects 100 fixed pre-May rows with 78 monthly-elite, 10 dropout-robust, and 12 rolling-survivor rows, 85 to 983 trades, 21 to 28 active months, 1 to 9 monthly losing months, +0.054780 to +2.480657 pre-May total net return, and +0.035858 to +1.630755 return after removing the best three pre-May months; May rejects the monthly-dropout selected set with 18 positive, 80 negative, 2 flat, best +0.047219, worst -0.133646, median -0.016834, and mean -0.020599; rejects the monthly dropout stability selector as candidate-ready, portfolio-ready, or promotion-ready, while preserving research-only follow-up pockets in WPR106-146 cross-symbol relative-strength trade-veto and WPR106-128 anchored VWAP rows; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-158-nested-pre-may-family-holdout-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-158-nested-pre-may-family-holdout-selector.md`, `docs/stage_reports/STAGE_R106_NESTED_PRE_MAY_FAMILY_HOLDOUT_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_158*/**` | Reranks the WPR106-157 broad artifact universe with nested pre-May family/component diagnostics, early pre-May, late validation, 2024/2025/2026 Jan-Apr year blocks, inherited rolling holdouts, and packet/component/symbol/behavior exposure caps; all scoring, family/component diagnostics, ranking, exposure caps, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; includes 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, and 21,216 May trade rows; behavior-de-duplicates to 1,915 source rows with 367 strict nested rows, 588 robust nested rows, and 1,351 late-resilient rows; selects 100 fixed pre-May rows with 69 strict-nested, 30 robust-nested, and 1 late-resilient rows, 80 to 1,241 trades, 22 to 28 active months, 1 to 11 losing months, +0.077980 to +2.480657 pre-May total net return, and all selected rows positive in late pre-May; May rejects the nested selected set with 23 positive, 75 negative, 2 flat, best +0.067949, worst -0.133646, median -0.017069, and mean -0.020578; rejects the nested pre-May selector as candidate-ready, portfolio-ready, or promotion-ready, while preserving research-only follow-up pockets in WPR106-146 cross-symbol relative-strength trade-veto and smaller WPR106-131/128/120 mixed variants; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-157-broad-artifact-component-exposure-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-157-broad-artifact-component-exposure-selector.md`, `docs/stage_reports/STAGE_R106_BROAD_ARTIFACT_COMPONENT_EXPOSURE_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_157*/**` | Broadens beyond the recent WPR106-151 through WPR106-156 source set by discovering every local `data/research/wpr106_*` packet directory with selected pre-May metrics, selected pre-May trade details, and May benchmark trade details; normalizes source IDs including `portfolio_id`, `ensemble_id`, `overlay_id`, `candidate_id`, and `benchmark_id`; normalizes weighted, portfolio, and source return columns; recomputes common metrics from trade details; behavior-de-duplicates accepted pre-May trade paths; scores six anchored pre-May holdout windows; and selects with packet/component/symbol exposure caps; all discovery scoring, behavior de-duplication, rolling diagnostics, exposure caps, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; includes 43 packet directories, 2,925 metric rows, 591,571 pre-May trade rows, and 21,216 May trade rows; behavior-de-duplicates to 1,915 source rows with 1,915 positive pre-May rows, 677 rolling-robust rows, 1,126 loose rows, and 408 strict rows; selected 100 exposure-capped rows span 23 packet labels and contain 70 strict-rolling rows, 29 rolling-robust rows, and 1 strict-only row; May rejects the broad selected set with 23 positive, 75 negative, 2 flat, best +0.067949, worst -0.133646, median -0.014546, and mean -0.018373; rejects the broad artifact component exposure selector as candidate-ready or portfolio-ready, while recording research-only follow-up pockets in WPR106-146 cross-symbol relative-strength trade-veto, WPR106-128 anchored VWAP, and smaller BTCUSDT trend/volatility/cross-symbol intrabar rows; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-156-recent-cross-family-complement-portfolio-search | Codex Research Agent | closed | `docs/work_packets/WPR106-156-recent-cross-family-complement-portfolio-search.md`, `docs/stage_reports/STAGE_R106_RECENT_CROSS_FAMILY_COMPLEMENT_PORTFOLIO_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_156*/**` | Tests whether recent rejected or near-miss 2024-forward families are complementary enough to form stable equal-sleeve research-only portfolios by loading fixed selected artifacts from WPR106-151 through WPR106-155, behavior-de-duplicating sources by pre-May accepted trade paths, constructing quality/loss-complement/low-correlation/packet-diverse portfolios with 2/3/5/8 members, replaying same-symbol-overlap-aware trades with daily caps of 1/3/5, and de-duplicating raw portfolios again by pre-May accepted portfolio behavior before selection; all source scoring, source de-duplication, portfolio construction, portfolio de-duplication, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed strict pre-May selection; loads 401 source rows, behavior-de-duplicates to 153 source rows, generates 2,154 raw portfolios, and pre-May-portfolio-behavior-de-duplicates to 1,852 rows; finds 1,852 positive pre-May rows, 273 positive annual-target rows, 1,563 loose rows, and 273 strict rows; selected 100 strict rows have +0.550936 to +0.864151 pre-May net return, 204 to 1,881 trades, 26 to 28 active months, 2 to 5 losing months, and 4/4 cost-stress survival; top selected row combines `WPR106-152:levelknn-ac064ca5bef3994a` and `WPR106-153:intrabarof-423ffe9e90d52a36`, with 564 trades, 28 active months, 5 losing months, annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 1, +0.864151 pre-May net return, -0.103308 max drawdown, and 0.126470 best-month share; May rejects the fixed selected set with 0 positive, 100 negative, 0 flat, best -0.002595, worst -0.045187, and median -0.019671; rejects simple recent-family complement portfolios as candidate-ready because holdout fragility and shared-component concentration remain despite active trade rates; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-155-causal-lorentzian-regime-knn-search | Codex Research Agent | closed | `docs/work_packets/WPR106-155-causal-lorentzian-regime-knn-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_LORENTZIAN_REGIME_KNN_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_155*/**` | Runs a scoped causal Lorentzian/KNN strategy search over WPR106-96 BTCUSDT/ETHUSDT 15m bars with the WPR106-151/WPR106-126 context helper joining 1m aggTrade flow into completed 15m flow-imbalance features; each signal row uses only prior rows whose fixed-hold labels completed before the signal row, and May replay freezes neighbor labels to pre-May completions; feature packs cover target price/volatility/flow regime, short path plus session shape, and cross-symbol relative-flow regime; grid covers BTCUSDT/ETHUSDT, 8/16/32-bar holds, 192/768-bar lookbacks, 11/31 neighbors, Lorentzian distance plus Euclidean controls, all/US sessions, all/win-rate-55/win-rate-60/edge-20 KNN filters, both/long/short side modes, 1/3/5 target raw signals per day, accepted-trade daily caps of 1/3/5, and no throttle or skip-after-one-prior-losing-month throttle; all feature, distance, lookback, neighbor, filter, side, threshold, cap, throttle, ranking, and selection decisions use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed loose pre-May selection; evaluates 62,208 rows, finds 3,279 positive pre-May rows, 0 positive annual-target rows, 219 loose rows, and 0 strict rows; selected top 100 loose rows have +0.294902 to +0.566516 pre-May net return, 120 to 407 trades, 20 to 28 active months, and 6 to 8 losing months; the top selected row is ETHUSDT Lorentzian target-regime KNN with 32-bar hold, 192-bar lookback, 31 neighbors, all session, both sides, target 3 raw signals/day, max 3 accepted trades/day, and skip-after-one-prior-losing-month throttle, with 266 trades, 20 active months, 8 losing months, annual losses 2024: 4, 2025: 3, 2026 Jan-Apr: 1, +0.566516 pre-May net return, -0.198995 max drawdown, 0.211757 best-month share, and 4/4 cost-stress survival; closest annual-loss diagnostics still fail at 2/3/1 or worse, with zero positive rows at or below 2/2/1 and zero positive rows with at least 24 active months and at most 5 total losing months; May is mixed and not sufficient with 35 positive, 48 negative, 17 flat, best +0.013015, worst -0.062679, and median 0.000000, while the top pre-May row is May-positive at +0.004604 but already unstable pre-May; rejects this completed-bar online regime-analog KNN formulation as candidate-ready; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-154-cross-symbol-intrabar-flow-transfer-search | Codex Research Agent | closed | `docs/work_packets/WPR106-154-cross-symbol-intrabar-flow-transfer-search.md`, `docs/stage_reports/STAGE_R106_CROSS_SYMBOL_INTRABAR_FLOW_TRANSFER_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_154*/**` | Tests cross-symbol intrabar flow transfer using WPR106-96 BTCUSDT/ETHUSDT 15m bars and the WPR106-153 1m aggTrade intrabar feature construction; evaluates BTCUSDT -> ETHUSDT and ETHUSDT -> BTCUSDT transfer scores from leader signed-flow pressure, late-minute delta, flow flips, absorption, relative target-versus-leader flow gaps, synchronized flow, and target price divergence from leader flow; grid covers 96/384-bar normalization, 4/8/16/32-bar fixed exits, all/US sessions, all/leader-flow-burst/leader-late-flow/leader-absorption/relative-dislocation/sync-flow/cross-divergence transfer filters, both/long/short side modes, 1/3/5 target raw signals per day, accepted-trade daily caps of 1/3/5, no throttle or skip-after-one-prior-losing-month throttle, and leader-flow follow/fade, leader late-flow transfer, leader absorption transfer, relative-pressure follow/reversion, synchronized-flow follow, and cross-divergence follow templates; all feature, threshold, filter, side, cap, throttle, hold, ranking, and selection decisions use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed loose pre-May selection; evaluates 96,768 rows, finds 2,288 positive pre-May rows, 9 positive annual-target rows, 221 loose rows, and 0 strict rows; selected top 100 loose rows have +0.233163 to +0.880270 pre-May net return, 158 to 764 trades, 20 to 28 active months, and 5 to 8 losing months; the strongest annual-target pocket is BTCUSDT -> ETHUSDT synchronized-flow follow with cross-divergence filter, 96-bar normalization, 16-bar hold, all-session long-only entries, target 1 raw signal/day, max 3 accepted trades/day, and skip-after-one-prior-losing-month throttle, with 166 trades, 23 active months, 5 losing months, annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 1, +0.447167 pre-May net return, -0.070444 max drawdown, 0.251185 best-month share, and 4/4 cost-stress survival; the 9 annual-target rows collapse to two unique trade paths from that setup and no positive annual-target row has at least 24 active months; May rejects the near-miss and broader selected set with 31 positive, 53 negative, 16 flat, best +0.043733, worst -0.110654, and median -0.006258, while the top pre-May row loses -0.006258 in May; rejects this family as candidate-ready while recording BTCUSDT -> ETHUSDT synchronized-flow/cross-divergence long as a narrow near-miss research lead; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-153-intrabar-order-flow-event-search | Codex Research Agent | closed | `docs/work_packets/WPR106-153-intrabar-order-flow-event-search.md`, `docs/stage_reports/STAGE_R106_INTRABAR_ORDER_FLOW_EVENT_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_153*/**` | Revisits order-flow and microstructure-style strategies using WPR106-96 1m aggTrade context instead of only 15m aggregate flow features; builds completed 15m features from intrabar signed quote imbalance, first-three-minute and last-three-minute delta, late-volume share, top-three-minute volume concentration, flow flip/acceleration, price response/range/efficiency, absorption, and flow/price divergence proxies; grid covers BTCUSDT/ETHUSDT, 96/384-bar normalization, 4/8/16/32-bar fixed exits, all/US sessions, all/flow-burst/volume-burst/late-flow/concentrated/absorption/flip state filters, both/long/short side modes, 1/3/5 target raw signals per day, accepted-trade daily caps of 1/3/5, no throttle or skip-after-one-prior-losing-month throttle, and flow burst follow/fade, absorption fade, late-delta flip follow/fade, volume-climax reversal, and flow/price divergence fade templates; all feature, threshold, filter, side, cap, throttle, hold, ranking, and selection decisions use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed loose pre-May selection; evaluates 84,672 rows, finds 1,730 positive pre-May rows, 0 positive annual-target rows, 138 loose rows, and 0 strict rows; selected top 100 loose rows have +0.103158 to +0.955683 pre-May net return, 223 to 588 trades, 20 to 28 active months, and 6 to 8 losing months; the top selected row is ETHUSDT late-delta flip fade, 384-bar normalization, 32-bar hold, US session, late-flow state, long-only, target 1 raw signal/day, max 3 accepted trades/day, and no loss throttle, with 521 trades, 28 active months, 8 losing months, annual losses 2024: 3, 2025: 4, 2026 Jan-Apr: 1, +0.955683 pre-May net return, -0.262727 max drawdown, 0.126263 best-month share, and 4/4 cost-stress survival; May is mixed but not sufficient: fixed selected rows have 30 positive, 46 negative, 24 flat, best +0.049922, worst -0.141880, and median 0.000000; the top pre-May row loses -0.057689 in May; rejects this intrabar order-flow event family as candidate-ready or as a new promising lead because no row meets the annual stability target; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-152-level-knn-trade-filter-search | Codex Research Agent | closed | `docs/work_packets/WPR106-152-level-knn-trade-filter-search.md`, `docs/stage_reports/STAGE_R106_LEVEL_SOURCE_KNN_TRADE_FILTER_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_152*/**` | Tests a scoped Lorentzian/KNN variant away from the rejected WPR106-146 sparse side-veto lineage by using WPR106-151 level/retest rows as source strategies; selects 160 WPR106-151 source candidate rows using only pre-May ranking evidence, replays them with WPR106-151 accounting, exact-behavior de-duplicates to 94 source-pool rows with at least 60 pre-May trades, and builds 14,495 pre-May source trades plus 203 May source trades; KNN features use completed signal-bar path, flow, range/regime, WPR106-151 score strength, flow alignment, and trend alignment; grid covers `level_score_flow`, `path_level`, and `regime_level` packs, Lorentzian/Euclidean distance, 48/96/192-trade lookbacks, 5/11/23 neighbors, all-side/same-side history, neighbor mean thresholds -0.00010/0.00000/0.00035, win-rate thresholds 0.48/0.54/0.60, and daily caps 1/3/5; all source-pool selection, KNN features, normalization, distance, lookback, neighbor count, thresholds, caps, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May loose selection and frozen pre-May neighbor history; evaluates 274,104 overlay rows, finds 252,394 positive pre-May rows, 69,210 positive annual-target rows, 16,568 loose rows, and 0 strict rows; the fixed selected set uses the top 100 loose rows concentrated in 5 ETHUSDT prior-day breakout-follow source rows, mostly `path_level` Lorentzian variants; the top selected row has 85 pre-May trades, 25 active months, 4 losing months, annual losses 2024: 1, 2025: 2, 2026 Jan-Apr: 1, +0.877616 pre-May net return, -0.132155 max drawdown, 0.185848 best-month share, and 4/4 cost-stress survival; May rejects every fixed selected row with 0 positive, 100 negative, 0 flat, best -0.002536, worst -0.030063, and median -0.016714; rejects this level-source KNN trade filter as candidate-ready or as a new promising lead and shows level-aware KNN filtering does not rescue the WPR106-151 level/retest diagnostics; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-151-causal-multiday-level-retest-search | Codex Research Agent | closed | `docs/work_packets/WPR106-151-causal-multiday-level-retest-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_MULTIDAY_LEVEL_RETEST_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_151*/**` | Revisits rejected prior-day level, sweep/wick, and opening-range evidence without defending old rows; runs an artifact-only causal multi-day level retest search over WPR106-96 BTCUSDT/ETHUSDT 15m bars with prior completed day, prior completed 5-day range, and prior completed week levels; breakout-follow, failed-break-fade, retest-rejection, retest-momentum, and midline-reversion templates; 96/384-bar normalization; 8/16/32-bar fixed exits; all/US sessions; all/high-range/compressed range-state filters; all/flow-confirm/flow-contrarian flow filters; both/long/short side modes; target raw signal rates of 1/3/5 per day; accepted-trade daily caps of 1/5; and optional prior completed-month loss throttle; all features, thresholds, filters, caps, throttles, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May strict selection; evaluates 113,400 rows, finds 28,627 positive pre-May rows, 3,850 positive annual-target rows, 1,812 loose rows, and 1 strict row; the strict row is BTCUSDT prior-day breakout-follow with 96-bar normalization, 32-bar hold, US session, compressed range-state, flow-confirmed long-only entries, target 5 raw signals/day, max 1 accepted trade/day, and no monthly loss throttle; it has 120 pre-May trades, 28 active months, 4 losing months, annual losses 2024: 1, 2025: 2, 2026 Jan-Apr: 1, +0.257106 pre-May net return, -0.070493 max drawdown, 0.175802 best-month share, and 4/4 cost-stress survival; May rejects the fixed selected row with 0 positive, 1 negative, 0 flat, 3 trades, -0.010441 net return, and -0.010441 max drawdown; rejects this family as candidate-ready or as a new promising lead; broader loose and annual-target diagnostics remain research-useful but not promotable; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-150-pair-relative-value-regime-exit-repair | Codex Research Agent | closed | `docs/work_packets/WPR106-150-pair-relative-value-regime-exit-repair.md`, `docs/stage_reports/STAGE_R106_PAIR_RELATIVE_VALUE_REGIME_EXIT_REPAIR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_150*/**` | Revisits the WPR106-125 true-pair BTCUSDT/ETHUSDT relative-value family without rerunning the same rejected grid; reuses WPR106-125 two-leg pair accounting and tests a pre-May-only repair layer around spread-acceleration momentum, spread momentum, and relative-return momentum with daily caps of 1/5, unit and rolling-1536 hedges, fixed and score-flip exits, stable-correlation/flow-expansion gates, and a causal prior-completed-month loss throttle; all gates, thresholds, exit choices, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May loose rows are selected; evaluates 5,184 rows, finds 986 positive pre-May rows, 4 annual-target rows, 8 loose rows, and 0 strict rows; selected rows are all spread-acceleration-momentum repair variants with +0.140573 to +0.234607 pre-May net return, 84 to 134 trades, 20 to 23 active months, 5 to 7 losing months, max drawdown from -0.022178 to -0.038389, and 4/4 cost-stress survival, but they still miss the ideal annual stability target; the four annual-target rows are too sparse and weak: 30 trades, 11 active months, +0.003453 pre-May return, best-month share 0.799766, and 1/4 cost-stress survival; May rejects the fixed selected set with 0 positive rows, 4 negative rows, 4 flat rows, best 0.000000, worst -0.010919, and median -0.005459; flat rows are fully skipped by the causal loss throttle after April state; rejects this pair repair as candidate-ready or as a new promising lead; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-149-causal-flow-state-transfer-search | Codex Research Agent | closed | `docs/work_packets/WPR106-149-causal-flow-state-transfer-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_FLOW_STATE_TRANSFER_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_149*/**` | Tests a fresh artifact-only causal flow-state transfer search over the WPR106-96 verified BTCUSDT and ETHUSDT 15m feature context through 2026-05; builds common completed-bar price/volume/taker-flow features only, avoiding ETH-only context columns, and evaluates flow-state continuation, compression breakout, sweep/wick absorption reversal, price/flow divergence, cross-symbol transfer, and transparent price-only controls; all score formulas, thresholds, rankings, transfer checks, and selections use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only and untouched because no pre-May row passed the promising-lead screen; the reduced staged funnel evaluates 5,376 rows across BTCUSDT and ETHUSDT using target raw signal rates of 1 and 5 per day, all/US sessions, all/flow-active regimes, both/long/short side modes, daily caps of 1 and 5, and fixed 8/16-bar exits with existing overlap, daily-cap, and cost accounting; BTCUSDT has 127 positive rows, max +0.129187, and median -0.377506; ETHUSDT has 511 positive rows, max +0.814188, and median -0.332186; the family produces zero strict rows, zero loose rows, zero transfer-strict rows, and zero transfer-loose rows; the best same-configuration positive-on-both-symbol diagnostic row still has 11 max losing months, so the monthly-stability target is not met; rejects this fresh common-column price/flow state family as a promising source; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-148-broad-behavior-dedup-rolling-source-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-148-broad-behavior-dedup-rolling-source-selector.md`, `docs/stage_reports/STAGE_R106_BROAD_BEHAVIOR_DEDUP_ROLLING_SOURCE_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_148*/**` | Moves away from the WPR106-146/WPR106-147 path-specific sparse side-veto lineage and runs a broad behavior-deduped rolling selector over the WPR106-144 direct source/family benchmark universe; all accepted-trade behavior hashes, rolling holdout diagnostics, ranking, and selection rules use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; replays 2,181 WPR106-144 candidate rows, records the exact source behavior snapshot at 659 source rows reduced to 518, and de-duplicates candidate rows to 1,219 unique pre-May accepted-trade behavior hashes; after behavior de-duplication, 258 rows are strict, 741 are loose, 444 are rolling candidates, and 134 are robust; fixes the top 80 robust behavior-unique rows for May; selected rows look stable pre-May with median total net return +0.724021, median 4 losing months, median rolling worst holdout +0.034321, and median 1.239579 trades per active day, but May rejects the broad survivor set: 7/80 rows positive, 8.75% positive rate, median May -0.012930, mean -0.015425, return sum -1.233990, best +0.019375, and worst -0.133646; individual source rows are 7/69 May-positive and fixed source-family portfolios are 0/11 May-positive; the few May-positive rows are narrow WPR106-137 cross-symbol/transition or pullback pockets, not a validated broad selector; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused script compile, compileall, and contracts passed. |
+| WPR106-147-wpr133-behavior-dedup-stability-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-147-wpr133-behavior-dedup-stability-controls.md`, `docs/stage_reports/STAGE_R106_WPR133_BEHAVIOR_DEDUP_STABILITY_CONTROLS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_147*/**` | Stress-tests the WPR106-146 ETHUSDT `cross_symbol_relative_strength` target source `wpr133_leadlag:leadlag-18708dffa1413dce` with behavior de-duplication, rolling pre-May holdouts, sibling source controls, and BTC hedge diagnostics; all behavior de-duplication, rolling-selection rules, source controls, hedge settings, and ranking use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May definitions; recomputes the 12,000-row target KNN grid with accepted-trade behavior hashes: 4,377 rows are profile-ok before de-duplication, 45 are WPR106-146 strict-like, and 30 meet WPR106-136 strict rules, but the grid collapses to 2,340 unique pre-May behavior hashes with only 718 profile-ok and 15 strict-like representatives; the top behavior-deduped row remains the WPR106-146 leading `regime_reversal` + Lorentzian + same-side KNN variant with 64-trade lookback, 31 neighbors, cap 3, 242 pre-May trades, 25 active months, 4 losing months, annual losses 2/2/0, +1.140510 pre-May, -0.145973 max drawdown, and +0.067949 May; the top 30 behavior-deduped rows are all May-positive after fixed pre-May selection, with best May +0.067949, median +0.034110, and worst +0.015398, but rolling pre-May selection rejects robustness: top-1 rolling selections are holdout-positive in only 3/6 splits and profile-ok in only 3/6, with failed holdouts in 2025 Q1, Q2, and Q3; top-3 equal-average selections are also positive in only 3/6 splits; sibling source controls reject transfer: across five top parameter settings and 14 WPR106-133 ETHUSDT relative-strength continuation source rows, the target passes pre-May and May in 5/5 controls, but the 65 non-target sibling rows have 9 profile-ok rows, 0 strict-like rows, 23 May-positive rows, and 0 rows passing both pre-May profile and May benchmark; BTC hedge diagnostics also fail to improve the lead: 15 hedge rows produce 4 profile-ok rows, 0 strict-like rows, and 10 May-positive rows; full 1.00 BTC hedge variants turn May negative; rejects the WPR106-146 lead as a broader source-level strategy and keeps it as a path-specific research pocket only; next broad-search work should move away from defending this exact source path; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-146-wpr133-relative-strength-overlay-causal-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-146-wpr133-relative-strength-overlay-causal-audit.md`, `docs/stage_reports/STAGE_R106_WPR133_RELATIVE_STRENGTH_OVERLAY_CAUSAL_AUDIT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_146*/**` | Audits the WPR106-133 `cross_symbol_relative_strength` source row `wpr133_leadlag:leadlag-18708dffa1413dce` and WPR106-137 overlay `tradeveto-3a585c9bd5b09303`, the member WPR106-145 identified as the strongest May-positive contributor inside the rejected KNN-veto ensemble leads; all KNN parameter grids, row rankings, controls, and selected rows use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selections; evaluates raw no-KNN source controls, exact WPR106-137 KNN side controls, and 12,000 nearby KNN parameter rows across `path_flow`/`regime_reversal`, Lorentzian/Euclidean distance, 64/96/160/240/320 lookbacks, 5/7/15/31 neighbors, same-side history, neighbor mean/win-rate thresholds, and daily caps 1/3/5; the exact WPR106-137 overlay remains profile-ok but not strict: cap 3 has 203 pre-May trades, 26 active months, 5 losing months, annual losses 2024: 1, 2025: 3, 2026 Jan-Apr: 1, +1.130996 pre-May, -0.136225 max drawdown, full cost-stress survival, and +0.059766 May; raw source cap 3/5 is also May-positive at +0.065272, while raw long-only and short-only side controls fail pre-May profile checks; the grid finds 4,377 profile-ok rows, 45 WPR106-146 strict-like rows, and 30 WPR106-136 strict rows; 48 fixed selected rows are replayed on May, all 48 are May-positive, with best May +0.067949, median +0.051377, and worst +0.015398; the top selected row is a `regime_reversal` + Lorentzian + same-side variant with 64-trade lookback, 31 neighbors, cap 3/5, 242 pre-May trades, 25 active months, 4 losing months, annual losses 2/2/0, +1.140510 pre-May, -0.145973 max drawdown, full cost-stress survival, and +0.067949 May; behavior diagnostics keep the lead fail-closed: the 48 selected rows reduce to 17 unique pre-May behavior hashes and 8 unique May behavior hashes, the largest May behavior group contains 20 rows, and the top row takes 16 of the raw source cap-3 May trades while excluding one negative raw-source May trade; upgrades the member to a narrow research-only follow-up lead but not a candidate-ready strategy; next work should use behavior-deduped parameter selection, rolling pre-May holdouts, source-row neighbor controls, and portfolio/hedge tests without reusing May for tuning; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-145-direct-knn-veto-lead-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-145-direct-knn-veto-lead-controls.md`, `docs/stage_reports/STAGE_R106_DIRECT_KNN_VETO_LEAD_CONTROLS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_145*/**` | Stress-tests the two WPR106-137 KNN-veto ensemble rows surfaced by WPR106-144, `vetoensemble-0984617d185c319b` and `vetoensemble-2b025e21f7235d09`; replays six fixed daily-cap variants from raw WPR106-137 overlay member trades, using caps 1/3/5 where relevant, and benchmarks member ablations, WPR106-133 removal, `cross_symbol_relative_strength` removal, ETH/BTC symbol subsets, no-KNN source-trade baselines, and month-cluster sensitivity; all control definitions use only pre-May evidence and May 2026 remains benchmark-only; evaluates 84 control rows, including 39 non-diagnostic controls and 45 diagnostic controls; all six baselines are pre-May profile-ok and May-positive: `veto098_cap1` has 345 pre-May trades, 26 active months, 2 losing months, +0.706472 pre-May, -0.045469 max drawdown, and +0.015157 May; `veto098_cap3` and cap5 have 385 pre-May trades, 4 losing months, +0.708908 pre-May, and +0.012709 May; `veto2b025_cap1` has 320 pre-May trades, 5 losing months, +0.517565 pre-May, and +0.012573 May; `veto2b025_cap3` and cap5 have 404 pre-May trades, 2 losing months, +0.728679 pre-May, and +0.009265 May; controls keep the leads fail-closed because May-positive behavior is materially concentrated in the same WPR106-133 `cross_symbol_relative_strength` overlay member `tradeveto-3a585c9bd5b09303`, where isolating it produces +0.059766 May while the other isolated members are May-negative; removing the WPR106-133 or cross-symbol-relative-strength member makes all `veto2b025` variants May-negative, and removing all WPR106-133 lead-lag members from `veto098` leaves only the WPR106-131 volatility-term member and makes May -0.000680; no-KNN diagnostics are mixed: `veto098` no-KNN rows are May-positive but fail pre-May profile checks with 9 losing months, while `veto2b025` no-KNN cap 3/5 has a plausible pre-May profile but fails May; the leads are not duplicate or single-month artifacts, but they are not candidate-ready; next useful work is a direct causal audit of the WPR106-133 relative-strength overlay member, not a candidate-pack attempt; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-144-direct-source-family-stability-benchmark | Codex Research Agent | closed | `docs/work_packets/WPR106-144-direct-source-family-stability-benchmark.md`, `docs/stage_reports/STAGE_R106_DIRECT_SOURCE_FAMILY_STABILITY_BENCHMARK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_144*/**` | Moves away from monthly rotation and benchmarks the underlying strategy rows and source families directly; rebuilds the WPR106-141 trade-level source universe, removes 141 exact duplicate-behavior source rows to get 518 deduped sources, and evaluates 1,554 individual source-row variants plus 627 fixed equal-sleeve source-family portfolios over 2024-01-01 through 2026-04-30 only; fixed portfolios are grouped by packet, family, packet-family, symbol, and packet-symbol, choose members by pre-May stability only, and replay with embedded source costs, same-symbol overlap skipping, and daily accepted-trade caps of 1, 3, or 5; the pre-May screen finds 2,170 positive rows, 1,362 loose rows, and 422 strict rows, then fixes the top 120 strict rows before any May benchmark; May 2026 rejects the broad selected set with 30 positive rows and 90 negative rows, best May +0.015157, worst -0.118374, and median -0.002191; individual source rows are 21/92 May-positive and fixed source-family portfolios are 9/28 May-positive; narrow research-only follow-up leads remain: WPR106-137 `vetoensemble-0984617d185c319b` has 342 pre-May trades, 26 active months, 2 losing months, +0.669507 pre-May net return, -0.045469 max drawdown, +0.015157 May with 17 trades, and full May cost-stress survival; WPR106-137 `vetoensemble-2b025e21f7235d09` has 404 pre-May trades, 26 active months, 2 losing months, +0.728679 pre-May net return, -0.053935 max drawdown, and +0.009265 May with 22 trades; these are follow-up research leads requiring source-member ablation, cross-symbol-relative-strength controls, KNN-veto dependence tests, shifted/no-KNN controls, and cluster sensitivity checks, not candidate-ready rows; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-143-diversity-robust-monthly-rotation-search | Codex Research Agent | closed | `docs/work_packets/WPR106-143-diversity-robust-monthly-rotation-search.md`, `docs/stage_reports/STAGE_R106_DIVERSITY_ROBUST_MONTHLY_ROTATION_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_143*/**` | Tests whether the WPR106-141/WPR106-142 monthly rotation idea can survive when diversity and leave-one robustness are required at pre-May selection time rather than added after the fact; rebuilds the WPR106-141 trade-level source universe, removes 141 exact duplicate-behavior source rows to get 518 deduped sources, and evaluates 648 stricter causal monthly rotation rows over 2024-01-01 through 2026-04-30 only: 3/6/12-month lookbacks, 5/8 members, daily caps of 1/3/5, stable-mean/recent-stability/loss-control/loss-complement scoring, family/packet/packet-family diversity, and max pair correlations of 0.45/0.65/0.85; finds 648 positive pre-May rows, 468 loose rows, and 18 strict/diverse rows; reruns the top 60 diverse loose/strict rows through pre-May-only leave-one-source, leave-one-packet, leave-one-family, no-WPR106-133, no-cross-symbol-relative-strength, and no-calendar-like controls; finds no full robust-strict row; fixes 12 core-strict rows for May after source/packet/family and cross-symbol-relative-strength checks, with roughly 1.52-1.68 trades per active day, 884-988 pre-May trades, 25 active months, and 4 losing pre-May months, but all fail the no-calendar-like loose floor; fixed May 2026 benchmark rejects all 12 core-strict rows with 0 positive, 12 negative, best May -0.019916, worst -0.021032, and median -0.021032; diagnostic shifted/shuffled controls produce 88 selected diagnostic rows and 8 May-positive diagnostic rows, including 70 strict/diverse rows and 8 May-positive rows from reversed month order; the monthly rotation family remains research-only and fail-closed, and the broad search should move away from defending this line; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-142-monthly-rotation-lead-controls | Codex Research Agent | closed | `docs/work_packets/WPR106-142-monthly-rotation-lead-controls.md`, `docs/stage_reports/STAGE_R106_MONTHLY_ROTATION_LEAD_CONTROLS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_142*/**` | Stress-tests the WPR106-141 rank-1 causal monthly rotation lead `monthrot-ed7358029b345be5` before treating it as more than a narrow research-only lead; fixes the rule from pre-May evidence as 6-month lookback, 5 members, max 1 accepted trade/day, stable-mean scoring, no diversity limit, and max pair correlation 0.85; rebuilds the WPR106-141 source universe and reruns the fixed rule under 38 controls: baseline, exact source-trade behavior deduplication, calendar-only and no-calendar controls, each May-selected source removed, each lead-used packet removed, each lead-used family removed, and five diagnostic-only shifted/shuffled monthly-evidence negative controls; all control definitions use only pre-May artifacts and WPR106-141 selected evidence, with May 2026 benchmark-only after each fixed control definition; exact behavior deduplication removes 141 duplicate-behavior source rows across 132 duplicate groups while preserving the baseline result: 573 pre-May trades, 25 active months, 3 losing months, +0.359543 pre-May net return, -0.046434 max drawdown, full cost-stress survival, and +0.008070 May net return; across 33 non-diagnostic controls, 20 remain pre-May strict, 29 are May-positive, and 16 are both pre-May strict and May-positive, with median non-diagnostic May +0.008070, best +0.017640, and worst -0.007396; control failures keep the lead fail-closed: dropping WPR106-133, dropping cross-symbol relative strength, or dropping the May-selected WPR106-133 source keeps pre-May strictness but makes May -0.007396, dropping WPR106-139 breaks pre-May strictness with 7 losing months, and one of five diagnostic negative controls is May-positive at +0.001073; the lead remains research-only and not candidate-ready, with next work needing either stricter packet/family diversity and cross-symbol robustness at selection time or rejection if additional controls and holdouts keep mimicking positive May; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-141-causal-monthly-family-rotation-search | Codex Research Agent | closed | `docs/work_packets/WPR106-141-causal-monthly-family-rotation-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_MONTHLY_FAMILY_ROTATION_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_141*/**` | Tests whether previously rejected or loose 2024-forward families have value when combined by a causal month-by-month family-rotation portfolio; loads trade-level selected-row artifacts from WPR106-130 through WPR106-137 and WPR106-139 through WPR106-140, explicitly skipping WPR106-138 because it has no selected trade-level artifacts; normalizes 659 source rows with 139,311 pre-May source trade rows and 5,524 May source trade rows; for each pre-May month, chooses source members using only earlier monthly evidence, then replays the selected month from source trades with equal outer sleeves, embedded source costs, same-symbol overlap skipping, and accepted-trade daily caps of 1, 3, or 5; all source universe, lookback, scoring, diversity, daily-cap, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May strict selection; evaluates 864 rotation rows across 3/6/12-month lookbacks, member counts 3/5/8, stable-mean/recent-stability/loss-control/loss-complement scoring, none/family/packet/packet-family diversity, and max pairwise monthly-return correlations of 0.65/0.85; finds 864 positive pre-May rows, 668 loose rows, and 60 strict rows, then fixes the top 60 strict rows for May; the top strict row `monthrot-ed7358029b345be5` uses a 6-month lookback, 5 members, max 1 accepted trade/day, stable-mean scoring, no diversity limit, and max pair correlation 0.85, with 573 pre-May trades, 573 active days, 25 active months, 3 losing months, annual losses 2024: 1, 2025: 2, 2026 Jan-Apr: 0, +0.359543 pre-May net return, -0.046434 max drawdown, 0.190664 best-month share, and full cost-stress survival; the fixed top-60 strict set fails May as a broad family with 3 positive, 57 negative, and 0 flat rows, best May +0.012442, worst May -0.032874, and median May -0.021032; the rank-1 row itself is May-positive at +0.008070 with 26 accepted trades, so it remains a narrow research-only follow-up lead requiring source deduplication, source/family ablation, shifted/shuffled controls, transparent dynamic-rule baselines, and gate checks before trust; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-140-causal-rolling-calendar-profile-search | Codex Research Agent | closed | `docs/work_packets/WPR106-140-causal-rolling-calendar-profile-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_ROLLING_CALENDAR_PROFILE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_140*/**` | Tests a causal rolling follow-up to the WPR106-139 calendar/session idea over WPR106-96 verified BTCUSDT/ETHUSDT 15m bars plus 15m aggTrade-flow context; replaces full-window frozen calendar profiles with same-bucket rolling profile statistics that use only completed prior fixed-hold labels, with a prior label eligible only when its exit timestamp is before the current signal timestamp; freezes May 2026 profile history to labels completed before 2026-05-01 so no May label can influence a May signal; uses only 2024-01-01 through 2026-04-30 for all template, threshold, filter, ranking, and selection choices, then benchmarks May 2026 only after fixed pre-May selection; tests causal profile-follow, pullback, momentum, flow-impulse, and volatility-fade variants across `session4`, `weekday_session4`, `hour`, and `weekday_hour` buckets, 4/8/16/32-bar holds, 64/256/1024 completed-label rolling lookbacks, all/EU/US session filters, all/high-volume volatility filters, all/confirm/contra/neutral flow filters, next-bar entries, one-position overlap handling, costs, cost stress, and target raw signal rates of 1, 3, and 5 per day; evaluates 34,560 rows, finds 3,257 positive pre-May rows, 115 annual-target rows, 84 loose rows, and 0 strict rows, so the fixed benchmark set uses the 84 loose rows; the top selected loose row is ETHUSDT rolling flow impulse with a weekday-hour profile, 32-bar hold, 1,024-label lookback, US session, neutral-flow filter, 114 trades, 114 active days, 1.000000 trades per active day, 21 active months, 3 losing months, annual losses 2024: 0, 2025: 2, 2026 Jan-Apr: 1, +0.704749 pre-May net return, -0.195592 max drawdown, 0.190797 best-month share, and full cost-stress survival; the largest pre-May loose return is +1.055805 from an ETHUSDT rolling profile-follow row, but it has 7 losing months and misses strict stability; May rejects the fixed loose set with 12 positive, 58 negative, and 14 flat selected rows, best May +0.016704, worst May -0.123038, and median May -0.014084; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-139-calendar-session-interaction-search | Codex Research Agent | closed | `docs/work_packets/WPR106-139-calendar-session-interaction-search.md`, `docs/stage_reports/STAGE_R106_CALENDAR_SESSION_INTERACTION_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_139*/**` | Tests a fresh artifact-only calendar/session interaction family over WPR106-96 verified BTCUSDT/ETHUSDT 15m bars plus 15m aggTrade-flow context; fits completed-bar calendar profiles on 2024-01-01 through 2026-04-30 only, freezing bucket direction and strength by `session4`, `weekday_session4`, `hour`, and `weekday_hour`; tests profile-follow, profile-pullback, profile-momentum, flow-confirmed profile impulse, and volatility-profile fade templates with fixed 4/8/16/32-bar exits, all/Asia/EU/US session filters, all/quiet/high-range/high-volume volatility filters, all/confirm/contra/neutral flow filters, next-bar entries, one-position overlap handling, costs, and cost stress; explicitly allows active target rates of 1, 3, and 5 raw signals per day; all profile fitting, template, threshold, filter, ranking, and selection choices use only pre-May data, with May 2026 benchmark-only after fixed strict selection; evaluates 29,184 rows, finds 9,735 positive pre-May rows, 237 annual-target rows, 808 loose rows, and 17 strict rows; the top strict row is ETHUSDT flow-confirmed calendar impulse with a weekday-hour profile, 32-bar hold, all-session high-volume filter, 678 trades, 486 active days, 1.395062 trades per active day, 28 active months, 4 losing months, annual losses 2024: 2, 2025: 1, 2026 Jan-Apr: 1, +2.480657 pre-May net return, -0.205831 max drawdown, 0.125698 best-month share, and full cost-stress survival; May rejects every fixed strict row with 0 positive, 17 negative, and 0 flat selected rows, best May -0.000748, worst May -0.133646, and median May -0.033021; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-138-pre-may-robust-meta-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-138-pre-may-robust-meta-selector.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_ROBUST_META_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_138*/**` | Tests a pre-May-only robustness meta-selector across previously selected 2024-forward rows from WPR106-130 through WPR106-137; normalizes single-strategy rows, equal-sleeve portfolios, KNN trade-veto overlays, and KNN-veto ensembles into one ranking table, then scores them using only 2024-01 through 2026-04 monthly evidence including annual losing-month counts, total losing months, rolling six-month loss counts and return floors, late-window return, 2026 Jan-Apr return, active months, active days, trades per active day, drawdown, Sortino, cost-stress survival, and best-month concentration; explicitly allows active 1-5 trades/day behavior; loads May 2026 only after fixed pre-May selection is written; loads 558 selected pre-May rows across eight source packets and four row kinds, finds 168 selector-strict rows and 277 selector-loose rows, and fixes the top 100 strict rows for benchmark; strict rows come from WPR106-137 ensembles (94), WPR106-135 portfolios (61), WPR106-136 KNN-veto overlays (12), and WPR106-131 volatility term-structure (1); the selected top 100 contain 69 WPR106-137 KNN-veto ensemble rows and 31 WPR106-135 equal-sleeve portfolio rows; the top selected row is WPR106-137 `vetoensemble-b7901da9b03fc7df`, with 344 trades, 305 active days, 1.127869 trades per active day, 26 active months, 2 selector losing months, annual losses 2024: 2, 2025: 0, 2026 Jan-Apr: 0, +0.820014 pre-May net return, -0.042254 max drawdown, 0.080792 best-month share, and +0.194012 late six-month return; May rejects the fixed selected set with 20 positive, 80 negative, and 0 flat selected rows, best May +0.012709, worst May -0.035239, and median May -0.009168; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-137-diversity-constrained-knn-veto-ensemble | Codex Research Agent | closed | `docs/work_packets/WPR106-137-diversity-constrained-knn-veto-ensemble.md`, `docs/stage_reports/STAGE_R106_DIVERSITY_CONSTRAINED_KNN_VETO_ENSEMBLE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_137*/**` | Tests whether the WPR106-136 KNN trade-veto overlay can survive as a diversified equal-sleeve ensemble rather than as a concentrated standalone row filter; builds a fixed 120-row overlay universe from WPR106-136 pre-May evidence only, covering 103 unique source rows, five source packets, and 16 families; replays overlays with the WPR106-136 causal rule intact, requiring pre-May trades to use only earlier completed source-trade outcomes and May to use frozen pre-May history; generates 6,511 diverse member sets requiring unique sources, at least two source packets, and at least two families, and evaluates 13,022 ensemble rows with equal sleeves, same-symbol overlap skipping, daily caps of 3 and 5 accepted trades, costs, and cost stress; all overlay-universe, construction, diversity, daily-cap, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; finds 13,022 positive pre-May rows, 3,545 annual-target rows, 12,557 loose rows, and 3,531 strict rows; the top selected strict ensemble combines WPR106-133 lead-lag, WPR106-131 volatility term-structure, and WPR106-134 microstructure sleeves across ETHUSDT/ETHUSDT/BTCUSDT, has 518 trades, 404 active days, 1.282178 trades per active day, 26 active months, 4 losing months, annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 0, +0.866623 pre-May net return, -0.067977 max drawdown, 0.105048 best-month share, and full cost-stress survival; May rejects the fixed top-100 strict selection with 15 positive, 85 negative, and 0 flat selected rows, best May +0.019375, worst May -0.045451, and median May -0.015958; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-136-cross-family-knn-trade-veto-search | Codex Research Agent | closed | `docs/work_packets/WPR106-136-cross-family-knn-trade-veto-search.md`, `docs/stage_reports/STAGE_R106_CROSS_FAMILY_KNN_TRADE_VETO_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_136*/**` | Tests a scoped artifact-only cross-family KNN trade-veto overlay over selected source trades from WPR106-130 through WPR106-134; uses WPR106-96 verified 15m bars plus 15m aggTrade-flow aggregation and completed-signal-bar features; all source selection, behavior de-duplication, feature normalization, KNN parameter, threshold, daily-cap, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; pre-May source trades only use earlier completed source-trade outcomes and May uses frozen pre-May history only; loads 346 selected source candidates, de-duplicates exact pre-May trade behavior to 292 source rows, and evaluates 168,192 overlay rows across `path_flow` and `regime_reversal` feature packs, Lorentzian/Euclidean distance, 64/160-trade lookbacks, 7/15 neighbors, all-side or same-side history, neighbor mean/win thresholds, and daily caps of 1/3/5 trades; finds 132,125 positive pre-May rows, 25,371 annual-target rows, 14,903 loose rows, and 12 strict rows; strict rows are concentrated in two WPR106-133 ETHUSDT cross-symbol leader-momentum source candidates; the top strict row has 147 trades, 26 active months, 5 losing months, annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 1, +0.383212 pre-May net return, -0.058052 max drawdown, 0.144292 best-month share, and full cost-stress survival; May rejects the fixed strict selection with 0 positive, 12 negative, and 0 flat rows, every selected overlay accepting the same 8 May trades and recording -0.070820 May net return; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-135-microstructure-annual-target-portfolio-search | Codex Research Agent | closed | `docs/work_packets/WPR106-135-microstructure-annual-target-portfolio-search.md`, `docs/stage_reports/STAGE_R106_MICROSTRUCTURE_ANNUAL_TARGET_PORTFOLIO_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_135*/**` | Tests whether WPR106-134 sparse positive annual-target diagnostics can be converted into active, month-stable equal-sleeve portfolios without using May 2026 for tuning; replays 797 positive annual-target source rows through the WPR106-134 runner, de-duplicates them by exact pre-May symbol/entry/exit/side behavior, keeps a diversified 128-row source pool, and evaluates 8,542 unique portfolio rows from 4,300 fixed member sets with member counts 2/3/4/5/6/8/10/12, daily caps 3 and 5, same-symbol overlap skipping, costs, and cost stress; all source-pool, de-duplication, portfolio construction, daily-cap, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; finds 8,542 positive pre-May portfolios, 3,538 annual-target rows, 4,635 loose rows, and 279 strict rows; the top selected strict portfolio has five equal-sleeve sources, 125 trades, 115 active days, 1.086957 trades per active day, 28 active months, 4 losing months, annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 0, +0.133239 pre-May net return, -0.011290 max drawdown, 0.173208 best-month share, and full cost-stress survival; May rejects the fixed top-100 strict selection with 43 positive, 55 negative, and 2 flat selected rows, best May +0.002333, worst May -0.003529, and median May -0.000509; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-134-microstructure-state-transition-search | Codex Research Agent | closed | `docs/work_packets/WPR106-134-microstructure-state-transition-search.md`, `docs/stage_reports/STAGE_R106_MICROSTRUCTURE_STATE_TRANSITION_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_134*/**` | Tests a fresh artifact-only completed-bar microstructure/state-transition family over WPR106-96 verified BTCUSDT/ETHUSDT bars and 15m aggTrade-flow context; all state-window, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; evaluates 40,320 rows across return-streak continuation, return-streak exhaustion fade, flow-price agreement follow, flow-price divergence fade, volatility-burst follow, volatility-burst reversal, and alternating-chop reversion templates with next-bar entry, fixed 4/8/16/32-bar exits, sessions, state filters, flow filters, overlap handling, costs, and cost stress; finds 4,070 positive pre-May rows, 797 positive annual-target rows, 55 loose rows, and 0 strict rows; the top selected loose row is ETHUSDT volatility-burst follow with a 384-bar state window, 32-bar hold, EU-session flow-neutral filters, 598 trades, 28 active months, 8 losing months, annual losses 2024: 2, 2025: 5, 2026 Jan-Apr: 1, +1.333473 pre-May net return, -0.236297 max drawdown, 0.171097 best-month share, and full cost-stress survival, but it misses annual stability; annual-target diagnostics are mostly too sparse for selection, led by a BTCUSDT volatility-burst row with 45 trades and 22 active months; May rejects the fixed loose selection with 16 positive, 39 negative, and 0 flat selected rows, best May +0.037955, worst May -0.117907, and median May -0.022664; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-133-cross-symbol-lead-lag-search | Codex Research Agent | closed | `docs/work_packets/WPR106-133-cross-symbol-lead-lag-search.md`, `docs/stage_reports/STAGE_R106_CROSS_SYMBOL_LEAD_LAG_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_133*/**` | Tests a fresh artifact-only BTCUSDT/ETHUSDT cross-symbol lead-lag family over WPR106-96 verified bars and 15m aggTrade-flow context; requires timestamp-aligned BTCUSDT/ETHUSDT contexts; all lead-lag window, lag, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; evaluates 41,472 rows across BTCUSDT->ETHUSDT and ETHUSDT->BTCUSDT leader/target directions, leader momentum spillover, lagged convergence, relative-strength continuation, beta-residual reversion, flow-led momentum, and correlation-break follow templates with next-bar target-symbol entry, fixed 4/8/16/32-bar exits, sessions, relation filters, flow filters, overlap handling, costs, and cost stress; finds 4,103 positive pre-May rows, 0 positive annual-target rows, 59 loose rows, and 0 strict rows; the top selected loose row is BTCUSDT->ETHUSDT relative-strength continuation with a 96-bar window, 4-bar lag, 32-bar hold, all-session flow-neutral filters, 623 trades, 28 active months, 7 losing months, annual losses 2024: 4, 2025: 2, 2026 Jan-Apr: 1, +1.384103 pre-May net return, -0.184168 max drawdown, 0.128455 best-month share, and full cost-stress survival, but no row meets annual stability; May rejects the fixed loose selection with 6 positive, 53 negative, and 0 flat selected rows, best May +0.065272, worst May -0.132690, and median May -0.034385; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-132-multi-horizon-trend-state-search | Codex Research Agent | closed | `docs/work_packets/WPR106-132-multi-horizon-trend-state-search.md`, `docs/stage_reports/STAGE_R106_MULTI_HORIZON_TREND_STATE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_132*/**` | Tests a fresh artifact-only multi-horizon trend-state family over WPR106-96 verified BTCUSDT/ETHUSDT bars and 15m aggTrade-flow context; all state-window, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; evaluates 40,320 rows across trend-follow, trend-pullback resume, state-transition breakout, trend-exhaustion fade, choppy mean-reversion, range-expansion follow, and flow-confirmed momentum templates with next-bar entry, fixed 4/8/16/32-bar exits, sessions, state filters, flow filters, overlap handling, costs, and cost stress; finds 5,402 positive pre-May rows, 50 positive annual-target rows, 135 loose rows, and 0 strict rows; the top selected loose row is ETHUSDT multi-horizon trend-follow with a 384-bar state window, 32-bar hold, US-session flow-confirmed filters, 155 trades, 28 active months, 7 losing months, annual losses 2024: 3, 2025: 2, 2026 Jan-Apr: 2, +1.269778 pre-May net return, -0.091575 max drawdown, 0.138924 best-month share, and full cost-stress survival, but it misses annual losing-month caps; May rejects the fixed loose selection with 17 positive, 118 negative, and 0 flat selected rows, best May +0.030352, worst May -0.072618, and median May -0.021058; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-131-volatility-term-structure-search | Codex Research Agent | closed | `docs/work_packets/WPR106-131-volatility-term-structure-search.md`, `docs/stage_reports/STAGE_R106_VOLATILITY_TERM_STRUCTURE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_131*/**` | Tests a fresh artifact-only realized-volatility term-structure family over WPR106-96 verified BTCUSDT/ETHUSDT bars and 15m aggTrade-flow context; all volatility-window, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; evaluates 27,648 rows across compression breakout follow, volatility-expansion follow, volatility-shock fade, term-structure reversal, quiet-trend pullback, and compression mean-reversion templates with next-bar entry, fixed 4/8/16/32-bar exits, sessions, volatility-regime filters, flow filters, overlap handling, costs, and cost stress; finds 3,267 positive pre-May rows, 249 positive annual-target rows, 96 loose rows, and 0 strict rows; the top selected loose row is ETHUSDT quiet-trend pullback with a 1,536-bar volatility window, 8-bar hold, US-session expanding-volatility flow-confirmed filters, 62 trades, 23 active months, 4 losing months, annual losses 2024: 2, 2025: 1, 2026 Jan-Apr: 1, +0.314313 pre-May net return, -0.068759 max drawdown, 0.186075 best-month share, and full cost-stress survival, but it misses strict trade-count and active-month floors; May rejects the fixed loose selection with 30 positive, 65 negative, and 1 flat selected rows, best May +0.023473, worst May -0.053216, and median May -0.007760; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-130-prior-day-level-gap-search | Codex Research Agent | closed | `docs/work_packets/WPR106-130-prior-day-level-gap-search.md`, `docs/stage_reports/STAGE_R106_PRIOR_DAY_LEVEL_GAP_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_130*/**` | Tests a fresh artifact-only prior-day level and gap family over WPR106-96 verified BTCUSDT/ETHUSDT bars and 15m aggTrade-flow context; all feature-window, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May strict selection; evaluates 17,664 rows across prior-day breakout follow, failed-breakout fade, range-fade, gap-reversion, gap-continuation, and prior-day VWAP reversion templates with next-bar entry, fixed 4/8/16/32-bar exits, sessions, volume/volatility filters, flow filters, overlap handling, costs, and cost stress; finds 2,061 positive pre-May rows, 1 positive annual-target row, 105 loose rows, and 1 strict row; the strict row is ETHUSDT prior-day breakout follow with 261 trades, 28 active months, 5 losing months, annual losses 2024: 2, 2025: 2, 2026 Jan-Apr: 1, +1.088169 pre-May net return, -0.126504 max drawdown, 0.163108 best-month share, and full cost-stress survival; May rejects the strict row with 3 trades, -0.029037 net return, and -0.029037 max drawdown; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-129-opening-range-breakout-fade-search | Codex Research Agent | closed | `docs/work_packets/WPR106-129-opening-range-breakout-fade-search.md`, `docs/stage_reports/STAGE_R106_OPENING_RANGE_BREAKOUT_FADE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_129*/**` | Tests a fresh artifact-only opening-range breakout/fade family over WPR106-96 verified BTCUSDT/ETHUSDT bars and 15m aggTrade-flow context; all opening-range length, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; evaluates 17,280 rows across Asia/EU/US opening ranges, 4/8/16-bar range lengths, breakout-follow, failed-breakout fade, retest-continuation, range-fade, and volume-flow impulse templates with next-bar entry, fixed 4/8/16/32-bar exits, volume/volatility filters, flow filters, overlap handling, costs, and cost stress; finds 2,078 positive pre-May rows, 96 positive annual-target rows, 20 loose rows, and 0 strict rows; loose rows are active, mostly ETHUSDT US 4-bar opening-range breakout/flow variants and EU retest variants, but fail annual stability, while annual-target rows are too sparse at no more than 29 trades and 15 active months; May rejects all selected rows with 0 May-positive, 20 May-negative, and 0 flat rows, best May -0.004720, worst May -0.044803, and median May -0.024827; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-128-anchored-vwap-intraday-search | Codex Research Agent | closed | `docs/work_packets/WPR106-128-anchored-vwap-intraday-search.md`, `docs/stage_reports/STAGE_R106_ANCHORED_VWAP_INTRADAY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_128*/**` | Tests a fresh artifact-only intraday anchored-VWAP family over WPR106-96 verified BTCUSDT/ETHUSDT bars and 15m aggTrade-flow context; all feature-window, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; evaluates 15,360 rows across daily VWAP reversion, displacement momentum, trend pullback, range fade, and volume-flow impulse templates with next-bar entry, fixed 4/8/16/32-bar exits, sessions, volume/volatility filters, flow filters, overlap handling, costs, and cost stress; finds 1,733 positive pre-May rows, 2 positive annual-target rows, 52 loose rows, and 0 strict rows; loose rows are active and mostly ETHUSDT VWAP flow/momentum variants but fail annual stability, while annual-target rows are too sparse at 33 to 46 trades and 18 to 20 active months; May is mixed but rejects acceptance with 23 May-positive, 28 May-negative, and 1 flat selected row, best May +0.049556, worst May -0.127690, and median May -0.002863; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-127-sweep-wick-path-managed-exit-search | Codex Research Agent | closed | `docs/work_packets/WPR106-127-sweep-wick-path-managed-exit-search.md`, `docs/stage_reports/STAGE_R106_SWEEP_WICK_PATH_MANAGED_EXIT_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_127*/**` | Tests path-managed TP/SL/time-stop overlays over a deterministic pre-May-only WPR106-126 liquidity-sweep/wick source pool; source selection uses only WPR106-126 pre-May ranking and selected artifacts, with May 2026 benchmark-only after fixed pre-May selection; evaluates 18,432 rows across 96 source rows, 4/8/16/32-bar max holds, 0.4% to 1.5% take-profit levels, 0.4% to 1.2% stop-loss levels, optional break-even, and optional trailing stops; same-bar TP/SL ambiguity is stop-first, with break-even/trailing activated only after completed favorable bars; finds 4,025 positive pre-May rows, 2,585 positive annual-target rows, 116 loose rows, and 0 strict rows; annual-target rows remain too sparse, maxing at 20 trades and 14 active months, while loose rows have 68 to 318 trades and 21 to 28 active months but fail annual stability with 6 to 8 losing months; May rejects the selected set with 1 May-positive, 115 May-negative, and 0 flat rows, best May +0.007162, worst May -0.024864, and median May -0.013164; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-126-liquidity-sweep-wick-failure-search | Codex Research Agent | closed | `docs/work_packets/WPR106-126-liquidity-sweep-wick-failure-search.md`, `docs/stage_reports/STAGE_R106_LIQUIDITY_SWEEP_WICK_FAILURE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_126*/**` | Tests a fresh artifact-only liquidity-sweep and wick-failure family over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 bars and aggTrade-flow context; all sweep-window, threshold, filter, hold, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; evaluates 6,480 rows across prior-range sweep reversal, wick rejection, failed-breakout reclaim, sweep continuation, and flow-absorbed sweep templates with completed-bar next-open entries, fixed 4/8/16/32-bar exits, one-position overlap handling, taker/slippage costs, and cost stress; finds 486 positive pre-May rows, 42 positive annual-target rows, 10 loose rows, and 0 strict rows; selected loose rows have 60 to 330 trades, 21 to 28 active months, and 6 to 8 losing months, but all miss at least one annual cap; annual-target rows are too sparse, led by 1 to 37 trades and at most 14 active months; May rejects the selected set with 1 May-positive, 9 May-negative, and 0 flat rows, best May +0.008896, worst May -0.072570, and median May -0.012010; the only May-positive selected row was already rejected by pre-May annual stability; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-125-true-pair-relative-value-hedged-search | Codex Research Agent | closed | `docs/work_packets/WPR106-125-true-pair-relative-value-hedged-search.md`, `docs/stage_reports/STAGE_R106_TRUE_PAIR_RELATIVE_VALUE_HEDGED_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_125*/**` | Tests a fresh artifact-only true BTCUSDT/ETHUSDT two-leg relative-value family over WPR106-96 verified 2024-01 through 2026-05 bars and aggTrade-flow context; all hedge-ratio, feature, threshold, filter, exit, ranking, and selection choices use only 2024-01-01 through 2026-04-30, with May 2026 benchmark-only after fixed pre-May selection; the first broader attempt was stopped without artifacts for poor first-pass throughput, and the closed narrowed run evaluates 17,280 rows across unit/pre-May-OLS/rolling hedge ratios, 384/1536 score windows, fixed/spread-reversion/score-flip exits, session/correlation/spread/flow filters, and 1/3/5 target signals per day; finds 1,974 positive pre-May rows, 10 positive annual-target rows, 8 loose rows, and 0 strict rows; selected loose rows are all unit-beta US-session flow-confirmed spread-acceleration momentum variants with 101 to 158 trades, 27 active months, 8 losing months, and full cost-stress survival, but they miss annual caps; annual-target positives are too sparse at 21 to 22 trades and 12 active months; May rejects all selected rows with 0 May-positive, 8 May-negative, and 0 flat rows, best May -0.005138, worst May -0.023808, and median May -0.020340; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-124-causal-trade-health-throttle-overlay-search | Codex Research Agent | closed | `docs/work_packets/WPR106-124-causal-trade-health-throttle-overlay-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_TRADE_HEALTH_THROTTLE_OVERLAY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_124*/**` | Tests causal trade-health throttle overlays around active WPR106-123 flow/price diagnostic rows; 33 selected WPR106-123 diagnostics deduplicate to 18 unique source trade behaviors and 4,588 pre-May source trades; evaluates 576 overlay rows across baseline, loss-cooldown, daily-stop, rolling-trade-health, monthly-health, and hybrid pause/resume policies, all using only realized past accepted trades for state; finds 498 positive pre-May rows but 0 annual-target rows, 0 overlay-loose rows, and 0 overlay-strict rows; rolling-trade and hybrid throttles reduce some drawdowns and can lower total losing months to 5 to 7, but no overlay satisfies the annual caps of 2024 <= 2, 2025 <= 2, and 2026 Jan-Apr <= 1; because no strict or loose pre-May overlay exists, May is not benchmarked and May remains unused for selection; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-123-flow-price-absorption-divergence-search | Codex Research Agent | closed | `docs/work_packets/WPR106-123-flow-price-absorption-divergence-search.md`, `docs/stage_reports/STAGE_R106_FLOW_PRICE_ABSORPTION_DIVERGENCE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_123*/**` | Tests a fresh artifact-only 15m flow/price absorption, divergence, exhaustion, follow, pullback, and no-flow control family over WPR106-96 verified BTCUSDT/ETHUSDT feature frames; the first broader grid timed out before final evidence, so the closed run uses fixed 16/32-bar exits, long/short sides, all/US sessions, all/flow-active regimes, 1.0 and 2.5 target raw signals/day, and all/flow-active/absorption filters; BTCUSDT has only basic taker quote proxy context, while ETHUSDT has richer aggTrade proxy, CVD-slope proxy, and flow-burst proxy columns; evaluates 2,304 pre-May rows, with 343 positive rows, 182 annual-target rows, 0 flow-loose rows, and 0 flow-strict rows; annual-target positives are too sparse, maxing at 8 trades and 8 active months; active rows reach 28 active months and strong pre-May returns, led by ETHUSDT flow-divergence/follow long fixed-32 variants up to +1.233427, but fail annual stability with 9 to 11 losing months and typically 4 to 6 losing months in 2024 or 2025; because no strict or loose pre-May row exists, May is not benchmarked and May remains unused for selection; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-122-knn-complement-coverage-ensemble-search | Codex Research Agent | closed | `docs/work_packets/WPR106-122-knn-complement-coverage-ensemble-search.md`, `docs/stage_reports/STAGE_R106_KNN_COMPLEMENT_COVERAGE_ENSEMBLE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_122*/**` | Tests whether WPR106-117 annual-target Lorentzian/KNN rows can be combined into active, month-stable trade-level complement portfolios; a broader WPR106-117 source-replay attempt timed out before final evidence, so the closed run uses the already fixed WPR106-117 selected source rows and deduplicates them by actual pre-May trade/monthly behavior; the 27 selected WPR106-117 rows collapse to 5 unique source behaviors and 420 pre-May source trades; evaluates 936 2-to-5-member KNN complement portfolios with equal, inverse-drawdown, active-month-balanced, and return-tempered weights, same-symbol overlap blocking, portfolio concurrent caps, max-trades/day caps, and cost-stress recomputation; all 936 rows are positive pre-May, 72 preserve annual losing-month targets, but 0 strict and 0 loose combo rows pass; annual-target rows remain sparse at 17 to 18 active months, while active-coverage rows reach 23 to 26 active months only by failing annual stability, typically with 4 losing months in 2024 and 2 to 4 in 2025; because no strict or loose pre-May combo exists, May is not benchmarked for selected combos and May remains unused for selection; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-121-volatility-squeeze-failed-breakout-search | Codex Research Agent | closed | `docs/work_packets/WPR106-121-volatility-squeeze-failed-breakout-search.md`, `docs/stage_reports/STAGE_R106_VOLATILITY_SQUEEZE_FAILED_BREAKOUT_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_121*/**` | Tests a fresh artifact-only 15m volatility squeeze, breakout-follow, failed-expansion fade, volatility pullback, range-compression, flow-confirmed, and no-flow control source family over WPR106-96 verified BTCUSDT/ETHUSDT feature frames; all threshold calibration, side/session/regime choice, exit choice, ranking, and selection use only 2024-01-01 through 2026-04-30, with May 2026 loaded only after fixed pre-May selection; final narrowed grid evaluates 18,432 rows after a broader first attempt timed out before final artifacts; finds 1,998 positive pre-May rows, 9 loose rows, and 0 strict rows; selected loose rows are concentrated in ETHUSDT long US/high-vol squeeze-follow, flow-confirmed squeeze, and no-flow controls plus one BTCUSDT choppy failed-expansion fade, all fixed 32-bar exits, 278 to 324 trades, 28 active months, 6 to 7 losing months, and about one trade per active day; May benchmark rejects the family with 1 May-positive, 8 May-negative, and 0 flat rows, best May +0.030321 from the lowest-ranked BTC failed-expansion fade, worst May -0.051256, and median May -0.036954; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-120-pre-may-adversarial-robustness-reranker | Codex Research Agent | closed | `docs/work_packets/WPR106-120-pre-may-adversarial-robustness-reranker.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_ADVERSARIAL_ROBUSTNESS_RERANKER_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_120*/**` | Tests whether WPR106-119's 3,640-row diversity-constrained replay universe can be rescued by pre-May-only adversarial reranking rather than aggregate pre-May ranking; all reranking features, objective weights, selection, deduplication, and policy choices use only 2024-01-01 through 2026-04-30, with May source trades loaded only after fixed pre-May selections are written; applies a strict base filter leaving 254 rows, scores adversarial rolling-block floor, anti-archetype concentration, recent balance, low-drawdown/cost, and trade-quality stability objectives, and selects 80 strict-adversarial rows; selected rows have 28 active months, 522 to 1,241 trades, 3 to 5 losing months, annual loss targets satisfied, full cost-stress survival, 1.000 to 1.608 trades per active day, and 0 to 1 rolling losing blocks; 40 selected portfolio IDs are new versus WPR106-119, but only 20 selected member sets are genuinely new and those 20 are all May-negative; May benchmark rejects the selected set with 8 May-positive, 72 May-negative, and 0 flat rows, best May +0.009587, worst May -0.061829, and median May -0.029856; every objective family has a negative median May result, so this rejects reranking the WPR106-119 universe as candidate-ready evidence; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-119-diversity-constrained-cross-family-replay | Codex Research Agent | closed | `docs/work_packets/WPR106-119-diversity-constrained-cross-family-replay.md`, `docs/stage_reports/STAGE_R106_DIVERSITY_CONSTRAINED_CROSS_FAMILY_REPLAY_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_119*/**` | Tests the direct counterfactual to WPR106-118 by forcing BTCUSDT and ETHUSDT exposure, at least three source families, at least two source packets, at least three diversity buckets, at most one ETH lead-anchor source, and at least one support bucket source before ranking; all source filtering, diversity-bucket assignment, member choice, weighting, replay policy choice, ranking, and selection use only 2024-01-01 through 2026-04-30, with May loaded only after fixed pre-May portfolios are selected; loads 185,714 pre-May trades, computes 893 source metric rows, builds a 144-row diversity source pool, screens 497,313 monthly rows, and replays 3,640 portfolios at trade level with overlap/day-cap/risk controls; finds 3,640 positive pre-May rows, 254 annual-target rows, 254 loose rows, and 254 strict rows; selects 60 strict portfolios with 28 active months, 536 to 1,241 trades, 3 to 5 losing months, low best-month concentration, full cost-stress survival, zero rolling losing blocks, and 1.000 to 1.608 trades per active day; May benchmark improves on WPR106-118 but still rejects the selected set as candidate-ready evidence with 8 May-positive, 52 May-negative, and 0 flat rows, best May +0.009587, worst May -0.045300, and median May -0.026690; May-positive rows are lower-ranked and concentrated around ETH dense/wick behavior plus one ETH lead-lag source and a small BTC sleeve; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-118-cross-family-loss-complement-ensemble-search | Codex Research Agent | closed | `docs/work_packets/WPR106-118-cross-family-loss-complement-ensemble-search.md`, `docs/stage_reports/STAGE_R106_CROSS_FAMILY_LOSS_COMPLEMENT_ENSEMBLE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_118*/**` | Tests a cross-family loss-complement ensemble over compatible selected trade streams from WPR106-105, WPR106-106, WPR106-107, WPR106-108, WPR106-109, WPR106-111, WPR106-112, WPR106-115, WPR106-116, and WPR106-117, excluding WPR106-110 because it lacks trade-level streams and WPR106-113/WPR106-114 because they are already portfolio replays; all source filtering, source deduplication, member choice, weighting, replay policy choice, ranking, and selection use only 2024-01-01 through 2026-04-30, with May loaded only after fixed pre-May portfolios are selected; loads 185,714 pre-May trades, computes 893 source metric rows, filters/deduplicates to 96 source rows, screens 57,060 monthly loss-complement combinations, and replays 2,940 portfolios at trade level with overlap/day-cap/risk controls; finds 2,940 positive pre-May rows, 203 annual-target rows, 203 loose rows, and 202 strict rows; selects 40 strict portfolios with 28 active months, 402 to 643 trades, 3 to 5 losing months, low best-month concentration, full cost-stress survival, and roughly one trade per active day, but the selected set is effectively ETH-only and concentrated in WPR106-108 single-leg lead-lag, WPR106-109 session/prior-day anchor, and one WPR106-106 dense volatility/session source; May benchmark rejects all selected rows with 0 May-positive, 40 May-negative, and 0 flat rows, best May -0.008687, worst May -0.042144; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-117-knn-annual-target-coverage-expansion | Codex Research Agent | closed | `docs/work_packets/WPR106-117-knn-annual-target-coverage-expansion.md`, `docs/stage_reports/STAGE_R106_KNN_ANNUAL_TARGET_COVERAGE_EXPANSION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_117*/**` | Expands the strongest WPR106-116 annual-target Lorentzian/KNN neighborhoods without May feedback; all source selection, threshold/query/session/regime/ranking/selection decisions use only 2024-01-01 through 2026-04-30, with May loaded only after fixed pre-May rows are selected; selects 20 WPR106-116 source rows and evaluates 4,320 causal KNN coverage variants; finds 1,804 positive pre-May rows, 210 annual-target rows, 36 coverage-loose rows, and 0 coverage-strict rows; selects 27 coverage-loose rows collapsing to 9 parameter clusters across BTCUSDT trend-pullback long, ETHUSDT trend-pullback Asia long, and ETHUSDT price-path-vol US trend short archetypes, with 69 to 105 pre-May trades, 17 to 18 active months, 4 to 5 losing months, full cost-stress survival, and annual loss targets satisfied; strict fails because no row reaches 20 active pre-May months, though 9 ETHUSDT trend-pullback rows pass every other strict condition at +0.304182 pre-May with 86 trades and 18 active months; May benchmark records 9 May-positive, 0 May-negative, and 18 flat selected rows, with best May +0.000777 from one trade, so holdout activity is too sparse for robustness; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-116-walk-forward-lorentzian-knn-feature-search | Codex Research Agent | closed | `docs/work_packets/WPR106-116-walk-forward-lorentzian-knn-feature-search.md`, `docs/stage_reports/STAGE_R106_WALK_FORWARD_LORENTZIAN_KNN_FEATURE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_116*/**` | Tests a fresh artifact-only causal walk-forward Lorentzian KNN search over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 feature frames; all feature-pack, normalization, label horizon, lookback, neighbor count, threshold, side, session/regime filter, max-trades/day, ranking, and selection decisions use only 2024-01-01 through 2026-04-30, with May loaded only after fixed pre-May rows are selected; evaluates 41,472 rows across price-path/volatility, trend-pullback-state, OHLC wick/range-shape, and price/flow-proxy feature packs with causal completed-label neighbor pools; finds 4,219 positive pre-May rows, 231 loose rows, and 0 strict rows; finds 63 positive annual-target rows and 32 with at least 40 trades plus 10 active months, but all 32 remain blocked by insufficient active months, insufficient trades, or best-month concentration; selects 80 loose rows across 21 symbol/feature-pack/horizon groups, with 5 to 10 losing months; May benchmark records 6 May-positive, 15 May-negative, and 59 flat rows, with best May +0.008076 from one May trade and selected annual-target rows having no May trades; closest active annual-target row `wfknn-bead0446e2412fcb` is +0.304182 pre-May with 86 trades and 18 active months but fails the active-month floor; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-115-regime-switch-intraday-search | Codex Research Agent | closed | `docs/work_packets/WPR106-115-regime-switch-intraday-search.md`, `docs/stage_reports/STAGE_R106_REGIME_SWITCH_INTRADAY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_115*/**` | Tests a fresh artifact-only regime-switch intraday family over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 feature frames; all score, threshold, session/regime filter, side, max-trades/day, exit, ranking, and selection decisions use only 2024-01-01 through 2026-04-30, with May loaded only after fixed pre-May rows are selected; evaluates 45,360 rows across trend-continuation, trend-pullback, range-reversion, volatility-breakout/fade, flow-follow, and flow-absorption templates; skips ETH perp/funding/OI pressure rows because the available context z-score columns are fully missing; finds 2,512 positive pre-May rows, 31 loose rows, and 0 strict rows; 291 positive rows meet the annual losing-month target but are too sparse for the active profile, with maximum 18 trades and 14 active months; selects 25 loose rows across 8 symbol/family/template groups, all with 7 to 10 losing months and zero annual-target rows; May benchmark records 11 May-positive, 14 May-negative, and 0 flat rows, with best May +0.047973 already pre-May rejected by annual stability and top pre-May row `rswitch-0a860a40b30d0c4f` at -0.030540 May; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-114-pre-may-rolling-oos-cluster-veto-search | Codex Research Agent | closed | `docs/work_packets/WPR106-114-pre-may-rolling-oos-cluster-veto-search.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_ROLLING_OOS_CLUSTER_VETO_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_114*/**` | Applies pre-May-only rolling pseudo-OOS validation and source-cluster diagnostics to the WPR106-113 40,320-row cross-family daily risk-throttle universe; all rolling blocks, cluster diagnostics, concentration metrics, ranking, and selection use only 2024-01-01 through 2026-04-30, with May loaded only after fixed pre-May rows are selected; finds 0 rolling-strict rows and 942 rolling-loose rows; selects 68 rolling-loose rows across 17 unique member sets, led by `riskcombo-a9a222fd65016439` at +0.631458 pre-May, four losing months, 1.000 trades/day, and full cost-stress survival; selected rows remain ETH-only and failed-cluster concentrated, and only 4 of 68 satisfy the 2024/2025 annual loss target; all 68 selected rows benchmark negative in May, with best May -0.010799, worst May -0.025147, 0 May-positive, 68 May-negative, and 0 flat; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-113-cross-family-daily-risk-throttle-search | Codex Research Agent | closed | `docs/work_packets/WPR106-113-cross-family-daily-risk-throttle-search.md`, `docs/stage_reports/STAGE_R106_CROSS_FAMILY_DAILY_RISK_THROTTLE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_113*/**` | Tests cross-family daily risk-throttled portfolio replay over selected trade streams from WPR106-106, WPR106-107, WPR106-108, WPR106-109, WPR106-111, and WPR106-112; all source filtering, behavior dedupe, portfolio member choice, weight choice, risk-policy choice, ranking, and selection use only 2024-01-01 through 2026-04-30, with May trades loaded only after fixed pre-May rows are selected; starts from 758 raw source rows, keeps 140 deduped rows, builds 2,750 monthly screen combinations, and replays 40,320 trade-level portfolio rows with actual overlap and daily risk controls; finds 40,320 positive pre-May rows, 16,896 loose rows, and 4,182 strict rows; selects 100 strict rows across 44 unique member sets, led by `riskcombo-910a9cff55b9e469` at +0.605807 pre-May, two losing months, 1.066 trades/day, and full cost-stress survival; all 100 selected rows benchmark negative in May, with best May -0.001124, rank 1 May -0.009206, 0 May-positive, 100 May-negative, and 0 flat; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-112-aggtrade-1m-path-managed-exit-search | Codex Research Agent | closed | `docs/work_packets/WPR106-112-aggtrade-1m-path-managed-exit-search.md`, `docs/stage_reports/STAGE_R106_AGGTRADE_1M_PATH_MANAGED_EXIT_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_112*/**` | Tests path-managed exits over WPR106-111 1m aggTrade flow positives with all source-pool, TP, SL, max-hold, ranking, and selection choices made only on 2024-01-01 through 2026-04-30; uses completed 1m aggregate-price paths, next-minute entries, actual path-managed exit timestamps, and one-position overlap handling, while treating the aggregate path as diagnostic rather than complete OHLC/high-low evidence; evaluates 17,344 overlays from 271 source rows, finds 2,316 positive pre-May rows, 89 loose pre-May rows, and 0 strict month-stability rows; all positive rows are inside 1 to 5 trades/day after overlap handling, but zero positive rows satisfy the full-year annual target; all 89 loose rows benchmark in May after fixed pre-May selection, with 58 May-positive, 31 May-negative, and 0 flat; top pre-May row `exit1m-d17af0cdc1689d55` benchmarks -0.009363 in May, while May-positive rows were already rejected by pre-May annual stability; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-111-aggtrade-1m-flow-microstructure-search | Codex Research Agent | closed | `docs/work_packets/WPR106-111-aggtrade-1m-flow-microstructure-search.md`, `docs/stage_reports/STAGE_R106_AGGTRADE_1M_FLOW_MICROSTRUCTURE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_111*/**` | Tests a fresh artifact-only 1m aggTrade flow microstructure family over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 context; uses completed 1m aggTrade rows, next-minute aggregate-price entries, fixed 15/30/60/120/240 minute exits, and explicit taker/slippage costs; calibrates thresholds, ranks, filters, hold horizons, and selects only on 2024-01-01 through 2026-04-30, with May joined only after fixed pre-May selection; evaluates 15,360 rows, finds 442 positive pre-May rows, 42 loose pre-May rows, and 0 strict month-stability rows; all positives are inside 1 to 5 trades/day after overlap handling, but annual month stability remains the blocker; only seven positive rows meet the full-year plus partial-2026 loss target, and none has at least 60 trades or 24 active months; all 42 loose rows benchmark in May after selection, with 18 May-positive, 24 May-negative, and 0 flat; top pre-May row `flow1m-58682c5dd5e1679d` benchmarks -0.007368 in May; May-positive rows were already rejected by pre-May annual stability; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-110-walk-forward-meta-selector-search | Codex Research Agent | closed | `docs/work_packets/WPR106-110-walk-forward-meta-selector-search.md`, `docs/stage_reports/STAGE_R106_WALK_FORWARD_META_SELECTOR_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_110*/**` | Tests a causal walk-forward monthly meta-selector over recent pre-May-selected rows from WPR106-105 through WPR106-109; filters source rows, selects policies, and ranks only on 2024-01-01 through 2026-04-30, loading May source returns only after fixed pre-May policy selection; loads 630 source rows, removes 81 duplicate monthly behavior fingerprints, and evaluates 28,800 policies over 549 unique source rows; finds 28,728 positive pre-May policies, 10,051 loose policies, and 985 strict monthly-artifact policies; top pre-May policy `wfmeta-230ed7fe71bc2ed0` returns +1.140045 with 3 losing pre-May months but has very high monthly membership turnover and benchmarks -0.044406 in May; all 100 selected policies benchmark negative in May, with 0 May-positive, 100 May-negative, 0 flat, mean May return -0.039973, and best May return -0.008727; strict pre-May rows are diagnostic only because source rows are recombined at monthly resolution without cross-source intramonth trade-overlap replay; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-109-session-anchor-intraday-search | Codex Research Agent | closed | `docs/work_packets/WPR106-109-session-anchor-intraday-search.md`, `docs/stage_reports/STAGE_R106_SESSION_ANCHOR_INTRADAY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_109*/**` | Tests a fresh artifact-only session-anchor intraday family over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 context; builds daily opening-range, prior-day range, Asia range, Europe opening-range, daily VWAP, and session-transition momentum/reversal signals from completed 15m bars plus aggTrade-flow context; calibrates thresholds, ranks, filters, anchor windows, and selects only on 2024-01-01 through 2026-04-30, with May joined only after fixed pre-May selection; evaluates 9,600 rows, finds 1,436 positive pre-May rows, 150 loose pre-May rows, and 0 strict month-stability rows; all positive rows are inside 1 to 5 trades/day after overlap handling, but zero positives satisfy the full-year target of no more than two losing active months in both 2024 and 2025; selected rows are concentrated in ETHUSDT prior-day and opening-range breakout variants; all 150 loose rows benchmark in May after selection, with 19 May-positive, 118 May-negative, and 13 flat; top pre-May row `anchor-6719209fb0b21325` benchmarks -0.017786 in May, while the closest stability row `anchor-e56191d930311a7f` still has 6 pre-May losing months and fails the 2025 annual cap; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-108-cross-asset-relative-value-search | Codex Research Agent | closed | `docs/work_packets/WPR106-108-cross-asset-relative-value-search.md`, `docs/stage_reports/STAGE_R106_CROSS_ASSET_RELATIVE_VALUE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_108*/**` | Tests a fresh artifact-only BTC/ETH cross-asset relative-value and lead-lag family over WPR106-96 verified 2024-01 through 2026-05 context; aligns BTCUSDT/ETHUSDT 15m and aggTrade-flow data, computes pre-May-only OLS ETH/BTC beta, and evaluates pair-return spread/reversion/momentum/lead-lag rows plus separately labeled single-leg diagnostics; calibrates thresholds, ranks, filters, and selects only on 2024-01-01 through 2026-04-30; evaluates 19,200 rows, finds 986 positive pre-May rows, 81 loose pre-May rows, and 0 strict month-stability rows; all positives are inside 1 to 5 trades/day after overlap handling, but zero positives satisfy the full-year target of no more than two losing active months in both 2024 and 2025; all 81 loose rows benchmark in May after selection, with 11 May-positive, 69 May-negative, and 1 flat; selected rows are dominated by single-leg ETH follow-BTC diagnostics, while every selected pair row that traded in May is May-negative; top pre-May row `xasset-de4ac045c28d3b9c` benchmarks -0.038135 in May; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-107-rolling-lorentzian-knn-search | Codex Research Agent | closed | `docs/work_packets/WPR106-107-rolling-lorentzian-knn-search.md`, `docs/stage_reports/STAGE_R106_ROLLING_LORENTZIAN_KNN_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_107*/**` | Revisits Lorentzian/KNN with a scoped artifact-only rolling causal neighbor implementation over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 context; freezes May benchmark neighbor labels to labels completed before 2026-05-01; calibrates thresholds, ranks, filters, and selects only on 2024-01-01 through 2026-04-30; evaluates 73,728 rows across four logical feature packs, Lorentzian/Euclidean distances, lookback, neighbor-count, horizon, train-spacing, side, session, volatility, and active-rate settings; finds 1,270 positive pre-May rows, 27 loose pre-May rows, and 0 strict month-stability rows; all positives are inside 1 to 5 trades/day after overlap handling, but zero positives satisfy the full-year annual target of no more than two losing active months in both 2024 and 2025; all 27 loose rows are ETHUSDT rows and benchmark in May after selection, with 4 May-positive, 21 May-negative, and 2 flat; top pre-May row `rknn-59968119d9c264fb` benchmarks -0.026627 in May; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-106-dense-causal-score-search | Codex Research Agent | closed | `docs/work_packets/WPR106-106-dense-causal-score-search.md`, `docs/stage_reports/STAGE_R106_DENSE_CAUSAL_SCORE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_106*/**` | Tests a fresh artifact-only dense causal score and quantile-threshold family over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 context; calibrates thresholds, ranks, filters, and selects only on 2024-01-01 through 2026-04-30, with pre-May trades required to exit before 2026-05-01; evaluates 129,600 transparent momentum, flow-follow, flow-fade, wick-fade, range-fade, compression-breakout, volatility-breakout, session-drift, calendar-flow, micro-reversal, and balanced price/flow rows with one-position overlap handling and explicit fee/slippage costs; finds 6,656 positive pre-May rows, 369 loose pre-May rows, and 0 strict month-stability rows; active 1-to-5 trades/day behavior is feasible for positives, but zero positive rows satisfy the full-year target of no more than two losing active months in both 2024 and 2025; all 369 loose rows are benchmarked in May after selection, with 107 May-positive, 261 May-negative, and 1 flat; May-positive diagnostics are pre-May rejected by annual stability; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-105-causal-barpath-flow-exit-search | Codex Research Agent | closed | `docs/work_packets/WPR106-105-causal-barpath-flow-exit-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_BARPATH_FLOW_EXIT_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_105*/**` | Tests a fresh artifact-only causal 15m bar-path, session, volatility, and aggTrade-flow family over WPR106-96 verified BTCUSDT/ETHUSDT 2024-01 through 2026-05 context; optimization uses only 2024-01-01 through 2026-04-30 and pre-May trades must exit before 2026-05-01; evaluates 5,832 channel-breakout, flush/fade, range-reversion, and compression-continuation candidates with fixed and ATR-barrier exits; finds 270 positive pre-May rows, 3 loose holdout rows, and 0 strict month-stability rows; all 3 selected loose ETHUSDT rows lose in May benchmark-only evaluation, with May returns of -0.010393, -0.036940, and -0.002629; sparse rows with better annual loss counts are too inactive; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-104-pre-may-stability-weighted-ensemble-search | Codex Research Agent | closed | `docs/work_packets/WPR106-104-pre-may-stability-weighted-ensemble-search.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_STABILITY_WEIGHTED_ENSEMBLE_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_104*/**` | Tests constrained non-equal weighting over existing WPR106-102 evidence with May excluded from selection; evaluates 347,110 bounded weighted rows from 1,000 base combo proposals and 120 positive sleeves, finds 603 strict weighted pre-May rows and 16,205 full-year target rows, then selects 40 strict pre-May rows before the May join; rank 1 `combo104-b91239b7624cf3dd` improves the pre-May profile to 3 losing months and +0.509107 return but benchmarks -0.029783 in May; all 40 selected rows have benchmark-only May evidence, with 4 May-positive and 36 May-negative; the best May-positive rows are modest at +0.013958 or +0.004301 with mixed 14 positive / 12 losing May day balance; bounded weighting is diagnostic only and no May tuning, calendar-month selected filter, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-103-split-balance-repair-replacement-search | Codex Research Agent | closed | `docs/work_packets/WPR106-103-split-balance-repair-replacement-search.md`, `docs/stage_reports/STAGE_R106_SPLIT_BALANCE_REPAIR_REPLACEMENT_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_103*/**` | Tests the WPR106-102 rank 2/3 split-balance repair direction with May excluded from selection; filters 120 positive sleeves to 12 exact split-clean sleeves, evaluates all 2,497 possible 2-to-6 sleeve portfolios, and selects 40 pre-May rows before the May join; finds only one strict split-clean row, `combo103-8e6136c0927425b1`, the same five-sleeve lead already rejected in WPR106-100/102, with +0.969026 pre-May return, 5 losing months, annual losses of 2 in 2024, 2 in 2025, and 1 in 2026 Jan-Apr, but May benchmark -0.007165; the other two full-year-target rows fail partial-2026 controls and May; all 40 selected rows have May benchmarks after one supplemental sleeve replay completed `ok`; 9 selected rows are May-positive and 31 are May-negative, but May-positive rows fail strict pre-May annual stability; no May tuning, calendar-month selected filter, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-102-broad-family-level-portfolio-refresh | Codex Research Agent | closed | `docs/work_packets/WPR106-102-broad-family-level-portfolio-refresh.md`, `docs/stage_reports/STAGE_R106_BROAD_FAMILY_LEVEL_PORTFOLIO_REFRESH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_102*/**` | Refreshes the broader WPR106-95 positive-sleeve universe with a pre-May-only 75-sleeve bounded pool; evaluates 1,560,763 equal-sleeve portfolios with vectorized monthly/daily accounting plus beam expansion for 5- and 6-sleeve rows; finds 2,578 full-year-target rows but only one strict all-controls row, the already rejected `combo102-8e6136c0927425b1`, whose May benchmark remains -0.007165; new ranks 2 and 3 reduce pre-May losses to 4 months and benchmark +0.013312 in May but fail split-balance proxy only; supplemental May backtests replay 18 fixed selected missing sleeves with existing WPR106-97 features/configs and all complete `ok`, so all 40 selected rows have May benchmarks; 16 selected rows are May-positive and 24 are May-negative; no May tuning, calendar-month selected filter, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; script compile, compileall, and contracts passed. |
+| WPR106-101-strict-lead-causal-loss-cluster-filter-search | Codex Research Agent | closed | `docs/work_packets/WPR106-101-strict-lead-causal-loss-cluster-filter-search.md`, `docs/stage_reports/STAGE_R106_STRICT_LEAD_CAUSAL_LOSS_CLUSTER_FILTER_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_101*/**` | Tests 621 deterministic causal pre-entry filters around the fixed WPR106-100 strict lead over the 2024-01-01 through 2026-04-30 pre-May window; selects 40 behavior-unique rows before any May join; finds 51 pre-May-promising filters but no filter that both improves the 5-losing-month profile and confirms in May; best pre-May filter `filter-212bec7b6e491417` reaches +1.042087 pre-May return but benchmarks -0.008109 in May; only selected pre-May-promising May-positive filter `filter-db75e31526935ed3` is nearly flat at +0.000745 in May with lower +0.749948 pre-May return; scoped causal-filter defense rejected; no May tuning, calendar-month selected filter, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-100-pre-may-cluster-aware-portfolio-search | Codex Research Agent | closed | `docs/work_packets/WPR106-100-pre-may-cluster-aware-portfolio-search.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_CLUSTER_AWARE_PORTFOLIO_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_100*/**` | Recombines the 36 WPR106-97 May-ready WPR106-95 positive sleeves into all 2-to-6 sleeve portfolios over the 2024-01-01 through 2026-04-30 pre-May window; evaluates 2,391,459 combinations with vectorized chunked monthly/daily accounting; finds 7,929 full-year-target hits but only one strict all-controls hit, `combo100-8e6136c0927425b1`, with +0.969026 pre-May return, 28 active months, 1.758 trades/active day, 0.507 overlap-day share, 5 losing months total, and annual losses of 2 in 2024, 2 in 2025, and 1 in 2026 Jan-Apr; May benchmark rejects the strict hit at -0.007165 with 35 trades, 26 active days, 8 positive days, and 18 losing days; 16/40 fixed selected pre-May leads are May-positive but the best May rows fail the full-year losing-month target; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-99-selected-portfolio-component-diagnostics | Codex Research Agent | closed | `docs/work_packets/WPR106-99-selected-portfolio-component-diagnostics.md`, `docs/stage_reports/STAGE_R106_SELECTED_PORTFOLIO_COMPONENT_DIAGNOSTICS_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_99*/**` | Diagnoses the two WPR106-98 selected robustness leads from fixed pre-May evidence; reloads original WPR106-95 member sleeve trades; writes member, monthly, annual, factor, and subset-ablation diagnostics before May benchmark join; both original leads keep 5 pre-May losing months and share September 2024 as the worst month cluster; all member sleeves are positive in total pre-May contribution and factor rollups do not isolate a single removable side, regime, or volatility bucket; original lead 1 benchmarks +0.031402 in May and original lead 2 benchmarks -0.014460 in May; subsets are diagnostic-only hypotheses, not selected portfolios or promotion evidence; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-98-pre-may-deduped-portfolio-robustness-selector | Codex Research Agent | closed | `docs/work_packets/WPR106-98-pre-may-deduped-portfolio-robustness-selector.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_DEDUPED_PORTFOLIO_ROBUSTNESS_SELECTOR_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_98*/**` | Reranks the WPR106-95 650,622-combination pre-May portfolio universe with duplicate and robustness controls before May benchmark join; reconstructs monthly-return fingerprints from original sleeve trades; finds 20 duplicate monthly-behavior fingerprint groups across 52 sleeve rows; strict hard filters leave 3 combinations and behavior-signature de-duplication selects 2 leads; selected rank 1 is WPR106-95 rank 2 `combo-d1ccbd91dc5325e5` with +0.983789 pre-May return, 572 trades, 1.372 trades/active day, 5 losing months, max full-year losing months 4, and +0.031402 May benchmark return; selected rank 2 is WPR106-95 rank 3 `combo-40bfb3546b9707ac` with +0.927046 pre-May return but -0.014460 May benchmark return; neither lead satisfies the ideal zero-to-two losing-month target in every full pre-May year; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-97-preselected-portfolio-may-benchmark-expansion | Codex Research Agent | closed | `docs/work_packets/WPR106-97-preselected-portfolio-may-benchmark-expansion.md`, `docs/stage_reports/STAGE_R106_PRESELECTED_PORTFOLIO_MAY_BENCHMARK_EXPANSION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_97*/**` | Expands the WPR106-95 May benchmark from rank 1 to all 40 preselected May-holdout combinations using frozen pre-May sleeve definitions and WPR106-96 verified May source context; extracts 36 unique sleeves, materializes four full-context feature frames, runs 36 full-context backtests, and writes May-only sleeve/combo summaries; all sleeve replays pass; 24/40 combinations are positive in May and all 40 remain in the 1 to 5 trades-per-active-day range; best May row is rank 13 `combo-f4f5b5aa62ffd476` with 30 trades, 24 active days, 1.250 trades per active day, 0.250 overlap-day share, and +0.044274 equal-sleeve return; rank 1 reproduces +0.026603; ranks 3-12 are rejected by May benchmark behavior from the repeated BTC `fbbe/6e79` sleeve; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-96-may-2026-portfolio-holdout-benchmark | Codex Research Agent | closed | `docs/work_packets/WPR106-96-may-2026-portfolio-holdout-benchmark.md`, `docs/stage_reports/STAGE_R106_MAY_2026_PORTFOLIO_HOLDOUT_BENCHMARK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_96*/**`, `data/research/historical_data_cache/binance_vision_public_archive/downloads/futures_um/monthly/klines/BTCUSDT/15m/*2026-05*`, `data/research/historical_data_cache/binance_vision_public_archive/downloads/futures_um/monthly/klines/BTCUSDT/1m/*2026-05*`, `data/research/historical_data_cache/binance_vision_public_archive/downloads/futures_um/monthly/aggTrades/BTCUSDT/*2026-05*` | Downloads or verifies BTCUSDT May 2026 15m kline, 1m kline, and aggTrades archives with checksum sidecars; reuses WPR106-93 ETHUSDT May files; writes archive intake, May fixture-compatible source context, feature context, full-context backtests, and May-only sleeve/portfolio artifacts; benchmarks WPR106-95 rank-1 `combo-d9edcc252c323b03` with frozen parameters and WPR106-95 equal-sleeve accounting; May records 25 member trades, 20 active days, 1.250 trades per active day, 0.250 overlap-day share, +0.026603 equal-sleeve portfolio return, 8 positive days, and 12 losing days; `ISSUE-R106-025` resolved as a data/benchmark dependency only; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-95-pre-may-cross-family-portfolio-combination | Codex Research Agent | closed | `docs/work_packets/WPR106-95-pre-may-cross-family-portfolio-combination.md`, `docs/stage_reports/STAGE_R106_PRE_MAY_CROSS_FAMILY_PORTFOLIO_COMBINATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/wpr106_95*/**` | Loads 120 positive pre-May sleeves from WPR106-87, WPR106-88, WPR106-90, WPR106-91, and WPR106-94; selects a deterministic 64-sleeve pool; enumerates 650,622 equal-sleeve cross-family combinations; writes deterministic full parquet plus compact top-combo member/monthly evidence; finds 1,360 loose monthly-stability combinations, 0 strict monthly-stability combinations, and 40 May-holdout diagnostic leads; rank 1 has 690 trades, 1.494 trades per active day, +0.851653 equal-sleeve net return, 24 positive months, and 4 losing months; May 2026 remains unused and leading combinations require BTCUSDT May archive verification before benchmark; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-94-causal-session-filter-broad-search | Codex Research Agent | closed | `docs/work_packets/WPR106-94-causal-session-filter-broad-search.md`, `docs/stage_reports/STAGE_R106_CAUSAL_SESSION_FILTER_BROAD_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/strategies/_helpers.py`, `src/tradingbotsuite/strategies/parameters.py`, `src/tradingbotsuite/strategies/sparse_event_filter.py`, `src/tradingbotsuite/strategies/trend.py`, `src/tradingbotsuite/strategies/range_reversion.py`, `src/tradingbotsuite/strategies/volatility_breakout.py`, `tests/contracts/test_strategy_contracts.py`, `configs/research/wpr106_94_*.json`, `data/research/historical_cycles/wpr106_94*/**`, `data/research/wpr106_94*/**` | Adds default-off causal UTC hour/weekday filters to transparent trend, volatility-breakout, range-reversion, and sparse/event strategy families; adds focused contract tests and scoped 4-bar transparent active-rate spacing; stops the oversized BTCUSDT v1 grid after more than 50 minutes without final manifest and retains it only as an aborted compute artifact; completes narrowed BTCUSDT/ETHUSDT v2 cycles over 2024-01 through 2026-04 with May excluded; each symbol has 119 rows, 115 research candidates, 11 positive net/expectancy rows, all 115 research rows inside 1 to 5 trades per active day, 0 loose monthly-stability rows, 0 strict monthly-stability rows, and 0 May-holdout candidates; no May tuning, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused contracts, compileall, and contracts passed. |
+| WPR106-93-may-2026-holdout-intake-and-knn-benchmark | Codex Research Agent | closed | `docs/work_packets/WPR106-93-may-2026-holdout-intake-and-knn-benchmark.md`, `docs/stage_reports/STAGE_R106_MAY_2026_HOLDOUT_INTAKE_AND_KNN_BENCHMARK_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `configs/research/wpr106_93_ethusdt_may_holdout_wpr106_92_candidate_v1.json`, `data/research/wpr106_93_may_2026_holdout_intake_and_knn_benchmark/**`, `data/research/historical_data_cache/binance_vision_public_archive/downloads/futures_um/monthly/klines/ETHUSDT/15m/*2026-05*`, `data/research/historical_data_cache/binance_vision_public_archive/downloads/futures_um/monthly/klines/ETHUSDT/1m/*2026-05*`, `data/research/historical_data_cache/binance_vision_public_archive/downloads/futures_um/monthly/aggTrades/ETHUSDT/*2026-05*` | Downloads and checksum-verifies the ETHUSDT May 2026 Binance Vision files needed for the WPR106-92 KNN lead; maps April+May context data with no 15m/1m gaps or duplicates; appends only May signal rows to the frozen pre-May dataset; runs a one-row May holdout benchmark with training fixed before May; rejects the ETHUSDT meta lead because May records 268 trades, -0.353937 net after costs, -0.001321 expectancy, 8.645 trades per active day, 10 positive days, 21 losing days, and -0.365293 max trade-sequence drawdown, while pure KNN is also negative; no May tuning feedback, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-92-lorentzian-knn-temporal-stability-refresh | Codex Research Agent | closed | `docs/work_packets/WPR106-92-lorentzian-knn-temporal-stability-refresh.md`, `docs/stage_reports/STAGE_R106_LORENTZIAN_KNN_TEMPORAL_STABILITY_REFRESH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/strategies/hmm_knn/config.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `configs/research/wpr106_92_lorentzian_knn_temporal_stability_btcusdt_v1.json`, `configs/research/wpr106_92_lorentzian_knn_temporal_stability_ethusdt_v1.json`, `data/research/wpr106_92_lorentzian_knn_temporal_stability/**` | Adds `price_microdrift_flow_no_context`, validates HMM/KNN feature-pack registration, and runs BTCUSDT/ETHUSDT pre-May Lorentzian/KNN temporal-stability matrices over 2024-01 through 2026-04 source datasets; 16 experiments produce 32 KNN/meta rows, 3 positive net/expectancy rows, 32 rows inside 1 to 5 trades per active day, 1 ETHUSDT loose monthly-stability row, 0 strict rows, and 1 row requiring May 2026 benchmark; May benchmark is blocked by `ISSUE-R106-025` because the local May archive is unavailable; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; HMM/KNN focused tests, compileall, and contracts passed. |
+| WPR106-91-active-rate-density-search-and-feature-defrag | Codex Research Agent | closed | `docs/work_packets/WPR106-91-active-rate-density-search-and-feature-defrag.md`, `docs/stage_reports/STAGE_R106_ACTIVE_RATE_DENSITY_SEARCH_AND_FEATURE_DEFRAG_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/features/packs.py`, `tests/features/test_feature_builders.py`, `configs/research/wpr106_91_active_rate_density_search_btcusdt_v1.json`, `configs/research/wpr106_91_active_rate_density_search_ethusdt_v1.json`, `data/research/historical_cycles/wpr106_91_active_rate_density_search_btcusdt_v1/**`, `data/research/historical_cycles/wpr106_91_active_rate_density_search_ethusdt_v1/**`, `data/research/wpr106_91_active_rate_density_search/**` | Defragments wide feature-frame missingness construction with batched `pd.concat` and focused regression coverage; runs BTCUSDT/ETHUSDT pre-May active-rate density cycles with CUDA disabled and May 2026 excluded; each symbol evaluates 134 candidate rows across transparent volatility/trend/range and sparse/event families; combined summary finds 268 rows, 14 positive net/expectancy rows, 254 rows inside 1 to 5 trades per active day, 1 loose monthly-stability row, 0 strict monthly-stability rows, and 0 May-holdout eligible rows; no positive row exceeds 1 trade per active day; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused feature tests, compileall, and contracts passed. |
+| WPR106-90-causal-stability-filter-rerun | Codex Research Agent | closed | `docs/work_packets/WPR106-90-causal-stability-filter-rerun.md`, `docs/stage_reports/STAGE_R106_CAUSAL_STABILITY_FILTER_RERUN_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/strategies/sparse_event_filter.py`, `src/tradingbotsuite/strategies/parameters.py`, `tests/contracts/test_strategy_contracts.py`, `tests/tradingbotsuite/test_sparse_event_filter.py`, `configs/research/wpr106_90_causal_stability_filter_btcusdt_v1.json`, `configs/research/wpr106_90_causal_stability_filter_ethusdt_v1.json`, `data/research/historical_cycles/wpr106_90_causal_stability_filter_btcusdt_v1/**`, `data/research/historical_cycles/wpr106_90_causal_stability_filter_ethusdt_v1/**`, `data/research/wpr106_90_causal_stability_filter/**` | Adds default-off causal sparse regime and volatility-bucket filters, validates them with focused contract tests, and reruns focused BTCUSDT/ETHUSDT pre-May cycles with CPU execution and May 2026 excluded; each symbol evaluates 75 candidate rows with 4 split and 11 cost-stress backtests; combined summary finds 150 candidate rows, 58 positive net/expectancy rows, 4 loose monthly-stability rows, 0 strict monthly-stability rows, and 0 May-holdout eligible rows; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; focused sparse tests, compileall, and contracts passed. |
+| WPR106-89-regime-temporal-stability-filter-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-89-regime-temporal-stability-filter-audit.md`, `docs/stage_reports/STAGE_R106_REGIME_TEMPORAL_STABILITY_FILTER_AUDIT_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `data/research/wpr106_89_regime_temporal_stability_filter_audit/**` | Offline diagnostic audit over WPR106-88 BTCUSDT/ETHUSDT trade artifacts; evaluates 23,389 post-trade side/regime/volatility/calendar overlay rows with May 2026 excluded; finds 4,765 positive-net/expectancy rows, 206 loose stability rows, and one strict row, BTCUSDT sparse simple-runner `4239f08ef337` with May/June excluded; rejects the strict row as non-actionable because it is post-trade evidence and would be inactive in May 2026; no non-calendar strict hit, no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists; compileall and contracts passed. |
+| WPR106-88-exit-stability-overlay-search | Codex Research Agent | closed | `docs/work_packets/WPR106-88-exit-stability-overlay-search.md`, `docs/stage_reports/STAGE_R106_EXIT_STABILITY_OVERLAY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `configs/research/wpr106_88_exit_stability_overlay_btcusdt_v1.json`, `configs/research/wpr106_88_exit_stability_overlay_ethusdt_v1.json`, `configs/research/wpr106_88_exit_stability_overlay_ethusdt_v2.json`, `data/research/historical_cycles/wpr106_88_exit_stability_overlay_btcusdt_v1/**`, `data/research/historical_cycles/wpr106_88_exit_stability_overlay_ethusdt_v1/**`, `data/research/historical_cycles/wpr106_88_exit_stability_overlay_ethusdt_v2/**`, `data/research/wpr106_88_exit_stability_overlay/**` | Tests fixed, simple-runner, trailing, MAE-stop, volatility-barrier, and lower-timeframe triple-barrier exits over sparse/event and transparent trend/range/volatility families on WPR106-85 exact pre-May BTCUSDT/ETHUSDT fixtures; completes valid BTCUSDT v1 and ETHUSDT v2 cycles with 91 aggregate rows per symbol plus split/cost/stability outputs; keeps aborted ETHUSDT v1 as audit evidence of stale package import before `PYTHONPATH=src`; across 140 non-no-trade strategy rows finds 18 positive-net/expectancy rows but zero month-stable leads; May 2026 remains unused; compileall and contracts passed; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists. |
+| WPR106-87-sparse-event-stability-search | Codex Research Agent | closed | `docs/work_packets/WPR106-87-sparse-event-stability-search.md`, `docs/stage_reports/STAGE_R106_SPARSE_EVENT_STABILITY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `configs/research/wpr106_87_sparse_event_stability_btcusdt_v1.json`, `configs/research/wpr106_87_sparse_event_stability_ethusdt_v1.json`, `src/tradingbotsuite/strategies/sparse_event_filter.py`, `tests/tradingbotsuite/test_sparse_event_filter.py`, `data/research/historical_cycles/wpr106_87_sparse_event_stability_btcusdt_v1/**`, `data/research/historical_cycles/wpr106_87_sparse_event_stability_ethusdt_v1/**`, `data/research/wpr106_87_sparse_event_stability/**` | Revisits sparse/event filters over the WPR106-85 exact pre-May BTCUSDT/ETHUSDT archive-backed fixtures with six explicit search spaces per symbol, covering price-only trend sparse filters, aggTrade-proxy volatility sparse filters, both-sided and one-sided post-selection controls, aligned/contrarian flow, and 24h/72h holds; adds behavior-preserving sparse flow-confirmation caching; completes 74 aggregate backtests and 60 validation backtests per symbol with CPU vector aggregate screening plus CPU/reference validation; across 132 research candidates finds 8 positive-net and positive-expectancy rows but zero month-stable leads because the best BTC row fails cost stress and has 12 losing active months while the best ETH row has 10 losing active months and 8 inactive months; May 2026 remains unused; focused sparse regression, compileall, and contracts passed; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists. |
+| WPR106-86-lorentzian-knn-feature-filter-search | Codex Research Agent | closed | `docs/work_packets/WPR106-86-lorentzian-knn-feature-filter-search.md`, `docs/stage_reports/STAGE_R106_LORENTZIAN_KNN_FEATURE_FILTER_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `configs/research/wpr106_86_lorentzian_knn_feature_filter_btcusdt_v1.json`, `configs/research/wpr106_86_lorentzian_knn_feature_filter_ethusdt_v1.json`, `src/tradingbotsuite/strategies/hmm_knn/config.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `data/research/wpr106_86_lorentzian_knn_feature_filter/**` | Adds `price_wick_flow_no_context` for archive-backed KNN rows; runs 12 pre-May BTCUSDT/ETHUSDT KNN variants over 2024-01 through 2026-04 with May 2026 excluded, covering Lorentzian wick/flow rows, regime-pool/threshold/filter changes, and Euclidean/cosine controls; both matrices pass with 3 workers and resolved artifact paths under `data/research`; three primary KNN/meta rows are positive net after costs and positive expectancy, but zero qualify as promising pre-May leads because the best ETH 1h->4h meta row is active in only 10 months with 6 losing active months and BTC positive rows are sparse; no May 2026 benchmark, candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists. |
+| WPR106-85-2024-forward-broad-strategy-search | Codex Research Agent | closed | `docs/work_packets/WPR106-85-2024-forward-broad-strategy-search.md`, `docs/stage_reports/STAGE_R106_2024_FORWARD_BROAD_STRATEGY_SEARCH_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `configs/research/wpr106_85_2024_forward_broad_screen_btcusdt_v1.json`, `configs/research/wpr106_85_2024_forward_broad_screen_ethusdt_v1.json`, `data/research/wpr106_85_2024_forward_pre_may_archive_map/**`, `data/research/wpr106_85_2024_forward_durable_public_archive/**`, `data/research/wpr106_85_2024_forward_durable_public_archive_ethusdt/**`, `data/research/historical_cycles/wpr106_85_2024_forward_broad_screen_btcusdt_v1/**`, `data/research/historical_cycles/wpr106_85_2024_forward_broad_screen_ethusdt_v1/**`, `data/research/wpr106_85_2024_forward_broad_screen_summary/**` | Opens the 2024-forward broad search direction after the rejected sparse side-veto lead; maps BTCUSDT/ETHUSDT local Binance Vision archives from 2024-01 through 2026-04 into no-RSI four-bar KNN datasets with no May 2026 rows; rejects all two-row-per-symbol Lorentzian/KNN replay rows, including the sparse 11-trade BTC meta-filter cell with split dominance; builds exact-window archive-backed durable fixture manifests for BTCUSDT and ETHUSDT; runs broad no-trade/trend/range/volatility-breakout historical-cycle screens with 63 candidates per symbol and CPU vector aggregate screening; across 110 non-baseline aggregate rows there are zero positive-net candidates, one ETH positive-expectancy row that remains negative after total costs, and zero promising pre-May leads; May 2026 remains unused and `ISSUE-R106-025` records missing local May holdout archives; no candidate pack, paper/live artifact, order/sizing/runtime change, live config write, CUDA speedup claim, or promotion claim exists. |
+| WPR106-83-next-agent-side-veto-gate-handoff | Codex Research Agent | closed | `docs/work_packets/WPR106-83-next-agent-side-veto-gate-handoff.md`, `docs/NEXT_AGENT_HANDOFF_WPR106_82_POST_SELECTION_SIDE_VETO_OPTIMIZER.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md` | Docs-only next-agent handoff after WPR106-82; formulates the next broad task as research-only gate/evidence closure for explicit one-sided side-veto strategies, centered on optimized BTCUSDT aggTrade-contrarian lead `941c7d1a1a3b8669c66e816ee465dc30cf18b1fba56c54b95555a027cdf046d6`; requires paired opposite-side controls, no-trade and transparent baselines, feature ablation, split/cost/stability evidence, and research-only provenance before any eligibility claim; no code, generated research artifacts, candidate pack, paper/live artifact, order/sizing/runtime change, or promotion claim. |
+| WPR106-82-post-selection-side-veto-optimizer | Codex Research Agent | closed | `docs/work_packets/WPR106-82-post-selection-side-veto-optimizer.md`, `docs/stage_reports/STAGE_R106_POST_SELECTION_SIDE_VETO_OPTIMIZER_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `configs/research/sparse_side_veto_optimizer_btcusdt_r106_v1.json`, `data/research/historical_cycles/sparse_side_veto_optimizer_btcusdt_r106_v1/**`, `data/research/monte_carlo_exit_sizing/wpr106_82/**` | Bounded expensive optimizer follow-up over WPR106-81 BTCUSDT post-selection long-only sparse rows; 50-candidate random sample completed with 54 aggregate candidates and top-two split/cost-stress refinement after a stopped 194-candidate attempt proved too slow; optimized aggTrade-contrarian lead records 319 long trades, +20.174216 net return after cycle costs, weakest split net +0.039327, 11/11 cost-stress scenarios passed, and Monte Carlo under 0.0432% taker fee per side/funding ignored gives +7.143444 5th percentile terminal return with 0/10000 negative terminal paths; remains fail-closed by one-sided side-veto gate, feature-ablation, and stability-region blockers; no candidate pack, paper/live artifact, order/sizing/runtime change, or promotion claim. |
+| WPR106-81-sparse-side-veto-validation | Codex Research Agent | closed | `docs/work_packets/WPR106-81-sparse-side-veto-validation.md`, `docs/stage_reports/STAGE_R106_SPARSE_SIDE_VETO_VALIDATION_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `configs/research/sparse_side_veto_btcusdt_r106_v1.json`, `src/tradingbotsuite/strategies/sparse_event_filter.py`, `src/tradingbotsuite/strategies/parameters.py`, `tests/contracts/test_strategy_contracts.py`, `data/research/historical_cycles/sparse_side_veto_btcusdt_r106_v1/**`, `data/research/monte_carlo_exit_sizing/wpr106_81/**` | Added `allowed_sides` and `side_filter_stage` to `sparse_event_filter_v1`, with contract tests for pre-selection and post-selection semantics; BTCUSDT side-veto cycle shows pre-selection one-sided rows fail, while post-selection long-only rows rank first and second, survive split and cost stress, and justify optimizer follow-up; WPR106-81 Monte Carlo under 0.0432% taker fee per side/funding ignored supports the aggTrade-contrarian lead but Martingale remains not applicable without sequence-proven 1:2 fixed TP/SL; opened `ISSUE-R106-024` for the fail-closed one-sided side-veto gate gap; no candidate pack, paper/live artifact, order/sizing/runtime change, or promotion claim. |
+| WPR106-80-monte-carlo-exit-sizing-sieve | Codex Research Agent | closed | `docs/work_packets/WPR106-80-monte-carlo-exit-sizing-sieve.md`, `docs/stage_reports/STAGE_R106_MONTE_CARLO_EXIT_SIZING_SIEVE_REPORT.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/research/monte_carlo_exit_sizing.py`, `tests/tradingbotsuite/test_monte_carlo_exit_sizing.py`, `data/research/monte_carlo_exit_sizing/wpr106_80/**` | Research-only offline Monte Carlo and fixed-barrier/Martingale sieve over current R106 evidence using taker commission 0.0432% per side and funding ignored; WPR106-79 archive-backed KNN rows rejected as expensive-optimizer candidates because larger validation was negative after costs; conservative 1:2 fixed TP/SL variants over BTC sparse rows were negative and path-ambiguous from MAE/MFE-only evidence; x1.5 Martingale blocked by fee-positive recovery thresholds, excessive loss streaks, and positive simulated ruin probability; only follow-up is a true BTC sparse long-only/side-veto packet before any expensive optimizer; focused tests and analyzer run passed; no candidate pack, paper/live artifact, order/sizing/runtime change, or promotion claim. |
+| WPR106-79-local-binance-archive-four-bar-mapper | Codex Research Agent | closed | `docs/work_packets/WPR106-79-local-binance-archive-four-bar-mapper.md`, `docs/stage_reports/STAGE_R106_LOCAL_BINANCE_ARCHIVE_FOUR_BAR_MAPPER_REPORT.md`, `docs/NEXT_AGENT_HANDOFF_WPR106_79_LOCAL_BINANCE_ARCHIVE_FOUR_BAR_MAPPER.md`, `docs/contracts/boundary_contract.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/research/knn_four_bar.py`, `src/tradingbotsuite/research/knn_four_bar_validation.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_hmm_knn.py`, `tests/tradingbotsuite/test_operator_ui.py` | Chose the existing local Binance Vision archive mapping phase, not new venue intake; added archive-backed four-bar dataset builder, CLI `map-binance-archive-four-bar-datasets`, operator UI/job connector, artifact indexing, focused tests, and chunked aggTrade archive parsing; preserves same-entry fixed four-bar labels, event-end/purge semantics, explicit missing perp context, and post-label sampling; completed the 2024 BTCUSDT/ETHUSDT local archive mapping under `data/research/hmm_knn_four_bar_archive_mapping/wpr106_79_full_local_archive_map/` with 16,000 rows per symbol and research-boundary checks passing; replayed the generated HMM/KNN matrix with 2/2 BTC rows and 2/2 ETH rows completed, all promotion-blocked by research/negative gate evidence; validation passed compileall, contracts, HMM/KNN tests, and operator UI tests; `ISSUE-R106-023` resolved as data coverage only; no candidate pack, paper/live artifact, order/sizing/runtime change, venue intake implementation, exit-quality conclusion, or KNN profitability claim. |
+| WPR106-78-four-bar-larger-validation-run-and-handoff | Codex Research Agent | closed | `docs/work_packets/WPR106-78-four-bar-larger-validation-run-and-handoff.md`, `docs/stage_reports/STAGE_R106_FOUR_BAR_LARGER_VALIDATION_RUN_AND_HANDOFF_REPORT.md`, `docs/NEXT_AGENT_HANDOFF_WPR106_78_FOUR_BAR_KNN_LARGER_VALIDATION.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `data/research/hmm_knn_four_bar_validation/wpr106_78_full_run/**` | Ran the WPR106-77 larger-validation command locally with a 10,800,000 ms timeout; process completed and wrote manifests, but BTC/ETH matrices failed because compact fixture coverage produced only 64 dataset rows per symbol; opened `ISSUE-R106-023`; next phase is venue-intake feature packet or mapping an existing larger BTC/ETH archive into the four-bar dataset contract; no candidate pack, paper/live artifact, order/sizing/runtime change, venue intake implementation, or promotion claim. |
+| WPR106-77-four-bar-knn-larger-validation-runner | Codex Research Agent | closed | `docs/work_packets/WPR106-77-four-bar-knn-larger-validation-runner.md`, `docs/stage_reports/STAGE_R106_FOUR_BAR_KNN_LARGER_VALIDATION_RUNNER_REPORT.md`, `docs/contracts/boundary_contract.md`, `src/tradingbotsuite/research/knn_four_bar_validation.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/main.py`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_hmm_knn.py`, `tests/tradingbotsuite/test_operator_ui.py`, `data/research/hmm_knn_four_bar_validation/**` | Research-only larger-validation runner added for the WPR106-76 selected no-RSI BTC/ETH four-bar KNN rows; CLI `run-four-bar-knn-larger-validation` registered and live-boundary-listed; operator UI optional diagnostic button queues the same guarded job; artifact indexing summarizes gate-pass count and next-phase decision; specs-only smoke against real fixture roots passed and wrote a replay command; validation passed compileall, contracts, live boundary, full HMM/KNN, and full operator UI tests; no long matrix run, candidate pack, paper/live artifact, runtime-mode/order/sizing change, venue intake, or promotion claim. |
+| WPR106-76-four-bar-lead-discovery-bridge | Codex Research Agent | closed | `docs/work_packets/WPR106-76-four-bar-lead-discovery-bridge.md`, `docs/stage_reports/STAGE_R106_FOUR_BAR_LEAD_DISCOVERY_BRIDGE_REPORT.md`, `docs/contracts/boundary_contract.md`, `src/tradingbotsuite/research/knn_four_bar.py`, `src/tradingbotsuite/research/hmm_knn.py`, `src/tradingbotsuite/research/command_registry.py`, `src/tradingbotsuite/main.py`, `tests/tradingbotsuite/test_hmm_knn.py`, `data/research/hmm_knn_four_bar/**` | Durable BTC/ETH four-bar HMM/KNN datasets built from candidate-depth public-archive fixtures with signal-close plus four completed bars, explicit event-end/purge metadata, no-RSI close/vol/flow features, and missingness for unavailable perp/book context; WPR106-75 BTC/ETH compact matrices ran post-fix on deterministic compact durable datasets; distance batching and missing-funding handling fixed; lead analysis found a clean BTC primary no-RSI price/vol/flow KNN compact lead and stronger top-score KNN/filter diagnostics; next phase is larger validation only, no candidate packs, no paper/live artifacts, no runtime-mode/order/sizing changes, and no promotion claim. |
 | WPR106-53-operator-ui-logic-reliability-audit | Codex Research Agent | closed | `docs/work_packets/WPR106-53-operator-ui-logic-reliability-audit.md`, `docs/work_packets/WPR106-53-operator-ui-logic-reliability-audit-progress.jsonl`, `docs/stage_reports/STAGE_R106_OPERATOR_UI_LOGIC_RELIABILITY_AUDIT_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/web/app.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/base.html`, `src/tradingbotsuite/web/templates/control.html`, `src/tradingbotsuite/web/templates/overview.html`, `src/tradingbotsuite/web/templates/predictions.html`, `src/tradingbotsuite/web/templates/research.html`, `src/tradingbotsuite/web/templates/timeline.html`, `src/tradingbotsuite/ui/research_app.py`, `src/tradingbotsuite/ui/templates/research/artifacts.html`, `src/tradingbotsuite/ui/templates/research/experiments.html`, `src/tradingbotsuite/ui/templates/research/index.html`, `src/tradingbotsuite/operator_console.py`, `tests/test_engine.py`, `tests/test_operator_ui.py`, `tests/tradingbotsuite/test_engine.py`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/integration/test_research_ui.py` | Operator UI reliability audit: logout CSRF, mutating JSON validation, public health redaction, worker-time research/live-boundary checks, artifact scan offloading, browser debounce/error states, symbol-scoped evidence actions, backend autopilot evidence bundle sequencing, and standalone research UI bounded scans/links implemented; inline script parse, compile, contracts, focused, broad operator/engine, and full-suite validation passed, final full suite 1561 passed/1 skipped/1 warning, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
 | WPR106-52-github-cli-ui-connector-review-and-optimization | Codex Research Agent | closed | `docs/work_packets/WPR106-52-github-cli-ui-connector-review-and-optimization.md`, `docs/work_packets/WPR106-52-github-cli-ui-connector-review-and-optimization-progress.jsonl`, `docs/stage_reports/STAGE_R106_GITHUB_CLI_UI_CONNECTOR_REVIEW_AND_OPTIMIZATION_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/ui/research_app.py`, `src/tradingbotsuite/ui/templates/research/index.html`, `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/research/data_pipeline.py`, `src/tradingbotsuite/research/experiment_runner.py`, `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_discovery/replay_evidence_controls.py`, `tests/integration/test_research_ui.py`, `tests/tradingbotsuite/test_operator_ui.py`, `tests/tradingbotsuite/test_data_pipeline.py`, `tests/tradingbotsuite/test_experiment_runner.py`, `tests/historical/test_full_cycle_synthetic.py`, `tests/historical/test_full_cycle_local_fixture_pack.py`, `tests/historical/test_research_cycle_benchmark.py`, `tests/research_discovery/test_replay_evidence_controls.py` | GitHub CLI installed and verified at 2.93.0 but unauthenticated; desktop GitHub connector MCP startup timeout recorded; standalone research UI write API token/cross-origin guard, boundary-review labeling, operator trials scan pruning, research output-root fail-closed checks, spec-relative stage path resolution, and negative-control no-effect guards implemented; compile/pip/contracts/focused/full-suite validation passed, final full suite 1552 passed/1 skipped/2 warnings, no candidate packs, and no live/paper/order/sizing/promotion authorization. |
 | WPR106-51-complete-review-hardening-and-publish | Codex Research Agent | closed | `docs/work_packets/WPR106-51-complete-review-hardening-and-publish.md`, `docs/work_packets/WPR106-51-complete-review-hardening-and-publish-progress.jsonl`, `docs/stage_reports/STAGE_R106_COMPLETE_REVIEW_HARDENING_AND_PUBLISH_REPORT.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/KNOWN_ISSUES.md`, `src/tradingbotsuite/research_discovery/candidate_pack_bridge.py`, `src/tradingbotsuite/research_discovery/replay_evidence_controls.py`, `src/tradingbotsuite/research_artifacts/candidate_pack.py`, `src/tradingbotsuite/research/experiment_runner.py`, `src/tradingbot/lorentz_lc.py`, `tests/research_discovery/test_candidate_pack_bridge.py`, `tests/research_discovery/test_replay_evidence_controls.py`, `tests/research_artifacts/test_candidate_pack.py`, `tests/tradingbotsuite/test_experiment_runner.py`, `tests/test_strategy_flow.py` | Complete review hardening and publish packet: replay provenance file/hash validation, negative-control row hash/boundary validation, runtime-mode-change evidence rejection, benchmark nested source-relative path resolution, Lorentzian warning cleanup, known-issue template hardening, compile/pip/contracts/focused/full-suite/diff validation passed, final full suite 1544 passed/1 skipped/1 warning, no candidate packs, and no live/paper/order/sizing/promotion authorization. |

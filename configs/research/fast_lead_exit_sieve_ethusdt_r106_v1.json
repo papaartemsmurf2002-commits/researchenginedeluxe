@@ -1,0 +1,333 @@
+{
+  "spec_version": "historical-research-cycle-spec-v1",
+  "cycle_id": "fast-lead-exit-sieve-ethusdt-r106-v1",
+  "symbol": "ETHUSDT",
+  "work_packet": "WPR106-72-lead-entry-exit-sieve",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_eligible": false,
+  "candidate_pack_written": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "maturity_label": "latest_window_lead_entry_exit_sieve_only",
+  "promotion_artifact_policy": {
+    "writes_promotion_artifacts": false,
+    "research_candidate_pack_scope": "disabled_latest_window_diagnostic_lead_sieve_only",
+    "promotion_ready": false,
+    "candidate_pack_eligible": false
+  },
+  "output_dir": "../../data/research/historical_cycles/fast_lead_exit_sieve_ethusdt_r106_v1",
+  "holding_windows": [
+    "24h",
+    "72h"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "../../data/research/fixtures/ethusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+    ],
+    "local_fixture_dir": null,
+    "synthetic_fixture": false,
+    "synthetic_fallback_allowed": false,
+    "evidence_scope": "latest_window_diagnostic_lead_entry_exit_sieve",
+    "latest_window_rest_data_diagnostic_only": true,
+    "candidate_pack_eligible": false,
+    "durable_public_archive_required_for_candidate_ready": true,
+    "candidate_blocker_codes": [
+      "latest_window_context_non_diagnostic_claim",
+      "fast_probe_not_candidate_gate_evidence",
+      "durable_multi_window_candidate_evidence_missing"
+    ]
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol",
+      "features_perp_context_v2"
+    ],
+    "materialized_prediction_overlays": []
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "trend_following_v1",
+    "volatility_breakout_v1",
+    "range_reversion_v1",
+    "funding_crowding_fade_v2"
+  ],
+  "strategy_family_requirements": {
+    "no_trade_comparator_strategy_id": "baseline_no_trade",
+    "transparent_comparator_strategy_ids": [
+      "trend_following_v1",
+      "volatility_breakout_v1",
+      "range_reversion_v1"
+    ],
+    "blueprint_strategy_ids": [
+      "funding_crowding_fade_v2"
+    ],
+    "knn_overlay_active_in_cycle": false,
+    "knn_overlay_standalone_allowed": false,
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "true_hmm_backend_used": false,
+    "claim_scope": "latest_window_diagnostic_lead_entry_exit_sieve_only"
+  },
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 8,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1,
+    "max_single_split_pnl_share": 0.75,
+    "min_cost_stress_survival_rate": 0.7,
+    "split_modes": [
+      "purged_embargoed_walk_forward",
+      "anchored_walk_forward"
+    ]
+  },
+  "optimizer": {
+    "method_sequence": [
+      "grid"
+    ],
+    "max_candidates_per_strategy": 1,
+    "top_regions_to_refine": 0,
+    "search_spaces": [
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.12,
+          "spacing_bars": 12
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.12,
+          "spacing_bars": 12
+        },
+        "exit_policy_id": "simple_runner_v1",
+        "exit_policy_params": {
+          "activation_pct": 0.003,
+          "runner_gap_pct": 0.003
+        }
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.12,
+          "spacing_bars": 12
+        },
+        "exit_policy_id": "simple_runner_v1",
+        "exit_policy_params": {
+          "activation_pct": 0.005,
+          "runner_gap_pct": 0.004
+        }
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.12,
+          "spacing_bars": 12
+        },
+        "exit_policy_id": "simple_runner_v1",
+        "exit_policy_params": {
+          "activation_pct": 0.008,
+          "runner_gap_pct": 0.004
+        }
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.12,
+          "spacing_bars": 12
+        },
+        "exit_policy_id": "trailing_atr_after_profit",
+        "exit_policy_params": {
+          "activation_return": 0.006,
+          "trail_return": 0.004
+        }
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.12,
+          "spacing_bars": 12
+        },
+        "exit_policy_id": "volatility_scaled_barrier",
+        "exit_policy_params": {
+          "target_return": 0.012,
+          "stop_return": 0.006
+        }
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "72h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.16,
+          "spacing_bars": 18
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "72h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.16,
+          "spacing_bars": 18
+        },
+        "exit_policy_id": "simple_runner_v1",
+        "exit_policy_params": {
+          "activation_pct": 0.005,
+          "runner_gap_pct": 0.004
+        }
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "72h",
+        "parameters": {
+          "funding_penalty_threshold": 0.00025,
+          "max_choppiness": 58.0,
+          "slope_threshold": 0.16,
+          "spacing_bars": 18
+        },
+        "exit_policy_id": "trailing_atr_after_profit",
+        "exit_policy_params": {
+          "activation_return": 0.006,
+          "trail_return": 0.004
+        }
+      },
+      {
+        "strategy_id": "volatility_breakout_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "72h",
+        "parameters": {
+          "atr_percentile_threshold": 0.25,
+          "shock_threshold": 0.7,
+          "spacing_bars": 8
+        },
+        "exit_policy_id": "trailing_atr_after_profit",
+        "exit_policy_params": {
+          "activation_return": 0.006,
+          "trail_return": 0.004
+        }
+      },
+      {
+        "strategy_id": "range_reversion_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "choppiness_threshold": 50.0,
+          "spacing_bars": 6,
+          "stretch_threshold": 0.04
+        },
+        "exit_policy_id": "trailing_atr_after_profit",
+        "exit_policy_params": {
+          "activation_return": 0.006,
+          "trail_return": 0.004
+        }
+      },
+      {
+        "strategy_id": "funding_crowding_fade_v2",
+        "feature_set_id": "features_perp_context_v2",
+        "holding_window": "72h",
+        "parameters": {
+          "funding_momentum_policy": "ignore",
+          "funding_rate_abs_bps_threshold": 0.3,
+          "funding_z_threshold": 1.0,
+          "min_edge_bps": 0.5,
+          "oi_confirmation_z_min": 0.0,
+          "premium_confirmation_bps": 1.5,
+          "spacing_bars": 8
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "funding_crowding_fade_v2",
+        "feature_set_id": "features_perp_context_v2",
+        "holding_window": "72h",
+        "parameters": {
+          "funding_momentum_policy": "ignore",
+          "funding_rate_abs_bps_threshold": 0.3,
+          "funding_z_threshold": 1.0,
+          "min_edge_bps": 0.5,
+          "oi_confirmation_z_min": 0.0,
+          "premium_confirmation_bps": 1.5,
+          "spacing_bars": 8
+        },
+        "exit_policy_id": "funding_aware_exit_v1",
+        "exit_policy_params": {
+          "funding_threshold": 0.00005,
+          "pre_funding_window_h": 1.0,
+          "min_expected_cost_bps": 0.5,
+          "edge_buffer_bps": 2.0
+        }
+      },
+      {
+        "strategy_id": "funding_crowding_fade_v2",
+        "feature_set_id": "features_perp_context_v2",
+        "holding_window": "24h",
+        "parameters": {
+          "funding_momentum_policy": "ignore",
+          "funding_rate_abs_bps_threshold": 0.3,
+          "funding_z_threshold": 1.0,
+          "min_edge_bps": 0.5,
+          "oi_confirmation_z_min": 0.0,
+          "premium_confirmation_bps": 1.5,
+          "spacing_bars": 8
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      }
+    ]
+  },
+  "compute": {
+    "cpu_threads": 8,
+    "gpu_acceleration": "disabled",
+    "gpu_device_class": "nvidia_50_series",
+    "gpu_required": false,
+    "gpu_execution_profile": "conservative"
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "lead_sieve_default_when_search_space_omits_exit"
+      }
+    ]
+  },
+  "backtest_backend": "auto"
+}

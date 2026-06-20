@@ -18,6 +18,7 @@ class NoTradeStrategy(RuleBasedStrategy):
         "features_microstructure_filter_only",
         "features_cross_asset_context",
         "features_price_perp_micro_no_wt",
+        "features_price_perp_aggflow_no_wt",
         "features_perp_context_v2",
         "features_liquidation_context_v1",
     )

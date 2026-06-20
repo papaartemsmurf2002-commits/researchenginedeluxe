@@ -164,8 +164,26 @@ def test_checked_in_full_cycle_config_consumes_btcusdt_fixture_pack(tmp_path: Pa
     assert "synthetic_row_count" not in spec.to_payload()["data"]
     assert "synthetic_variant" not in spec.to_payload()["data"]
 
+    payload = json.loads(CHECKED_IN_FULL_CYCLE_SPEC.read_text(encoding="utf-8"))
+    payload["cycle_id"] = "btc-full-cycle-v1-fixture-smoke"
+    payload["output_dir"] = str(tmp_path / "research" / "historical_cycles" / "btc-full-cycle-v1-fixture-smoke")
+    payload["holding_windows"] = ["1h"]
+    payload["data"]["dataset_manifest_paths"] = [str(CHECKED_IN_FIXTURE_MANIFEST)]
+    payload["features"]["feature_sets"] = ["features_price_trend_vol"]
+    payload["strategies"] = ["baseline_no_trade", "trend_following_v1"]
+    payload["optimizer"]["max_candidates_per_strategy"] = 1
+    payload["optimizer"]["top_regions_to_refine"] = 1
+    payload["compute"] = {
+        "cpu_threads": 1,
+        "gpu_acceleration": "disabled",
+        "gpu_required": False,
+    }
+    spec_path = tmp_path / "specs" / "btc-full-cycle-v1-fixture-smoke.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
     result = run_historical_research_cycle(
-        spec_path=CHECKED_IN_FULL_CYCLE_SPEC,
+        spec_path=spec_path,
         app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
     )
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
@@ -334,7 +352,15 @@ def test_checked_in_perp_context_v2_cycle_consumes_provider_context_fixture(tmp_
 
     payload = json.loads(CHECKED_IN_PERP_CONTEXT_V2_CYCLE_SPEC.read_text(encoding="utf-8"))
     payload["output_dir"] = str(tmp_path / "research" / "historical_cycles" / "btcusdt_perp_context_v2_foundation")
+    payload["holding_windows"] = ["4h"]
     payload["data"]["dataset_manifest_paths"] = [str(CHECKED_IN_PERP_CONTEXT_FIXTURE_MANIFEST)]
+    payload["optimizer"]["max_candidates_per_strategy"] = 0
+    payload["optimizer"]["top_regions_to_refine"] = 1
+    payload["compute"] = {
+        "cpu_threads": 1,
+        "gpu_acceleration": "disabled",
+        "gpu_required": False,
+    }
     spec_path = tmp_path / "specs" / "full_cycle_btcusdt_perp_context_v2.json"
     spec_path.parent.mkdir(parents=True, exist_ok=True)
     spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -448,7 +474,15 @@ def test_checked_in_eth_perp_context_v2_cycle_consumes_provider_context_fixture(
 
     payload = json.loads(CHECKED_IN_ETH_PERP_CONTEXT_V2_CYCLE_SPEC.read_text(encoding="utf-8"))
     payload["output_dir"] = str(tmp_path / "research" / "historical_cycles" / "ethusdt_perp_context_v2_foundation")
+    payload["holding_windows"] = ["4h"]
     payload["data"]["dataset_manifest_paths"] = [str(CHECKED_IN_ETH_PERP_CONTEXT_FIXTURE_MANIFEST)]
+    payload["optimizer"]["max_candidates_per_strategy"] = 0
+    payload["optimizer"]["top_regions_to_refine"] = 1
+    payload["compute"] = {
+        "cpu_threads": 1,
+        "gpu_acceleration": "disabled",
+        "gpu_required": False,
+    }
     spec_path = tmp_path / "specs" / "full_cycle_ethusdt_perp_context_v2.json"
     spec_path.parent.mkdir(parents=True, exist_ok=True)
     spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

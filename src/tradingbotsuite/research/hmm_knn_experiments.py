@@ -241,6 +241,8 @@ def _run_experiment_job(job: _ExperimentJob) -> dict[str, Any]:
         "config_data_change": job.experiment.get("config_data_change"),
         "expected_metric_movement": job.experiment.get("expected_metric_movement"),
         "risk": job.experiment.get("risk"),
+        "four_bar_horizon": job.experiment.get("four_bar_horizon"),
+        "comparison_baselines": job.experiment.get("comparison_baselines") or [],
         "requires_new_data": bool(job.experiment.get("requires_new_data", False)),
         "can_run_on_current_artifacts": bool(job.experiment.get("can_run_on_current_artifacts", True)),
         "mutations": job.mutations,
@@ -387,6 +389,7 @@ def _summary_row(record: dict[str, Any]) -> dict[str, Any]:
     digest = record.get("metrics_digest") or {}
     split_share = digest.get("max_single_split_pnl_share_by_strategy") or {}
     promotion_failures = digest.get("promotion_failures") or []
+    four_bar_horizon = record.get("four_bar_horizon") or {}
     return {
         "run_order": record.get("run_order"),
         "slug": record.get("slug"),
@@ -397,6 +400,9 @@ def _summary_row(record: dict[str, Any]) -> dict[str, Any]:
         "runtime_seconds": record.get("runtime_seconds"),
         "requires_new_data": record.get("requires_new_data"),
         "can_run_on_current_artifacts": record.get("can_run_on_current_artifacts"),
+        "base_interval": four_bar_horizon.get("base_interval"),
+        "resolved_horizon": four_bar_horizon.get("resolved_horizon"),
+        "four_bar_diagnostic_only": four_bar_horizon.get("diagnostic_only"),
         "artifact_manifest_path": record.get("artifact_manifest_path"),
         "artifact_manifest": record.get("artifact_manifest"),
         "monitoring_report_path": record.get("monitoring_report_path"),

@@ -163,13 +163,16 @@ class DiscoveryRunState:
             raise ValueError(f"completed trial record changed after completion: {record.trial_id}")
         hashes[record.trial_id] = record_hash
         completed_ids = tuple(dict.fromkeys((*self.completed_trial_ids, record.trial_id)))
+        failed_ids = self.failed_trial_ids
+        if record.status != "completed":
+            failed_ids = tuple(dict.fromkeys((*failed_ids, record.trial_id)))
         return DiscoveryRunState(
             run_id=self.run_id,
             status=self.status,
             started_at_utc=self.started_at_utc,
             updated_at_utc=updated_at_utc,
             completed_trial_ids=completed_ids,
-            failed_trial_ids=self.failed_trial_ids,
+            failed_trial_ids=failed_ids,
             completed_trial_hashes=hashes,
             snapshot_count=self.snapshot_count,
             last_snapshot_path=self.last_snapshot_path,

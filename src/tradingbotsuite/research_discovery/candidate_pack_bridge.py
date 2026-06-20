@@ -492,10 +492,17 @@ def _run_state_reasons(
     if str(state_payload.get("run_id") or "") != str(manifest.get("run_id") or ""):
         reasons.append("discovery_run_state_run_id_mismatch")
     completed_ids = [str(item) for item in state_payload.get("completed_trial_ids") or []]
+    failed_ids = [str(item) for item in state_payload.get("failed_trial_ids") or []]
     counts = manifest.get("counts") if isinstance(manifest.get("counts"), Mapping) else {}
-    manifest_completed = counts.get("completed_trials")
-    if manifest_completed is not None and int(manifest_completed) != len(completed_ids):
+    processed_count = counts.get("processed_trial_records", counts.get("durable_trial_records"))
+    if processed_count is None:
+        processed_count = counts.get("completed_trials")
+    if processed_count is not None and int(processed_count) != len(completed_ids):
+        reasons.append("discovery_manifest_processed_trial_record_count_mismatch")
         reasons.append("discovery_manifest_completed_trial_count_mismatch")
+    failed_count = int(counts.get("failed_trials") or 0)
+    if failed_count or failed_ids:
+        reasons.append("discovery_failed_trial_records_present")
     expected_trials = _expected_trial_count(required_outputs, reasons)
     if state_payload.get("status") == "completed" and expected_trials is not None and len(completed_ids) != expected_trials:
         reasons.append("discovery_completed_trial_count_mismatch")

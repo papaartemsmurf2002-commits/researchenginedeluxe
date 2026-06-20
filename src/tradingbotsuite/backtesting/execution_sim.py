@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, Mapping
 
 import pandas as pd
 
-from tradingbotsuite.backtesting.costs import CostModel
+from tradingbotsuite.backtesting.costs import CostModel, funding_rate_from_row
 from tradingbotsuite.backtesting.exits import (
     ExitPolicyResult,
     fixed_holding_window_exit,
@@ -16,10 +16,20 @@ from tradingbotsuite.backtesting.exits import (
 EntryPriceSource = Literal[
     "next_bar_open",
     "signal_bar_close_plus_latency",
+    "primary_bar_open_plus_latency",
     "vwap_approximation",
     "lower_timeframe_execution_path",
 ]
 ExitPriceSource = Literal["primary_close", "lower_timeframe_ohlc_sequence"]
+SUPPORTED_ENTRY_PRICE_SOURCES = frozenset(
+    {
+        "next_bar_open",
+        "signal_bar_close_plus_latency",
+        "primary_bar_open_plus_latency",
+        "vwap_approximation",
+        "lower_timeframe_execution_path",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +149,7 @@ class ExecutionSimulator:
                 raise ValueError("same-bar entry/exit is forbidden without lower-timeframe sequence proof")
             exit_price = float(exit_result.policy_result.exit_price)
             holding_ms = int(exit_result.policy_result.exit_time_ms) - int(entry_time)
-            funding_rate = _optional_float(entry_row.get("funding_rate"))
+            funding_rate = funding_rate_from_row(entry_row)
             spread_bps = _optional_float(entry_row.get("spread_bps"))
             cost = costs.estimate(
                 entry_price=entry_price,
@@ -207,6 +217,8 @@ class ExecutionSimulator:
             raise ValueError("minimum holding window must be at least approximately 1 hour")
         if assumptions.max_holding_ms > 7 * 24 * 60 * 60 * 1000:
             raise ValueError("maximum holding window must not exceed approximately 1 week")
+        if str(assumptions.entry_price_source) not in SUPPORTED_ENTRY_PRICE_SOURCES:
+            raise ValueError(f"unsupported entry_price_source: {assumptions.entry_price_source}")
         if assumptions.entry_price_source == "lower_timeframe_execution_path" and (
             lower_timeframe_market_data is None or lower_timeframe_market_data.empty
         ):
@@ -446,8 +458,7 @@ class ExecutionSimulator:
         assumptions: ExecutionAssumptions,
     ) -> float:
         if assumptions.entry_price_source == "signal_bar_close_plus_latency":
-            value = signal.get("signal_bar_close")
-            return float(entry_row["open"] if value is None else value)
+            return _signal_bar_close_price(signal)
         if assumptions.entry_price_source == "vwap_approximation":
             return float((float(entry_row["high"]) + float(entry_row["low"]) + float(entry_row["close"])) / 3.0)
         return float(entry_row["open"])
@@ -508,6 +519,16 @@ def _equity_curve(initial_equity: float, market_data: pd.DataFrame, trades: pd.D
         curve.loc[mask, "equity"] = equity
         curve.loc[curve["time_ms"] == int(trade["exit_time_ms"]), "realized_net_return"] += float(trade["net_return"])
     return curve
+
+
+def _signal_bar_close_price(signal: Mapping[str, object]) -> float:
+    raw = signal.get("signal_bar_close")
+    if raw is None or pd.isna(raw):
+        raise ValueError("signal_bar_close_plus_latency requires signal_bar_close")
+    try:
+        return float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("signal_bar_close_plus_latency requires numeric signal_bar_close") from exc
 
 
 def _optional_float(value: object) -> float | None:

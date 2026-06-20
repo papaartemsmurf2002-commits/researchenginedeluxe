@@ -1,0 +1,160 @@
+{
+  "spec_version": "historical-research-cycle-spec-v1",
+  "cycle_id": "fast-filter-probe-btcusdt-r106-v1",
+  "symbol": "BTCUSDT",
+  "work_packet": "WPR106-71-fast-entry-filter-exit-research",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_eligible": false,
+  "candidate_pack_written": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "maturity_label": "latest_window_fast_filter_exit_screening_only",
+  "promotion_artifact_policy": {
+    "writes_promotion_artifacts": false,
+    "research_candidate_pack_scope": "disabled_latest_window_diagnostic_fast_probe_only",
+    "promotion_ready": false,
+    "candidate_pack_eligible": false
+  },
+  "output_dir": "../../data/research/historical_cycles/fast_filter_probe_btcusdt_r106_v1",
+  "holding_windows": [
+    "4h",
+    "24h",
+    "72h"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "../../data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+    ],
+    "local_fixture_dir": null,
+    "synthetic_fixture": false,
+    "synthetic_fallback_allowed": false,
+    "evidence_scope": "latest_window_diagnostic_fast_filter_exit_screening",
+    "latest_window_rest_data_diagnostic_only": true,
+    "candidate_pack_eligible": false,
+    "durable_public_archive_required_for_candidate_ready": true,
+    "candidate_blocker_codes": [
+      "latest_window_context_non_diagnostic_claim",
+      "fast_probe_not_candidate_gate_evidence",
+      "durable_multi_window_candidate_evidence_missing"
+    ]
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol",
+      "features_perp_context_v2"
+    ],
+    "materialized_prediction_overlays": []
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "volatility_breakout_v1",
+    "range_reversion_v1",
+    "perp_basis_convergence_v2",
+    "oi_flow_breakout_v2",
+    "funding_crowding_fade_v2"
+  ],
+  "strategy_family_requirements": {
+    "no_trade_comparator_strategy_id": "baseline_no_trade",
+    "transparent_comparator_strategy_ids": [
+      "volatility_breakout_v1",
+      "range_reversion_v1"
+    ],
+    "blueprint_strategy_ids": [
+      "perp_basis_convergence_v2",
+      "oi_flow_breakout_v2",
+      "funding_crowding_fade_v2"
+    ],
+    "knn_overlay_active_in_cycle": false,
+    "knn_overlay_standalone_allowed": false,
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "true_hmm_backend_used": false,
+    "claim_scope": "latest_window_diagnostic_entry_filter_exit_screening_only"
+  },
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 8,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1,
+    "max_single_split_pnl_share": 0.75,
+    "min_cost_stress_survival_rate": 0.7,
+    "split_modes": [
+      "purged_embargoed_walk_forward",
+      "anchored_walk_forward"
+    ]
+  },
+  "optimizer": {
+    "method_sequence": [
+      "grid",
+      "stability_region_refine"
+    ],
+    "max_candidates_per_strategy": 1,
+    "top_regions_to_refine": 3
+  },
+  "compute": {
+    "cpu_threads": 8,
+    "gpu_acceleration": "disabled",
+    "gpu_device_class": "nvidia_50_series",
+    "gpu_required": false,
+    "gpu_execution_profile": "fastest_exact"
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "fast_filter_probe_fixed_hold_reference"
+      },
+      {
+        "exit_policy_id": "funding_aware_exit_v1",
+        "exit_policy_params": {
+          "funding_threshold": 0.00005,
+          "pre_funding_window_h": 1.0,
+          "min_expected_cost_bps": 0.5,
+          "edge_buffer_bps": 2.0
+        },
+        "exit_policy_source": "fast_filter_probe_context_funding_aware"
+      },
+      {
+        "exit_policy_id": "simple_runner_v1",
+        "exit_policy_params": {
+          "activation_pct": 0.005,
+          "runner_gap_pct": 0.004
+        },
+        "exit_policy_source": "fast_filter_probe_simple_runner_0p5_0p4"
+      },
+      {
+        "exit_policy_id": "max_mae_stop",
+        "stop_return": 0.005,
+        "exit_policy_params": {
+          "stop_return": 0.005
+        },
+        "exit_policy_source": "fast_filter_probe_hard_0p5_stop"
+      },
+      {
+        "exit_policy_id": "trailing_atr_after_profit",
+        "target_return": 0.006,
+        "stop_return": 0.004,
+        "exit_policy_params": {
+          "activation_return": 0.006,
+          "trail_return": 0.004
+        },
+        "exit_policy_source": "fast_filter_probe_primary_trailing_after_profit"
+      },
+      {
+        "exit_policy_id": "volatility_scaled_barrier",
+        "target_return": 0.008,
+        "stop_return": 0.005,
+        "exit_policy_params": {
+          "target_return": 0.008,
+          "stop_return": 0.005
+        },
+        "exit_policy_source": "fast_filter_probe_primary_bar_rr_1p6"
+      }
+    ]
+  },
+  "backtest_backend": "auto"
+}

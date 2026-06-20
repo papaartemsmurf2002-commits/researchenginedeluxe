@@ -24,7 +24,13 @@ from tradingbotsuite.backtesting import (
     cuda_runtime_evidence,
     research_cost_stress_scenarios,
 )
-from tradingbotsuite.backtesting.engine import BacktestResult, BacktestSpec
+from tradingbotsuite.backtesting.engine import (
+    BACKTEST_CACHE_POLICY,
+    BACKTEST_ENGINE_VERSION,
+    BACKTEST_MANIFEST_VERSION,
+    BacktestResult,
+    BacktestSpec,
+)
 from tradingbotsuite.backtesting.vector_engine import vector_backtest_support_reason
 from tradingbotsuite.backtesting.splits import (
     SPLIT_ENGINE_VERSION,
@@ -111,6 +117,28 @@ R97_CUDA_EXECUTION_PROFILES = {"cuda_exact_batched", "hybrid_tensorcore_screenin
 CPU_VECTOR_EXECUTION_PROFILE_REASONS = {
     "fastest_exact": "gpu_execution_profile_fastest_exact_vector_selected",
     "conservative": "gpu_execution_profile_conservative",
+}
+SPARSE_EVENT_FILTER_STRATEGY_ID = "sparse_event_filter_v1"
+SIDE_VETO_ALLOWED_SIDES = {"long", "short"}
+SPARSE_FLOW_ABLATION_PARAMETER_KEYS = frozenset(
+    {
+        "flow_confirmation",
+        "flow_abs_threshold",
+        "flow_count_z_min",
+    }
+)
+FAIL_CLOSED_CONTEXT_EXIT_POLICIES = {
+    "funding_adverse_exit",
+    "funding_aware_exit_v1",
+    "oi_contraction_exit_v1",
+    "basis_normalization_exit_v1",
+    "premium_normalization_exit_v1",
+    "gmm_transition_exit_v1",
+    "knn_remaining_edge_exit_v1",
+    "knn_dynamic_barriers_v1",
+    "alpha_decay_exit",
+    "adverse_selection_exit",
+    "trailing_atr_after_profit",
 }
 
 
@@ -399,28 +427,30 @@ def _aggregate_candidate_evaluations(
         candidate_dataset_hash = _validated_feature_frame_hash(candidate_frame, candidate_feature_record, candidate)
         candidate_feature_manifest_sha256 = str(candidate_feature_record["feature_manifest_sha256"])
         lower_timeframe_dataset_path = _candidate_lower_timeframe_dataset_path(candidate, data_source)
-        execution = _run_cycle_backtest(
+        backtest_spec = BacktestSpec(
+            run_id=_candidate_backtest_run_id(candidate, "agg"),
+            symbol=spec.symbol,
+            output_dir=backtest_root,
+            strategy_id=str(candidate["strategy_id"]),
+            holding_window=str(candidate["holding_window"]),
+            feature_set_id=str(candidate["feature_set_id"]),
+            feature_manifest_sha256=candidate_feature_manifest_sha256,
+            dataset_sha256=candidate_dataset_hash,
+            exit_policy_id=str(candidate.get("exit_policy_id", "fixed_holding_window")),
+            target_return=_candidate_target_return(candidate),
+            stop_return=_candidate_stop_return(candidate),
+            exit_policy_params=dict(candidate.get("exit_policy_params") or {}),
+            exit_price_source=_candidate_exit_price_source(candidate),
+            lower_timeframe_dataset_path=lower_timeframe_dataset_path,
+            strategy_config=_strategy_config(candidate),
+        )
+        execution = _run_cycle_backtest_fail_closed(
+            candidate=candidate,
             cycle_spec=spec,
             reference_engine=BacktestEngine(),
             vector_engine=VectorBacktestEngine(),
             cuda_engine=CudaFixedHoldingBacktestEngine(),
-            backtest_spec=BacktestSpec(
-                run_id=_candidate_backtest_run_id(candidate, "agg"),
-                symbol=spec.symbol,
-                output_dir=backtest_root,
-                strategy_id=str(candidate["strategy_id"]),
-                holding_window=str(candidate["holding_window"]),
-                feature_set_id=str(candidate["feature_set_id"]),
-                feature_manifest_sha256=candidate_feature_manifest_sha256,
-                dataset_sha256=candidate_dataset_hash,
-                exit_policy_id=str(candidate.get("exit_policy_id", "fixed_holding_window")),
-                target_return=_candidate_target_return(candidate),
-                stop_return=_candidate_stop_return(candidate),
-                exit_policy_params=dict(candidate.get("exit_policy_params") or {}),
-                exit_price_source=_candidate_exit_price_source(candidate),
-                lower_timeframe_dataset_path=lower_timeframe_dataset_path,
-                strategy_config=_strategy_config(candidate),
-            ),
+            backtest_spec=backtest_spec,
             dataset=candidate_frame,
         )
         return {
@@ -435,6 +465,239 @@ def _aggregate_candidate_evaluations(
         return [run_one(candidate) for candidate in candidates]
     with ThreadPoolExecutor(max_workers=max(1, int(workers))) as pool:
         return list(pool.map(run_one, candidates))
+
+
+def _run_cycle_backtest_fail_closed(
+    *,
+    candidate: Mapping[str, Any],
+    cycle_spec: HistoricalResearchCycleSpec,
+    reference_engine: BacktestEngine,
+    vector_engine: VectorBacktestEngine,
+    backtest_spec: BacktestSpec,
+    dataset: pd.DataFrame,
+    cuda_engine: CudaFixedHoldingBacktestEngine | None = None,
+    cuda_batched_engine: CudaBatchedFixedHoldingBacktestEngine | None = None,
+    allow_cuda: bool = True,
+) -> CycleBacktestExecution:
+    try:
+        return _run_cycle_backtest(
+            cycle_spec=cycle_spec,
+            reference_engine=reference_engine,
+            vector_engine=vector_engine,
+            backtest_spec=backtest_spec,
+            dataset=dataset,
+            cuda_engine=cuda_engine,
+            cuda_batched_engine=cuda_batched_engine,
+            allow_cuda=allow_cuda,
+        )
+    except ValueError as exc:
+        blocker = _context_exit_blocker_reason(candidate, exc)
+        if blocker is None:
+            raise
+        return _blocked_cycle_backtest_execution(
+            cycle_spec=cycle_spec,
+            backtest_spec=backtest_spec,
+            dataset=dataset,
+            blocker_reason=blocker,
+        )
+
+
+def _context_exit_blocker_reason(candidate: Mapping[str, Any], exc: ValueError) -> str | None:
+    policy = str(candidate.get("exit_policy_id") or "").lower()
+    if policy not in FAIL_CLOSED_CONTEXT_EXIT_POLICIES:
+        return None
+    message = str(exc)
+    context_markers = (
+        "requires columns:",
+        "requires cal_time_to_next_funding_h",
+        "requires realized_volatility or atr_percentile",
+        "requires finite volatility context",
+        "requires spread_bps",
+    )
+    if not any(marker in message for marker in context_markers):
+        return None
+    return "exit_policy_context_unavailable:" + policy + ":" + _blocker_message(message)
+
+
+def _blocked_cycle_backtest_execution(
+    *,
+    cycle_spec: HistoricalResearchCycleSpec,
+    backtest_spec: BacktestSpec,
+    dataset: pd.DataFrame,
+    blocker_reason: str,
+) -> CycleBacktestExecution:
+    run_dir = backtest_spec.output_dir / backtest_spec.run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    metrics_path = run_dir / "metrics.json"
+    trades_path = run_dir / "trades.parquet"
+    signals_path = run_dir / "signals.parquet"
+    equity_curve_path = run_dir / "equity_curve.parquet"
+    config_path = run_dir / "config_resolved.json"
+    manifest_path = run_dir / "backtest_manifest.json"
+
+    metrics = _blocked_backtest_metrics(blocker_reason=blocker_reason, dataset=dataset)
+    _write_json(metrics_path, metrics)
+    _blocked_trades_frame().to_parquet(trades_path, index=False)
+    _blocked_signals_frame().to_parquet(signals_path, index=False)
+    _blocked_equity_curve(dataset).to_parquet(equity_curve_path, index=False)
+    _write_json(config_path, {**backtest_spec.resolved_config(), "blocked": True, "blocker_reason": blocker_reason})
+
+    cache_key_components = {
+        "engine_version": BACKTEST_ENGINE_VERSION,
+        "cache_policy": BACKTEST_CACHE_POLICY,
+        "dataset_sha256": backtest_spec.dataset_sha256,
+        "feature_manifest_sha256": backtest_spec.feature_manifest_sha256,
+        "config_sha256": backtest_spec.config_sha256(),
+        "blocked_reason": blocker_reason,
+    }
+    result_sha256 = _stable_hash(
+        {
+            "blocked_reason": blocker_reason,
+            "metrics": metrics,
+            "trades_sha256": _file_sha256(trades_path),
+            "signals_sha256": _file_sha256(signals_path),
+            "equity_curve_sha256": _file_sha256(equity_curve_path),
+            "config_sha256": _file_sha256(config_path),
+        }
+    )
+    manifest: dict[str, Any] = {
+        "backtest_manifest_version": BACKTEST_MANIFEST_VERSION,
+        "engine_version": BACKTEST_ENGINE_VERSION,
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "run_id": backtest_spec.run_id,
+        "symbol": backtest_spec.symbol,
+        "strategy_id": backtest_spec.strategy_id,
+        "holding_window": backtest_spec.holding_window,
+        "feature_set_id": backtest_spec.feature_set_id,
+        "dataset_sha256": backtest_spec.dataset_sha256,
+        "feature_manifest_sha256": backtest_spec.feature_manifest_sha256,
+        "exit_policy_id": backtest_spec.exit_policy_id,
+        "exit_policy_params": dict(backtest_spec.exit_policy_params),
+        "exit_price_source": backtest_spec.exit_price_source,
+        "lower_timeframe_dataset_path": str(backtest_spec.lower_timeframe_dataset_path)
+        if backtest_spec.lower_timeframe_dataset_path is not None
+        else None,
+        "lower_timeframe_dataset_sha256": None,
+        "cache_policy": BACKTEST_CACHE_POLICY,
+        "cache_key_components": cache_key_components,
+        "cache_key": _stable_hash(cache_key_components),
+        "cache_lookup_used": False,
+        "cache_hit": False,
+        "execution_cache_reuse_enabled": False,
+        "trade_count": 0,
+        "required_metrics_present": True,
+        "blocked": True,
+        "blocker_code": "exit_policy_context_unavailable",
+        "blocker_reason": blocker_reason,
+        "cost_model": {},
+        "validity": {
+            "backtest_executed": False,
+            "blocked_fail_closed": True,
+            "reason": blocker_reason,
+        },
+        "result_sha256": result_sha256,
+    }
+    _write_json(manifest_path, manifest)
+    backend_evidence = _backtest_backend_evidence(
+        requested=cycle_spec.backtest_backend,
+        fallback_reason="",
+        manifest=manifest,
+        compute_policy=cycle_spec.compute.to_payload(include_r97_defaults=True),
+    )
+    backend_evidence["backtest_backend_used"] = "blocked"
+    backend_evidence["backtest_backend_rejection_reason"] = blocker_reason
+    return CycleBacktestExecution(
+        result=BacktestResult(
+            output_dir=run_dir,
+            manifest_path=manifest_path,
+            trades_path=trades_path,
+            signals_path=signals_path,
+            equity_curve_path=equity_curve_path,
+            metrics_path=metrics_path,
+            config_resolved_path=config_path,
+            result_sha256=result_sha256,
+        ),
+        manifest=manifest,
+        backend_evidence=backend_evidence,
+    )
+
+
+def _blocked_backtest_metrics(*, blocker_reason: str, dataset: pd.DataFrame) -> dict[str, Any]:
+    return {
+        "net_return_after_fees_slippage_funding": -1.0,
+        "gross_return_before_costs": 0.0,
+        "trade_count": 0,
+        "long_count": 0,
+        "short_count": 0,
+        "hit_rate": 0.0,
+        "expectancy_per_trade": -1.0,
+        "average_holding_time_ms": 0.0,
+        "median_holding_time_ms": 0.0,
+        "max_drawdown": -1.0,
+        "profit_factor": 0.0,
+        "exposure": 0.0,
+        "turnover": 0.0,
+        "slippage_sensitivity": 0.0,
+        "funding_contribution": 0.0,
+        "split_by_regime": {},
+        "split_by_month": {},
+        "split_by_volatility_bucket": {},
+        "capacity_liquidity_flags": {
+            "available": False,
+            "reason": blocker_reason,
+            "signal_count": 0,
+            "market_row_count": int(len(dataset)),
+        },
+        "blocked": True,
+        "blocker_reason": blocker_reason,
+    }
+
+
+def _blocked_trades_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        columns=[
+            "trade_id",
+            "signal_id",
+            "symbol",
+            "side",
+            "entry_time_ms",
+            "exit_time_ms",
+            "entry_bar_index",
+            "exit_bar_index",
+            "entry_price",
+            "exit_price",
+            "holding_ms",
+            "exit_policy",
+            "barrier_hit_type",
+            "exit_sequence_proof",
+            "exit_price_source",
+            "net_return",
+        ]
+    )
+
+
+def _blocked_signals_frame() -> pd.DataFrame:
+    return pd.DataFrame(columns=["signal_id", "symbol", "decision_time_ms", "side", "strategy_id"])
+
+
+def _blocked_equity_curve(dataset: pd.DataFrame) -> pd.DataFrame:
+    time_column = next((column for column in ("bar_time_ms", "signal_bar_time_ms", "time_ms") if column in dataset.columns), None)
+    if time_column is None:
+        return pd.DataFrame(columns=["time_ms", "equity", "realized_net_return"])
+    times = pd.to_numeric(dataset[time_column], errors="coerce").dropna().astype("int64")
+    return pd.DataFrame(
+        {
+            "time_ms": times,
+            "equity": 10_000.0,
+            "realized_net_return": 0.0,
+        }
+    )
+
+
+def _blocker_message(message: str) -> str:
+    return str(message).replace("\\", "/").replace("\n", " ")[:240]
 
 
 def _validate_cycle_lower_timeframe_requirements(
@@ -821,7 +1084,14 @@ def run_historical_research_cycle(
                 backend_evidence=backend_evidence,
             )
         )
-        regime_metric_records.extend(_regime_metric_records(candidate, metrics=metrics, manifest_path=result.manifest_path))
+        regime_metric_records.extend(
+            _regime_metric_records(
+                candidate,
+                metrics=metrics,
+                manifest_path=result.manifest_path,
+                trades_path=result.trades_path,
+            )
+        )
         side_metric_records.extend(_side_metric_records(candidate, trades_path=result.trades_path, manifest_path=result.manifest_path))
         candidate_results_by_id[str(candidate["candidate_id"])] = _candidate_result_from_metrics(
             candidate,
@@ -846,7 +1116,12 @@ def run_historical_research_cycle(
     rankings["rank"] = range(1, len(rankings) + 1)
     candidate_rankings_path = output_dir / "candidate_rankings.parquet"
 
-    shortlisted_ids = set(rankings.head(max(1, int(spec.optimizer.top_regions_to_refine)))["candidate_id"].astype(str))
+    refinable_rankings = rankings.loc[
+        rankings["aggregate_backtest_backend_rejection_reason"].fillna("").astype(str) == ""
+    ]
+    shortlisted_ids = set(
+        refinable_rankings.head(max(1, int(spec.optimizer.top_regions_to_refine)))["candidate_id"].astype(str)
+    )
     split_records: list[dict[str, Any]] = []
     cost_stress_records: list[dict[str, Any]] = []
     for candidate in candidates:
@@ -866,7 +1141,8 @@ def run_historical_research_cycle(
             split_payload = split.to_payload()
             split_frame = frame_for_split(candidate_frame, split)
             split_dataset_hash = _frame_hash(split_frame)
-            split_execution = _run_cycle_backtest(
+            split_execution = _run_cycle_backtest_fail_closed(
+                candidate=candidate,
                 cycle_spec=spec,
                 reference_engine=reference_engine,
                 vector_engine=vector_engine,
@@ -917,7 +1193,8 @@ def run_historical_research_cycle(
         for scenario in _cost_stress_scenarios():
             stress_frame = _cost_stress_frame(candidate_frame, scenario)
             stress_dataset_hash = _frame_hash(stress_frame)
-            stress_execution = _run_cycle_backtest(
+            stress_execution = _run_cycle_backtest_fail_closed(
+                candidate=candidate,
                 cycle_spec=spec,
                 reference_engine=reference_engine,
                 vector_engine=vector_engine,
@@ -1094,6 +1371,9 @@ def run_historical_research_cycle(
         "candidate_acceptance_scope": "research_gate_evaluated_fail_closed",
         "live_fetch_used": False,
         "order_placement_used": False,
+        "position_sizing_used": False,
+        "runtime_mode_changed": False,
+        "live_config_written": False,
         "required_outputs": required_outputs,
         "runtime": {"elapsed_seconds": round(time.perf_counter() - started, 6)},
     }
@@ -2974,6 +3254,13 @@ def _ranking_record(
         reasons.append("turnover_above_window_cap")
     if not split_evaluated:
         reasons.append("full_split_stability_not_evaluated_for_r1_aggregate_ranking")
+    backend_rejection_reason = str(backend_evidence.get("backtest_backend_rejection_reason") or "")
+    if backend_rejection_reason:
+        reasons.append(backend_rejection_reason)
+    blocker_code = str(manifest.get("blocker_code") or "")
+    if blocker_code:
+        reasons.append(blocker_code)
+    blocked_backtest = bool(manifest.get("blocked", False))
     return {
         "candidate_id": candidate["candidate_id"],
         "candidate_cache_key": candidate.get("candidate_cache_key", candidate["candidate_id"]),
@@ -3001,9 +3288,9 @@ def _ranking_record(
         "comparator_injected": bool(candidate.get("comparator_injected", False)),
         "search_method": candidate.get("search_method", "unknown"),
         "candidate_source": candidate.get("candidate_source", "unknown"),
-        "metric_scope": "real_backtest",
-        "metrics_source": "backtest_engine",
-        "empirical_evidence": True,
+        "metric_scope": "blocked_backtest" if blocked_backtest else "real_backtest",
+        "metrics_source": "blocked_fail_closed_backtest" if blocked_backtest else "backtest_engine",
+        "empirical_evidence": not blocked_backtest,
         "data_evidence_scope": "synthetic_fixture" if bool(data_source.get("synthetic")) else "local_historical_fixture",
         "backtest_manifest_path": str(manifest_path),
         "aggregate_backtest_cache_key": str(manifest["cache_key"]),
@@ -3212,9 +3499,20 @@ def _ablation_feature_key(row: Mapping[str, Any], feature_set_id: str) -> tuple[
         str(row.get("holding_window") or ""),
         str(row.get("exit_policy_id") or "fixed_holding_window"),
         str(row.get("exit_policy_params_json") or "{}"),
-        str(row.get("resolved_parameters_json") or row.get("parameters_json") or ""),
+        _ablation_parameters_json(row, feature_set_id),
         str(feature_set_id),
     )
+
+
+def _ablation_parameters_json(row: Mapping[str, Any], feature_set_id: str) -> str:
+    params = _row_parameters(row)
+    if (
+        str(row.get("strategy_id") or "") == SPARSE_EVENT_FILTER_STRATEGY_ID
+        and str(feature_set_id) in {"features_price_trend_vol", "features_price_perp_aggflow_no_wt"}
+    ):
+        for key in SPARSE_FLOW_ABLATION_PARAMETER_KEYS:
+            params.pop(key, None)
+    return json.dumps(dict(sorted(params.items())), sort_keys=True, separators=(",", ":"), default=str)
 
 
 def _ablation_comparator_feature_set(feature_set_id: str) -> str | None:
@@ -3671,15 +3969,18 @@ def _annotate_rankings_with_research_gate(
     side_by_candidate = _records_by_candidate(side_metric_records)
     split_by_candidate = _records_by_candidate(split_records)
     cost_by_candidate = _records_by_candidate(cost_stress_records)
+    rows = frame.to_dict("records")
+    side_veto_controls = _side_veto_control_lookup(rows, side_by_candidate)
 
     annotated: list[dict[str, Any]] = []
-    for row in frame.to_dict("records"):
+    for row in rows:
         candidate_id = str(row["candidate_id"])
         details = _research_gate_details(
             row,
             stability=stability_by_candidate.get(candidate_id, {}),
             regime_records=regime_by_candidate.get(candidate_id, []),
             side_records=side_by_candidate.get(candidate_id, []),
+            side_veto_controls=side_veto_controls,
             split_records=split_by_candidate.get(candidate_id, []),
             cost_stress_records=cost_by_candidate.get(candidate_id, []),
             spec=spec,
@@ -3706,6 +4007,7 @@ def _research_gate_details(
     stability: Mapping[str, Any],
     regime_records: list[dict[str, Any]],
     side_records: list[dict[str, Any]],
+    side_veto_controls: Mapping[tuple[tuple[str, str, str, str, str, str], str], Mapping[str, Any]],
     split_records: list[dict[str, Any]],
     cost_stress_records: list[dict[str, Any]],
     spec: HistoricalResearchCycleSpec,
@@ -3733,7 +4035,7 @@ def _research_gate_details(
     ]
     reasons.extend(ablation_failure_reasons)
 
-    side_details = _side_evidence_details(row, side_records)
+    side_details = _side_evidence_details(row, side_records, side_veto_controls=side_veto_controls)
     reasons.extend(side_details["reasons"])
     regime_details = _regime_evidence_details(regime_records)
     reasons.extend(regime_details["reasons"])
@@ -3758,7 +4060,19 @@ def _research_gate_details(
         "side_evidence_count": int(side_details["count"]),
         "side_evidence_status": side_details["status"],
         "side_evidence_sides": "|".join(side_details["sides"]),
+        "side_evidence_policy": side_details["policy"],
+        "side_evidence_required_sides": "|".join(side_details["required_sides"]),
         "side_evidence_exception": bool(side_details["exception"]),
+        "side_veto_declared": bool(side_details["side_veto_declared"]),
+        "side_veto_allowed_side": side_details["side_veto_allowed_side"],
+        "side_veto_stage": side_details["side_veto_stage"],
+        "side_veto_control_candidate_id": side_details["side_veto_control_candidate_id"],
+        "side_veto_control_side": side_details["side_veto_control_side"],
+        "side_veto_control_status": side_details["side_veto_control_status"],
+        "side_veto_control_trade_count": int(side_details["side_veto_control_trade_count"]),
+        "side_veto_control_expectancy_vs_no_trade": side_details["side_veto_control_expectancy_vs_no_trade"],
+        "side_veto_control_net_return": side_details["side_veto_control_net_return"],
+        "side_veto_control_reasons": "|".join(side_details["side_veto_control_reasons"]),
         "regime_evidence_evaluated": bool(regime_records),
         "regime_evidence_count": int(regime_details["count"]),
         "regime_evidence_status": regime_details["status"],
@@ -3783,7 +4097,12 @@ def _research_gate_details(
     }
 
 
-def _side_evidence_details(row: Mapping[str, Any], records: list[dict[str, Any]]) -> dict[str, Any]:
+def _side_evidence_details(
+    row: Mapping[str, Any],
+    records: list[dict[str, Any]],
+    *,
+    side_veto_controls: Mapping[tuple[tuple[str, str, str, str, str, str], str], Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     sides = sorted(
         str(record.get("side") or "").lower()
         for record in records
@@ -3792,21 +4111,156 @@ def _side_evidence_details(row: Mapping[str, Any], records: list[dict[str, Any]]
     real_sides = sorted({side for side in sides if side in {"long", "short"}})
     reasons: list[str] = []
     exception = False
+    policy = "long_short_pair_required"
+    required_sides = ["long", "short"]
+    side_veto_declared = False
+    side_veto_allowed_side = ""
+    side_veto_stage = ""
+    side_veto_control_candidate_id = ""
+    side_veto_control_side = ""
+    side_veto_control_status = "not_applicable"
+    side_veto_control_trade_count = 0
+    side_veto_control_expectancy_vs_no_trade: float | None = None
+    side_veto_control_net_return: float | None = None
+    side_veto_control_reasons: list[str] = []
+    side_veto = _explicit_side_veto_contract(row)
+    if side_veto is not None:
+        policy = "explicit_one_sided_side_veto"
+        side_veto_declared = True
+        side_veto_allowed_side = side_veto["allowed_side"]
+        side_veto_stage = side_veto["stage"]
+        required_sides = [side_veto_allowed_side]
     if not records:
         reasons.append("candidate_side_evidence_required")
     if real_sides != sorted(set(sides)):
         reasons.append("candidate_side_evidence_invalid_labels")
     if str(row.get("strategy_id") or "") == NO_TRADE_BASELINE_STRATEGY_ID:
+        policy = "no_trade_baseline_exception"
         exception = True
+    elif side_veto is not None:
+        if set(real_sides) != {side_veto_allowed_side}:
+            side_veto_control_reasons.append("candidate_side_veto_declared_side_evidence_mismatch")
+        control = _side_veto_control_row(row, side_veto_controls or {})
+        if control is None:
+            side_veto_control_reasons.append("candidate_side_veto_control_evidence_required")
+        else:
+            side_veto_control_candidate_id = str(control.get("candidate_id") or "")
+            side_veto_control_side = str(control.get("side_veto_allowed_side") or _opposite_side(side_veto_allowed_side))
+            side_veto_control_trade_count = int(control.get("trade_count", 0) or 0)
+            side_veto_control_expectancy_vs_no_trade = _optional_float(control.get("expectancy_vs_no_trade"))
+            side_veto_control_net_return = _optional_float(control.get("net_return_after_fees_slippage_funding"))
+            metric_sides = {item for item in str(control.get("side_veto_metric_sides") or "").split("|") if item}
+            if metric_sides != {_opposite_side(side_veto_allowed_side)}:
+                side_veto_control_reasons.append("candidate_side_veto_control_side_evidence_mismatch")
+            if side_veto_control_trade_count <= 0:
+                side_veto_control_reasons.append("candidate_side_veto_control_trade_count_required")
+            if side_veto_control_expectancy_vs_no_trade is None or side_veto_control_expectancy_vs_no_trade > 0.0:
+                side_veto_control_reasons.append("candidate_side_veto_control_not_negative_vs_no_trade")
+            if side_veto_control_net_return is None or side_veto_control_net_return > 0.0:
+                side_veto_control_reasons.append("candidate_side_veto_control_net_return_not_negative")
+        transparent_delta = _optional_float(row.get("expectancy_vs_transparent_default"))
+        if not str(row.get("transparent_default_comparator_candidate_id") or ""):
+            side_veto_control_reasons.append("transparent_baseline_evidence_required")
+        elif transparent_delta is None or transparent_delta <= 0.0:
+            side_veto_control_reasons.append("transparent_baseline_not_beaten")
+        side_veto_control_status = "passed" if not side_veto_control_reasons else "failed"
+        reasons.extend(side_veto_control_reasons)
     elif set(real_sides) != {"long", "short"}:
         reasons.append("candidate_side_evidence_long_short_required")
     return {
         "status": "complete" if not reasons else "incomplete",
         "count": len(real_sides),
         "sides": real_sides,
+        "policy": policy,
+        "required_sides": required_sides,
         "exception": exception,
+        "side_veto_declared": side_veto_declared,
+        "side_veto_allowed_side": side_veto_allowed_side,
+        "side_veto_stage": side_veto_stage,
+        "side_veto_control_candidate_id": side_veto_control_candidate_id,
+        "side_veto_control_side": side_veto_control_side,
+        "side_veto_control_status": side_veto_control_status,
+        "side_veto_control_trade_count": side_veto_control_trade_count,
+        "side_veto_control_expectancy_vs_no_trade": side_veto_control_expectancy_vs_no_trade,
+        "side_veto_control_net_return": side_veto_control_net_return,
+        "side_veto_control_reasons": side_veto_control_reasons,
         "reasons": reasons,
     }
+
+
+def _explicit_side_veto_contract(row: Mapping[str, Any]) -> dict[str, str] | None:
+    if str(row.get("strategy_id") or "") != SPARSE_EVENT_FILTER_STRATEGY_ID:
+        return None
+    params = _row_parameters(row)
+    allowed_side = str(params.get("allowed_sides") or "").strip().lower()
+    if allowed_side not in SIDE_VETO_ALLOWED_SIDES:
+        return None
+    stage = str(params.get("side_filter_stage") or "").strip().lower()
+    if stage not in {"pre_selection", "post_selection"}:
+        return None
+    return {"allowed_side": allowed_side, "stage": stage}
+
+
+def _row_parameters(row: Mapping[str, Any]) -> dict[str, Any]:
+    raw = row.get("resolved_parameters_json") or row.get("parameters_json") or "{}"
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    try:
+        payload = json.loads(str(raw))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return dict(payload) if isinstance(payload, Mapping) else {}
+
+
+def _side_veto_control_lookup(
+    rows: list[Mapping[str, Any]],
+    side_by_candidate: Mapping[str, list[dict[str, Any]]],
+) -> dict[tuple[tuple[str, str, str, str, str, str], str], Mapping[str, Any]]:
+    controls: dict[tuple[tuple[str, str, str, str, str, str], str], Mapping[str, Any]] = {}
+    for row in rows:
+        contract = _explicit_side_veto_contract(row)
+        if contract is None:
+            continue
+        candidate_id = str(row.get("candidate_id") or "")
+        enriched = dict(row)
+        enriched["side_veto_allowed_side"] = contract["allowed_side"]
+        enriched["side_veto_stage"] = contract["stage"]
+        enriched["trade_count"] = int(row.get("trade_count", 0) or 0)
+        control_sides = {
+            str(record.get("side") or "").lower()
+            for record in side_by_candidate.get(candidate_id, [])
+            if int(record.get("trade_count", 0) or 0) > 0
+        }
+        enriched["side_veto_metric_sides"] = "|".join(sorted(side for side in control_sides if side in {"long", "short"}))
+        controls[(_side_veto_pair_key(row), contract["allowed_side"])] = enriched
+    return controls
+
+
+def _side_veto_control_row(
+    row: Mapping[str, Any],
+    controls: Mapping[tuple[tuple[str, str, str, str, str, str], str], Mapping[str, Any]],
+) -> Mapping[str, Any] | None:
+    contract = _explicit_side_veto_contract(row)
+    if contract is None:
+        return None
+    return controls.get((_side_veto_pair_key(row), _opposite_side(contract["allowed_side"])))
+
+
+def _side_veto_pair_key(row: Mapping[str, Any]) -> tuple[str, str, str, str, str, str]:
+    params = _row_parameters(row)
+    params.pop("allowed_sides", None)
+    return (
+        str(row.get("strategy_id") or ""),
+        str(row.get("feature_set_id") or ""),
+        str(row.get("holding_window") or ""),
+        str(row.get("exit_policy_id") or "fixed_holding_window"),
+        str(row.get("exit_policy_params_json") or "{}"),
+        json.dumps(dict(sorted(params.items())), sort_keys=True, separators=(",", ":"), default=str),
+    )
+
+
+def _opposite_side(side: str) -> str:
+    return "short" if str(side).lower() == "long" else "long"
 
 
 def _regime_evidence_details(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -4022,7 +4476,33 @@ def _regime_metric_records(
     *,
     metrics: Mapping[str, Any],
     manifest_path: Path,
+    trades_path: Path,
 ) -> list[dict[str, Any]]:
+    if trades_path.exists():
+        trades = pd.read_parquet(trades_path)
+        if not trades.empty and "regime" in trades.columns:
+            records: list[dict[str, Any]] = []
+            for regime, group in trades.groupby(trades["regime"].astype(str).str.lower(), dropna=False):
+                returns = pd.to_numeric(group.get("net_return", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+                records.append(
+                    {
+                        "candidate_id": candidate["candidate_id"],
+                        "strategy_id": candidate["strategy_id"],
+                        "feature_set_id": candidate["feature_set_id"],
+                        "holding_window": candidate["holding_window"],
+                        "regime": str(regime).lower(),
+                        "trade_count": int(len(group)),
+                        "costed_expectancy": float(returns.mean()) if len(returns) else 0.0,
+                        "net_return_after_fees_slippage_funding": (
+                            float((1.0 + returns).prod() - 1.0) if len(returns) else 0.0
+                        ),
+                        "summed_net_return_after_fees_slippage_funding": float(returns.sum()),
+                        "hit_rate": float((returns > 0.0).mean()) if len(returns) else 0.0,
+                        "metric_scope": "aggregate_backtest_regime",
+                        "backtest_manifest_path": str(manifest_path),
+                    }
+                )
+            return records
     split_by_regime = metrics.get("split_by_regime", {})
     if not isinstance(split_by_regime, Mapping):
         return []
@@ -4030,6 +4510,7 @@ def _regime_metric_records(
     for regime, payload in sorted(split_by_regime.items(), key=lambda item: str(item[0])):
         if not isinstance(payload, Mapping):
             continue
+        net_return_sum = float(payload.get("net_return_sum", 0.0))
         records.append(
             {
                 "candidate_id": candidate["candidate_id"],
@@ -4039,7 +4520,8 @@ def _regime_metric_records(
                 "regime": str(regime).lower(),
                 "trade_count": int(payload.get("trade_count", 0)),
                 "costed_expectancy": float(payload.get("expectancy", 0.0)),
-                "net_return_after_fees_slippage_funding": float(payload.get("net_return_sum", 0.0)),
+                "net_return_after_fees_slippage_funding": net_return_sum,
+                "summed_net_return_after_fees_slippage_funding": net_return_sum,
                 "hit_rate": float(payload.get("hit_rate", 0.0)),
                 "metric_scope": "aggregate_backtest_regime",
                 "backtest_manifest_path": str(manifest_path),
@@ -4062,6 +4544,7 @@ def _side_metric_records(
     records: list[dict[str, Any]] = []
     for side, group in trades.groupby(trades["side"].astype(str).str.lower(), dropna=False):
         returns = pd.to_numeric(group.get("net_return", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+        compounded_return = float((1.0 + returns).prod() - 1.0) if len(returns) else 0.0
         records.append(
             {
                 "candidate_id": candidate["candidate_id"],
@@ -4071,7 +4554,8 @@ def _side_metric_records(
                 "side": str(side).lower(),
                 "trade_count": int(len(group)),
                 "costed_expectancy": float(returns.mean()) if len(returns) else 0.0,
-                "net_return_after_fees_slippage_funding": float(returns.sum()),
+                "net_return_after_fees_slippage_funding": compounded_return,
+                "summed_net_return_after_fees_slippage_funding": float(returns.sum()),
                 "hit_rate": float((returns > 0.0).mean()) if len(returns) else 0.0,
                 "metric_scope": "aggregate_backtest_side",
                 "backtest_manifest_path": str(manifest_path),
@@ -4098,6 +4582,7 @@ def _regime_metric_columns() -> list[str]:
         "trade_count",
         "costed_expectancy",
         "net_return_after_fees_slippage_funding",
+        "summed_net_return_after_fees_slippage_funding",
         "hit_rate",
         "metric_scope",
         "backtest_manifest_path",
@@ -4114,6 +4599,7 @@ def _side_metric_columns() -> list[str]:
         "trade_count",
         "costed_expectancy",
         "net_return_after_fees_slippage_funding",
+        "summed_net_return_after_fees_slippage_funding",
         "hit_rate",
         "metric_scope",
         "backtest_manifest_path",
@@ -4219,6 +4705,18 @@ def _candidate_gate_report(
                 "split_evaluated": bool(row.get("split_evaluated")),
                 "cost_stress_evaluated": bool(row.get("cost_stress_evaluated")),
                 "stability_evaluated": bool(row.get("stability_evaluated")),
+                "side_evidence_policy": row.get("side_evidence_policy"),
+                "side_evidence_required_sides": row.get("side_evidence_required_sides"),
+                "side_veto_declared": bool(row.get("side_veto_declared", False)),
+                "side_veto_allowed_side": row.get("side_veto_allowed_side"),
+                "side_veto_stage": row.get("side_veto_stage"),
+                "side_veto_control_candidate_id": row.get("side_veto_control_candidate_id"),
+                "side_veto_control_side": row.get("side_veto_control_side"),
+                "side_veto_control_status": row.get("side_veto_control_status"),
+                "side_veto_control_trade_count": int(row.get("side_veto_control_trade_count", 0) or 0),
+                "side_veto_control_expectancy_vs_no_trade": row.get("side_veto_control_expectancy_vs_no_trade"),
+                "side_veto_control_net_return": row.get("side_veto_control_net_return"),
+                "side_veto_control_reasons": row.get("side_veto_control_reasons"),
                 "split_evaluation_count": int(row.get("split_evaluation_count", 0)),
                 "cost_stress_evaluation_count": int(row.get("cost_stress_evaluation_count", 0)),
                 "required_split_count": int(row.get("required_split_count", 0)),

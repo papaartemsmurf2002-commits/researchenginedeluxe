@@ -41,6 +41,13 @@ from tradingbotsuite.data.historical_data_catalog import (
 from tradingbotsuite.promotion.stage13_readiness import build_stage13_readiness_report
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, prepare_hmm_knn_research_data
 from tradingbotsuite.research.experiment_runner import run_research_experiment
+from tradingbotsuite.research.knn_four_bar_validation import (
+    FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_END_MONTH,
+    FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_START_MONTH,
+    FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL,
+    map_local_binance_archive_four_bar_datasets,
+    run_four_bar_knn_larger_validation,
+)
 from tradingbotsuite.research.workflow import build_dataset, calibrate_model_artifact, replay_eval_artifact, train_model
 from tradingbotsuite.research_cycle import (
     HistoricalResearchCycleSpec,
@@ -79,6 +86,21 @@ RESEARCH_AUTOPILOT_STEP_ESTIMATES_SECONDS = {
     "frozen_entry_exit_lab": 180,
     "candidate_eligibility": 30,
 }
+RESEARCH_AUTOPILOT_UPSTREAM_STEP_KEYS = frozenset(
+    {
+        "historical_data_catalog",
+        "historical_cycle",
+        "exact_discovery",
+    }
+)
+RESEARCH_AUTOPILOT_DOWNSTREAM_STEP_KEYS = frozenset(
+    {
+        "research_analysis",
+        "research_analysis_delta",
+        "frozen_entry_exit_lab",
+        "candidate_eligibility",
+    }
+)
 RESEARCH_AUTOPILOT_STALE_MANIFEST_SECONDS = 900
 
 AMBIGUOUS_SAFETY_REASONS = {
@@ -776,10 +798,13 @@ class OperatorConsoleService:
         )
         readiness = self.r104_readiness_diagnostics()
         r104_job_types = {
+            "check-historical-data-catalog",
             "refresh-historical-data-catalog",
             "collect-durable-data",
             "run-historical-research-cycle",
             "run-discovery",
+            "map-binance-archive-four-bar-datasets",
+            "run-four-bar-knn-larger-validation",
             "analyze-research-results",
             "analyze-research-delta",
             "run-frozen-entry-exit-lab",
@@ -972,6 +997,11 @@ class OperatorConsoleService:
         ]
         complete_count = sum(1 for item in milestones if item["status"] == "complete")
         next_action = self._research_next_action(milestones, active_job)
+        testing_readiness = self._research_testing_readiness(
+            artifacts=artifacts,
+            readiness=readiness,
+            active_job=active_job,
+        )
         return {
             "stage": "R106",
             "research_only": True,
@@ -989,12 +1019,13 @@ class OperatorConsoleService:
             "active_discovery_progress": active_discovery_progress,
             "active_historical_data_progress": active_historical_data_progress,
             "active_historical_cycle_progress": active_historical_cycle_progress,
+            "testing_readiness": testing_readiness,
             "next_action": next_action,
             "milestones": milestones,
             "settings": {
                 "default_scope": "R106 Historical Data Catalog active fixtures",
                 "primary_cycle_profile": "deep durable cycle, 64 candidates per strategy, 16 regions refined",
-                "primary_discovery_profile": "exact bounded sweep, 570240 planned combinations per symbol",
+                "primary_discovery_profile": "reduced exact no-regime sweep, at least 3456 planned combinations per symbol",
                 "analysis_profile": "mandatory analysis, run-to-run delta, and frozen-entry exit-lab artifacts before eligibility review",
                 "standard_discovery_profile": "720-trial sparse screen for quick blocker feedback",
                 "output_policy": "stable resumable output directory for exact sweeps; isolated output for quick diagnostics",
@@ -1133,6 +1164,32 @@ class OperatorConsoleService:
                             "summary": self._research_autopilot_summary(payload),
                         }
                     )
+            elif job_type == "run-four-bar-knn-larger-validation":
+                path = self._existing_path(result.get("manifest_path"))
+                payload = self._read_json_path(path) if path is not None else None
+                if isinstance(payload, dict):
+                    artifacts.append(
+                        {
+                            "type": "four_bar_knn_larger_validation",
+                            "path": str(path),
+                            "sort_time": path.stat().st_mtime,
+                            "manifest": payload,
+                            "summary": self._four_bar_knn_larger_validation_summary(payload),
+                        }
+                    )
+            elif job_type == "map-binance-archive-four-bar-datasets":
+                path = self._existing_path(result.get("manifest_path"))
+                payload = self._read_json_path(path) if path is not None else None
+                if isinstance(payload, dict):
+                    artifacts.append(
+                        {
+                            "type": "four_bar_archive_mapping",
+                            "path": str(path),
+                            "sort_time": path.stat().st_mtime,
+                            "manifest": payload,
+                            "summary": self._four_bar_archive_mapping_summary(payload),
+                        }
+                    )
             elif job_type == "evaluate-discovery-candidate-pack-eligibility":
                 path = self._existing_path(result.get("candidate_pack_eligibility_manifest_path"))
                 payload = self._read_json_path(path) if path is not None else None
@@ -1238,6 +1295,22 @@ class OperatorConsoleService:
             artifact = self._research_progress_artifact_from_manifest(path, artifact_type="research_autopilot")
             if artifact is not None:
                 artifacts.append(artifact)
+        for path in root.glob("operator_runs/hmm_knn_four_bar_validation/*/four_bar_knn_larger_validation_manifest.json"):
+            artifact = self._research_progress_artifact_from_manifest(path, artifact_type="four_bar_knn_larger_validation")
+            if artifact is not None:
+                artifacts.append(artifact)
+        for path in root.glob("operator_runs/hmm_knn_four_bar_archive_mapping/*/four_bar_archive_mapping_manifest.json"):
+            artifact = self._research_progress_artifact_from_manifest(path, artifact_type="four_bar_archive_mapping")
+            if artifact is not None:
+                artifacts.append(artifact)
+        for path in root.glob("hmm_knn_four_bar_validation/**/four_bar_knn_larger_validation_manifest.json"):
+            artifact = self._research_progress_artifact_from_manifest(path, artifact_type="four_bar_knn_larger_validation")
+            if artifact is not None:
+                artifacts.append(artifact)
+        for path in root.glob("hmm_knn_four_bar_archive_mapping/**/four_bar_archive_mapping_manifest.json"):
+            artifact = self._research_progress_artifact_from_manifest(path, artifact_type="four_bar_archive_mapping")
+            if artifact is not None:
+                artifacts.append(artifact)
         return artifacts
 
     def _research_progress_artifact_from_manifest(
@@ -1289,6 +1362,19 @@ class OperatorConsoleService:
             summary = self._discovery_exit_lab_summary(payload)
         elif artifact_type == "research_autopilot":
             summary = self._research_autopilot_summary(payload)
+        elif artifact_type == "four_bar_knn_larger_validation":
+            summary = self._four_bar_knn_larger_validation_summary(payload)
+        elif artifact_type == "four_bar_archive_mapping":
+            summary = self._four_bar_archive_mapping_summary(payload)
+        elif artifact_type == "candidate_pack_eligibility":
+            outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), Mapping) else {}
+            summary = {
+                "bridge_scope": payload.get("bridge_scope"),
+                "candidate_pack_written": payload.get("candidate_pack_written"),
+                "source_multiple_testing_manifest_path": payload.get("source_multiple_testing_manifest_path"),
+                "source_validation_floors_manifest_path": payload.get("source_validation_floors_manifest_path"),
+                "eligibility": self._summarize_gate_artifact(outputs.get("candidate_pack_eligibility")),
+            }
         else:
             summary = {
                 "bridge_scope": payload.get("bridge_scope"),
@@ -1511,6 +1597,118 @@ class OperatorConsoleService:
             "candidate_gates": self._summarize_gate_artifact(outputs.get("discovery_exit_lab_candidate_gates")),
         }
 
+    def _four_bar_knn_larger_validation_summary(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        matrices = payload.get("matrices") if isinstance(payload.get("matrices"), Mapping) else {}
+        next_phase = payload.get("next_phase") if isinstance(payload.get("next_phase"), Mapping) else {}
+        summary_path = self._existing_path(payload.get("summary_json_path"))
+        summary_payload = self._read_json_path(summary_path) if summary_path is not None else None
+        records = summary_payload.get("records") if isinstance(summary_payload, Mapping) and isinstance(summary_payload.get("records"), list) else []
+        gate_pass = (
+            summary_payload.get("gate_pass_records")
+            if isinstance(summary_payload, Mapping) and isinstance(summary_payload.get("gate_pass_records"), list)
+            else []
+        )
+        return {
+            "validation_version": payload.get("validation_version"),
+            "sample_rows_per_interval": payload.get("sample_rows_per_interval"),
+            "matrix_count": len(matrices),
+            "matrix_statuses": {
+                str(symbol): (item.get("status") if isinstance(item, Mapping) else None)
+                for symbol, item in matrices.items()
+            },
+            "record_count": len(records),
+            "gate_pass_count": len(gate_pass),
+            "next_phase_decision": next_phase.get("decision"),
+            "next_phase_reason": next_phase.get("reason"),
+            "summary_json_path": payload.get("summary_json_path"),
+            "summary_csv_path": payload.get("summary_csv_path"),
+            "command_path": payload.get("command_path"),
+            "promotion_ready": payload.get("promotion_ready"),
+            "research_only": payload.get("research_only"),
+            "observe_only": payload.get("observe_only"),
+        }
+
+    def _four_bar_archive_mapping_summary(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        datasets = payload.get("datasets") if isinstance(payload.get("datasets"), Mapping) else {}
+        records = payload.get("records") if isinstance(payload.get("records"), list) else []
+        errors = payload.get("errors") if isinstance(payload.get("errors"), list) else []
+        return {
+            "archive_mapping_version": payload.get("archive_mapping_version"),
+            "phase_selected": payload.get("phase_selected"),
+            "start_month": payload.get("start_month"),
+            "end_month": payload.get("end_month"),
+            "sample_rows_per_interval": payload.get("sample_rows_per_interval"),
+            "dataset_count": len(datasets),
+            "record_count": len(records),
+            "error_count": len(errors),
+            "matrix_execution_status": ((payload.get("matrix_execution") or {}).get("status") if isinstance(payload.get("matrix_execution"), Mapping) else None),
+            "matrix_command_path": payload.get("matrix_command_path"),
+            "summary_json_path": payload.get("summary_json_path"),
+            "promotion_ready": payload.get("promotion_ready"),
+            "research_only": payload.get("research_only"),
+            "observe_only": payload.get("observe_only"),
+        }
+
+    def _research_autopilot_compute_scope(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
+        upstream_executed = 0
+        upstream_skipped = 0
+        downstream_executed = 0
+        downstream_skipped = 0
+        eligibility_executed = 0
+        executed_keys: list[str] = []
+        skipped_keys: list[str] = []
+        for step in steps:
+            if not isinstance(step, Mapping):
+                continue
+            key = str(step.get("key") or "")
+            status = str(step.get("status") or "")
+            if status == "executed":
+                executed_keys.append(key)
+                if key in RESEARCH_AUTOPILOT_UPSTREAM_STEP_KEYS:
+                    upstream_executed += 1
+                if key in RESEARCH_AUTOPILOT_DOWNSTREAM_STEP_KEYS:
+                    downstream_executed += 1
+                if key == "candidate_eligibility":
+                    eligibility_executed += 1
+            elif status == "skipped":
+                skipped_keys.append(key)
+                if key in RESEARCH_AUTOPILOT_UPSTREAM_STEP_KEYS:
+                    upstream_skipped += 1
+                if key in RESEARCH_AUTOPILOT_DOWNSTREAM_STEP_KEYS:
+                    downstream_skipped += 1
+
+        executed_count = int(payload.get("executed_step_count") or len(executed_keys))
+        force_upstream_recompute = bool(payload.get("force_upstream_recompute"))
+        if executed_count == 0:
+            execution_status = "reused_existing_evidence"
+        elif upstream_executed > 0:
+            execution_status = "executed_upstream_compute"
+        elif downstream_executed > 0:
+            execution_status = "refreshed_downstream_evidence"
+        else:
+            execution_status = "executed_new_evidence"
+        status_detail = execution_status
+        if force_upstream_recompute and upstream_executed > 0:
+            status_detail = "forced_upstream_recompute_executed"
+        elif execution_status == "refreshed_downstream_evidence" and upstream_skipped > 0:
+            status_detail = "downstream_refresh_reused_upstream_evidence"
+        return {
+            "execution_status": execution_status,
+            "status_detail": status_detail,
+            "force_upstream_recompute": force_upstream_recompute,
+            "new_iteration_compute_executed": upstream_executed > 0,
+            "upstream_compute_executed": upstream_executed > 0,
+            "upstream_reused": upstream_executed == 0 and upstream_skipped > 0,
+            "upstream_executed_step_count": upstream_executed,
+            "upstream_skipped_step_count": upstream_skipped,
+            "downstream_executed_step_count": downstream_executed,
+            "downstream_skipped_step_count": downstream_skipped,
+            "eligibility_executed_step_count": eligibility_executed,
+            "executed_step_keys": executed_keys,
+            "skipped_step_keys": skipped_keys,
+        }
+
     def _research_autopilot_summary(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         steps = payload.get("steps") if isinstance(payload.get("steps"), list) else []
         status_counts: dict[str, int] = {}
@@ -1534,13 +1732,26 @@ class OperatorConsoleService:
             and last_update_age_seconds is not None
             and last_update_age_seconds > RESEARCH_AUTOPILOT_STALE_MANIFEST_SECONDS
         )
+        executed_step_count = int(payload.get("executed_step_count") or 0)
+        scope = self._research_autopilot_compute_scope(payload)
+        execution_status = str(payload.get("execution_status") or "")
+        if not execution_status:
+            if autopilot_status == "completed":
+                execution_status = str(scope.get("execution_status") or "reused_existing_evidence")
+            else:
+                execution_status = str(autopilot_status or "unknown")
+        status_detail = str(payload.get("status_detail") or execution_status)
         return {
             "autopilot_version": payload.get("autopilot_version"),
             "autopilot_status": autopilot_status,
+            **scope,
+            "execution_status": execution_status,
+            "status_detail": status_detail,
             "requested_symbols": payload.get("requested_symbols") if isinstance(payload.get("requested_symbols"), list) else [],
             "step_count": len(steps),
             "status_counts": status_counts,
-            "executed_step_count": int(payload.get("executed_step_count") or 0),
+            "executed_step_count": executed_step_count,
+            "skipped_step_count": int(status_counts.get("skipped") or 0),
             "latest_step": dict(steps[-1]) if steps else None,
             "active_step": active_step,
             "telemetry_status": telemetry_status,
@@ -1732,13 +1943,21 @@ class OperatorConsoleService:
         artifacts: list[dict[str, Any]],
         readiness: Mapping[str, Any],
     ) -> dict[str, Any]:
-        job = self._latest_research_job(jobs, "refresh-historical-data-catalog", None)
+        refresh_job = self._latest_research_job(jobs, "refresh-historical-data-catalog", None)
+        check_job = self._latest_research_job(jobs, "check-historical-data-catalog", None)
+        active_refresh = refresh_job if refresh_job and refresh_job.get("status") in {"queued", "running"} else None
+        active_check = check_job if check_job and check_job.get("status") in {"queued", "running"} else None
+        job = active_refresh or active_check or refresh_job or check_job
         active = job if job and job.get("status") in {"queued", "running"} else None
         failed = job if job and job.get("status") == "failed" else None
         artifact = self._latest_research_artifact(artifacts, "historical_data_catalog", None)
         if active is not None:
             status = "running" if active.get("status") == "running" else "queued"
-            detail = "Refreshing the central historical data catalog and checksum-validating active BTC/ETH archive fixtures."
+            detail = (
+                "Checking the existing candidate-depth Historical Data Catalog without rebuilding."
+                if active.get("job_type") == "check-historical-data-catalog"
+                else "Rebuilding the central historical data catalog and checksum-validating active BTC/ETH archive fixtures."
+            )
             blockers: list[str] = []
         elif bool(readiness.get("candidate_evidence_ready")):
             status = "complete"
@@ -1746,18 +1965,18 @@ class OperatorConsoleService:
             blockers = []
         elif failed is not None:
             status = "failed"
-            detail = str(failed.get("error_text") or "Historical Data Catalog refresh failed; inspect job logs.")
+            detail = str(failed.get("error_text") or "Historical Data Catalog job failed; inspect job logs.")
             blockers = [str(failed.get("error_text"))] if failed.get("error_text") else []
         else:
             status = "ready"
             detail = (
-                "Refresh the R106 Historical Data Catalog first. "
-                "It is the source of truth for active fixture/spec paths and provider limitations."
+                "Check or explicitly rebuild the R106 Historical Data Catalog first. "
+                "It is the source of truth for active fixture/spec paths and provider limitations; the default check does not rebuild."
             )
             blockers = []
         return {
             "key": "historical_data_catalog",
-            "label": "Refresh Historical Data Catalog",
+            "label": "Check Historical Data Catalog",
             "symbol": "BTCUSDT + ETHUSDT",
             "status": status,
             "detail": detail,
@@ -1934,22 +2153,37 @@ class OperatorConsoleService:
             budget = manifest.get("budget") if isinstance(manifest.get("budget"), Mapping) else {}
             search_space = manifest.get("search_space") if isinstance(manifest.get("search_space"), Mapping) else {}
             counts = manifest.get("counts") if isinstance(manifest.get("counts"), Mapping) else {}
-            planned_trials = self._nonnegative_int(search_space.get("planned_trials") or budget.get("max_trials"))
+            budget_trials = self._nonnegative_int(budget.get("max_trials"))
+            planned_trials = self._nonnegative_int(search_space.get("planned_trials") or budget_trials)
             completed_trials = self._nonnegative_int(counts.get("completed_trials") or summary.get("completed_trial_count"))
-            if self._nonnegative_int(budget.get("max_trials")) != 570240:
+            failed_trials = self._nonnegative_int(counts.get("failed_trials"))
+            durable_trial_records = self._nonnegative_int(
+                counts.get("durable_trial_records") or counts.get("processed_trial_records")
+            )
+            min_required_trials = 3456
+            if budget_trials != planned_trials:
                 blockers.append("exact_discovery_budget_mismatch")
-            if planned_trials != 570240:
+            if planned_trials < min_required_trials:
                 blockers.append("exact_discovery_planned_trials_mismatch")
             if search_space.get("exhaustive") is not True:
                 blockers.append("exact_discovery_not_exhaustive")
             if self._float_or_zero(search_space.get("sampled_fraction")) != 1.0:
                 blockers.append("exact_discovery_sampled_fraction_mismatch")
-            if completed_trials != 570240:
+            if completed_trials != planned_trials:
                 blockers.append("exact_discovery_completed_trials_mismatch")
+            if failed_trials:
+                blockers.append("exact_discovery_failed_trials_present")
+            if durable_trial_records and durable_trial_records != completed_trials + failed_trials:
+                blockers.append("exact_discovery_trial_accounting_mismatch")
             required_outputs = manifest.get("required_outputs") if isinstance(manifest.get("required_outputs"), Mapping) else {}
             for output_key in ("discovery_spec_resolved", "run_state", "blocked_candidates", "filter_blockers", "snapshots", "trials"):
                 if output_key not in required_outputs:
                     blockers.append(f"required_output_missing:{output_key}")
+            blocked_execution_errors = self._legacy_trial_execution_error_blockers(
+                required_outputs.get("blocked_candidates")
+            )
+            if blocked_execution_errors.get("all_blocked_rows_are_trial_execution_error") is True:
+                blockers.append("exact_discovery_all_trials_execution_error")
             data_evidence = manifest.get("data_evidence") if isinstance(manifest.get("data_evidence"), Mapping) else {}
             primary_rows = self._nonnegative_int(data_evidence.get("row_count"))
             if primary_rows and primary_rows < CANDIDATE_READY_PRIMARY_15M_MIN_BARS:
@@ -2409,6 +2643,108 @@ class OperatorConsoleService:
                 return str(milestone.get("detail") or "Complete the prerequisite step.")
         return "All required research milestones are complete; inspect eligibility blockers and keep outputs research-only."
 
+    def _research_testing_readiness(
+        self,
+        *,
+        artifacts: list[dict[str, Any]],
+        readiness: Mapping[str, Any],
+        active_job: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        blockers: list[str] = []
+        catalog_ready = bool(readiness.get("ready") or readiness.get("candidate_evidence_ready"))
+        if not catalog_ready:
+            blockers.append("catalog_candidate_depth_not_ready")
+        active_rebuild = (
+            active_job is not None
+            and active_job.get("status") in {"queued", "running"}
+            and active_job.get("job_type") == "refresh-historical-data-catalog"
+        )
+        if active_rebuild:
+            blockers.append("historical_data_catalog_rebuild_active")
+
+        latest_autopilot = self._latest_research_artifact(artifacts, "research_autopilot", None)
+        autopilot_summary = (
+            latest_autopilot.get("summary")
+            if latest_autopilot is not None and isinstance(latest_autopilot.get("summary"), Mapping)
+            else {}
+        )
+        if latest_autopilot is None:
+            blockers.append("latest_autopilot_manifest_missing")
+        elif autopilot_summary.get("stale_review") is True:
+            blockers.append("latest_autopilot_manifest_stale")
+
+        gate_alignment: dict[str, dict[str, Any]] = {}
+        top_gate_reasons: dict[str, int] = {}
+        for symbol in ("BTCUSDT", "ETHUSDT"):
+            latest_gate_paths = self._latest_research_gate_manifest_paths(symbol=symbol)
+            eligibility_artifact = self._latest_research_artifact(artifacts, "candidate_pack_eligibility", symbol)
+            latest_available = any(path is not None for path in latest_gate_paths.values())
+            reflects_latest = (
+                self._eligibility_reflects_latest_gate_manifests(
+                    eligibility_artifact,
+                    latest_gate_paths=latest_gate_paths,
+                )
+                if latest_available
+                else eligibility_artifact is not None
+            )
+            if latest_available and not reflects_latest:
+                blockers.append(f"{symbol.lower()}_eligibility_not_refreshed_with_latest_gate_manifests")
+            summary = eligibility_artifact.get("summary") if isinstance((eligibility_artifact or {}).get("summary"), Mapping) else {}
+            eligibility = summary.get("eligibility") if isinstance(summary.get("eligibility"), Mapping) else {}
+            for reason, count in dict(eligibility.get("top_reasons") or {}).items():
+                top_gate_reasons[str(reason)] = top_gate_reasons.get(str(reason), 0) + self._nonnegative_int(count)
+            gate_alignment[symbol] = {
+                **self._gate_manifest_status(symbol=symbol, latest_gate_paths=latest_gate_paths),
+                "eligibility_manifest_path": eligibility_artifact.get("path") if eligibility_artifact else None,
+                "eligibility_reflects_latest_gate_manifests": reflects_latest,
+                "latest_gate_manifests_available": latest_available,
+            }
+
+        knowledge_root = REPO_ROOT / "docs" / "research_knowledge"
+        executable_surfaces = [
+            ("experiment_runner", REPO_ROOT / "src" / "tradingbotsuite" / "research" / "experiment_runner.py"),
+            ("feature_ablation", REPO_ROOT / "src" / "tradingbotsuite" / "research" / "feature_ablation.py"),
+            ("discovery_runner", REPO_ROOT / "src" / "tradingbotsuite" / "research_discovery" / "runner.py"),
+            ("frozen_entry_exit_lab", REPO_ROOT / "src" / "tradingbotsuite" / "research_discovery" / "frozen_entry_exit_lab.py"),
+            ("multiple_testing", REPO_ROOT / "src" / "tradingbotsuite" / "research_discovery" / "multiple_testing.py"),
+            ("validation_floors", REPO_ROOT / "src" / "tradingbotsuite" / "research_discovery" / "validation_floors.py"),
+            ("candidate_eligibility", REPO_ROOT / "src" / "tradingbotsuite" / "research_discovery" / "candidate_pack_bridge.py"),
+        ]
+        surfaces = [
+            {"key": key, "available": path.is_file(), "path": str(path)}
+            for key, path in executable_surfaces
+        ]
+        if not all(item["available"] for item in surfaces):
+            blockers.append("executable_testing_surface_missing")
+
+        ready = not blockers
+        return {
+            "status": "ready_to_compute_new_iteration" if ready else "not_ready_for_new_iteration",
+            "ready_to_compute_new_iteration": ready,
+            "blockers": sorted(set(blockers)),
+            "knowledge_base": {
+                "available": knowledge_root.is_dir(),
+                "mode": "documentation_only_hypothesis_catalog",
+                "executable_registry": False,
+                "path": str(knowledge_root),
+            },
+            "executable_testing_surfaces": surfaces,
+            "current_gap": "knowledge base theories are not automatically converted into runnable experiment specs",
+            "latest_autopilot": {
+                "path": latest_autopilot.get("path") if latest_autopilot else None,
+                "autopilot_status": autopilot_summary.get("autopilot_status"),
+                "execution_status": autopilot_summary.get("execution_status"),
+                "executed_step_count": autopilot_summary.get("executed_step_count"),
+                "skipped_step_count": autopilot_summary.get("skipped_step_count"),
+                "stale_review": autopilot_summary.get("stale_review"),
+            },
+            "gate_manifest_alignment": gate_alignment,
+            "top_gate_reasons": dict(sorted(top_gate_reasons.items(), key=lambda item: (-item[1], item[0]))[:8]),
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+
     def _latest_research_artifact(
         self,
         artifacts: list[dict[str, Any]],
@@ -2416,7 +2752,12 @@ class OperatorConsoleService:
         symbol: str | None,
         expected_ids: set[str] | None = None,
     ) -> dict[str, Any] | None:
-        for artifact in artifacts:
+        candidates = sorted(
+            artifacts,
+            key=lambda item: float(item.get("sort_time") or 0.0),
+            reverse=True,
+        )
+        for artifact in candidates:
             if artifact.get("type") != artifact_type:
                 continue
             if symbol is None or self._research_symbol_from_payload(artifact) == symbol:
@@ -2467,6 +2808,8 @@ class OperatorConsoleService:
             summary.get("run_id"),
             manifest.get("source_discovery_manifest_path"),
             manifest.get("source_cycle_manifest_path"),
+            manifest.get("source_multiple_testing_manifest_path"),
+            manifest.get("source_validation_floors_manifest_path"),
             request.get("spec_path"),
             payload.get("path"),
         ]
@@ -2777,6 +3120,32 @@ class OperatorConsoleService:
                         "promotion_failure_counts": payload.get("promotion_failure_counts") or {},
                         "research_boundary_passed": ((payload.get("research_boundary") or {}).get("passed")),
                     },
+                }
+            )
+        for validation_manifest in sorted(self._artifact_paths_from_index(artifact_paths, "four_bar_knn_larger_validation_manifest.json")):
+            payload = self._read_json_artifact(artifacts, validation_manifest, "four_bar_knn_larger_validation")
+            if payload is None:
+                continue
+            artifacts.append(
+                {
+                    "type": "four_bar_knn_larger_validation",
+                    "path": str(validation_manifest),
+                    "sort_time": validation_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": self._four_bar_knn_larger_validation_summary(payload),
+                }
+            )
+        for mapping_manifest in sorted(self._artifact_paths_from_index(artifact_paths, "four_bar_archive_mapping_manifest.json")):
+            payload = self._read_json_artifact(artifacts, mapping_manifest, "four_bar_archive_mapping")
+            if payload is None:
+                continue
+            artifacts.append(
+                {
+                    "type": "four_bar_archive_mapping",
+                    "path": str(mapping_manifest),
+                    "sort_time": mapping_manifest.stat().st_mtime,
+                    "manifest": payload,
+                    "summary": self._four_bar_archive_mapping_summary(payload),
                 }
             )
         for experiment_run_manifest in sorted(self._artifact_paths_from_index(artifact_paths, "experiment_run_manifest.json")):
@@ -3129,6 +3498,8 @@ class OperatorConsoleService:
                 "discovery_validation_floors_manifest.json",
                 "experiment_manifest.json",
                 "experiment_run_manifest.json",
+                "four_bar_archive_mapping_manifest.json",
+                "four_bar_knn_larger_validation_manifest.json",
                 "hardware_utilization_report.json",
                 "historical_data_catalog.json",
                 "market_journal_manifest.json",
@@ -3274,6 +3645,30 @@ class OperatorConsoleService:
             "blocker_counts": self._value_counts(frame, "blocker_code"),
             "filter_blocker_counts": self._value_counts(frame, "filter_blocker_code"),
             "rows": rows,
+        }
+
+    def _legacy_trial_execution_error_blockers(self, raw_path: object) -> dict[str, Any]:
+        path = self._existing_path(raw_path)
+        if path is None:
+            return {"available": False, "reason": "blocked_ledger_missing"}
+        try:
+            frame = pd.read_parquet(path, columns=["blocker_code"])
+        except Exception:
+            try:
+                frame = pd.read_parquet(path)
+            except Exception as exc:
+                return {"available": False, "path": str(path), "reason": str(exc)}
+        if "blocker_code" not in frame:
+            return {"available": True, "path": str(path), "row_count": int(len(frame)), "trial_execution_error_count": 0}
+        blocker_codes = frame["blocker_code"].fillna("").astype(str)
+        row_count = int(len(blocker_codes))
+        error_count = int(blocker_codes.eq("trial_execution_error").sum())
+        return {
+            "available": True,
+            "path": str(path),
+            "row_count": row_count,
+            "trial_execution_error_count": error_count,
+            "all_blocked_rows_are_trial_execution_error": row_count > 0 and error_count == row_count,
         }
 
     def _summarize_discovery_snapshot(self, raw_path: object) -> dict[str, Any]:
@@ -3580,6 +3975,12 @@ class OperatorConsoleService:
                 request,
                 job_id,
             )
+        if job_type == "check-historical-data-catalog":
+            return await asyncio.to_thread(
+                self._run_historical_data_catalog_check,
+                request,
+                job_id,
+            )
         if job_type == "refresh-historical-data-catalog":
             return await asyncio.to_thread(
                 self._run_isolated_historical_data_catalog_refresh,
@@ -3607,7 +4008,7 @@ class OperatorConsoleService:
             return result
         if job_type == "run-discovery":
             result = await asyncio.to_thread(
-                self._run_isolated_discovery,
+                self._run_isolated_discovery_with_stable_overwrite_fallback,
                 Path(str(request["spec_path"])),
                 job_id,
                 bool(request.get("resume", False)),
@@ -3615,6 +4016,18 @@ class OperatorConsoleService:
                 bool(request.get("stable_run_id", False)),
             )
             return result
+        if job_type == "run-four-bar-knn-larger-validation":
+            return await asyncio.to_thread(
+                self._run_isolated_four_bar_knn_larger_validation,
+                request,
+                job_id,
+            )
+        if job_type == "map-binance-archive-four-bar-datasets":
+            return await asyncio.to_thread(
+                self._run_isolated_binance_archive_four_bar_mapping,
+                request,
+                job_id,
+            )
         if job_type == "analyze-research-results":
             return await asyncio.to_thread(
                 self._run_isolated_research_analysis,
@@ -3687,10 +4100,22 @@ class OperatorConsoleService:
         isolated_spec_path = isolated_spec_dir / "cycle_spec.json"
         isolated_payload = spec.to_payload()
         isolated_payload["output_dir"] = str(output_dir)
-        isolated_payload["operator_job_id"] = job_id
-        isolated_payload["operator_original_spec_path"] = str(resolved_spec_path)
-        isolated_payload["operator_overwrite_protection"] = "isolated_output_dir"
         isolated_spec_path.write_text(json.dumps(isolated_payload, indent=2, sort_keys=True), encoding="utf-8")
+        operator_metadata_path = isolated_spec_dir / "operator_metadata.json"
+        operator_metadata_path.write_text(
+            json.dumps(
+                {
+                    "operator_job_id": job_id,
+                    "operator_original_spec_path": str(resolved_spec_path),
+                    "operator_overwrite_protection": "isolated_output_dir",
+                    "isolated_spec_path": str(isolated_spec_path),
+                    "output_dir": str(output_dir),
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
 
         result = run_historical_research_cycle(
             spec_path=isolated_spec_path,
@@ -3699,6 +4124,7 @@ class OperatorConsoleService:
         return {
             "output_dir": str(result.output_dir),
             "isolated_spec_path": str(isolated_spec_path),
+            "operator_metadata_path": str(operator_metadata_path),
             "source_spec_path": str(resolved_spec_path),
             "overwrite_protection": "isolated_output_dir",
             "research_cycle_manifest_path": str(result.manifest_path),
@@ -3739,6 +4165,62 @@ class OperatorConsoleService:
             **payload,
             "summary_path": str(result.summary_path),
             "candidate_depth_fixture_ready": candidate_depth_ready,
+            "promotion_ready": False,
+            "research_only": True,
+            "observe_only": True,
+        }
+
+    def _run_historical_data_catalog_check(
+        self,
+        request: dict[str, Any],
+        job_id: str,
+    ) -> dict[str, Any]:
+        symbols = request.get("symbols")
+        if not isinstance(symbols, list) or not symbols:
+            symbols = list(DEFAULT_DURABLE_COLLECTION_SYMBOLS)
+        requested_symbols = sorted({str(symbol).strip().upper() for symbol in symbols if str(symbol).strip()})
+        catalog = self._latest_historical_data_catalog_manifest()
+        if not isinstance(catalog, Mapping):
+            return {
+                "job_id": job_id,
+                "catalog_reuse_status": "missing_catalog",
+                "catalog_ready": False,
+                "candidate_depth_fixture_ready": False,
+                "requested_symbols": requested_symbols,
+                "recommended_next_action": "Explicitly rebuild the Historical Data Catalog before running evidence.",
+                "promotion_ready": False,
+                "research_only": True,
+                "observe_only": True,
+            }
+        catalog_path = str(catalog.get("catalog_path") or catalog.get("historical_data_catalog_path") or "")
+        catalog_symbols = catalog.get("symbols") if isinstance(catalog.get("symbols"), Mapping) else {}
+        missing_symbols = [symbol for symbol in requested_symbols if symbol not in catalog_symbols]
+        blocked_symbols: list[str] = []
+        for symbol in requested_symbols:
+            payload = catalog_symbols.get(symbol) if isinstance(catalog_symbols, Mapping) else None
+            if not isinstance(payload, Mapping) or payload.get("candidate_depth_ready") is not True:
+                blocked_symbols.append(symbol)
+        candidate_depth_ready = bool(requested_symbols) and not missing_symbols and not blocked_symbols
+        return {
+            "job_id": job_id,
+            "catalog_reuse_status": (
+                "reused_existing_candidate_depth_catalog"
+                if candidate_depth_ready
+                else "existing_catalog_not_candidate_depth_ready"
+            ),
+            "catalog_ready": bool(catalog.get("catalog_ready") or catalog.get("candidate_depth_ready")),
+            "candidate_depth_fixture_ready": candidate_depth_ready,
+            "historical_data_catalog_path": catalog_path or None,
+            "catalog_path": catalog_path or None,
+            "catalog_sha256": catalog.get("catalog_sha256"),
+            "requested_symbols": requested_symbols,
+            "missing_symbols": missing_symbols,
+            "blocked_symbols": blocked_symbols,
+            "recommended_next_action": (
+                "Reuse the active catalog-selected fixture/spec paths; no rebuild was started."
+                if candidate_depth_ready
+                else "Explicitly rebuild the Historical Data Catalog if these blockers are unexpected."
+            ),
             "promotion_ready": False,
             "research_only": True,
             "observe_only": True,
@@ -3833,14 +4315,15 @@ class OperatorConsoleService:
         resume: bool,
         stop_after_trials: int | None,
         stable_run_id: bool = False,
+        force_isolated_output: bool = False,
     ) -> dict[str, Any]:
         resolved_spec_path = Path(spec_path).expanduser().resolve()
         spec_payload = self._read_operator_run_artifact_payload(resolved_spec_path)
-        spec = DiscoveryRunSpec.from_payload(spec_payload, spec_path=resolved_spec_path)
+        spec = self._operator_discovery_run_spec_from_payload(spec_payload, spec_path=resolved_spec_path)
         research_root = self._research_root()
         safe_job_id = _safe_operator_path_part(job_id)
         safe_run_id = _safe_operator_path_part(spec.run_id)
-        if resume or stop_after_trials is not None or stable_run_id:
+        if not force_isolated_output and (resume or stop_after_trials is not None or stable_run_id):
             output_dir = (research_root / "operator_runs" / "discovery_runs" / safe_run_id).resolve()
             if resume:
                 overwrite_protection = "resume_stable_run_id_output_dir"
@@ -3867,7 +4350,11 @@ class OperatorConsoleService:
         isolated_payload["operator_overwrite_protection"] = overwrite_protection
         isolated_payload["operator_stable_run_id"] = stable_run_id
         isolated_payload["operator_requested_resume"] = resume
-        effective_resume = bool(resume or (stable_run_id and (output_dir / "run_state.json").exists()))
+        effective_resume = bool(
+            resume
+            if not force_isolated_output
+            else False
+        ) or bool(not force_isolated_output and stable_run_id and (output_dir / "run_state.json").exists())
         isolated_payload["operator_effective_resume"] = effective_resume
         isolated_spec_path.write_text(json.dumps(isolated_payload, indent=2, sort_keys=True), encoding="utf-8")
 
@@ -3885,6 +4372,7 @@ class OperatorConsoleService:
             "resume": effective_resume,
             "requested_resume": resume,
             "stable_run_id": stable_run_id,
+            "force_isolated_output": force_isolated_output,
             "stop_after_trials": stop_after_trials,
             "discovery_run_manifest_path": str(result.manifest_path),
             "run_state_path": str(result.run_state_path),
@@ -3893,6 +4381,47 @@ class OperatorConsoleService:
             "filter_blockers_path": str(result.filter_blockers_path),
             "snapshot_count": len(result.snapshot_paths),
         }
+
+    def _run_isolated_discovery_with_stable_overwrite_fallback(
+        self,
+        spec_path: Path,
+        job_id: str,
+        resume: bool,
+        stop_after_trials: int | None,
+        stable_run_id: bool = False,
+    ) -> dict[str, Any]:
+        try:
+            result = self._run_isolated_discovery(
+                spec_path,
+                job_id,
+                resume,
+                stop_after_trials,
+                stable_run_id,
+            )
+            result["overwrite_fallback_used"] = False
+            return result
+        except Exception as exc:
+            error_text = str(exc)
+            if "completed discovery runs refuse overwrite" not in error_text or not stable_run_id:
+                raise
+            fallback_job_id = f"{job_id}-isolated-fallback"
+            result = self._run_isolated_discovery(
+                spec_path,
+                fallback_job_id,
+                False,
+                stop_after_trials,
+                False,
+                force_isolated_output=True,
+            )
+            result.update(
+                {
+                    "overwrite_fallback_used": True,
+                    "stable_overwrite_error_text": error_text,
+                    "stable_attempt_job_id": job_id,
+                    "fallback_job_id": fallback_job_id,
+                }
+            )
+            return result
 
     def _run_isolated_research_analysis(
         self,
@@ -4118,6 +4647,256 @@ class OperatorConsoleService:
         artifact = self._latest_research_artifact(artifacts, "research_analysis", symbol)
         return Path(str(artifact.get("path"))).resolve() if artifact and artifact.get("path") else None
 
+    def _canonical_discovery_spec_payload_for_reuse(self, spec: DiscoveryRunSpec) -> dict[str, Any]:
+        payload = spec.to_payload()
+        for key in ("research_output_dir", "output_dir"):
+            payload.pop(key, None)
+        return payload
+
+    def _operator_discovery_run_spec_from_payload(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        spec_path: Path,
+    ) -> DiscoveryRunSpec:
+        parser_payload = dict(payload)
+        parser_payload.pop("metadata", None)
+        return DiscoveryRunSpec.from_payload(parser_payload, spec_path=spec_path)
+
+    def _stable_discovery_run_reuse_status(
+        self,
+        *,
+        spec_path: Path,
+        symbol: str,
+        key: str,
+        expected_run_id: str,
+    ) -> dict[str, Any]:
+        active_spec_path = Path(spec_path).expanduser().resolve()
+        spec_payload = self._read_operator_run_artifact_payload(active_spec_path)
+        spec = self._operator_discovery_run_spec_from_payload(spec_payload, spec_path=active_spec_path)
+        research_root = self._research_root()
+        output_dir = (research_root / "operator_runs" / "discovery_runs" / _safe_operator_path_part(spec.run_id)).resolve()
+        manifest_path = output_dir / "discovery_run_manifest.json"
+        state_path = output_dir / "run_state.json"
+        if not _is_relative_to(output_dir, research_root):
+            return {
+                "stable_discovery_reuse_status": "stable_discovery_output_outside_research_root",
+                "artifact": None,
+                "complete": False,
+                "completed_stable_run_exists": False,
+                "blockers": ["stable_discovery_output_outside_research_root"],
+                "manifest_path": str(manifest_path),
+                "run_state_path": str(state_path),
+                "run_id": spec.run_id,
+                "expected_run_id": expected_run_id,
+            }
+
+        artifact = self._research_progress_artifact_from_manifest(manifest_path, artifact_type="discovery_run")
+        expected_ids = {expected_run_id}
+        status = self._required_artifact_status(artifact, key, expected_ids)
+        state_payload = self._read_optional_json(state_path) or {}
+        completed_stable_run_exists = (
+            isinstance(state_payload, Mapping)
+            and state_payload.get("status") == "completed"
+            and str(state_payload.get("run_id") or "") == spec.run_id
+        )
+        required_outputs = {}
+        if isinstance(artifact, Mapping):
+            manifest_payload = artifact.get("manifest") if isinstance(artifact.get("manifest"), Mapping) else {}
+            manifest_payload = normalize_operator_run_artifact_paths(dict(manifest_payload), artifact_path=manifest_path)
+            required_outputs = (
+                manifest_payload.get("required_outputs")
+                if isinstance(manifest_payload.get("required_outputs"), Mapping)
+                else {}
+            )
+        raw_resolved_spec_path = required_outputs.get("discovery_spec_resolved")
+        stable_resolved_spec_path = output_dir / "discovery_spec_resolved.json"
+        if raw_resolved_spec_path is not None and str(raw_resolved_spec_path).strip():
+            candidate_path = Path(str(raw_resolved_spec_path)).expanduser()
+            stable_resolved_spec_path = (
+                candidate_path.resolve()
+                if candidate_path.is_absolute()
+                else (manifest_path.parent / candidate_path).resolve()
+            )
+
+        spec_blockers: list[str] = []
+        resolved_spec_error: str | None = None
+        if expected_run_id and spec.run_id != expected_run_id:
+            spec_blockers.append("stable_discovery_run_id_mismatch")
+        if spec.symbol != symbol:
+            spec_blockers.append("stable_discovery_symbol_mismatch")
+        if completed_stable_run_exists:
+            if not _is_relative_to(stable_resolved_spec_path, research_root):
+                spec_blockers.append("stable_discovery_resolved_spec_outside_research_root")
+            else:
+                resolved_spec_payload = self._read_optional_json(stable_resolved_spec_path)
+                if not isinstance(resolved_spec_payload, Mapping):
+                    spec_blockers.append("stable_discovery_resolved_spec_missing")
+                else:
+                    resolved_spec_payload = normalize_operator_run_artifact_paths(
+                        dict(resolved_spec_payload),
+                        artifact_path=stable_resolved_spec_path,
+                    )
+                    try:
+                        resolved_spec = self._operator_discovery_run_spec_from_payload(
+                            resolved_spec_payload,
+                            spec_path=stable_resolved_spec_path,
+                        )
+                    except Exception as exc:
+                        resolved_spec_error = str(exc)
+                        spec_blockers.append("stable_discovery_resolved_spec_invalid")
+                    else:
+                        if resolved_spec.run_id != spec.run_id:
+                            spec_blockers.append("stable_discovery_resolved_run_id_mismatch")
+                        if resolved_spec.symbol != spec.symbol:
+                            spec_blockers.append("stable_discovery_resolved_symbol_mismatch")
+                        current_payload = self._canonical_discovery_spec_payload_for_reuse(spec)
+                        resolved_payload = self._canonical_discovery_spec_payload_for_reuse(resolved_spec)
+                        if resolved_payload != current_payload:
+                            spec_blockers.append("stable_discovery_resolved_spec_mismatch")
+        spec_match = not spec_blockers
+        blockers = list(dict.fromkeys([*(status.get("blockers") or []), *spec_blockers]))
+        complete = bool(status["complete"] and completed_stable_run_exists and spec_match)
+        block_reason = None
+        if completed_stable_run_exists and not complete:
+            block_reason = (
+                "completed_stable_discovery_artifact_stale"
+                if spec_blockers
+                else "completed_stable_discovery_artifact_incomplete"
+            )
+        return {
+            "stable_discovery_reuse_status": (
+                "stable_discovery_artifact_complete"
+                if complete
+                else (
+                    block_reason
+                    if block_reason is not None
+                    else "stable_discovery_artifact_missing_or_incomplete"
+                )
+            ),
+            "artifact": artifact if complete else None,
+            "complete": complete,
+            "completed_stable_run_exists": completed_stable_run_exists,
+            "blockers": blockers,
+            "should_block": block_reason is not None,
+            "block_reason": block_reason,
+            "spec_match": spec_match,
+            "spec_blockers": spec_blockers,
+            "resolved_spec_path": str(stable_resolved_spec_path),
+            "resolved_spec_error": resolved_spec_error,
+            "current_spec_path": str(active_spec_path),
+            "manifest_path": str(manifest_path),
+            "run_state_path": str(state_path),
+            "run_id": spec.run_id,
+            "expected_run_id": expected_run_id,
+            "symbol": symbol,
+        }
+
+    def _gate_manifest_matches_discovery(
+        self,
+        gate_manifest_path: Path,
+        *,
+        discovery_artifact: Mapping[str, Any] | None,
+    ) -> bool:
+        if discovery_artifact is None or not discovery_artifact.get("path"):
+            return False
+        discovery_path = Path(str(discovery_artifact.get("path"))).expanduser().resolve()
+        payload = self._read_optional_json(gate_manifest_path) or {}
+        payload = normalize_operator_run_artifact_paths(payload, artifact_path=gate_manifest_path)
+        source_path = self._existing_path(payload.get("source_discovery_manifest_path"))
+        if source_path is not None and source_path.resolve() == discovery_path:
+            return True
+        expected_sha = str(payload.get("source_discovery_manifest_sha256") or "").strip()
+        if expected_sha.startswith("sha256:"):
+            expected_sha = expected_sha.split(":", 1)[1]
+        if expected_sha and discovery_path.is_file():
+            try:
+                return self._file_sha256(discovery_path) == expected_sha
+            except OSError:
+                return False
+        return False
+
+    def _latest_research_gate_manifest_path(
+        self,
+        *,
+        filename: str,
+        symbol: str,
+        discovery_artifact: Mapping[str, Any] | None = None,
+    ) -> Path | None:
+        root = self._research_root()
+        candidates: list[Path] = []
+        for path in self._artifact_paths_from_index(self._artifact_path_index(root), filename):
+            payload = self._read_optional_json(path) or {}
+            artifact_symbol = self._research_symbol_from_payload({"path": str(path), "manifest": payload})
+            if artifact_symbol == symbol:
+                if discovery_artifact is not None and not self._gate_manifest_matches_discovery(
+                    path,
+                    discovery_artifact=discovery_artifact,
+                ):
+                    continue
+                candidates.append(path.resolve())
+        candidates.sort(key=lambda item: item.stat().st_mtime if item.exists() else 0.0, reverse=True)
+        return candidates[0] if candidates else None
+
+    def _latest_research_gate_manifest_paths(
+        self,
+        *,
+        symbol: str,
+        discovery_artifact: Mapping[str, Any] | None = None,
+    ) -> dict[str, Path | None]:
+        return {
+            "multiple_testing_manifest_path": self._latest_research_gate_manifest_path(
+                filename="discovery_multiple_testing_manifest.json",
+                symbol=symbol,
+                discovery_artifact=discovery_artifact,
+            ),
+            "validation_floors_manifest_path": self._latest_research_gate_manifest_path(
+                filename="discovery_validation_floors_manifest.json",
+                symbol=symbol,
+                discovery_artifact=discovery_artifact,
+            ),
+        }
+
+    def _eligibility_reflects_latest_gate_manifests(
+        self,
+        artifact: Mapping[str, Any] | None,
+        *,
+        latest_gate_paths: Mapping[str, Path | None],
+    ) -> bool:
+        if artifact is None:
+            return False
+        manifest = artifact.get("manifest") if isinstance(artifact.get("manifest"), Mapping) else {}
+        expected_actual = {
+            "source_multiple_testing_manifest_path": latest_gate_paths.get("multiple_testing_manifest_path"),
+            "source_validation_floors_manifest_path": latest_gate_paths.get("validation_floors_manifest_path"),
+        }
+        for manifest_key, latest_path in expected_actual.items():
+            if latest_path is None:
+                continue
+            raw_path = manifest.get(manifest_key)
+            if raw_path is None or str(raw_path).strip() == "":
+                return False
+            observed = self._existing_path(raw_path)
+            if observed is None or observed.resolve() != latest_path.resolve():
+                return False
+        return True
+
+    def _gate_manifest_status(self, *, symbol: str, latest_gate_paths: Mapping[str, Path | None]) -> dict[str, Any]:
+        multiple_testing_path = latest_gate_paths.get("multiple_testing_manifest_path")
+        validation_floors_path = latest_gate_paths.get("validation_floors_manifest_path")
+        return {
+            "symbol": symbol,
+            "multiple_testing_manifest_path": str(multiple_testing_path) if multiple_testing_path is not None else None,
+            "validation_floors_manifest_path": str(validation_floors_path) if validation_floors_path is not None else None,
+            "multiple_testing_available": multiple_testing_path is not None,
+            "validation_floors_available": validation_floors_path is not None,
+            "gate_manifest_selection": (
+                "latest_same_symbol_gate_manifests"
+                if multiple_testing_path is not None and validation_floors_path is not None
+                else "missing_gate_manifests_fail_closed"
+            ),
+        }
+
     def _previous_analysis_artifact_path(self, current_analysis_path: Path, *, symbol: str | None) -> Path | None:
         current = current_analysis_path.resolve()
         candidates = [
@@ -4167,6 +4946,7 @@ class OperatorConsoleService:
             raise ValueError(f"max_step_attempts must be between 1 and {RESEARCH_AUTOPILOT_MAX_STEP_ATTEMPTS}")
         include_catalog_refresh = bool(request.get("include_catalog_refresh", True))
         include_eligibility = bool(request.get("include_eligibility", True))
+        force_upstream_recompute = bool(request.get("force_upstream_recompute", False))
 
         manifest: dict[str, Any] = {
             "autopilot_version": RESEARCH_AUTOPILOT_VERSION,
@@ -4177,6 +4957,7 @@ class OperatorConsoleService:
             "max_step_attempts": max_step_attempts,
             "include_catalog_refresh": include_catalog_refresh,
             "include_eligibility": include_eligibility,
+            "force_upstream_recompute": force_upstream_recompute,
             "stale_recovery_attempt": self._nonnegative_int(request.get("_stale_recovery_attempt")),
             "recovered_from_job_id": request.get("recovered_from_job_id"),
             "started_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -4189,6 +4970,8 @@ class OperatorConsoleService:
             "observe_only": True,
             "promotion_ready": False,
             "candidate_pack_written": False,
+            "execution_status": "running",
+            "status_detail": "running",
         }
 
         def write_manifest(status: str | None = None, blocked_reason: str | None = None) -> None:
@@ -4196,8 +4979,22 @@ class OperatorConsoleService:
                 manifest["autopilot_status"] = status
             if blocked_reason is not None:
                 manifest["blocked_reason"] = blocked_reason
+                manifest["status_detail"] = blocked_reason
+            if status in {"blocked", "failed"}:
+                scope = self._research_autopilot_compute_scope(manifest)
+                manifest.update(scope)
+                manifest["execution_status"] = status
+                manifest["status_detail"] = blocked_reason or status
             manifest["updated_at_utc"] = datetime.now(timezone.utc).isoformat()
             manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True, default=str), encoding="utf-8")
+
+        def status_fields() -> dict[str, Any]:
+            scope = self._research_autopilot_compute_scope(manifest)
+            return {
+                **scope,
+                "execution_status": str(manifest.get("execution_status") or scope["execution_status"]),
+                "status_detail": str(manifest.get("status_detail") or scope["status_detail"]),
+            }
 
         async def add_step(
             key: str,
@@ -4247,15 +5044,23 @@ class OperatorConsoleService:
         def can_execute() -> bool:
             return int(manifest["executed_step_count"]) < max_steps
 
-        async def blocked(key: str, reason: str, *, symbol: str | None = None) -> dict[str, Any]:
+        async def blocked(
+            key: str,
+            reason: str,
+            *,
+            symbol: str | None = None,
+            result: Mapping[str, Any] | None = None,
+        ) -> dict[str, Any]:
             manifest["active_step"] = None
-            await add_step(key, "blocked", symbol=symbol, detail=reason, blocker=reason)
+            await add_step(key, "blocked", symbol=symbol, detail=reason, blocker=reason, result=result)
             write_manifest("blocked", reason)
+            fields = status_fields()
             return {
                 "output_dir": str(output_dir),
                 "research_autopilot_manifest_path": str(manifest_path),
                 "autopilot_status": "blocked",
                 "blocked_reason": reason,
+                **fields,
                 "executed_step_count": int(manifest["executed_step_count"]),
                 "step_count": len(manifest["steps"]),
                 "research_only": True,
@@ -4411,7 +5216,7 @@ class OperatorConsoleService:
                 cycle_key,
                 {expected_cycle_id},
             )
-            if cycle_artifact is not None:
+            if cycle_artifact is not None and not force_upstream_recompute:
                 await add_step("historical_cycle", "skipped", symbol=symbol, detail="current cycle artifact already complete")
             else:
                 cycle_spec_path = readiness_spec_path(readiness, symbol, "cycle_spec_path")
@@ -4444,25 +5249,73 @@ class OperatorConsoleService:
                 discovery_key,
                 {expected_discovery_id},
             )
-            if discovery_artifact is not None:
+            if discovery_artifact is not None and not force_upstream_recompute:
                 await add_step("exact_discovery", "skipped", symbol=symbol, detail="current discovery artifact already complete")
             else:
                 discovery_spec_path = readiness_spec_path(readiness, symbol, "discovery_spec_path")
                 if discovery_spec_path is None:
                     return await blocked("exact_discovery", "discovery_spec_path_missing", symbol=symbol)
+                if not force_upstream_recompute:
+                    stable_discovery = self._stable_discovery_run_reuse_status(
+                        spec_path=discovery_spec_path,
+                        symbol=symbol,
+                        key=discovery_key,
+                        expected_run_id=expected_discovery_id,
+                    )
+                    if stable_discovery["complete"] and isinstance(stable_discovery.get("artifact"), Mapping):
+                        discovery_artifact = dict(stable_discovery["artifact"])
+                        await add_step(
+                            "exact_discovery",
+                            "skipped",
+                            symbol=symbol,
+                            detail="completed stable discovery artifact already complete",
+                            result={
+                                key: value
+                                for key, value in stable_discovery.items()
+                                if key != "artifact"
+                            },
+                        )
+                    elif stable_discovery.get("should_block"):
+                        return await blocked(
+                            "exact_discovery",
+                            str(stable_discovery.get("block_reason") or "stable_discovery_reuse_blocked"),
+                            symbol=symbol,
+                            result={
+                                key: value
+                                for key, value in stable_discovery.items()
+                                if key != "artifact"
+                            },
+                        )
+                else:
+                    discovery_artifact = None
+            if discovery_artifact is None:
                 if not can_execute():
                     return await blocked("exact_discovery", "autopilot_step_limit_reached", symbol=symbol)
-                await execute_step(
-                    "exact_discovery",
-                    symbol,
-                    self._run_isolated_discovery,
-                    discovery_spec_path,
-                    f"{job_id}-{symbol.lower()}-discovery",
-                    True,
-                    self._positive_int_or_none(request.get("discovery_stop_after_trials"), field_name="discovery_stop_after_trials"),
-                    True,
-                    job_id_arg_index=1,
-                )
+                if force_upstream_recompute:
+                    await execute_step(
+                        "exact_discovery",
+                        symbol,
+                        self._run_isolated_discovery,
+                        discovery_spec_path,
+                        f"{job_id}-{symbol.lower()}-discovery",
+                        False,
+                        self._positive_int_or_none(request.get("discovery_stop_after_trials"), field_name="discovery_stop_after_trials"),
+                        False,
+                        True,
+                        job_id_arg_index=1,
+                    )
+                else:
+                    await execute_step(
+                        "exact_discovery",
+                        symbol,
+                        self._run_isolated_discovery_with_stable_overwrite_fallback,
+                        discovery_spec_path,
+                        f"{job_id}-{symbol.lower()}-discovery",
+                        True,
+                        self._positive_int_or_none(request.get("discovery_stop_after_trials"), field_name="discovery_stop_after_trials"),
+                        True,
+                        job_id_arg_index=1,
+                    )
                 _, artifacts, readiness = await context()
                 discovery_artifact = complete_artifact(
                     artifacts,
@@ -4484,7 +5337,7 @@ class OperatorConsoleService:
                 return await blocked("research_analysis", "autopilot_prerequisite_artifacts_missing", symbol=symbol)
 
             analysis_artifact = complete_artifact(artifacts, "research_analysis", symbol, "research_analysis")
-            if analysis_artifact is not None:
+            if analysis_artifact is not None and not force_upstream_recompute:
                 await add_step("research_analysis", "skipped", symbol=symbol, detail="analysis artifact already complete")
             else:
                 if not can_execute():
@@ -4507,7 +5360,7 @@ class OperatorConsoleService:
                     return await blocked("research_analysis", "research_analysis_output_not_complete_after_run", symbol=symbol)
 
             analysis_delta_artifact = complete_artifact(artifacts, "research_analysis_delta", symbol, "research_analysis_delta")
-            if analysis_delta_artifact is not None:
+            if analysis_delta_artifact is not None and not force_upstream_recompute:
                 await add_step("research_analysis_delta", "skipped", symbol=symbol, detail="analysis delta artifact already complete")
             else:
                 if not can_execute():
@@ -4529,7 +5382,7 @@ class OperatorConsoleService:
                     return await blocked("research_analysis_delta", "research_analysis_delta_output_not_complete_after_run", symbol=symbol)
 
             exit_lab_artifact = complete_artifact(artifacts, "discovery_exit_lab", symbol, "frozen_entry_exit_lab")
-            if exit_lab_artifact is not None:
+            if exit_lab_artifact is not None and not force_upstream_recompute:
                 await add_step("frozen_entry_exit_lab", "skipped", symbol=symbol, detail="frozen-entry exit lab artifact already complete")
             else:
                 if not can_execute():
@@ -4555,11 +5408,29 @@ class OperatorConsoleService:
                 await add_step("candidate_eligibility", "skipped", symbol=symbol, detail="eligibility disabled by request")
                 continue
             eligibility_artifact = complete_artifact(artifacts, "candidate_pack_eligibility", symbol, "candidate_eligibility")
-            if eligibility_artifact is not None:
-                await add_step("candidate_eligibility", "skipped", symbol=symbol, detail="candidate eligibility artifact already complete")
-                continue
+            discovery_gate_artifact = discovery_artifact if force_upstream_recompute else None
+            if eligibility_artifact is not None and not force_upstream_recompute:
+                latest_gate_paths = self._latest_research_gate_manifest_paths(symbol=symbol)
+                gate_status = self._gate_manifest_status(symbol=symbol, latest_gate_paths=latest_gate_paths)
+                if self._eligibility_reflects_latest_gate_manifests(
+                    eligibility_artifact,
+                    latest_gate_paths=latest_gate_paths,
+                ):
+                    await add_step(
+                        "candidate_eligibility",
+                        "skipped",
+                        symbol=symbol,
+                        detail="candidate eligibility artifact already complete with latest gate manifests where available",
+                        result=gate_status,
+                    )
+                    continue
             if not can_execute():
                 return await blocked("candidate_eligibility", "autopilot_step_limit_reached", symbol=symbol)
+            latest_gate_paths = self._latest_research_gate_manifest_paths(
+                symbol=symbol,
+                discovery_artifact=discovery_gate_artifact,
+            )
+            gate_status = self._gate_manifest_status(symbol=symbol, latest_gate_paths=latest_gate_paths)
             await execute_step(
                 "candidate_eligibility",
                 symbol,
@@ -4568,19 +5439,35 @@ class OperatorConsoleService:
                     "discovery_manifest_path": discovery_artifact.get("path") if discovery_artifact else None,
                     "cycle_manifest_path": cycle_artifact.get("path") if cycle_artifact else None,
                     "exit_lab_manifest_path": exit_lab_artifact.get("path") if exit_lab_artifact else None,
-                    "multiple_testing_manifest_path": None,
-                    "validation_floors_manifest_path": None,
+                    "multiple_testing_manifest_path": gate_status["multiple_testing_manifest_path"],
+                    "validation_floors_manifest_path": gate_status["validation_floors_manifest_path"],
+                    "gate_manifest_selection": gate_status["gate_manifest_selection"],
                 },
                 f"{job_id}-{symbol.lower()}-eligibility",
             )
             _, artifacts, readiness = await context()
 
         manifest["active_step"] = None
+        scope = self._research_autopilot_compute_scope(manifest)
+        if force_upstream_recompute and int(scope.get("upstream_executed_step_count") or 0) == 0:
+            return await blocked(
+                "autopilot_compute_scope",
+                "forced_upstream_recompute_requested_but_no_upstream_compute_executed",
+                result=scope,
+            )
+        execution_status = str(scope["execution_status"])
+        status_detail = str(scope["status_detail"])
+        manifest.update(scope)
+        manifest["execution_status"] = execution_status
+        manifest["status_detail"] = status_detail
         write_manifest("completed")
         return {
             "output_dir": str(output_dir),
             "research_autopilot_manifest_path": str(manifest_path),
             "autopilot_status": "completed",
+            **scope,
+            "execution_status": execution_status,
+            "status_detail": status_detail,
             "blocked_reason": None,
             "executed_step_count": int(manifest["executed_step_count"]),
             "step_count": len(manifest["steps"]),
@@ -4665,9 +5552,99 @@ class OperatorConsoleService:
             "candidate_pack_eligibility_manifest_path": str(artifact.manifest_path),
             "candidate_pack_eligibility_path": str(artifact.eligibility_path),
             "candidate_pack_bridge_rejections_path": str(artifact.rejections_path),
+            "multiple_testing_manifest_path": str(multiple_testing_manifest_path) if multiple_testing_manifest_path else None,
+            "validation_floors_manifest_path": str(validation_floors_manifest_path) if validation_floors_manifest_path else None,
+            "gate_manifest_selection": str(request.get("gate_manifest_selection") or ""),
             "eligible_count": eligible_count,
             "row_count": int(len(result.eligibility)),
             "candidate_pack_written": False,
+            "promotion_ready": False,
+            "research_only": True,
+            "observe_only": True,
+        }
+
+    def _run_isolated_four_bar_knn_larger_validation(
+        self,
+        request: dict[str, Any],
+        job_id: str,
+    ) -> dict[str, Any]:
+        research_root = self._research_root()
+        safe_job_id = _safe_operator_path_part(job_id)
+        output_dir = (research_root / "operator_runs" / "hmm_knn_four_bar_validation" / safe_job_id).resolve()
+        if not _is_relative_to(output_dir, research_root):
+            raise ValueError("four-bar KNN validation output_dir must stay inside the configured research output directory")
+        if output_dir.exists() and any(output_dir.iterdir()):
+            raise ValueError(f"four-bar KNN validation output_dir already contains files: {output_dir}")
+
+        sample_rows = int(
+            request.get("sample_rows_per_interval")
+            or FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL
+        )
+        if sample_rows < 20 or sample_rows > 100_000:
+            raise ValueError("sample_rows_per_interval must be between 20 and 100000")
+        workers = int(request.get("workers") or 1)
+        if workers < 1 or workers > 4:
+            raise ValueError("workers must be between 1 and 4")
+
+        result = run_four_bar_knn_larger_validation(
+            output_dir=output_dir,
+            sample_rows_per_interval=sample_rows,
+            workers=workers,
+            force=bool(request.get("force", False)),
+            write_monitoring=not bool(request.get("skip_monitor", False)),
+            skip_matrix=bool(request.get("skip_matrix", False)),
+        )
+        return {
+            **result.to_payload(),
+            "sample_rows_per_interval": sample_rows,
+            "workers": workers,
+            "promotion_ready": False,
+            "research_only": True,
+            "observe_only": True,
+        }
+
+    def _run_isolated_binance_archive_four_bar_mapping(
+        self,
+        request: dict[str, Any],
+        job_id: str,
+    ) -> dict[str, Any]:
+        research_root = self._research_root()
+        safe_job_id = _safe_operator_path_part(job_id)
+        output_dir = (research_root / "operator_runs" / "hmm_knn_four_bar_archive_mapping" / safe_job_id).resolve()
+        if not _is_relative_to(output_dir, research_root):
+            raise ValueError("four-bar archive mapping output_dir must stay inside the configured research output directory")
+        if output_dir.exists() and any(output_dir.iterdir()):
+            raise ValueError(f"four-bar archive mapping output_dir already contains files: {output_dir}")
+
+        sample_rows = int(
+            request.get("sample_rows_per_interval")
+            or FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL
+        )
+        if sample_rows < 20 or sample_rows > 100_000:
+            raise ValueError("sample_rows_per_interval must be between 20 and 100000")
+        matrix_workers = int(request.get("matrix_workers") or 1)
+        if matrix_workers < 1 or matrix_workers > 4:
+            raise ValueError("matrix_workers must be between 1 and 4")
+
+        start_month = str(request.get("start_month") or FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_START_MONTH)
+        end_month = str(request.get("end_month") or FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_END_MONTH)
+        archive_root_raw = request.get("archive_root")
+        archive_root = Path(str(archive_root_raw)).expanduser().resolve() if archive_root_raw else None
+        result = map_local_binance_archive_four_bar_datasets(
+            output_dir=output_dir,
+            archive_root=archive_root,
+            start_month=start_month,
+            end_month=end_month,
+            sample_rows_per_interval=sample_rows,
+            matrix_workers=matrix_workers,
+            force=bool(request.get("force", False)),
+        )
+        return {
+            **result.to_payload(),
+            "start_month": start_month,
+            "end_month": end_month,
+            "sample_rows_per_interval": sample_rows,
+            "matrix_workers": matrix_workers,
             "promotion_ready": False,
             "research_only": True,
             "observe_only": True,

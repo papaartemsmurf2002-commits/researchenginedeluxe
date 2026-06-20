@@ -1,0 +1,73 @@
+{
+  "spec_version": "rapid_strategy_iteration_sandbox_v1",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "sandbox_only": true,
+  "candidate_evidence": false,
+  "candidate_pack_eligible": false,
+  "run_template": {
+    "run_id": "sandbox-smoke-2024-forward-v1",
+    "validation_profile": "sandbox_fast",
+    "data_window": {
+      "start": "2024-01-01",
+      "end": "2026-05-31"
+    },
+    "holding_periods": [1, 2, 4, 8],
+    "round_trip_cost_bps": 8.0,
+    "min_trades": 5,
+    "max_evidence_requests": 10,
+    "rank_top_n": 100
+  },
+  "strategy_catalog_columns": [
+    "hypothesis_id",
+    "family",
+    "source_id",
+    "signal_column",
+    "side",
+    "exit_profile",
+    "filter_column",
+    "filter_min",
+    "filter_max",
+    "params_json",
+    "tags",
+    "notes"
+  ],
+  "venue_archive_examples": [
+    {
+      "descriptor_id": "okx-btcusdt-2024-forward-kline",
+      "venue": "okx",
+      "symbol": "BTCUSDT",
+      "data_family": "kline",
+      "interval": "15m",
+      "diagnostic_only": true,
+      "window": {
+        "start": "2024-01-01",
+        "end": "2026-05-31"
+      }
+    },
+    {
+      "descriptor_id": "bybit-ethusdt-2024-forward-trade",
+      "venue": "bybit",
+      "symbol": "ETHUSDT",
+      "data_family": "trade",
+      "diagnostic_only": true,
+      "window": {
+        "start": "2024-01-01",
+        "end": "2026-05-31"
+      }
+    },
+    {
+      "descriptor_id": "hyperliquid-eth-2024-forward-asset-context",
+      "venue": "hyperliquid",
+      "symbol": "ETH",
+      "data_family": "asset_context",
+      "diagnostic_only": true,
+      "window": {
+        "start": "2024-01-01",
+        "end": "2026-05-31"
+      }
+    }
+  ],
+  "boundary_note": "This template is for research sandbox triage only. It must not be used as candidate, paper, live, sizing, runtime, or promotion evidence."
+}

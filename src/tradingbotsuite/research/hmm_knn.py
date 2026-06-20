@@ -72,6 +72,7 @@ KNN_OUTPUT_COLUMNS = [
     "accepted_by_knn",
     "knn_skip_reason",
 ]
+KNN_DISTANCE_TARGET_TENSOR_BYTES = 128 * 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,10 +254,10 @@ def _validate_knn_settings(plan: HmmKnnResearchPlan) -> None:
         raise ValueError("knn.k_values must contain only positive integers")
     if int(plan.knn.primary_k) not in {int(k) for k in plan.knn.k_values}:
         raise ValueError("knn.primary_k must be included in knn.k_values")
-    allowed_weighting = {"inverse_distance", "softmax"}
+    allowed_weighting = {"inverse_distance", "softmax", "uniform"}
     configured_weighting = set(plan.knn.neighbor_weighting)
     if not configured_weighting or configured_weighting - allowed_weighting:
-        raise ValueError("knn.neighbor_weighting must contain only inverse_distance or softmax")
+        raise ValueError("knn.neighbor_weighting must contain only inverse_distance, softmax, or uniform")
     if plan.knn.primary_weighting not in configured_weighting:
         raise ValueError("knn.primary_weighting must be included in knn.neighbor_weighting")
 
@@ -641,7 +642,9 @@ def _neighbor_weights(
     plan: HmmKnnResearchPlan,
     weighting: str,
 ) -> np.ndarray:
-    if weighting == "softmax":
+    if weighting == "uniform":
+        base = np.ones(len(distances), dtype=float)
+    elif weighting == "softmax":
         base = np.exp(-(distances - distances.min()))
     else:
         base = 1.0 / np.maximum(distances, 1e-9)
@@ -678,70 +681,116 @@ def _knn_predict(
     train_regime_label_values = train_regime_labels.astype(str).to_numpy() if train_regime_labels is not None else None
     resolved_distance_backend = distance_backend or _resolve_lorentzian_distance_backend(plan.knn.distance_backend)
     distance_metric = resolve_distance_metric(plan.knn.distance)
-    if distance_metric.id == "lorentzian":
-        distance_matrix = lorentzian_distance_matrix(test_matrix, train_matrix, backend=resolved_distance_backend)
-    else:
-        distance_matrix = distance_metric.function(test_matrix, train_matrix, None)
     combinations = _knn_combinations(plan, include_sweep=include_sweep)
     effective_same_regime_only = _effective_same_regime_only(regime_match_mode)
-    for local_index, (_, test_row) in enumerate(test_frame.iterrows()):
-        current_regime = int(test_regimes.iloc[local_index])
-        current_regime_label = (
-            str(test_regime_labels.iloc[local_index])
-            if test_regime_labels is not None and not pd.isna(test_regime_labels.iloc[local_index])
-            else None
-        )
-        pool = build_neighbor_pool(
-            train_regimes=train_regime_values,
-            train_regime_labels=train_regime_label_values,
-            query_regime=current_regime,
-            query_regime_label=current_regime_label,
-            regime_match_mode=regime_match_mode,
-            compatible_regimes=plan.knn.compatible_regimes or {},
-        )
-        primary_row: dict[str, Any] | None = None
-        for k, weighting in combinations:
-            is_primary = k == int(plan.knn.primary_k) and weighting == plan.knn.primary_weighting
-            selected_positions, selected_distances = select_neighbor_positions(
-                distance_matrix[local_index],
-                candidate_positions=pool.candidate_positions,
-                k=k,
+    distance_batch_size = _knn_distance_batch_size(test_matrix=test_matrix, train_matrix=train_matrix)
+    for batch_start in range(0, len(test_frame), distance_batch_size):
+        batch_end = min(batch_start + distance_batch_size, len(test_frame))
+        if distance_metric.id == "lorentzian":
+            distance_batch = lorentzian_distance_matrix(
+                test_matrix[batch_start:batch_end],
+                train_matrix,
+                backend=resolved_distance_backend,
             )
-            pool_diagnostics = pool.diagnostics.with_selected_count(len(selected_positions))
-            pool_payload = _knn_pool_payload(pool_diagnostics)
-            if len(pool.candidate_positions) == 0:
-                row = _empty_knn_row(test_row, reason=pool.diagnostics.skip_reason or "no_neighbors")
-            elif len(selected_positions) < plan.knn.min_neighbor_count:
-                row = _empty_knn_row(test_row, reason="insufficient_neighbors", neighbor_count=len(selected_positions))
-            else:
-                weights = _neighbor_weights(selected_distances, train_indices[selected_positions], int(test_row.name), plan, weighting)
-                p_up = float(np.dot(weights, labels[selected_positions]))
-                p_down = 1.0 - p_up
-                gross_expected = float(np.dot(weights, pnl[selected_positions]))
-                funding_cost = _funding_cost(test_row, plan)
-                expected_net = gross_expected - ((plan.evaluation.fee_bps + plan.evaluation.slippage_bps) / 10000.0) - funding_cost
-                agreement = max(p_up, p_down)
-                quality = 1.0 / (1.0 + float(np.average(selected_distances, weights=weights)))
-                accepted = (
-                    p_up >= plan.knn.vote_probability_threshold
-                    and expected_net >= plan.knn.expected_value_threshold
-                    and agreement >= plan.knn.vote_probability_threshold
+        else:
+            distance_batch = distance_metric.function(test_matrix[batch_start:batch_end], train_matrix, None)
+        for batch_offset, (_, test_row) in enumerate(test_frame.iloc[batch_start:batch_end].iterrows()):
+            local_index = batch_start + batch_offset
+            current_regime = int(test_regimes.iloc[local_index])
+            current_regime_label = (
+                str(test_regime_labels.iloc[local_index])
+                if test_regime_labels is not None and not pd.isna(test_regime_labels.iloc[local_index])
+                else None
+            )
+            pool = build_neighbor_pool(
+                train_regimes=train_regime_values,
+                train_regime_labels=train_regime_label_values,
+                query_regime=current_regime,
+                query_regime_label=current_regime_label,
+                regime_match_mode=regime_match_mode,
+                compatible_regimes=plan.knn.compatible_regimes or {},
+            )
+            primary_row: dict[str, Any] | None = None
+            distance_row = distance_batch[batch_offset]
+            for k, weighting in combinations:
+                is_primary = k == int(plan.knn.primary_k) and weighting == plan.knn.primary_weighting
+                selected_positions, selected_distances = select_neighbor_positions(
+                    distance_row,
+                    candidate_positions=pool.candidate_positions,
+                    k=k,
                 )
-                row = {
-                    **_identity_payload(test_row),
-                    "p_up_barrier": p_up,
-                    "p_down_barrier": p_down,
-                    "expected_net_return_after_costs": expected_net,
-                    "neighbor_agreement": agreement,
-                    "neighbor_distance_quality": quality,
-                    "neighbor_count": int(len(selected_positions)),
-                    "neighbor_min_source_index": int(train_indices[selected_positions].min()),
-                    "neighbor_max_source_index": int(train_indices[selected_positions].max()),
-                    "knn_vote_margin": abs(p_up - 0.5) * 2.0,
-                    "accepted_by_knn": bool(accepted),
-                    "knn_skip_reason": None,
+                pool_diagnostics = pool.diagnostics.with_selected_count(len(selected_positions))
+                pool_payload = _knn_pool_payload(pool_diagnostics)
+                if len(pool.candidate_positions) == 0:
+                    row = _empty_knn_row(test_row, reason=pool.diagnostics.skip_reason or "no_neighbors")
+                elif len(selected_positions) < plan.knn.min_neighbor_count:
+                    row = _empty_knn_row(test_row, reason="insufficient_neighbors", neighbor_count=len(selected_positions))
+                else:
+                    weights = _neighbor_weights(selected_distances, train_indices[selected_positions], int(test_row.name), plan, weighting)
+                    p_up = float(np.dot(weights, labels[selected_positions]))
+                    p_down = 1.0 - p_up
+                    gross_expected = float(np.dot(weights, pnl[selected_positions]))
+                    funding_cost = _funding_cost(test_row, plan)
+                    expected_net = gross_expected - ((plan.evaluation.fee_bps + plan.evaluation.slippage_bps) / 10000.0) - funding_cost
+                    agreement = max(p_up, p_down)
+                    quality = 1.0 / (1.0 + float(np.average(selected_distances, weights=weights)))
+                    accepted = (
+                        p_up >= plan.knn.vote_probability_threshold
+                        and expected_net >= plan.knn.expected_value_threshold
+                        and agreement >= plan.knn.vote_probability_threshold
+                    )
+                    row = {
+                        **_identity_payload(test_row),
+                        "p_up_barrier": p_up,
+                        "p_down_barrier": p_down,
+                        "expected_net_return_after_costs": expected_net,
+                        "neighbor_agreement": agreement,
+                        "neighbor_distance_quality": quality,
+                        "neighbor_count": int(len(selected_positions)),
+                        "neighbor_min_source_index": int(train_indices[selected_positions].min()),
+                        "neighbor_max_source_index": int(train_indices[selected_positions].max()),
+                        "knn_vote_margin": abs(p_up - 0.5) * 2.0,
+                        "accepted_by_knn": bool(accepted),
+                        "knn_skip_reason": None,
+                    }
+                    for rank, (position, distance, weight) in enumerate(zip(selected_positions[:10], selected_distances[:10], weights[:10], strict=False), start=1):
+                        diagnostics.append(
+                            {
+                                **_identity_payload(test_row),
+                                **pool_payload,
+                                "k": int(k),
+                                "weighting": weighting,
+                                "is_primary": bool(is_primary),
+                                "same_regime_only": bool(effective_same_regime_only),
+                                "configured_same_regime_only": bool(plan.knn.same_regime_only),
+                                "knn_skip_reason": None,
+                                "source_row_index": int(test_row.name),
+                                "neighbor_rank": rank,
+                                "neighbor_source_index": int(train_indices[position]),
+                                "neighbor_distance": float(distance),
+                                "neighbor_distance_quality": quality,
+                                "neighbor_weight": float(weight),
+                                "neighbor_label_accept": float(labels[position]),
+                                "neighbor_label_pnl_multiple": float(pnl[position]),
+                                "neighbor_regime": int(train_regimes.iloc[position]),
+                            }
+                        )
+                row = {**row, **pool_payload}
+                sweep_row = {
+                    **row,
+                    "k": int(k),
+                    "weighting": weighting,
+                    "is_primary": bool(is_primary),
+                    "same_regime_only": bool(effective_same_regime_only),
+                    "configured_same_regime_only": bool(plan.knn.same_regime_only),
+                    "source_row_index": int(test_row.name),
+                    plan.labels.label_column: test_row.get(plan.labels.label_column),
+                    plan.labels.pnl_column: test_row.get(plan.labels.pnl_column),
+                    "gross_return": test_row.get("gross_return", test_row.get(plan.labels.pnl_column)),
+                    "funding_paid_or_received": test_row.get("funding_paid_or_received", -_funding_cost(test_row, plan)),
                 }
-                for rank, (position, distance, weight) in enumerate(zip(selected_positions[:10], selected_distances[:10], weights[:10], strict=False), start=1):
+                sweep_rows.append(sweep_row)
+                if row["knn_skip_reason"] is not None:
                     diagnostics.append(
                         {
                             **_identity_payload(test_row),
@@ -751,59 +800,30 @@ def _knn_predict(
                             "is_primary": bool(is_primary),
                             "same_regime_only": bool(effective_same_regime_only),
                             "configured_same_regime_only": bool(plan.knn.same_regime_only),
-                            "knn_skip_reason": None,
+                            "knn_skip_reason": row["knn_skip_reason"],
                             "source_row_index": int(test_row.name),
-                            "neighbor_rank": rank,
-                            "neighbor_source_index": int(train_indices[position]),
-                            "neighbor_distance": float(distance),
-                            "neighbor_distance_quality": quality,
-                            "neighbor_weight": float(weight),
-                            "neighbor_label_accept": float(labels[position]),
-                            "neighbor_label_pnl_multiple": float(pnl[position]),
-                            "neighbor_regime": int(train_regimes.iloc[position]),
+                            "neighbor_rank": None,
+                            "neighbor_source_index": None,
+                            "neighbor_distance": None,
+                            "neighbor_distance_quality": None,
+                            "neighbor_weight": None,
+                            "neighbor_label_accept": None,
+                            "neighbor_label_pnl_multiple": None,
+                            "neighbor_regime": None,
                         }
                     )
-            row = {**row, **pool_payload}
-            sweep_row = {
-                **row,
-                "k": int(k),
-                "weighting": weighting,
-                "is_primary": bool(is_primary),
-                "same_regime_only": bool(effective_same_regime_only),
-                "configured_same_regime_only": bool(plan.knn.same_regime_only),
-                "source_row_index": int(test_row.name),
-                plan.labels.label_column: test_row.get(plan.labels.label_column),
-                plan.labels.pnl_column: test_row.get(plan.labels.pnl_column),
-                "gross_return": test_row.get("gross_return", test_row.get(plan.labels.pnl_column)),
-                "funding_paid_or_received": test_row.get("funding_paid_or_received", -_funding_cost(test_row, plan)),
-            }
-            sweep_rows.append(sweep_row)
-            if row["knn_skip_reason"] is not None:
-                diagnostics.append(
-                    {
-                        **_identity_payload(test_row),
-                        **pool_payload,
-                        "k": int(k),
-                        "weighting": weighting,
-                        "is_primary": bool(is_primary),
-                        "same_regime_only": bool(effective_same_regime_only),
-                        "configured_same_regime_only": bool(plan.knn.same_regime_only),
-                        "knn_skip_reason": row["knn_skip_reason"],
-                        "source_row_index": int(test_row.name),
-                        "neighbor_rank": None,
-                        "neighbor_source_index": None,
-                        "neighbor_distance": None,
-                        "neighbor_distance_quality": None,
-                        "neighbor_weight": None,
-                        "neighbor_label_accept": None,
-                        "neighbor_label_pnl_multiple": None,
-                        "neighbor_regime": None,
-                    }
-                )
-            if is_primary:
-                primary_row = row
-        rows.append(primary_row or _empty_knn_row(test_row, reason="primary_combination_not_evaluated"))
+                if is_primary:
+                    primary_row = row
+            rows.append(primary_row or _empty_knn_row(test_row, reason="primary_combination_not_evaluated"))
     return pd.DataFrame(rows), pd.DataFrame(diagnostics), pd.DataFrame(sweep_rows)
+
+
+def _knn_distance_batch_size(*, test_matrix: np.ndarray, train_matrix: np.ndarray) -> int:
+    if len(test_matrix) == 0 or len(train_matrix) == 0:
+        return 1
+    feature_count = max(int(train_matrix.shape[1]), 1)
+    bytes_per_query = max(int(len(train_matrix)) * feature_count * np.dtype(float).itemsize, 1)
+    return max(1, min(int(len(test_matrix)), KNN_DISTANCE_TARGET_TENSOR_BYTES // bytes_per_query))
 
 
 def _knn_pool_payload(diagnostics: Any) -> dict[str, Any]:
@@ -870,6 +890,8 @@ def _funding_cost(row: pd.Series, plan: HmmKnnResearchPlan) -> float:
     try:
         funding_rate = float(row.get("funding_rate") or 0.0)
     except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(funding_rate):
         return 0.0
     direction_sign = 1.0 if str(row.get("direction", "")).lower() == "long" or float(row.get("direction_long", 0.0)) >= 0.5 else -1.0
     horizon_hours = _horizon_hours(plan.labels.primary_horizon)
@@ -1045,6 +1067,11 @@ def _prepare_dataset(dataset_path: Path, plan: HmmKnnResearchPlan) -> pd.DataFra
     if plan.symbol not in set(frame["symbol"].astype(str).str.upper()):
         raise ValueError(f"dataset does not contain configured symbol {plan.symbol}")
     frame = frame.loc[frame["symbol"].astype(str).str.upper() == plan.symbol].reset_index(drop=True)
+    if "four_bar_resolved_horizon" in frame.columns:
+        requested_horizon = str(plan.labels.primary_horizon)
+        frame = frame.loc[frame["four_bar_resolved_horizon"].astype(str) == requested_horizon].reset_index(drop=True)
+        if frame.empty:
+            raise ValueError(f"dataset does not contain four_bar_resolved_horizon={requested_horizon}")
     if plan.labels.label_column not in frame.columns or plan.labels.pnl_column not in frame.columns:
         raise ValueError("dataset must contain label_accept and label_pnl_multiple compatible columns")
     wt3d = build_wt3d_features(frame, plan.wt3d)
@@ -1332,7 +1359,17 @@ def _walk_forward_frames(frame: pd.DataFrame, plan: HmmKnnResearchPlan) -> list[
     train_end = initial_train
     for split_index in range(plan.evaluation.walk_forward_splits):
         test_start = min(len(frame), train_end + max(plan.evaluation.purge_embargo_bars, 0))
-        if {"label_exit_time_ms", "signal_bar_time_ms"}.issubset(frame.columns) and train_end > 0:
+        if {"purge_after_time_ms", "signal_bar_time_ms"}.issubset(frame.columns) and train_end > 0:
+            train_purge_end = pd.to_numeric(frame.iloc[:train_end]["purge_after_time_ms"], errors="coerce").dropna()
+            if not train_purge_end.empty:
+                first_allowed_time_ms = int(train_purge_end.max())
+                candidate_positions = np.where(frame["signal_bar_time_ms"].astype(int).to_numpy() > first_allowed_time_ms)[0]
+                candidate_positions = candidate_positions[candidate_positions >= train_end]
+                if len(candidate_positions):
+                    test_start = max(test_start, int(candidate_positions[0]))
+                else:
+                    break
+        elif {"label_exit_time_ms", "signal_bar_time_ms"}.issubset(frame.columns) and train_end > 0:
             train_label_end = pd.to_numeric(frame.iloc[:train_end]["label_exit_time_ms"], errors="coerce").dropna()
             if not train_label_end.empty:
                 first_allowed_time_ms = int(train_label_end.max()) + (max(plan.evaluation.purge_embargo_bars, 0) * BAR_INTERVAL_MS)

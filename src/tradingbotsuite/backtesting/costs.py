@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
+from typing import Mapping
 
 FUNDING_INTERVAL_MS = 8 * 60 * 60 * 1000
 COST_PROFILE_CONTRACT_VERSION = "venue-cost-fill-profile-v1"
 DEFAULT_RESEARCH_COST_PROFILE_ID = "binance_usdm_research_baseline"
 DEFAULT_RESEARCH_FILL_PROFILE_ID = "primary_bar_latency_fill"
+FUNDING_RATE_FIELD_ALIASES = ("funding_rate", "perp_last_funding_rate", "last_funding_rate")
 RESEARCH_EXECUTION_PROOF_SCOPE = "historical_research_only_not_live_execution_proof"
 DEFAULT_NON_EXECUTION_PROOF_VENUES = ("hyperliquid", "paper", "live")
 SUPPORTED_RESEARCH_FILL_PROFILE_IDS = frozenset(
@@ -212,6 +215,21 @@ def validate_fill_profile_id(fill_profile_id: str) -> str:
     if key not in SUPPORTED_RESEARCH_FILL_PROFILE_IDS:
         raise ValueError(f"unknown_fill_profile_id:{key}")
     return key
+
+
+def funding_rate_from_row(row: Mapping[str, object]) -> float | None:
+    for column in FUNDING_RATE_FIELD_ALIASES:
+        value = row.get(column)
+        if value is None:
+            continue
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(parsed):
+            continue
+        return parsed
+    return None
 
 
 def research_cost_stress_scenarios() -> tuple[dict[str, object], ...]:

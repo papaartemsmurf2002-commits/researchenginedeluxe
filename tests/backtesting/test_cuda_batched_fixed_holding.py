@@ -241,6 +241,7 @@ def _assert_batched_matches_reference_vector_and_r96(reference: Any, vector: Any
         {"name": "no-trade", "strategy_id": "baseline_no_trade", "strategy_config": {}},
         {"name": "vwap", "entry_price_source": "vwap_approximation"},
         {"name": "signal-close", "entry_price_source": "signal_bar_close_plus_latency"},
+        {"name": "primary-open-latency", "entry_price_source": "primary_bar_open_plus_latency"},
     ],
 )
 def test_cuda_batched_fixed_holding_matches_reference_vector_and_r96_with_fake_cupy(

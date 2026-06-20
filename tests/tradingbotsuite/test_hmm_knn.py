@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import sys
 import types
+import zipfile
+from hashlib import sha256
 
 import numpy as np
 import pandas as pd
@@ -43,6 +45,14 @@ from tradingbotsuite.research.deterministic_datasets import (
 )
 from tradingbotsuite.research.hmm_knn_experiments import run_hmm_knn_experiment_matrix
 from tradingbotsuite.research.hmm_knn_monitoring import monitor_hmm_knn_artifact
+from tradingbotsuite.research.knn_four_bar import (
+    build_four_bar_knn_dataset_from_binance_archive,
+    build_four_bar_event_labels,
+    build_four_bar_knn_dataset_from_fixture,
+    resolve_four_bar_horizon,
+)
+from tradingbotsuite.research.knn_four_bar_validation import run_four_bar_knn_larger_validation
+from tradingbotsuite.research.command_registry import is_research_command
 from tradingbotsuite.strategies.hmm_knn.config import resolve_feature_columns
 from tradingbotsuite.strategies.hmm_knn.distances import (
     available_distance_metrics,
@@ -480,9 +490,37 @@ def test_knn_config_accepts_pluggable_distances_and_rejects_unknown_distance(tmp
         load_hmm_knn_plan(bad_config)
 
 
+def test_knn_config_accepts_uniform_weighting_and_rejects_unknown_weighting(tmp_path) -> None:
+    uniform_config = _write_modified_test_config(
+        tmp_path,
+        knn__neighbor_weighting=["uniform"],
+        knn__primary_weighting="uniform",
+    )
+    uniform_plan = load_hmm_knn_plan(uniform_config)
+
+    assert uniform_plan.knn.neighbor_weighting == ["uniform"]
+    assert uniform_plan.knn.primary_weighting == "uniform"
+
+    bad_config = _write_modified_test_config(
+        tmp_path,
+        knn__neighbor_weighting=["uniform", "rank"],
+        knn__primary_weighting="uniform",
+    )
+    with pytest.raises(ValueError, match="inverse_distance, softmax, or uniform"):
+        load_hmm_knn_plan(bad_config)
+
+
 def test_hmm_knn_feature_packs_and_distance_functions_are_resolvable() -> None:
     with_wt3d = resolve_feature_columns("full_context_wt3d")
     without_wt3d = resolve_feature_columns("full_context_no_wt3d")
+    price_path = resolve_feature_columns("price_close_path_4bar")
+    no_rsi_packs = (
+        "price_close_path_4bar",
+        "price_vol_flow_no_rsi",
+        "price_wick_flow_no_context",
+        "price_microdrift_flow_no_context",
+        "perp_context_no_rsi",
+    )
     query = np.array([[0.0, 1.0, 0.5]])
     train = np.array([[0.0, 1.0, 0.5], [3.0, -1.0, 0.25]])
 
@@ -492,8 +530,435 @@ def test_hmm_knn_feature_packs_and_distance_functions_are_resolvable() -> None:
 
     assert any(column.startswith("wt3d_") for column in with_wt3d)
     assert not any(column.startswith("wt3d_") for column in without_wt3d)
+    assert {"close_return_1_bar", "close_return_2_bar", "close_return_3_bar", "close_return_4_bar"}.issubset(price_path)
+    for pack_name in no_rsi_packs:
+        columns = resolve_feature_columns(pack_name)
+        assert columns
+        assert not any("rsi" in column.lower() for column in columns)
+    no_context = resolve_feature_columns("price_wick_flow_no_context")
+    assert {"wick_upper_ratio", "wick_lower_ratio", "range_compression_ratio"}.issubset(no_context)
+    assert "primary_flow_price_alignment_bps" in no_context
+    assert "top_of_book_imbalance" not in no_context
+    assert "funding_rate" not in no_context
+    microdrift = resolve_feature_columns("price_microdrift_flow_no_context")
+    assert {"close_return_1_bar", "directional_slope_atr", "range_compression_ratio"}.issubset(microdrift)
+    assert "choppiness" not in microdrift
+    assert "top_of_book_imbalance" not in microdrift
     assert lorentzian.shape == euclidean.shape == cosine.shape == (1, 2)
     assert not np.allclose(lorentzian, euclidean)
+
+
+def test_four_bar_horizon_resolution_maps_supported_intervals_and_marks_16h_diagnostic() -> None:
+    fifteen = resolve_four_bar_horizon("15m")
+    one_hour = resolve_four_bar_horizon("1h")
+    four_hour = resolve_four_bar_horizon("4h")
+
+    assert fifteen.resolved_horizon == "1h"
+    assert fifteen.diagnostic_only is False
+    assert fifteen.holding_window_supported is True
+    assert one_hour.resolved_horizon == "4h"
+    assert one_hour.diagnostic_only is False
+    assert one_hour.holding_window_supported is True
+    assert four_hour.resolved_horizon == "16h"
+    assert four_hour.diagnostic_only is True
+    assert four_hour.holding_window_supported is False
+
+
+def test_four_bar_event_label_generation_uses_signal_close_plus_four_completed_bars() -> None:
+    bars = pd.DataFrame(
+        {
+            "bar_time_ms": [index * 900_000 for index in range(6)],
+            "close": [100.0, 101.0, 102.0, 103.0, 105.0, 104.0],
+        }
+    )
+    events = pd.DataFrame(
+        {
+            "signal_id": ["long-1"],
+            "signal_bar_time_ms": [0],
+            "direction": ["long"],
+            "entry_price": [100.0],
+        }
+    )
+
+    labeled = build_four_bar_event_labels(events, bars, base_interval="15m")
+    row = labeled.iloc[0]
+
+    assert bool(row["four_bar_label_available"]) is True
+    assert row["label_accept"] == 1
+    assert row["label_pnl_multiple"] == pytest.approx(0.05)
+    assert row["label_future_start_time_ms"] == 900_000
+    assert row["label_future_end_time_ms"] == 3_600_000
+    assert row["label_exit_time_ms"] == 3_600_000
+    assert row["event_end_time_ms"] == 3_600_000
+    assert row["purge_after_time_ms"] == 7_200_000
+    assert row["four_bar_resolved_horizon"] == "1h"
+    assert bool(row["four_bar_diagnostic_only"]) is False
+
+    four_hour = build_four_bar_event_labels(events, bars.assign(bar_time_ms=[index * 14_400_000 for index in range(6)]), base_interval="4h")
+    assert four_hour.iloc[0]["four_bar_resolved_horizon"] == "16h"
+    assert bool(four_hour.iloc[0]["four_bar_diagnostic_only"]) is True
+
+
+def test_four_bar_dataset_builder_writes_research_only_dataset_and_manifest(tmp_path: Path) -> None:
+    fixture_root = _write_minimal_four_bar_fixture(tmp_path, symbol="BTCUSDT", bar_count=24)
+
+    result = build_four_bar_knn_dataset_from_fixture(
+        fixture_root=fixture_root,
+        output_dir=tmp_path / "out",
+        symbol="BTCUSDT",
+        base_intervals=("15m", "1h"),
+        require_public_archive_ready=False,
+    )
+
+    dataset = pd.read_parquet(result.dataset_path)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert result.row_count == len(dataset)
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["candidate_pack_written"] is False
+    assert set(dataset["four_bar_resolved_horizon"]) == {"1h", "4h"}
+    assert set(dataset["direction"]) == {"long", "short"}
+    assert dataset["signal_id"].is_unique
+    assert (dataset["event_end_time_ms"] == dataset["label_future_end_time_ms"]).all()
+    assert dataset["label_accept"].isin([0, 1]).all()
+    assert dataset["funding_rate"].isna().all()
+    assert dataset["missing_funding_rate"].eq(True).all()
+    assert dataset["missing_open_interest_change_pct"].eq(True).all()
+    assert np.isfinite(dataset["primary_signed_imbalance_ratio"]).all()
+    assert manifest["feature_semantics"]["no_rsi_core"] is True
+    assert manifest["label_semantics"]["same_entry_long_short_comparison"] is True
+
+
+def test_four_bar_binance_archive_mapper_preserves_real_four_bar_labels(tmp_path: Path) -> None:
+    archive_root = _write_minimal_binance_archive_cache(tmp_path, symbol="BTCUSDT", period="2024-01", bar_count=48)
+
+    result = build_four_bar_knn_dataset_from_binance_archive(
+        archive_root=archive_root,
+        output_dir=tmp_path / "mapped",
+        symbol="BTCUSDT",
+        start_month="2024-01",
+        end_month="2024-01",
+        max_rows_per_interval=30,
+    )
+
+    dataset = pd.read_parquet(result.dataset_path)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert result.row_count > 0
+    assert set(dataset["four_bar_resolved_horizon"]) == {"1h", "4h"}
+    first_15m = dataset.loc[dataset["four_bar_base_interval"] == "15m"].sort_values("signal_bar_time_ms").iloc[0]
+    assert int(first_15m["event_end_time_ms"]) == int(first_15m["signal_bar_time_ms"]) + (4 * 900_000)
+    assert int(first_15m["purge_after_time_ms"]) == int(first_15m["event_end_time_ms"]) + (4 * 900_000)
+    assert manifest["source_archive"]["network_download_used"] is False
+    assert manifest["source_archive"]["lower_timeframe_bars_1m"]["row_count"] == 48 * 15
+    assert manifest["label_semantics"]["sample_timing"] == "after_labeling_so_future_bars_remain_real_completed_bars"
+    assert manifest["promotion_ready"] is False
+
+
+def test_four_bar_larger_validation_skip_matrix_writes_research_only_manifest(tmp_path: Path) -> None:
+    btc_fixture = _write_minimal_four_bar_fixture(tmp_path, symbol="BTCUSDT", bar_count=32)
+    eth_fixture = _write_minimal_four_bar_fixture(tmp_path, symbol="ETHUSDT", bar_count=32)
+    base_config = _write_modified_test_config(tmp_path, evaluation__min_training_rows=20)
+
+    result = run_four_bar_knn_larger_validation(
+        output_dir=tmp_path / "validation",
+        btc_fixture_root=btc_fixture,
+        eth_fixture_root=eth_fixture,
+        btc_base_config_path=base_config,
+        eth_base_config_path=base_config,
+        sample_rows_per_interval=20,
+        skip_matrix=True,
+        require_public_archive_ready=False,
+    )
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    summary = json.loads(result.summary_json_path.read_text(encoding="utf-8"))
+
+    assert manifest["research_only"] is True
+    assert manifest["observe_only"] is True
+    assert manifest["promotion_ready"] is False
+    assert manifest["candidate_pack_written"] is False
+    assert manifest["live_signal_input"] is False
+    assert manifest["position_sizing_input"] is False
+    assert manifest["runtime_control_input"] is False
+    assert manifest["skip_matrix"] is True
+    assert manifest["research_boundary"]["passed"] is True
+    assert set(manifest["datasets"]) == {"BTCUSDT", "ETHUSDT"}
+    assert set(manifest["specs"]) == {"BTCUSDT", "ETHUSDT"}
+    assert manifest["matrices"]["BTCUSDT"]["status"] == "skipped"
+    assert manifest["matrices"]["ETHUSDT"]["status"] == "skipped"
+    assert summary["next_phase"]["decision"] == "larger_validation_pending"
+    assert Path(manifest["command_path"]).exists()
+    assert result.summary_csv_path.read_text(encoding="utf-8").startswith("symbol,slug,base_interval")
+
+
+def test_four_bar_larger_validation_command_registered_as_research() -> None:
+    assert is_research_command("run-four-bar-knn-larger-validation") is True
+    assert is_research_command("map-binance-archive-four-bar-datasets") is True
+
+
+def test_prepare_dataset_filters_four_bar_rows_by_primary_horizon(tmp_path: Path) -> None:
+    fixture_root = _write_minimal_four_bar_fixture(tmp_path, symbol="BTCUSDT", bar_count=24)
+    result = build_four_bar_knn_dataset_from_fixture(
+        fixture_root=fixture_root,
+        output_dir=tmp_path / "out",
+        symbol="BTCUSDT",
+        base_intervals=("15m", "1h"),
+        require_public_archive_ready=False,
+    )
+    config_path = _write_modified_test_config(tmp_path, labels__primary_horizon="4h")
+    plan = load_hmm_knn_plan(config_path)
+
+    prepared = _prepare_dataset(result.dataset_path, plan)
+
+    assert set(prepared["four_bar_resolved_horizon"]) == {"4h"}
+    assert set(prepared["four_bar_base_interval"]) == {"1h"}
+
+
+def test_walk_forward_split_prefers_explicit_four_bar_purge_after_time(tmp_path: Path) -> None:
+    config_path = _write_modified_test_config(
+        tmp_path,
+        evaluation__min_training_rows=3,
+        evaluation__train_fraction=0.3,
+        evaluation__walk_forward_splits=1,
+        evaluation__purge_embargo_bars=0,
+    )
+    plan = load_hmm_knn_plan(config_path)
+    frame = pd.DataFrame(
+        {
+            "signal_bar_time_ms": [index * 900_000 for index in range(8)],
+            "purge_after_time_ms": [5 * 900_000 for _ in range(3)] + [index * 900_000 for index in range(3, 8)],
+        }
+    )
+
+    splits = _walk_forward_frames(frame, plan)
+
+    assert len(splits) == 1
+    _, test_frame = splits[0]
+    assert int(test_frame["signal_bar_time_ms"].iloc[0]) == 6 * 900_000
+
+
+def _write_minimal_four_bar_fixture(tmp_path: Path, *, symbol: str, bar_count: int) -> Path:
+    fixture_root = tmp_path / f"{symbol.lower()}_fixture"
+    fixture_root.mkdir()
+    start_ms = 1_700_000_000_000
+    bars: list[dict[str, object]] = []
+    agg_rows: list[dict[str, object]] = []
+    price = 100.0
+    for index in range(bar_count):
+        event_time = start_ms + index * 900_000
+        open_price = price
+        close_price = open_price * (1.0 + (0.002 if index % 3 != 0 else -0.0015))
+        high_price = max(open_price, close_price) * 1.001
+        low_price = min(open_price, close_price) * 0.999
+        volume = 1000.0 + float(index * 10)
+        bars.append(
+            {
+                "event_time_ms": event_time,
+                "symbol": symbol,
+                "interval": "15m",
+                "open_price": open_price,
+                "high_price": high_price,
+                "low_price": low_price,
+                "close_price": close_price,
+                "volume": volume,
+                "source_row_index": index,
+            }
+        )
+        for minute in range(15):
+            minute_time = event_time + minute * 60_000
+            signed = 0.25 if (index + minute) % 2 == 0 else -0.15
+            quote = 10_000.0 + float(index * 100 + minute)
+            buy = quote * (0.5 + signed / 2.0)
+            sell = quote - buy
+            agg_rows.append(
+                {
+                    "event_time_ms": minute_time,
+                    "symbol": symbol,
+                    "agg_trade_count": 10 + minute,
+                    "quantity": 1.0,
+                    "quote_volume": quote,
+                    "taker_buy_quote_volume": buy,
+                    "sell_quote_volume": sell,
+                    "price": close_price,
+                    "primary_signed_imbalance_ratio": signed,
+                    "primary_sqrt_signed_imbalance_ratio": np.sign(signed) * np.sqrt(abs(signed)),
+                    "source_row_index": index * 15 + minute,
+                    "source_provider": "binance_vision",
+                    "source_data_family": "agg_trade",
+                }
+            )
+        price = close_price
+    bars_frame = pd.DataFrame(bars)
+    cycle_frame = pd.DataFrame(
+        {
+            "symbol": bars_frame["symbol"],
+            "time_ms": bars_frame["event_time_ms"],
+            "bar_time_ms": bars_frame["event_time_ms"],
+            "signal_bar_time_ms": bars_frame["event_time_ms"],
+            "open": bars_frame["open_price"],
+            "high": bars_frame["high_price"],
+            "low": bars_frame["low_price"],
+            "close": bars_frame["close_price"],
+            "volume": bars_frame["volume"],
+            "signal_bar_open": bars_frame["open_price"],
+            "signal_bar_high": bars_frame["high_price"],
+            "signal_bar_low": bars_frame["low_price"],
+            "signal_bar_close": bars_frame["close_price"],
+            "signal_bar_volume": bars_frame["volume"],
+            "entry_price": bars_frame["close_price"],
+        }
+    )
+    agg_frame = pd.DataFrame(agg_rows)
+    cycle_path = fixture_root / "cycle_dataset.parquet"
+    bars_path = fixture_root / "bars_15m.parquet"
+    agg_path = fixture_root / "agg_trade.parquet"
+    cycle_frame.to_parquet(cycle_path, index=False)
+    bars_frame.to_parquet(bars_path, index=False)
+    agg_frame.to_parquet(agg_path, index=False)
+    manifest = {
+        "manifest_version": "historical-fixture-pack-manifest-v1",
+        "fixture_id": f"{symbol.lower()}-fixture",
+        "fixture_scope": "durable_public_archive_candidate_depth_fixture_not_oos_acceptance_evidence",
+        "symbol": symbol,
+        "base_interval": "15m",
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "cycle_dataset": {
+            "path": "cycle_dataset.parquet",
+            "sha256": _test_file_sha256(cycle_path),
+            "row_count": len(cycle_frame),
+            "time_field": "signal_bar_time_ms",
+            "columns": list(cycle_frame.columns),
+        },
+        "families": {
+            "bars": {
+                "path": "bars_15m.parquet",
+                "data_family": "kline",
+                "interval": "15m",
+                "event_time_field": "event_time_ms",
+                "sha256": _test_file_sha256(bars_path),
+                "row_count": len(bars_frame),
+                "required": True,
+                "columns": list(bars_frame.columns),
+            },
+            "agg_trade": {
+                "path": "agg_trade.parquet",
+                "data_family": "agg_trade",
+                "event_time_field": "event_time_ms",
+                "sha256": _test_file_sha256(agg_path),
+                "row_count": len(agg_frame),
+                "columns": list(agg_frame.columns),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            },
+        },
+        "source": {"source_name": "binance_vision", "source_type": "public_archive", "latest_window_only": False},
+        "omitted_optional_families": {
+            "funding_rate": "not_in_fixture",
+            "open_interest": "not_in_fixture",
+            "premium_index": "not_in_fixture",
+        },
+        "research_evidence_limitations": ["not_promotion_ready"],
+    }
+    (fixture_root / "fixture_pack_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return fixture_root
+
+
+def _write_minimal_binance_archive_cache(tmp_path: Path, *, symbol: str, period: str, bar_count: int) -> Path:
+    root = tmp_path / "binance_archive" / "downloads"
+    kline_15m_dir = root / "futures_um" / "monthly" / "klines" / symbol / "15m"
+    kline_1m_dir = root / "futures_um" / "monthly" / "klines" / symbol / "1m"
+    agg_dir = root / "futures_um" / "monthly" / "aggTrades" / symbol
+    kline_15m_dir.mkdir(parents=True)
+    kline_1m_dir.mkdir(parents=True)
+    agg_dir.mkdir(parents=True)
+    start_ms = 1_704_067_200_000
+    price = 100.0
+    rows_15m: list[list[object]] = []
+    rows_1m: list[list[object]] = []
+    agg_rows: list[list[object]] = []
+    agg_id = 1
+    for index in range(bar_count):
+        event_time = start_ms + index * 900_000
+        open_price = price
+        close_price = open_price * (1.0 + (0.001 if index % 4 else -0.0005))
+        high_price = max(open_price, close_price) * 1.001
+        low_price = min(open_price, close_price) * 0.999
+        volume = 1000.0 + float(index)
+        rows_15m.append(
+            [
+                event_time,
+                f"{open_price:.8f}",
+                f"{high_price:.8f}",
+                f"{low_price:.8f}",
+                f"{close_price:.8f}",
+                f"{volume:.8f}",
+                event_time + 899_999,
+                f"{volume * close_price:.8f}",
+                100 + index,
+                f"{volume * 0.55:.8f}",
+                f"{volume * close_price * 0.55:.8f}",
+                "0",
+            ]
+        )
+        for minute in range(15):
+            minute_time = event_time + minute * 60_000
+            minute_open = open_price + (close_price - open_price) * (minute / 15.0)
+            minute_close = open_price + (close_price - open_price) * ((minute + 1) / 15.0)
+            minute_high = max(minute_open, minute_close) * 1.0002
+            minute_low = min(minute_open, minute_close) * 0.9998
+            rows_1m.append(
+                [
+                    minute_time,
+                    f"{minute_open:.8f}",
+                    f"{minute_high:.8f}",
+                    f"{minute_low:.8f}",
+                    f"{minute_close:.8f}",
+                    "10.00000000",
+                    minute_time + 59_999,
+                    f"{minute_close * 10.0:.8f}",
+                    5,
+                    "5.00000000",
+                    f"{minute_close * 5.0:.8f}",
+                    "0",
+                ]
+            )
+            agg_rows.append(
+                [
+                    agg_id,
+                    f"{minute_close:.8f}",
+                    "1.00000000",
+                    agg_id,
+                    agg_id,
+                    minute_time + 30_000,
+                    "false" if (index + minute) % 2 == 0 else "true",
+                    "true",
+                ]
+            )
+            agg_id += 1
+        price = close_price
+    _write_zip_csv(kline_15m_dir / f"{symbol}-15m-{period}.zip", rows_15m)
+    _write_zip_csv(kline_1m_dir / f"{symbol}-1m-{period}.zip", rows_1m)
+    _write_zip_csv(agg_dir / f"{symbol}-aggTrades-{period}.zip", agg_rows)
+    return root
+
+
+def _write_zip_csv(path: Path, rows: list[list[object]]) -> None:
+    csv_text = "\n".join(",".join(str(value) for value in row) for row in rows) + "\n"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(path.with_suffix(".csv").name, csv_text)
+
+
+def _test_file_sha256(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return f"sha256:{digest.hexdigest()}"
 
 
 def test_distance_metric_registry_exposes_metadata_and_aliases() -> None:
@@ -1037,6 +1502,13 @@ def test_hmm_knn_prepare_dataset_preserves_real_label_outcome_fields(tmp_path) -
     assert prepared["max_adverse_excursion"].iloc[0] == 0.4
     assert prepared["max_favorable_excursion"].iloc[0] == 1.1
     assert prepared["realized_net_return_after_costs"].iloc[0] == pytest.approx(0.0123 - 0.001 + -0.0002)
+
+
+def test_funding_cost_treats_explicit_missing_context_as_zero(tmp_path) -> None:
+    plan = load_hmm_knn_plan(_write_test_config(tmp_path))
+    row = pd.Series({"direction": "long", "direction_long": 1.0, "funding_rate": np.nan})
+
+    assert hmm_knn._funding_cost(row, plan) == 0.0
 
 
 def test_hmm_knn_walk_forward_uses_label_exit_time_for_purge(tmp_path) -> None:

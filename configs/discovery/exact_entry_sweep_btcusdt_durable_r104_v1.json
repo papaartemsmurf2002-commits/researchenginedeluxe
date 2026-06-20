@@ -16,8 +16,8 @@
     ]
   },
   "budget": {
-    "max_trials": 570240,
-    "trial_batch_size": 10000,
+    "max_trials": 3456,
+    "trial_batch_size": 512,
     "snapshot_interval_minutes": 15,
     "rng_seed": 104401
   },
@@ -37,59 +37,42 @@
       0.78
     ],
     "label_horizons": [
-      "1h",
       "2h",
       "4h"
     ],
     "k_values": [
-      3,
-      5,
       8,
       13,
-      21,
-      34
+      21
     ],
     "min_neighbor_counts": [
-      2,
       3,
-      4,
       5
     ],
     "distance_metrics": [
       "euclidean",
-      "manhattan",
       "cosine"
     ],
     "probability_thresholds": [
-      0.48,
-      0.5,
-      0.52,
       0.55,
       0.58,
       0.62
     ],
     "expected_value_thresholds": [
-      -0.0004,
-      -0.0002,
       0.0,
       0.0002
     ],
     "min_neighbor_agreements": [
-      0.48,
-      0.5,
       0.52,
       0.55,
       0.6
     ],
     "min_distance_qualities": [
-      0.0,
       0.005,
       0.01
     ],
     "vote_margin_thresholds": [
-      0.0,
       0.02,
-      0.03,
       0.05
     ],
     "same_regime_only_values": [

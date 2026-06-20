@@ -8,7 +8,7 @@ from typing import Any, Mapping
 import numpy as np
 import pandas as pd
 
-from tradingbotsuite.backtesting.costs import CostModel
+from tradingbotsuite.backtesting.costs import CostModel, funding_rate_from_row
 from tradingbotsuite.backtesting.engine import (
     BACKTEST_CACHE_POLICY,
     BACKTEST_ENGINE_VERSION,
@@ -353,7 +353,7 @@ def _cuda_fixed_holding_trades(
             exit_reason=exit_reason,
         )
         holding_ms = int(exit_result.time_in_trade_ms)
-        funding_rate = _optional_float(entry_row.get("funding_rate"))
+        funding_rate = funding_rate_from_row(entry_row)
         spread_bps = _optional_float(entry_row.get("spread_bps"))
         cost = costs.estimate(
             entry_price=entry_price,

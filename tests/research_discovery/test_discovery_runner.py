@@ -1144,6 +1144,7 @@ def test_discovery_runner_passes_trial_knn_payload_to_evaluator(tmp_path: Path, 
     assert knn_spec.vote_margin_threshold == pytest.approx(0.0)
     assert knn_spec.regime_mode == "none"
     assert knn_spec.regime_detector_type == "none"
+    assert knn_spec.regime_model_backend == "none"
     assert knn_spec.regime_gate_enabled is False
     assert knn_spec.same_regime_neighbor_pool_enabled is False
     assert knn_spec.same_regime_only is False
@@ -1239,6 +1240,8 @@ def test_discovery_runner_failed_real_trial_preserves_search_payload(tmp_path: P
     monkeypatch.setattr(discovery_runner, "materialize_regime_local_knn_predictions", fail_knn)
 
     result = discovery_runner.run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    state = json.loads(result.run_state_path.read_text(encoding="utf-8"))
     trial_record = json.loads((result.output_dir / "trials" / "trial-000001.json").read_text(encoding="utf-8"))
     payload = trial_record["payload"]
 
@@ -1259,6 +1262,93 @@ def test_discovery_runner_failed_real_trial_preserves_search_payload(tmp_path: P
     assert payload["vote_margin_threshold"] == pytest.approx(0.03)
     assert payload["final_score"] == 0.0
     assert payload["knn_artifact_persisted"] is False
+    assert state["status"] == "blocked"
+    assert state["message"] == "real discovery trial execution failed; run blocked fail-closed"
+    assert state["failed_trial_ids"] == ["trial-000001"]
+    assert manifest["counts"]["completed_trials"] == 0
+    assert manifest["counts"]["failed_trials"] == 1
+    assert manifest["counts"]["durable_trial_records"] == 1
+    assert manifest["counts"]["processed_trial_records"] == 1
+    assert pd.read_parquet(result.blocked_candidates_path).shape[0] == 1
+
+
+def test_discovery_runner_large_real_preflight_blocks_failed_screening_before_full_sweep(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    spec_path = tmp_path / "specs" / "preflight-blocks-failed-screening.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(
+        json.dumps(
+            {
+                "run_id": "preflight-blocks-failed-screening",
+                "symbol": "BTCUSDT",
+                "timeframe": "15m",
+                "discovery_mode": "entry_discovery_standard",
+                "feature_column_sets_path": str(Path("configs/discovery/feature_column_sets_v4.json").resolve()),
+                "feature_column_set_ids": ["price_trend_vol"],
+                "data": {
+                    "dataset_manifest_paths": [
+                        str(
+                            Path(
+                                "data/research/fixtures/btcusdt_context_provider_latest_month_v1/fixture_pack_manifest.json"
+                            ).resolve()
+                        )
+                    ]
+                },
+                "budget": {"max_trials": 4, "trial_batch_size": 4, "snapshot_interval_minutes": 30, "rng_seed": 73},
+                "execution": {"max_workers": 2, "executor": "process", "persist_trial_artifacts": "interesting_only"},
+                "search": {
+                    "hmm_state_counts": [3],
+                    "hmm_posterior_thresholds": [0.55],
+                    "hmm_entropy_thresholds": [0.78],
+                    "label_horizons": ["1h"],
+                    "k_values": [8, 13],
+                    "min_neighbor_counts": [2],
+                    "distance_metrics": ["euclidean"],
+                    "probability_thresholds": [0.52, 0.55],
+                    "expected_value_thresholds": [-0.0002],
+                    "min_neighbor_agreements": [0.52],
+                    "min_distance_qualities": [0.0],
+                    "vote_margin_thresholds": [0.0],
+                    "same_regime_only_values": [False],
+                    "regime_modes": ["none"],
+                    "min_splits": 2,
+                    "purge_embargo_bars": 2,
+                    "min_trade_count": 1,
+                    "min_signal_rate": 0.0,
+                    "max_signal_rate": 1.0,
+                    "min_realized_expectancy": -1.0,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    def fail_knn(*args, **kwargs):
+        raise RuntimeError("preflight failure")
+
+    monkeypatch.setattr(discovery_runner, "materialize_regime_local_knn_predictions", fail_knn)
+    monkeypatch.setenv("TBS_DISCOVERY_REAL_PREFLIGHT_MIN_PLANNED_TRIALS", "2")
+    monkeypatch.setenv("TBS_DISCOVERY_REAL_PREFLIGHT_TRIALS", "2")
+
+    result = discovery_runner.run_discovery(spec_path=spec_path, app_config=_app_config(tmp_path), clock=_clock)
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    state = json.loads(result.run_state_path.read_text(encoding="utf-8"))
+    trial_records = sorted((result.output_dir / "trials").glob("*.json"))
+
+    assert state["status"] == "blocked"
+    assert len(trial_records) == 2
+    assert manifest["preflight"]["status"] == "failed"
+    assert manifest["preflight"]["failed_trial_count"] == 2
+    assert manifest["counts"]["completed_trials"] == 0
+    assert manifest["counts"]["failed_trials"] == 2
+    assert manifest["counts"]["durable_trial_records"] == 2
+    assert manifest["compute_telemetry"]["total_planned_trials"] == 4
+    assert manifest["compute_telemetry"]["processed_trial_records"] == 2
+    assert pd.read_parquet(result.blocked_candidates_path).shape[0] == 2
 
 
 def test_discovery_runner_reuses_hmm_for_same_horizon_without_label_leak(tmp_path: Path, monkeypatch) -> None:

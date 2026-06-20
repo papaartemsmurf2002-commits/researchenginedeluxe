@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-06-01
+Last updated: 2026-06-18
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,9 +22,704 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
-| P1 | 0 | 0 | 16 | 0 |
-| P2 | 0 | 0 | 2 | 0 |
+| P1 | 0 | 0 | 23 | 0 |
+| P2 | 2 | 0 | 5 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
+
+## ISSUE-R106-026: Windows socket exhaustion blocks pytest-asyncio contract setup
+
+Severity: P2
+Stage discovered: Stage R106 - sandbox archive manifest builder validation
+Owner: Codex Research Agent
+Status: open
+Paths affected: local Windows validation environment, `tests/contracts/test_historical_fixture_pack_contract.py`
+
+### Problem
+
+The contract baseline can be blocked by local Windows socket resource
+exhaustion before an async contract test body runs. Pytest-asyncio creates an
+event loop self-pipe with `socket.socketpair()`, and the current host can fail
+that setup with `WinError 10055`.
+
+### Evidence
+
+During WPR106-239 validation on 2026-06-18, `python -m compileall -q
+src\tradingbotsuite` passed, focused sandbox/live-boundary/import-boundary
+validation passed, but repeated contract-baseline attempts failed during setup
+of
+`tests/contracts/test_historical_fixture_pack_contract.py::test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest`.
+The failure occurred while creating the asyncio event loop socketpair, before
+the test body ran. A targeted rerun of the same test failed the same way, and
+an explicit `WindowsSelectorEventLoopPolicy` attempt also failed at
+`socket.socketpair()`.
+
+WPR106-240 reproduced the same local blocker: focused sandbox,
+live-boundary, import-boundary, and package compile validation passed, while
+`PYTHONPATH=src python -m pytest tests/contracts -q` reached 460 passed tests
+and then failed during the same async test's event-loop socketpair setup before
+the test body ran.
+
+WPR106-241 reproduced the same local blocker: focused sandbox,
+live-boundary, import-boundary, and package compile validation passed, while
+`PYTHONPATH=src python -m pytest tests/contracts -q` again reached 460 passed
+tests and then failed during the same async test's event-loop socketpair setup
+before the test body ran.
+
+WPR106-243 reproduced the same local blocker: focused sandbox,
+import-boundary, and package compile validation passed, while
+`PYTHONPATH=src python -m pytest tests/contracts -q` reached 460 passed tests
+and then failed during the same async test's event-loop socketpair setup before
+the test body ran.
+
+### Required resolution
+
+Before using this Windows session as final full-contract evidence again, clear
+or restart the local socket/network stack enough for pytest-asyncio event-loop
+setup to succeed, then rerun `PYTHONPATH=src python -m pytest tests/contracts
+-q`. If the condition persists across fresh sessions, add a scoped test
+infrastructure packet that avoids socketpair-dependent async setup for local
+contract tests without weakening the async behavior under test.
+
+### Resolution notes
+
+Open. This issue records a validation-environment blocker only. It does not
+indicate a sandbox manifest-builder assertion failure, candidate-pack write,
+paper/live signal, sizing instruction, order placement, runtime-mode change, or
+promotion claim.
+
+## ISSUE-R106-025: May 2026 holdout archive is not yet available locally
+
+Severity: P2
+Stage discovered: Stage R106 - 2024-forward broad strategy search
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/historical_data_cache/binance_vision_public_archive/downloads/**`, `data/research/wpr106_85_2024_forward_pre_may_archive_map/**`, future 2026-05 holdout benchmark artifacts
+
+### Problem
+
+WPR106-85 requires May 2026 to remain fully out of tuning and to be used only
+as a benchmark holdout for promising leads. The current local Binance Vision
+archive cache for BTCUSDT and ETHUSDT has monthly 15m, 1m, and aggTrade ZIPs
+through 2026-04, but no 2026-05 monthly archives were present at audit time.
+
+### Evidence
+
+WPR106-85 mapped BTCUSDT and ETHUSDT no-RSI four-bar datasets from local
+archives for 2024-01 through 2026-04 under
+`data/research/wpr106_85_2024_forward_pre_may_archive_map/`. The generated
+datasets contain rows from 2024-01-01 00:00:00 UTC through
+2026-04-30 22:45:00 UTC and no 2026-05 rows. Directory audits of the local
+Binance Vision cache found `BTCUSDT`/`ETHUSDT` 15m, 1m, and aggTrade monthly
+ZIPs ending at `2026-04`.
+
+WPR106-92 produced one pre-May loose holdout candidate,
+`ETHUSDT` `eth-1h-4h-wick-flow-lorentzian-compatible-lower-meta`, with 564
+meta trades, +0.069117 net after costs, +0.000123 expectancy, 2.452 trades per
+active day, 10 active months, 5 positive months, 5 losing months, max
+positive-month profit share 0.335295, and max split PnL share 0.366382. The
+packet could not run the required May 2026 benchmark because the local May
+archive dependency described by this issue remains unresolved.
+
+WPR106-93 resolved the ETHUSDT portion needed for that specific benchmark by
+downloading `ETHUSDT` May 2026 15m kline, 1m kline, and aggTrades ZIPs plus
+their Binance Vision checksum sidecars. All three checksums verified. The
+benchmark rejected the WPR106-92 ETHUSDT row: May 2026 meta-model holdout
+recorded 268 trades, -0.353937 net after costs, -0.001321 expectancy, 10
+positive days, 21 losing days, and -0.365293 max trade-sequence drawdown. Pure
+KNN was also negative. No tuning feedback, candidate pack, paper/live artifact,
+sizing, runtime, live-config, or promotion claim was created. The issue remains
+open only because BTCUSDT May 2026 archive completeness has not yet been
+verified for future BTC holdout benchmarks.
+
+WPR106-95 found 40 pre-May cross-family portfolio-combination diagnostic leads
+that pass loose monthly-stability screening without using May 2026. The leading
+combinations include BTCUSDT sleeves, so this issue is now the immediate
+dependency for any May benchmark of those combinations. They remain
+research-only and not candidate-ready until BTCUSDT May 2026 archive data is
+verified and the selected combination is benchmarked without tuning feedback.
+
+WPR106-96 resolves the BTCUSDT portion by adding and checksum-verifying
+BTCUSDT May 2026 15m kline, 1m kline, and aggTrades archives in the local
+public-archive cache. It also reuses and re-verifies the WPR106-93 ETHUSDT May
+files, writes a May archive intake manifest, materializes 2024-01 through
+2026-05 feature context for the selected WPR106-95 rank-1 sleeves, and
+benchmarks `combo-d9edcc252c323b03` on May entries without May tuning. The
+holdout records 25 member trades, 20 active days, 1.250 trades per active day,
+0.250 overlap-day share, and +0.026603 equal-sleeve portfolio return.
+
+### Required resolution
+
+Before any later promising 2024-forward BTCUSDT lead can receive the required
+May 2026 benchmark, add a scoped intake or local-cache refresh packet for
+BTCUSDT May 2026 archive data. Future non-ETH families must also verify their
+required May source files before benchmarking. The packet must preserve
+checksum/hash evidence, gap/duplicate checks, completed-bar semantics,
+research-only metadata, and must not use May 2026 for tuning or candidate
+selection.
+
+### Resolution notes
+
+Resolved by WPR106-96. BTCUSDT and ETHUSDT May 2026 archive dependencies for
+the selected WPR106-95 portfolio benchmark are now locally verified with
+checksum/hash, gap/duplicate, completed-bar, and aggTrade aggregation evidence.
+The issue is resolved as a data/benchmark dependency only; it does not create a
+candidate-ready, paper-ready, live-ready, or promotion-ready claim.
+
+## ISSUE-R106-024: Candidate gate cannot yet represent explicit one-sided side-veto evidence
+
+Severity: P2
+Stage discovered: Stage R106 - sparse side-veto validation
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/research_artifacts/**`, `src/tradingbotsuite/optimization/stability.py`, `data/research/historical_cycles/sparse_side_veto_btcusdt_r106_v1/**`, `data/research/historical_cycles/sparse_side_veto_gate_evidence_btcusdt_r106_v1/**`
+
+### Problem
+
+WPR106-81 added explicit `allowed_sides` and `side_filter_stage` controls to
+`sparse_event_filter_v1`. The post-selection long-only sparse rows can rank
+above no-trade and survive split plus cost-stress evidence, but the current
+candidate gate still expects same-candidate long/short side evidence. That
+gate assumption is too broad for explicit one-sided strategies whose opposite
+side is intentionally vetoed and separately tested as a control.
+
+### Evidence
+
+The WPR106-81 BTCUSDT side-veto cycle wrote
+`data/research/historical_cycles/sparse_side_veto_btcusdt_r106_v1/`. The rank
+1 aggTrade-contrarian post-selection long row recorded 346 long trades, net
+return after cycle costs of +9.420343, split trade-count minimum 116, and
+cost-stress survival rate 1.0, but remained rejected with
+`candidate_side_evidence_long_short_required` plus feature-ablation and
+stability-region blockers.
+
+### Required resolution
+
+Before any explicit one-sided side-veto row can be candidate-pack eligible,
+the gate should distinguish one-sided strategy contracts from missing side
+evidence. A valid resolution should require paired opposite-side controls,
+feature ablations, split/cost/stability evidence, and research-only provenance
+without requiring both sides inside the same candidate.
+
+Until resolved, WPR106 one-sided side-veto rows can only support optimizer
+follow-up research. They cannot support candidate-pack, paper, live, sizing,
+runtime-mode, or promotion claims.
+
+### Progress notes
+
+WPR106-82 confirmed the blocker after optimizer follow-up. The optimized
+aggTrade-contrarian post-selection long row
+`941c7d1a1a3b8669c66e816ee465dc30cf18b1fba56c54b95555a027cdf046d6`
+recorded +20.174216 net return after cycle costs, 319 long trades, minimum
+split trade count 109, and 11/11 cost-stress scenarios passed, but remains
+fail-closed on one-sided side evidence, feature ablation, and
+stability-region requirements.
+
+WPR106-84 resolves the gate representation blocker by adding explicit
+one-sided side-veto semantics to the historical-cycle gate and candidate-pack
+recheck. Declared one-sided `sparse_event_filter_v1` rows now require the
+declared side, an exact paired opposite-side control with matching non-side
+parameters, no-trade and transparent baseline evidence, feature ablation,
+split, cost-stress, stability, and research-only provenance. The packet also
+separates opposite-side controls from same-side stability neighborhoods and
+fixes side metric accounting by writing compounded side return plus a separate
+summed-return field.
+
+The focused BTCUSDT evidence cycle at
+`data/research/historical_cycles/sparse_side_veto_gate_evidence_btcusdt_r106_v1/`
+shows the optimized lead has complete one-sided side-veto evidence, a passed
+short control
+`3518d10a359694814ef453358ed3a26b0b24065bfb749d265a5b3ab1b7ee4809`, a passed
+price-only feature ablation comparator
+`9af7ae11c5165cd12555125e59cca4eae99149800a74c2b05a8f1a9781d666ce`, 11/11
+cost-stress survival, and accepted stability. The lead is still rejected by
+split concentration with `max_single_split_pnl_share_above_limit`
+(`0.9765691016445411`). No candidate pack, paper/live artifact, order, sizing,
+runtime-mode change, live configuration write, or promotion claim exists.
+
+## ISSUE-R106-023: Compact four-bar fixtures cannot support larger HMM/KNN walk-forward validation
+
+Severity: P1
+Stage discovered: Stage R106 - four-bar larger validation run
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/fixtures/*public_archive_multi_window_v1`, `data/research/hmm_knn_four_bar_validation/*`, `src/tradingbotsuite/research/knn_four_bar_validation.py`, `configs/research/no_rsi_knn_four_bar_*_r106_v1.json`
+
+### Problem
+
+The WPR106-76 four-bar no-RSI dataset contract is present, but the current
+durable BTC/ETH fixture roots are compact contract fixtures, not large enough
+to run HMM/KNN walk-forward validation. A larger-validation run can build the
+schema and labels but cannot form valid split objects or meet walk-forward size
+requirements.
+
+### Evidence
+
+WPR106-78 ran:
+
+`PYTHONPATH=src python -m tradingbotsuite.main run-four-bar-knn-larger-validation --output-dir hmm_knn_four_bar_validation\wpr106_78_full_run --sample-rows-per-interval 8000 --workers 1 --skip-monitor`
+
+The process completed and wrote
+`data/research/hmm_knn_four_bar_validation/wpr106_78_full_run/`, but both
+generated datasets contain only 64 rows per symbol. The dataset manifests trace
+that to compact source fixtures with 32 cycle rows per symbol, plus 480
+lower-timeframe rows and 480 aggTrade rows. Both BTCUSDT and ETHUSDT matrices
+failed:
+
+- 15m->1h selected rows: `ValueError: No objects to concatenate`.
+- 1h->4h selected rows: `ValueError: dataset is too small for HMM/KNN walk-forward research`.
+
+No summary records, gate-pass records, candidate packs, paper/live artifacts,
+or promotion evidence were produced.
+
+### Required resolution
+
+Before drawing larger-validation conclusions from KNN/filter rows, either map
+an existing larger local BTC/ETH archive into the WPR106-76 four-bar dataset
+contract or open a venue-derived feature intake packet for sufficient BTC/ETH
+history. Required intake should preserve bars, lower-timeframe bars, aggTrade
+or equivalent trade-flow proxies, event-end/purge metadata, fixed four-bar
+labels, and explicit missingness for funding/open-interest/premium/basis
+context when absent. Optional OKX/Bybit/Binance intake design may add funding,
+open interest, premium/basis, and crowding context, but all outputs remain
+research-only, observe-only, and `promotion_ready: false`.
+
+Until resolved, WPR106 four-bar KNN larger validation was blocked by data
+coverage and could not support candidate, paper, live, sizing, runtime-mode, or
+promotion claims.
+
+### Progress notes
+
+WPR106-79 adds a research-only local Binance Vision archive mapper and
+operator job for the first required resolution path. The mapper reads existing
+local BTCUSDT/ETHUSDT monthly archive ZIPs, writes the WPR106-76 four-bar
+dataset contract, preserves event-end/purge semantics, samples only after
+fixed four-bar labels are built, and writes a replay command for the
+archive-backed HMM/KNN matrix.
+
+### Resolution notes
+
+Resolved by WPR106-79 follow-up execution on 2026-06-09. The local archive
+mapping run wrote BTCUSDT and ETHUSDT 2024 archive-backed datasets under
+`data/research/hmm_knn_four_bar_archive_mapping/wpr106_79_full_local_archive_map/`.
+Each symbol has 16,000 selected rows, with sampling after label construction
+and same-entry fixed four-bar labels. The mapping manifest passes the research
+boundary check, remains `research_only`, `observe_only`, and
+`promotion_ready: false`, and records no live, sizing, or runtime-mode changes.
+
+The generated archive-backed matrix replay completed for BTCUSDT and ETHUSDT:
+both symbols wrote `matrices/<symbol>/experiment_manifest.json` and
+`experiment_summary.csv`, each with 2/2 experiment rows passed and research
+boundary checks passing. The tested rows remain promotion-blocked by research
+status and negative/insufficient gate evidence, so this resolution clears the
+data-coverage blocker only. It is not a KNN profitability conclusion, not an
+exit-quality conclusion, and not promotion evidence.
+
+## ISSUE-R106-021: Context exits can crash fast cycles when raw context columns are absent from the execution frame
+
+Severity: P1
+Stage discovered: Stage R106 - fast entry filter exit research
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_cycle/runner.py`, `src/tradingbotsuite/backtesting/exits.py`, `src/tradingbotsuite/backtesting/execution_sim.py`, `tests/historical/*`, `tests/backtesting/*`
+
+### Problem
+
+`funding_aware_exit_v1` and related context exits require raw context columns in
+the primary-bar execution path. A fast latest-window context cycle can configure
+those exits while the backtest frame lacks `funding_rate`, causing the cycle to
+raise instead of writing a blocked or skipped comparison. This wastes fast
+research iterations and makes context-exit coverage less reliable than fixed,
+runner, and hard-stop exits.
+
+### Evidence
+
+`configs/research/fast_filter_probe_btcusdt_r106_v1.json` and
+`configs/research/fast_filter_probe_ethusdt_r106_v1.json` initially included
+`funding_aware_exit_v1`. Both fast-cycle launches failed on 2026-06-07 with
+`ValueError: funding_aware_exit_v1 requires columns: funding_rate` during
+aggregate candidate evaluation, before rankings were written.
+
+### Required resolution
+
+Either preserve validated context columns needed by context exits in the
+research-cycle execution frame, or make unsupported context exits fail closed
+per candidate with explicit blocker evidence. Add focused tests that exercise
+latest-window context fixtures and verify no whole-cycle crash occurs when a
+configured context exit lacks required context.
+
+### Resolution notes
+
+Resolved by WPR106-71. The research-cycle aggregate, split, and cost-stress
+backtest paths now route context-exit column gaps through a fail-closed
+candidate-level blocked backtest artifact instead of raising a whole-cycle
+exception. Blocked rows record `exit_policy_context_unavailable`, negative
+blocked metrics, `backtest_backend_used: blocked`, and the original context
+column reason in rankings and backtest index evidence. The execution market
+frame also preserves the `last_funding_rate` alias so funding-aware exits can
+use any registered funding-rate alias that reaches the feature frame. Focused
+regressions cover the funding alias and a synthetic historical cycle where
+`funding_aware_exit_v1` lacks funding context. BTC/ETH fast-filter probes were
+rerun with `funding_aware_exit_v1` restored; both completed, and each wrote 13
+blocked price-feature funding-aware aggregate rows instead of crashing.
+
+## ISSUE-R106-022: Combined price+aggTrade sparse-filter cost stress is too slow for compact validation
+
+Severity: P2
+Stage discovered: Stage R106 - sparse entry filter layer
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/features/packs.py`, `src/tradingbotsuite/research_cycle/runner.py`, `data/research/historical_cycles/sparse_entry_filter_*`
+
+### Problem
+
+WPR106-74 found aggregate-positive BTC sparse-filter rows that need split and
+cost-stress follow-up, but full refinement over the combined
+`features_price_perp_aggflow_no_wt` frame exceeded the compact iteration
+budget. The feature builder also emits repeated pandas fragmentation warnings
+when adding missingness columns for wide feature frames, which is likely adding
+avoidable overhead.
+
+### Evidence
+
+The completed BTC sparse cycle wrote aggregate-positive sparse rows, but the
+standard `top_regions_to_refine: 2` shortlist refined no-trade baselines before
+the sparse rows. A follow-up full-cycle rerun with `top_regions_to_refine: 6`
+remained active past the one-hour command timeout and was stopped. A bounded
+offline audit of the two positive BTC sparse rows completed split backtests,
+but full cost stress over the aggTrade-gated row was stopped after two of
+eleven scenarios because each full-frame cost scenario was taking roughly ten
+minutes. The output repeatedly warned:
+
+`DataFrame is highly fragmented... Consider joining all columns at once using pd.concat(axis=1)`
+
+### Required resolution
+
+Open a focused performance/evidence packet before scaling sparse aggTrade
+filters. Defragment wide feature-frame missingness construction or otherwise
+make sparse-filter split/cost stress practical, and add a bounded test or
+benchmark proving combined price+aggTrade sparse validation can complete
+without exceeding compact-run budgets. Until then, aggregate-positive
+aggTrade-gated sparse rows are diagnostic only and cannot support candidate,
+paper, live, sizing, runtime-mode, or promotion claims.
+
+### Resolution notes
+
+WPR106-87 partially mitigated one sparse-filter bottleneck by caching
+aggTrade flow-confirmation Series once per prediction frame in
+`src/tradingbotsuite/strategies/sparse_event_filter.py`. That allowed the
+BTCUSDT and ETHUSDT WPR106-87 sparse-event cycles to complete 74 aggregate
+backtests and 60 validation backtests per symbol. WPR106-88 and WPR106-90 added
+more completed sparse/exit-cycle data points, but WPR106-90 still emitted the
+wide feature-frame fragmentation warning from missingness-column insertion.
+
+WPR106-91 resolves the remaining feature-frame fragmentation portion by
+batching missing manifest feature columns and missingness indicators with
+`pd.concat` in `src/tradingbotsuite/features/packs.py`, then copying once to
+defragment the final frame. The focused feature-builder regression
+`test_price_perp_aggflow_no_wt_builds_wide_missingness_without_fragmentation_warning`
+proves `features_price_perp_aggflow_no_wt` preserves missingness columns
+without emitting pandas `PerformanceWarning`. The BTCUSDT and ETHUSDT
+WPR106-91 active-rate density cycles each completed 134 wide-feature/transparent
+candidate rows with split and cost-stress evidence using CPU execution and no
+CUDA claim. The packet does not create a candidate, paper/live, sizing,
+runtime-mode, or promotion claim; it only resolves this performance blocker for
+continued research iteration.
+
+## ISSUE-R106-020: Strategy and exit audit follow-up risks need focused tests
+
+Severity: P2
+Stage discovered: Stage R106 - strategy math audit and fast research nodes
+Owner: Codex Research Agent
+Status: open
+Paths affected: `src/tradingbotsuite/strategies/*`, `src/tradingbotsuite/backtesting/exits.py`, `src/tradingbotsuite/backtesting/execution_sim.py`, `src/tradingbotsuite/research_cycle/runner.py`, `tests/contracts/test_strategy_contracts.py`, `tests/backtesting/*`, `tests/historical/*`
+
+### Problem
+
+The WPR106-70 and WPR106-72 strategy/backtest audits found several
+non-immediate follow-up risks that need focused packets before any promotion
+interpretation is allowed. Perp context strategies and premium/basis exits
+currently allow `quality_latest_window_context_only` rows when the rest of the
+context quality passes; `gmm_transition_exit_v1` does not fail closed when
+detector metadata is absent; fixed-holding time-exit aliases normalize trade
+rows to `fixed_holding_window`, losing requested exit-policy identity;
+lower-timeframe triple-barrier no-hit exits use the primary close while only
+barrier hits use lower-frame OHLC sequence proof; fit-aware future strategies
+would need an explicit train-context contract; cost-stress survival currently
+combines per-trade expectancy with total net return in one scalar;
+`volatility_scaled_barrier` is a static close-barrier in the current primary-bar
+path despite its name; and funding-aware exits can trigger from path funding
+context while realized funding-cost accounting is still based on the entry-row
+funding-rate estimate.
+
+### Evidence
+
+The audit checked the current strategy registry, rule-based strategy outputs,
+reference/vector/CUDA backtest engines, primary-bar and lower-timeframe exit
+paths, split construction, and research-cycle gate aggregation. WPR106-70 fixes
+the P1 deterministic issues found during the same pass: range reversion no
+longer fabricates row-parity direction, `signal_bar_close_plus_latency` prices
+from the latency-observable primary-bar open, and trade funding costs use the
+available funding-rate alias columns. WPR106-72 sidecar review additionally
+confirmed coherent sign conventions for trend, volatility breakout,
+funding-crowding fade, perp-basis convergence, OI-flow breakout, fixed,
+runner, trailing, hard-stop, and funding-aware policies, while recording the
+static barrier and path-funding accounting caveats above as P2 follow-up.
+
+### Required resolution
+
+Open one or more focused follow-up packets to choose and test the intended
+contract for latest-window context gating, GMM detector metadata requirements,
+fixed-holding alias identity, lower-timeframe no-hit exit pricing/proof,
+fit-aware strategy train-context wiring, cost-stress pass/fail semantics,
+static versus volatility-scaled primary-bar barrier naming, and path-dynamic
+funding-cost accounting. These risks must remain research-only and cannot
+support candidate, paper, live, sizing, runtime-mode, or promotion claims until
+resolved.
+
+## ISSUE-R106-019: Forced no-regime exact discovery produces failed trial ledgers
+
+Severity: P1
+Stage discovered: Stage R106 - latest autopilot run research analysis
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/research_discovery/runner.py`, `src/tradingbotsuite/research_discovery/knn_study.py`, `src/tradingbotsuite/research_discovery/spec.py`, `tests/research_discovery/test_discovery_runner.py`, `configs/discovery/exact_entry_sweep_btcusdt_durable_r104_v1.json`, `configs/discovery/exact_entry_sweep_ethusdt_durable_r104_v1.json`
+
+### Problem
+
+The latest forced Research Autopilot run successfully reached exact discovery
+for BTCUSDT and ETHUSDT, but both isolated exact-discovery sweeps wrote only
+failed trial records. The discovery manifests report 570240 completed trials
+per symbol, while the candidate ledgers contain 570240 blocked rows per symbol,
+zero interesting rows, and `blocker_code: trial_execution_error` throughout.
+This makes the latest exact-discovery evidence analytically unusable for lead
+selection, exit-lab work, validation floors, or candidate-pack eligibility.
+
+### Evidence
+
+Run
+`run-research-autopilot-1dd8e0a820a9457fb967a27c4ce1491e` completed with
+`force_upstream_recompute: true`, `execution_status: executed_upstream_compute`,
+and isolated BTC/ETH exact discovery outputs.
+
+The BTC discovery manifest at
+`data/research/operator_runs/discovery_runs/exact-entry-sweep-btcusdt-candidate-depth-v1/run-research-autopilot-1dd8e0a820a9457fb967a27c4ce1491e-btcusdt-discovery/discovery_run_manifest.json`
+records `completed_trials: 570240`, `interesting_candidates: 0`, and
+`blocked_candidates: 570240`. The ETH manifest records the same counts.
+
+Sampled BTC and ETH trial JSONs across the run, including `trial-000001`,
+`trial-001000`, `trial-050000`, `trial-100000`, `trial-250000`,
+`trial-400000`, and `trial-570240`, all have `status: failed`,
+`blocker_code: trial_execution_error`, and
+`error_payload.error: regime_model_backend must match regime_mode`. Their
+payloads show no-regime fields such as `regime_mode: none`,
+`regime_detector_type: none`, `regime_model_backend: none`,
+`regime_gate_enabled: false`, and `same_regime_neighbor_pool_enabled: false`.
+A direct current-checkout `KnnStudySpec` no-regime validation passes, so the
+failure should be reproduced in the exact-discovery runtime path before
+assigning root cause to the validator itself.
+
+### Required resolution
+
+Open a focused discovery-runtime packet. Reproduce the failed no-regime exact
+discovery path with a bounded fixture/spec, identify where the no-regime
+backend fields diverge or are validated against the wrong settings, and add a
+regression that full exact-discovery trial execution can complete no-regime
+payloads. Also harden manifest/ledger accounting so a run with all failed trial
+records cannot look analytically complete merely because durable trial records
+were written.
+
+Until resolved, do not use the latest forced exact-discovery outputs for
+research lead selection, exit labs, validation-floor materialization,
+multiple-testing evidence, candidate-pack eligibility, or promotion claims.
+
+### Resolution notes
+
+Resolved by WPR106-68. The no-regime exact-discovery runtime path now passes
+`regime_model_backend: none` through the cached KNN materialization path, so
+no-regime trials no longer inherit the GMM default backend at validation time.
+Large real discovery runs execute a bounded representative preflight before
+the full sweep and stop fail-closed when preflight trial execution fails.
+Discovery manifests and snapshots now separate successful `completed_trials`
+from `failed_trials`, `durable_trial_records`, and
+`processed_trial_records`, and real-discovery runs with runtime-failed trial
+records end `blocked` instead of analytically `completed`. Candidate-pack
+eligibility reports `discovery_failed_trial_records_present` for failed trial
+records, and the operator evidence gate rejects failed-trial manifests while
+accepting clean reduced exact runs. BTC/ETH exact configs were reduced from
+570240 to 3456 no-regime trials per symbol as a research-only compute-reduction
+phase; no candidate pack, live/paper/runtime, order-placement, sizing, or
+promotion claim was introduced.
+
+## ISSUE-R106-018: Forced autopilot cycle handoff injects operator keys into strict cycle spec
+
+Severity: P1
+Stage discovered: Stage R106 - autopilot operational readiness
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/operator_console.py`, `tests/tradingbotsuite/test_operator_ui.py`
+
+### Problem
+
+Forced Research Autopilot correctly requests upstream compute, but the isolated
+historical-cycle wrapper writes operator-only bookkeeping keys directly into
+`cycle_spec.json`. `HistoricalResearchCycleSpec` rejects those unknown top-level
+keys before compute can start.
+
+### Evidence
+
+Local run `run-research-autopilot-93c17f8f75b742ceba023cba6fea3c5b` failed in
+about 1.6 seconds with `force_upstream_recompute: true` and:
+
+`historical_research_cycle unknown schema keys: operator_job_id, operator_original_spec_path, operator_overwrite_protection`
+
+The manifest shows the catalog was skipped as ready, then BTC historical-cycle
+attempt 1 and retry attempt 2 failed on the same schema error before any
+upstream step completed.
+
+### Required resolution
+
+Keep historical-cycle specs schema-clean. Preserve operator audit metadata in a
+sidecar file or job result rather than inserting it into the strict cycle spec.
+Do not weaken `HistoricalResearchCycleSpec` schema validation.
+
+### Resolution notes
+
+Resolved by WPR106-66. The isolated historical-cycle wrapper now writes
+operator bookkeeping to `operator_metadata.json` next to the isolated spec and
+keeps `cycle_spec.json` free of `operator_*` keys. Focused tests cover both the
+manual historical-cycle handoff and forced autopilot handoff. Historical-cycle
+schema validation remains strict.
+
+## ISSUE-R106-017: Autopilot primary action can review cached evidence instead of starting new compute
+
+Severity: P1
+Stage discovered: Stage R106 - autopilot operational readiness
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`
+
+### Problem
+
+The operator Research page still exposed the primary action as "Run Research
+Autopilot" with a separate unchecked force checkbox. A user trying to start the
+next compute iteration could click the primary button and get a successful run
+in a few seconds because all existing catalog, cycle, discovery, analysis,
+delta, exit-lab, and eligibility artifacts were reused.
+
+### Evidence
+
+Local runs `run-research-autopilot-5b3667d3f0cb4e98b6ad170313c6799d` and
+`run-research-autopilot-ccd44aee842b4cb488656565c92e2998` completed in about
+2-3 seconds with `force_upstream_recompute: false`, `executed_step_count: 0`,
+`execution_status: reused_existing_evidence`, and all 13 steps skipped.
+
+### Required resolution
+
+Make new upstream compute a first-class explicit action, keep reuse review as a
+separate action, and fail closed if a forced upstream request ever reaches
+completion without upstream cycle/discovery/catalog compute.
+
+### Resolution notes
+
+Resolved by WPR106-65. The Research page now exposes `Run New Compute
+Iteration`, which sends `force_upstream_recompute: true`, separately from
+`Review Existing Evidence`, which sends `force_upstream_recompute: false`.
+The service now blocks a forced upstream request if no upstream compute ran, so
+it cannot be recorded as a successful new iteration. No generated research
+artifacts, strategy math, live execution, sizing, runtime mode, candidate-pack
+write, or promotion behavior were changed.
+
+## ISSUE-R106-016: Autopilot reports downstream eligibility refresh as new iteration evidence
+
+Severity: P1
+Stage discovered: Stage R106 - autopilot operational readiness
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/operator_console.py`, `src/tradingbotsuite/web/operator.py`, `src/tradingbotsuite/web/templates/research.html`, `tests/tradingbotsuite/test_operator_ui.py`
+
+### Problem
+
+`run-research-autopilot` reports `execution_status: executed_new_evidence`
+whenever any helper step executes. A run that skips all upstream expensive
+evidence and only refreshes BTC/ETH candidate eligibility can therefore look
+like a completed new iteration, even though no historical-cycle, exact
+discovery, analysis, delta, or exit-lab compute was rerun.
+
+### Evidence
+
+Operator job `run-research-autopilot-ba260d798eaf42e8a23634497986f3e6`
+completed in about 80 seconds with `executed_step_count: 2`. Its manifest
+shows both executed steps were `candidate_eligibility`; catalog, BTC/ETH
+historical cycles, BTC/ETH exact discovery, analysis, deltas, and exit lab
+were all skipped as existing complete artifacts.
+
+### Required resolution
+
+Add explicit compute-scope semantics to autopilot. Downstream-only refresh must
+be surfaced separately from upstream compute. Add an explicit operator request
+flag for forced upstream recompute so a deliberate new iteration can run
+historical cycles and exact discovery even when stable current artifacts exist.
+
+### Resolution notes
+
+Resolved by WPR106-63. Autopilot completion now records compute-scope status
+from executed step classes: zero execution is `reused_existing_evidence`,
+downstream-only helper work is `refreshed_downstream_evidence`, and
+cycle/discovery/catalog execution is `executed_upstream_compute`. The posted
+eligibility-only run shape is covered by regression and no longer reports a
+new upstream iteration. The operator route and Research UI expose
+`force_upstream_recompute`; when enabled, autopilot bypasses reusable
+cycle/discovery/analysis/delta/exit/eligibility artifacts and runs isolated
+cycle/discovery/downstream helpers. Forced eligibility only attaches
+multiple-testing and validation-floor manifests that match the fresh discovery
+artifact; otherwise it records missing gate manifests fail-closed. No generated
+research artifacts, strategy math, live execution, sizing, runtime mode, or
+promotion behavior were changed.
+
+WPR106-64 adds the final status hardening for the same issue class: blocked
+and failed autopilot manifests now publish terminal `execution_status` and
+`status_detail` instead of inheriting running or computed-scope labels, and
+the API accepts only real JSON booleans for autopilot flags so string values
+such as `"false"` cannot accidentally enable forced upstream recompute.
+
+## ISSUE-R106-015: Stable exact-discovery overwrite protection can still fail autopilot
+
+Severity: P1
+Stage discovered: Stage R106 - autopilot operational readiness
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/operator_console.py`, `tests/tradingbotsuite/test_operator_ui.py`
+
+### Problem
+
+`run-research-autopilot` can still call exact discovery with a stable run-id
+output directory and fail with `completed discovery runs refuse overwrite`.
+That makes a compute iteration end as an operator failure instead of either
+reusing current completed evidence, blocking stale evidence explicitly, or
+running a fresh isolated discovery attempt.
+
+### Evidence
+
+An operator job submitted with `include_catalog_refresh: true`,
+`include_eligibility: true`, and BTCUSDT/ETHUSDT failed with
+`error_text: completed discovery runs refuse overwrite`.
+
+### Required resolution
+
+Keep stable discovery reuse and stale-spec blockers, but add a bounded fallback
+that retries exact discovery in an isolated per-job output directory when the
+stable output refuses overwrite. The fallback must remain research-only and
+must not rewrite generated stable discovery artifacts.
+
+### Resolution notes
+
+Resolved by WPR106-62. Operator discovery jobs and autopilot exact-discovery
+steps now call a stable-overwrite fallback wrapper. If the stable run-id output
+raises `completed discovery runs refuse overwrite`, the service retries the
+same discovery spec in a per-job nested output directory with
+isolated-output routing, records `overwrite_fallback_used`, and leaves stable
+generated artifacts untouched. Stable current evidence reuse and stale
+completed stable-evidence blocking remain intact.
 
 ## ISSUE-R106-014: Runtime artifact validation is not mode-aware and not fail-closed for unknown manifests
 

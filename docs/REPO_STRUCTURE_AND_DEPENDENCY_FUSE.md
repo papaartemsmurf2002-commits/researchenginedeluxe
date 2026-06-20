@@ -1,19 +1,21 @@
 # Repo Structure And Dependency Fuse
 
-Date: 2026-05-06
-Branch: `research/v3-experimental-engine`
-Scope: research infrastructure, historical evidence, and live-boundary safety
+Date: 2026-06-04
+Branch: `main` local mirror of `research/v3-experimental-engine`
+Scope: modular strategy research, historical evidence, iteration speed, and
+research/live separation
 
 This document is a fuse for future agents. Read it before changing shared
 research infrastructure. The branch is powerful because its contracts are
 connected; casual rewrites in one package can silently invalidate data
-provenance, feature identity, backtest evidence, candidate gates, or live safety
-guards.
+provenance, feature identity, backtest evidence, candidate gates, or the
+ability to compare strategy experiments cleanly.
 
 ## Current Status
 
-The research development goals are complete for the documented branch scope,
-excluding live/promotion execution:
+The research development goals are complete for the documented branch scope:
+the repo is ready to compute new strategy iterations and refine existing
+families through reproducible evidence, not through live execution.
 
 - Provider/archive intake exists for Binance REST, Binance Vision, Crypto Lake
   free-sample fallback, Hyperliquid archive surfaces, and local manifest inputs.
@@ -31,8 +33,13 @@ excluding live/promotion execution:
   exits, cost/funding/stress evidence, and artifact manifests.
 - Optimizer, stability, trial-budget, overfit diagnostics, feature ablation,
   benchmark evidence, candidate-pack gates, and research UI/CLI surfaces exist.
-- Live and promotion paths remain guarded. This branch still is not a live
-  trading branch and should not claim live readiness.
+- The active strategy surface is structurally complete for research iteration:
+  transparent baselines, trend/range/volatility, perp-context v2,
+  funding/OI-flow, GMM/regime-assisted, HMM/KNN local analog, liquidation
+  diagnostic, and LC reference plugins are registered and contract-covered.
+- Research/live separation remains intact. This branch is not a live trading
+  branch; the boundary exists so research outputs stay analyzable and do not
+  get confused with execution instructions.
 
 Current practical next work is optional and separate: checked local liquidation
 cycle artifacts/configs or durable BTCUSDT/ETHUSDT liquidation context wiring.
@@ -54,8 +61,9 @@ provider/archive data
   -> candidate pack only if all research gates pass
 ```
 
-Every stage writes evidence. Most failures are intentional fail-closed outcomes,
-not engine failures.
+Every stage writes evidence. Most failures are intentional rejection outcomes,
+not engine failures: a blocker, zero eligible row, failed ablation, or
+validation-floor miss is data for the next iteration.
 
 ## Top-Level Repo Map
 
@@ -281,7 +289,7 @@ Do not remove or weaken:
 A candidate pack is not a performance claim. It is still research-only unless a
 later promotion process changes it.
 
-### Live And Promotion Boundary
+### Research/Live Separation
 
 Critical files:
 
@@ -300,7 +308,9 @@ Do not remove or weaken:
 - import-boundary tests preventing research modules from importing order paths
 
 This branch can contain live-adjacent code, but research modules must not place
-orders or mutate live runtime state.
+orders or mutate live runtime state. The point is not to build a strong live
+guardrail system here; it is to keep research artifacts separate enough that
+strategy evidence can be trusted, compared, and iterated.
 
 ## Generated Data And Artifacts
 
@@ -318,9 +328,11 @@ Temporary cycle tests should write under `tmp_path`. Large provider caches,
 local downloads, credentials, `.env`, SQLite databases, and unreviewed generated
 artifacts should stay out of git.
 
-## Research-Only Guardrails
+## Research Evidence Controls
 
-Future agents must preserve these invariants:
+Future agents must preserve these evidence-quality controls. They are not the
+project mission by themselves; they keep the mission honest while the platform
+tests and refines strategies quickly.
 
 - Research outputs are not live signals.
 - Local cycle evidence is not a profit claim.
@@ -333,6 +345,8 @@ Future agents must preserve these invariants:
 - Advanced features such as WT3D, HMM/KNN, and liquidation context require
   comparator and provenance evidence before any claim.
 - Candidate-pack absence can be correct when gates reject weak candidates.
+- Rejection reports, blocker codes, ablations, multiple-testing evidence, and
+  validation-floor misses are first-class research outputs.
 
 ## Safe Change Pattern
 

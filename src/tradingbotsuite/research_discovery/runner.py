@@ -172,9 +172,13 @@ LEGACY_REAL_DISCOVERY_TRIAL_KIND = "hmm_knn_entry_discovery"
 REAL_DISCOVERY_TRIAL_KINDS = {REAL_DISCOVERY_TRIAL_KIND, LEGACY_REAL_DISCOVERY_TRIAL_KIND}
 REAL_DISCOVERY_PROCESS_WORKER_CAP_ENV = "TBS_DISCOVERY_REAL_PROCESS_MAX_WORKERS"
 REAL_DISCOVERY_PROCESS_CHUNK_SIZE_ENV = "TBS_DISCOVERY_REAL_PROCESS_CHUNK_SIZE"
+REAL_DISCOVERY_PREFLIGHT_TRIALS_ENV = "TBS_DISCOVERY_REAL_PREFLIGHT_TRIALS"
+REAL_DISCOVERY_PREFLIGHT_MIN_PLANNED_TRIALS_ENV = "TBS_DISCOVERY_REAL_PREFLIGHT_MIN_PLANNED_TRIALS"
 DISCOVERY_RESUME_FULL_RECORD_LOAD_LIMIT_ENV = "TBS_DISCOVERY_RESUME_FULL_RECORD_LOAD_LIMIT"
 DEFAULT_REAL_DISCOVERY_PROCESS_WORKER_CAP = 8
 DEFAULT_REAL_DISCOVERY_PROCESS_CHUNK_SIZE = 8
+DEFAULT_REAL_DISCOVERY_PREFLIGHT_TRIALS = 24
+DEFAULT_REAL_DISCOVERY_PREFLIGHT_MIN_PLANNED_TRIALS = 1_000
 DEFAULT_DISCOVERY_RESUME_FULL_RECORD_LOAD_LIMIT = 100_000
 _PROCESS_DISCOVERY_SPEC: DiscoveryRunSpec | None = None
 _PROCESS_DISCOVERY_CONTEXT: Any = None
@@ -397,6 +401,14 @@ def run_discovery(
     snapshot_paths: list[Path] = []
     batch_completed = 0
     ledgers_complete = resume_catalog.fully_hydrated
+    preflight_summary: dict[str, Any] = {
+        "enabled": False,
+        "status": "not_run",
+        "trial_count": 0,
+        "failed_trial_count": 0,
+        "reason": "not_required",
+    }
+    preflight_blocked = False
 
     if ledgers_complete:
         record_artifact_write(
@@ -455,34 +467,8 @@ def run_discovery(
     real_context_data_evidence = real_context.data_evidence if real_context is not None else {}
     real_context_feature_cache_summary = real_context.feature_cache_summary if real_context is not None else {}
     real_context_neighbor_cache_summary = real_context.neighbor_cache.summary() if real_context is not None else {}
-    if executor_kind == "process" and real_context is not None:
-        real_context = None
-        gc.collect()
     stage_wall_seconds["real_context_preparation"] = time.perf_counter() - stage_started
 
-    trial_chunk_size = (
-        _process_chunk_size(spec, worker_count, real_discovery_requested=real_discovery_requested)
-        if executor_kind == "process"
-        else 1
-    )
-    if real_discovery_requested:
-        if (
-            executor_kind == "process"
-            and stop_after_trials is None
-            and not _real_discovery_process_chunk_size_env_present()
-        ):
-            trial_chunk_size = max(trial_chunk_size, _max_cache_affinity_group_size(pending_trials))
-        pending_trials = _cache_affinity_ordered_trials(pending_trials, block_size=trial_chunk_size)
-    cache_affinity_group_chunks = (
-        _cache_affinity_trial_chunks(pending_trials)
-        if real_discovery_requested
-        and executor_kind == "process"
-        and stop_after_trials is None
-        and not _real_discovery_process_chunk_size_env_present()
-        else None
-    )
-    if cache_affinity_group_chunks:
-        trial_chunk_size = max(len(chunk) for chunk in cache_affinity_group_chunks)
     trial_stage_started = time.perf_counter()
     progress_checkpoint_records = 0
     progress_checkpoint_interval = max(1, min(int(spec.budget.trial_batch_size), 5000))
@@ -546,6 +532,76 @@ def run_discovery(
                 record_artifact_write(lambda: write_run_state(state_path, state), state_path)
                 progress_checkpoint_records = 0
                 last_progress_checkpoint_wall = time.perf_counter()
+
+    preflight_trials, preflight_reason = _real_discovery_preflight_trials(
+        pending_trials,
+        real_discovery_requested=real_discovery_requested,
+        stop_after_trials=stop_after_trials,
+    )
+    if preflight_trials and real_context is not None:
+        records = _evaluate_discovery_trial_thread_chunk(
+            spec,
+            tuple(preflight_trials),
+            context=real_context,
+            clock=now,
+            output_dir=output_dir,
+        )
+        persist_evaluated_records(records)
+        failed_records = [record for record in records if _trial_execution_failed(record)]
+        preflight_summary = {
+            "enabled": True,
+            "status": "failed" if failed_records else "passed",
+            "trial_count": int(len(records)),
+            "failed_trial_count": int(len(failed_records)),
+            "reason": preflight_reason,
+            "trial_ids": [record.trial_id for record in records],
+            "failed_trial_ids": [record.trial_id for record in failed_records],
+            "failure_reasons": sorted(
+                {
+                    str(record.error_payload.get("error") or record.blocker_code or record.status)
+                    for record in failed_records
+                }
+            ),
+        }
+        pending_trials = [(index, template) for index, template in pending_trials if template.trial_id not in completed_ids]
+        preflight_blocked = bool(failed_records)
+        if preflight_blocked:
+            pending_trials = []
+    else:
+        preflight_summary = {
+            "enabled": False,
+            "status": "not_run",
+            "trial_count": 0,
+            "failed_trial_count": 0,
+            "reason": preflight_reason,
+        }
+    if executor_kind == "process" and real_context is not None:
+        real_context = None
+        gc.collect()
+
+    trial_chunk_size = (
+        _process_chunk_size(spec, worker_count, real_discovery_requested=real_discovery_requested)
+        if executor_kind == "process"
+        else 1
+    )
+    if real_discovery_requested:
+        if (
+            executor_kind == "process"
+            and stop_after_trials is None
+            and not _real_discovery_process_chunk_size_env_present()
+        ):
+            trial_chunk_size = max(trial_chunk_size, _max_cache_affinity_group_size(pending_trials))
+        pending_trials = _cache_affinity_ordered_trials(pending_trials, block_size=trial_chunk_size)
+    cache_affinity_group_chunks = (
+        _cache_affinity_trial_chunks(pending_trials)
+        if real_discovery_requested
+        and executor_kind == "process"
+        and stop_after_trials is None
+        and not _real_discovery_process_chunk_size_env_present()
+        else None
+    )
+    if cache_affinity_group_chunks:
+        trial_chunk_size = max(len(chunk) for chunk in cache_affinity_group_chunks)
 
     if executor_kind == "process":
         executor_context = ProcessPoolExecutor(
@@ -655,7 +711,21 @@ def run_discovery(
 
     stage_started = time.perf_counter()
     status_scope = "real discovery" if real_discovery_requested else "placeholder discovery"
-    if len(state.completed_trial_ids) >= len(templates):
+    if preflight_blocked:
+        state = state.with_status(
+            "blocked",
+            updated_at_utc=iso_utc(now()),
+            message="real discovery preflight failed; full sweep skipped",
+        )
+        record_artifact_write(lambda: write_run_state(state_path, state), state_path)
+    elif real_discovery_requested and state.failed_trial_ids:
+        state = state.with_status(
+            "blocked",
+            updated_at_utc=iso_utc(now()),
+            message="real discovery trial execution failed; run blocked fail-closed",
+        )
+        record_artifact_write(lambda: write_run_state(state_path, state), state_path)
+    elif len(state.completed_trial_ids) >= len(templates):
         state = state.with_status("completed", updated_at_utc=iso_utc(now()), message=f"{status_scope} run completed")
         record_artifact_write(lambda: write_run_state(state_path, state), state_path)
     else:
@@ -687,6 +757,17 @@ def run_discovery(
             (interesting_path, blocked_path, filter_blockers_path),
         )
         ledgers_complete = True
+    elif state.status == "blocked" and existing_records:
+        record_artifact_write(
+            lambda: _write_ledgers(
+                records=_ordered_records(existing_records.values()),
+                interesting_path=interesting_path,
+                blocked_path=blocked_path,
+                filter_blockers_path=filter_blockers_path,
+            ),
+            (interesting_path, blocked_path, filter_blockers_path),
+        )
+        ledger_summary = _ledger_summary_from_records(existing_records, completed_count=len(state.completed_trial_ids))
     else:
         ledger_summary = _ledger_summary_from_records(existing_records, completed_count=len(state.completed_trial_ids))
     stage_wall_seconds["final_ledger_materialization"] = time.perf_counter() - stage_started
@@ -785,6 +866,7 @@ def run_discovery(
         "worker_plan_reason": worker_plan.reason,
         "process_pool_child_cpu_not_in_parent_process_cpu_seconds": executor_kind == "process",
     }
+    manifest["preflight"] = dict(preflight_summary)
     manifest["regime_truthfulness"]["observed_trial_regime_modes"] = list(ledger_summary.observed_trial_regime_modes)
     manifest["regime_truthfulness"]["observed_trial_regime_detector_types"] = list(
         ledger_summary.observed_trial_regime_detector_types
@@ -826,7 +908,12 @@ def run_discovery(
     manifest["compute_telemetry"]["resume_catalog_mode"] = resume_catalog.mode
     remaining_trials = max(0, len(templates) - len(state.completed_trial_ids))
     observed_trials_per_second = float(executed_this_call / max(time.perf_counter() - started, 1e-12))
-    manifest["compute_telemetry"]["completed_trials"] = int(len(state.completed_trial_ids))
+    manifest["compute_telemetry"]["completed_trials"] = int(ledger_summary.counts.get("completed_trials", 0))
+    manifest["compute_telemetry"]["failed_trials"] = int(ledger_summary.counts.get("failed_trials", 0))
+    manifest["compute_telemetry"]["durable_trial_records"] = int(
+        ledger_summary.counts.get("durable_trial_records", len(state.completed_trial_ids))
+    )
+    manifest["compute_telemetry"]["processed_trial_records"] = int(len(state.completed_trial_ids))
     manifest["compute_telemetry"]["total_planned_trials"] = int(len(templates))
     manifest["compute_telemetry"]["remaining_trials"] = int(remaining_trials)
     manifest["compute_telemetry"]["estimated_seconds_remaining"] = (
@@ -1101,6 +1188,85 @@ def _process_chunk_size(spec: DiscoveryRunSpec, worker_count: int, *, real_disco
 def _real_discovery_process_chunk_size_env_present() -> bool:
     raw = os.getenv(REAL_DISCOVERY_PROCESS_CHUNK_SIZE_ENV)
     return raw is not None and str(raw).strip() != ""
+
+
+def _real_discovery_preflight_trials(
+    pending_trials: list[tuple[int, DiscoveryTrialTemplate]],
+    *,
+    real_discovery_requested: bool,
+    stop_after_trials: int | None,
+) -> tuple[list[tuple[int, DiscoveryTrialTemplate]], str]:
+    if not real_discovery_requested:
+        return [], "placeholder_discovery"
+    if stop_after_trials is not None:
+        return [], "bounded_stop_after_trials"
+    if not pending_trials:
+        return [], "no_pending_trials"
+    preflight_count = _real_discovery_preflight_trial_count()
+    if preflight_count <= 0:
+        return [], f"disabled_by_env:{REAL_DISCOVERY_PREFLIGHT_TRIALS_ENV}"
+    minimum_planned = _real_discovery_preflight_min_planned_trials()
+    if len(pending_trials) < minimum_planned:
+        return [], f"planned_trials_below_preflight_minimum:{len(pending_trials)}<{minimum_planned}"
+    return _representative_preflight_trials(pending_trials, limit=preflight_count), "large_real_discovery_preflight"
+
+
+def _real_discovery_preflight_trial_count() -> int:
+    raw = os.getenv(REAL_DISCOVERY_PREFLIGHT_TRIALS_ENV)
+    if raw is not None and str(raw).strip():
+        try:
+            return max(0, min(256, int(str(raw).strip())))
+        except ValueError:
+            return DEFAULT_REAL_DISCOVERY_PREFLIGHT_TRIALS
+    return DEFAULT_REAL_DISCOVERY_PREFLIGHT_TRIALS
+
+
+def _real_discovery_preflight_min_planned_trials() -> int:
+    raw = os.getenv(REAL_DISCOVERY_PREFLIGHT_MIN_PLANNED_TRIALS_ENV)
+    if raw is not None and str(raw).strip():
+        try:
+            return max(1, int(str(raw).strip()))
+        except ValueError:
+            return DEFAULT_REAL_DISCOVERY_PREFLIGHT_MIN_PLANNED_TRIALS
+    return DEFAULT_REAL_DISCOVERY_PREFLIGHT_MIN_PLANNED_TRIALS
+
+
+def _representative_preflight_trials(
+    pending_trials: list[tuple[int, DiscoveryTrialTemplate]],
+    *,
+    limit: int,
+) -> list[tuple[int, DiscoveryTrialTemplate]]:
+    selected: list[tuple[int, DiscoveryTrialTemplate]] = []
+    selected_ids: set[str] = set()
+    seen_dimensions: set[tuple[str, str, str, str]] = set()
+    for item in pending_trials:
+        _, template = item
+        payload = template.payload
+        dimension = (
+            str(payload.get("feature_column_set_id") or ""),
+            str(payload.get("regime_mode") or ""),
+            str(payload.get("label_horizon") or ""),
+            str(payload.get("distance_metric") or ""),
+        )
+        if dimension in seen_dimensions:
+            continue
+        seen_dimensions.add(dimension)
+        selected.append(item)
+        selected_ids.add(template.trial_id)
+        if len(selected) >= limit:
+            return selected
+    for item in pending_trials:
+        _, template = item
+        if template.trial_id in selected_ids:
+            continue
+        selected.append(item)
+        if len(selected) >= limit:
+            break
+    return selected
+
+
+def _trial_execution_failed(record: DiscoveryTrialRecord) -> bool:
+    return record.status != "completed" or record.blocker_code == "trial_execution_error"
 
 
 def _chunked_trials(
@@ -1617,6 +1783,7 @@ def _materialize_knn_base_with_cache(
         same_regime_only=spec.same_regime_only,
         regime_mode=spec.regime_mode,
         regime_detector_type=spec.regime_detector_type,
+        regime_model_backend=spec.regime_model_backend,
         regime_gate_enabled=spec.regime_gate_enabled,
         same_regime_neighbor_pool_enabled=spec.same_regime_neighbor_pool_enabled,
         true_hmm_backend_used=spec.true_hmm_backend_used,
@@ -3006,11 +3173,19 @@ def _write_ledgers_from_trial_dir(
     observed_modes: set[str] = set()
     observed_detectors: set[str] = set()
     observed_backends: set[str] = set()
+    completed_trials = 0
+    failed_trials = 0
+    durable_trial_records = 0
     for path in sorted(Path(trial_dir).glob("*.json"), key=lambda item: _trial_id_sort_key(item.stem)):
         record = read_trial_record(path)
         if record.run_id != run_id:
             raise ValueError(f"trial record belongs to a different run_id: {path}")
         _assert_real_trial_score_policy_compatible({record.trial_id: record})
+        durable_trial_records += 1
+        if record.status == "completed":
+            completed_trials += 1
+        else:
+            failed_trials += 1
         row = _ledger_row_from_record(record)
         if record.ledger_kind in rows_by_kind:
             rows_by_kind[record.ledger_kind].append(row)
@@ -3028,7 +3203,10 @@ def _write_ledgers_from_trial_dir(
     _ledger_frame_from_rows(rows_by_kind["filter_blocked"]).to_parquet(filter_blockers_path, index=False)
     return _LedgerSummary(
         counts={
-            "completed_trials": sum(len(rows) for rows in rows_by_kind.values()),
+            "completed_trials": completed_trials,
+            "failed_trials": failed_trials,
+            "durable_trial_records": durable_trial_records,
+            "processed_trial_records": durable_trial_records,
             "interesting_candidates": len(rows_by_kind["interesting"]),
             "blocked_candidates": len(rows_by_kind["blocked"]),
             "filter_blockers": len(rows_by_kind["filter_blocked"]),
@@ -3097,6 +3275,9 @@ def _snapshot(
             "budget_max_trials": spec.budget.max_trials,
             "search_space": discovery_search_space_summary(spec),
             "completed_trial_count": int(summary_counts.get("completed_trials", len(records))),
+            "failed_trial_count": int(summary_counts.get("failed_trials", 0)),
+            "durable_trial_record_count": int(summary_counts.get("durable_trial_records", len(records))),
+            "processed_trial_record_count": int(summary_counts.get("processed_trial_records", len(records))),
             "counts": summary_counts,
             "counts_scope": counts_scope,
             "last_snapshot_path": state.last_snapshot_path,
@@ -3106,8 +3287,13 @@ def _snapshot(
 
 def _record_counts(records: Mapping[str, DiscoveryTrialRecord]) -> dict[str, int]:
     values = list(records.values())
+    completed_trials = sum(1 for record in values if record.status == "completed")
+    failed_trials = sum(1 for record in values if record.status != "completed")
     return {
-        "completed_trials": len(values),
+        "completed_trials": completed_trials,
+        "failed_trials": failed_trials,
+        "durable_trial_records": len(values),
+        "processed_trial_records": len(values),
         "interesting_candidates": sum(1 for record in values if record.ledger_kind == "interesting"),
         "blocked_candidates": sum(1 for record in values if record.ledger_kind == "blocked"),
         "filter_blockers": sum(1 for record in values if record.ledger_kind == "filter_blocked"),
@@ -3122,7 +3308,9 @@ def _counts_for_state(
 ) -> dict[str, int]:
     counts = _record_counts(records)
     if not complete:
-        counts["completed_trials"] = len(state.completed_trial_ids)
+        counts["completed_trials"] = max(int(counts.get("completed_trials", 0)), len(state.completed_trial_ids))
+        counts["processed_trial_records"] = len(state.completed_trial_ids)
+        counts["durable_trial_records"] = max(int(counts.get("durable_trial_records", 0)), len(state.completed_trial_ids))
     return counts
 
 
@@ -3184,7 +3372,9 @@ def _ledger_summary_from_records(
 ) -> _LedgerSummary:
     counts = _record_counts(records)
     if completed_count is not None:
-        counts["completed_trials"] = int(completed_count)
+        counts["completed_trials"] = max(int(counts.get("completed_trials", 0)), int(completed_count))
+        counts["processed_trial_records"] = int(completed_count)
+        counts["durable_trial_records"] = max(int(counts.get("durable_trial_records", 0)), int(completed_count))
     return _LedgerSummary(
         counts=counts,
         observed_trial_regime_modes=tuple(

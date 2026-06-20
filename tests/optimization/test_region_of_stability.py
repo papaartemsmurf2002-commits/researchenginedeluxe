@@ -116,3 +116,46 @@ def test_region_of_stability_keeps_exit_policy_identity_separate() -> None:
     assert by_center[fixed.candidate_id] == {fixed.candidate_id}
     assert by_center[max_mae.candidate_id] == {max_mae.candidate_id}
     assert by_center[tighter_mae.candidate_id] == {tighter_mae.candidate_id}
+
+
+def test_sparse_side_veto_stability_keeps_allowed_side_separate() -> None:
+    long_a = CandidateResult(
+        CandidateConfig(
+            "sparse_event_filter_v1",
+            {"allowed_sides": "long", "side_filter_stage": "post_selection", "threshold": 0.30},
+        ),
+        base_score=0.20,
+        split_consistency=0.8,
+        side_balance=0.8,
+        regime_coverage=0.8,
+        cost_stress_survival=0.8,
+    )
+    long_b = CandidateResult(
+        CandidateConfig(
+            "sparse_event_filter_v1",
+            {"allowed_sides": "long", "side_filter_stage": "post_selection", "threshold": 0.31},
+        ),
+        base_score=0.21,
+        split_consistency=0.8,
+        side_balance=0.8,
+        regime_coverage=0.8,
+        cost_stress_survival=0.8,
+    )
+    short_control = CandidateResult(
+        CandidateConfig(
+            "sparse_event_filter_v1",
+            {"allowed_sides": "short", "side_filter_stage": "post_selection", "threshold": 0.30},
+        ),
+        base_score=-0.10,
+        split_consistency=0.8,
+        side_balance=0.8,
+        regime_coverage=0.8,
+        cost_stress_survival=0.8,
+    )
+
+    regions = rank_by_stability([long_a, long_b, short_control])
+    by_center = {region.center_candidate_id: set(region.member_candidate_ids) for region in regions}
+
+    assert by_center[long_a.candidate_id] == {long_a.candidate_id, long_b.candidate_id}
+    assert by_center[long_b.candidate_id] == {long_a.candidate_id, long_b.candidate_id}
+    assert by_center[short_control.candidate_id] == {short_control.candidate_id}

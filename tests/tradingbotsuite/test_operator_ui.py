@@ -276,7 +276,7 @@ def _write_completed_catalog_fixture(
                     "timeframe": "15m",
                     "research_output_dir": recorded_path(source_root),
                     "data": {"dataset_manifest_paths": [recorded_path(manifest_path)]},
-                    "budget": {"max_trials": 570_240},
+                    "budget": {"max_trials": 3_456},
                     "execution": {"max_workers": 2},
                     "search": {
                         "k_values": [3],
@@ -365,13 +365,13 @@ def _write_completed_catalog_fixture(
                         "observe_only": True,
                         "promotion_ready": False,
                         "state": {"status": "completed"},
-                        "budget": {"max_trials": 570_240},
+                        "budget": {"max_trials": 3_456},
                         "search_space": {
-                            "planned_trials": 570_240,
+                            "planned_trials": 3_456,
                             "exhaustive": True,
                             "sampled_fraction": 1.0,
                         },
-                        "counts": {"completed_trials": 570_240},
+                        "counts": {"completed_trials": 3_456, "failed_trials": 0, "durable_trial_records": 3_456},
                         "required_outputs": {
                             "discovery_spec_resolved": "discovery_spec_resolved.json",
                             "run_state": "run_state.json",
@@ -415,6 +415,254 @@ def _write_completed_catalog_fixture(
     )
     paths["catalog"] = catalog_path
     return paths
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _write_operator_gate_manifest_fixtures(
+    research_dir: Path,
+    *,
+    symbol: str = "BTCUSDT",
+    suffix: str = "latest",
+) -> dict[str, Path]:
+    lower = symbol.lower()
+    discovery_manifest = research_dir / "discovery_runs" / "exact_entry_sweep_btcusdt_candidate_depth_v1" / "discovery_run_manifest.json"
+
+    multiple_dir = research_dir / "operator_runs" / "multiple_testing" / f"{suffix}-{lower}"
+    multiple_dir.mkdir(parents=True, exist_ok=True)
+    multiple_gates = multiple_dir / "discovery_multiple_testing_candidate_gates.parquet"
+    pd.DataFrame([{"candidate_id": "blocked-candidate", "multiple_testing_status": "passed"}]).to_parquet(multiple_gates)
+    multiple_manifest = multiple_dir / "discovery_multiple_testing_manifest.json"
+    multiple_manifest.write_text(
+        json.dumps(
+            {
+                "symbol": symbol,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "source_discovery_manifest_path": str(discovery_manifest),
+                "source_discovery_manifest_sha256": _file_sha256(discovery_manifest),
+                "required_outputs": {"discovery_multiple_testing_candidate_gates": str(multiple_gates)},
+                "discovery_multiple_testing_candidate_gates_sha256": _file_sha256(multiple_gates),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    validation_dir = research_dir / "operator_runs" / "validation_floors" / f"{suffix}-{lower}"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    validation_gates = validation_dir / "discovery_validation_floor_candidate_gates.parquet"
+    pd.DataFrame([{"candidate_id": "blocked-candidate", "validation_floor_status": "passed"}]).to_parquet(validation_gates)
+    validation_manifest = validation_dir / "discovery_validation_floors_manifest.json"
+    validation_manifest.write_text(
+        json.dumps(
+            {
+                "symbol": symbol,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "source_discovery_manifest_path": str(discovery_manifest),
+                "source_discovery_manifest_sha256": _file_sha256(discovery_manifest),
+                "required_outputs": {"discovery_validation_floor_candidate_gates": str(validation_gates)},
+                "discovery_validation_floor_candidate_gates_sha256": _file_sha256(validation_gates),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return {"multiple_testing": multiple_manifest, "validation_floors": validation_manifest}
+
+
+def _write_operator_autopilot_reusable_artifacts(
+    research_dir: Path,
+    *,
+    symbol: str = "BTCUSDT",
+) -> dict[str, Path]:
+    lower = symbol.lower()
+    paths = _write_completed_catalog_fixture(research_dir, write_artifacts=True)
+    cycle_manifest = research_dir / "historical_cycles" / "r105_btcusdt_durable_public_archive_candidate_depth_v1" / "research_cycle_manifest.json"
+    discovery_manifest = research_dir / "discovery_runs" / "exact_entry_sweep_btcusdt_candidate_depth_v1" / "discovery_run_manifest.json"
+
+    analysis_dir = research_dir / "operator_runs" / "analysis" / f"reused-{lower}"
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    analysis_path = analysis_dir / "research_analysis.json"
+    analysis_path.write_text(
+        json.dumps(
+            {
+                "analysis_version": "research-analysis-v1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "cycle": {"available": True, "manifest": {"symbol": symbol, "cycle_id": "r105-btcusdt-durable-public-archive-candidate-depth-v1"}},
+                "discovery": {"available": True, "symbol": symbol, "run_id": "exact_entry_sweep_btcusdt_candidate_depth_v1"},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    (analysis_dir / "research_analysis.md").write_text("analysis\n", encoding="utf-8")
+
+    delta_dir = research_dir / "operator_runs" / "analysis_deltas" / f"reused-{lower}"
+    delta_dir.mkdir(parents=True, exist_ok=True)
+    delta_path = delta_dir / "research_analysis_delta.json"
+    delta_path.write_text(
+        json.dumps(
+            {
+                "delta_version": "research-discovery-analysis-delta-v1",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "current": {"analysis_path": str(analysis_path), "symbol": symbol},
+                "comparison_scope": {"compatible": True, "blocked_reasons": []},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    (delta_dir / "research_analysis_delta.md").write_text("delta\n", encoding="utf-8")
+
+    exit_dir = research_dir / "operator_runs" / "frozen_entry_exit_lab" / f"reused-{lower}"
+    exit_dir.mkdir(parents=True, exist_ok=True)
+    exit_gates = exit_dir / "frozen_entry_exit_lab_candidate_gates.parquet"
+    pd.DataFrame([{"candidate_id": "blocked-candidate", "exit_lab_gate_status": "blocked"}]).to_parquet(exit_gates)
+    exit_manifest = exit_dir / "discovery_exit_lab_manifest.json"
+    exit_manifest.write_text(
+        json.dumps(
+            {
+                "exit_lab_version": "discovery-exit-lab-v1",
+                "exit_lab_scope": "frozen_entry_primary_bar_exit_comparison",
+                "symbol": symbol,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "required_outputs": {"discovery_exit_lab_candidate_gates": str(exit_gates)},
+                "discovery_exit_lab_candidate_gates_sha256": _file_sha256(exit_gates),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    multiple_dir = research_dir / "operator_runs" / "multiple_testing" / f"reused-{lower}"
+    multiple_dir.mkdir(parents=True, exist_ok=True)
+    multiple_gates = multiple_dir / "discovery_multiple_testing_candidate_gates.parquet"
+    pd.DataFrame([{"candidate_id": "blocked-candidate", "multiple_testing_status": "passed"}]).to_parquet(multiple_gates)
+    multiple_manifest = multiple_dir / "discovery_multiple_testing_manifest.json"
+    multiple_manifest.write_text(
+        json.dumps(
+            {
+                "symbol": symbol,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "source_discovery_manifest_path": str(discovery_manifest),
+                "source_discovery_manifest_sha256": _file_sha256(discovery_manifest),
+                "required_outputs": {"discovery_multiple_testing_candidate_gates": str(multiple_gates)},
+                "discovery_multiple_testing_candidate_gates_sha256": _file_sha256(multiple_gates),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    validation_dir = research_dir / "operator_runs" / "validation_floors" / f"reused-{lower}"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    validation_gates = validation_dir / "discovery_validation_floor_candidate_gates.parquet"
+    pd.DataFrame([{"candidate_id": "blocked-candidate", "validation_floor_status": "passed"}]).to_parquet(validation_gates)
+    validation_manifest = validation_dir / "discovery_validation_floors_manifest.json"
+    validation_manifest.write_text(
+        json.dumps(
+            {
+                "symbol": symbol,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "source_discovery_manifest_path": str(discovery_manifest),
+                "source_discovery_manifest_sha256": _file_sha256(discovery_manifest),
+                "required_outputs": {"discovery_validation_floor_candidate_gates": str(validation_gates)},
+                "discovery_validation_floor_candidate_gates_sha256": _file_sha256(validation_gates),
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    eligibility_dir = research_dir / "operator_runs" / "candidate_pack_eligibility" / f"reused-{lower}"
+    eligibility_dir.mkdir(parents=True, exist_ok=True)
+    eligibility_path = eligibility_dir / "candidate_pack_eligibility.parquet"
+    pd.DataFrame(
+        [
+            {
+                "candidate_id": "blocked-candidate",
+                "eligible_for_existing_candidate_pack_validator": False,
+                "reasons": "test_fixture_blocks_candidate_pack",
+            }
+        ]
+    ).to_parquet(eligibility_path)
+    rejections_path = eligibility_dir / "candidate_pack_bridge_rejections.md"
+    rejections_path.write_text("blocked\n", encoding="utf-8")
+    eligibility_manifest = eligibility_dir / "candidate_pack_eligibility_manifest.json"
+    eligibility_manifest.write_text(
+        json.dumps(
+            {
+                "discovery_candidate_pack_bridge_version": DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION,
+                "eligibility_artifact_version": DISCOVERY_CANDIDATE_PACK_ELIGIBILITY_VERSION,
+                "bridge_scope": "discovery_to_existing_research_candidate_pack_validator_eligibility_only",
+                "claim_scope": "audit_only_no_pack_write_no_live_or_promotion_claim",
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "live_signal_input": False,
+                "position_sizing_input": False,
+                "operator_control_input": False,
+                "live_execution_input": False,
+                "runtime_control_input": False,
+                "live_fetch_used": False,
+                "order_placement_used": False,
+                "runtime_mode_changed": False,
+                "exit_lab_gate_required": True,
+                "multiple_testing_gate_required": True,
+                "validation_floor_gate_required": True,
+                "candidate_pack_written": False,
+                "candidate_pack_paths": [],
+                "source_discovery_manifest_path": str(discovery_manifest),
+                "source_discovery_manifest_sha256": _file_sha256(discovery_manifest),
+                "source_cycle_manifest_path": str(cycle_manifest),
+                "source_cycle_manifest_sha256": _file_sha256(cycle_manifest),
+                "source_exit_lab_manifest_path": str(exit_manifest),
+                "source_exit_lab_manifest_sha256": _file_sha256(exit_manifest),
+                "source_multiple_testing_manifest_path": str(multiple_manifest),
+                "source_multiple_testing_manifest_sha256": _file_sha256(multiple_manifest),
+                "source_validation_floors_manifest_path": str(validation_manifest),
+                "source_validation_floors_manifest_sha256": _file_sha256(validation_manifest),
+                "required_outputs": {
+                    "candidate_pack_eligibility_manifest": str(eligibility_manifest),
+                    "candidate_pack_eligibility": str(eligibility_path),
+                    "candidate_pack_bridge_rejections": str(rejections_path),
+                },
+                "candidate_pack_eligibility_sha256": _file_sha256(eligibility_path),
+                "candidate_pack_bridge_rejections_sha256": _file_sha256(rejections_path),
+                "summary": {"candidate_count": 1, "eligible_count": 0, "blocked_count": 1},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    return {
+        **paths,
+        "analysis": analysis_path,
+        "analysis_delta": delta_path,
+        "exit_lab": exit_manifest,
+        "multiple_testing": multiple_manifest,
+        "validation_floors": validation_manifest,
+        "candidate_eligibility": eligibility_manifest,
+        "cycle": cycle_manifest,
+        "discovery": discovery_manifest,
+    }
 
 
 def test_operator_server_can_disable_binance_market_stream_startup(app_config, sample_bars, tmp_path) -> None:
@@ -963,16 +1211,25 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
         response = client.get("/ui/research")
 
     assert response.status_code == 200
-    assert "Research Operations" in response.text
+    assert "ResearchEngineDeluxe R106 Console" in response.text
+    assert "R106 Historical Data Catalog plus Research Autopilot" in response.text
+    assert "researchenginedeluxe.research.settings.r106.v1" in response.text
     assert "Required Evidence Checklist" in response.text
     assert "Only this checklist is required." in response.text
     assert "Checklist Progress" in response.text
     assert "Required Action Buttons" in response.text
-    assert "Run Research Autopilot" in response.text
-    assert "0. Refresh Historical Data Catalog" in response.text
-    assert "Refresh Historical Catalog" in response.text
+    assert "Run New Compute Iteration" in response.text
+    assert "Review Existing Evidence" in response.text
+    assert "queueResearchAutopilot({ forceUpstream: true })" in response.text
+    assert "queueResearchAutopilot({ forceUpstream: false })" in response.text
+    assert "autopilot-force-upstream" not in response.text
+    assert "force_upstream_recompute" in response.text
+    assert "0. Check Historical Data Catalog" in response.text
+    assert "Check / Reuse Catalog" in response.text
+    assert "Rebuild Catalog" in response.text
     assert "central source of truth" in response.text
-    assert "downloads the implemented Binance Vision BTC/ETH archive fixture path" in response.text
+    assert "checks and reuses an existing candidate-depth catalog" in response.text
+    assert "Use explicit rebuild only when you want to rerun the long Binance Vision archive refresh" in response.text
     assert "Bybit, Crypto Lake, and Hyperliquid remain visible provider slots" in response.text
     assert "The required workflow uses the R106 Historical Data Catalog" in response.text
     assert "1. Check Catalog Inputs" in response.text
@@ -988,6 +1245,8 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "Data Readiness" in response.text
     assert "Current Run" in response.text
     assert "Progress" in response.text
+    assert "Autopilot Evidence" in response.text
+    assert "Testing Readiness" in response.text
     assert "Latest Snapshot" in response.text
     assert "Catalog Workflow Details" in response.text
     assert "Catalog Readiness" in response.text
@@ -1055,9 +1314,10 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "ETHUSDT durable standard discovery" in response.text
     assert "BTCUSDT legacy compatibility sparse harvest" in response.text
     assert "BTCUSDT diagnostic plumbing check" in response.text
-    assert "Exact bounded BTC sweep" in response.text
+    assert "Reduced exact BTC no-regime sweep" in response.text
+    assert "Reduced exact ETH no-regime sweep" in response.text
     assert "not exhaustive" in response.text
-    assert "570240" in response.text
+    assert "3456" in response.text
     assert "Real HMM-regime plus local KNN entry discovery" not in response.text
     assert "Queueing evidence review bundle" in response.text
     assert "Discovery Ledger" in response.text
@@ -1099,9 +1359,14 @@ def test_operator_research_page_keeps_hmm_knn_monitoring_observe_only(app_config
     assert "/api/operator/research/r104-readiness" in response.text
     assert "/api/operator/research/historical-data-catalog" in response.text
     assert "/api/operator/research/progress" in response.text
-    assert "0. Refresh Historical Data Catalog" in response.text
-    assert "Refresh Historical Catalog" in response.text
-    assert "This is the only required data step" in response.text
+    assert "0. Check Historical Data Catalog" in response.text
+    assert "Check / Reuse Catalog" in response.text
+    assert "Rebuild Catalog" in response.text
+    assert "Executed" in response.text
+    assert "skipped" in response.text
+    assert "ready_to_compute_new_iteration" in response.text
+    assert "Knowledge base is documentation-only" in response.text
+    assert "The default action checks and reuses an existing candidate-depth catalog" in response.text
     assert "Catalog Workflow Details" in response.text
     assert "Provider Pipeline Diagnostics" in response.text
     assert "/api/operator/research/jobs/prepare-hmm-knn-research-data" in response.text
@@ -1199,7 +1464,8 @@ def test_operator_research_progress_api_reports_r104_milestones(app_config, samp
     } <= keys
     by_key = {item["key"]: item for item in payload["milestones"]}
     assert by_key["historical_data_catalog"]["status"] == "ready"
-    assert "Refresh the R106 Historical Data Catalog" in by_key["historical_data_catalog"]["detail"]
+    assert "Check or explicitly rebuild the R106 Historical Data Catalog" in by_key["historical_data_catalog"]["detail"]
+    assert "the default check does not rebuild" in by_key["historical_data_catalog"]["detail"]
     assert by_key["durable_readiness"]["status"] == "blocked"
     assert by_key["btc_cycle"]["status"] == "waiting"
     assert "Candidate-depth durable data" in by_key["btc_cycle"]["detail"]
@@ -1216,8 +1482,8 @@ def test_operator_research_progress_api_reports_r104_milestones(app_config, samp
     assert payload["progress"]["active_job_type"] is None
     assert "optimize-entry" + "-gates" not in payload["next_action"]
     assert "stable resumable output directory" in payload["settings"]["output_policy"]
-    assert "570240" in payload["settings"]["primary_discovery_profile"]
-    assert "Refresh the R106 Historical Data Catalog" in payload["next_action"]
+    assert "3456" in payload["settings"]["primary_discovery_profile"]
+    assert "Check or explicitly rebuild the R106 Historical Data Catalog" in payload["next_action"]
 
 
 def test_operator_research_progress_api_indexes_bounded_r104_disk_artifacts(app_config, sample_bars, tmp_path) -> None:
@@ -1401,6 +1667,11 @@ def test_operator_research_job_routes_default_to_r104_deep_and_exact_specs(app_c
             json={},
             headers={"X-CSRF-Token": csrf_token},
         )
+        rebuild_response = client.post(
+            "/api/operator/research/jobs/refresh-historical-data-catalog",
+            json={"force_rebuild": True},
+            headers={"X-CSRF-Token": csrf_token},
+        )
         cycle_response = client.post(
             "/api/operator/research/jobs/run-historical-research-cycle",
             json={},
@@ -1416,24 +1687,59 @@ def test_operator_research_job_routes_default_to_r104_deep_and_exact_specs(app_c
             json={"cpu_workers": 2, "cpu_seconds": 0.5, "gpu_seconds": 0.5, "matrix_size": 128},
             headers={"X-CSRF-Token": csrf_token},
         )
+        autopilot_response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        forced_autopilot_response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"force_upstream_recompute": True},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        invalid_autopilot_response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"force_upstream_recompute": "false"},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        empty_symbol_autopilot_response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"symbols": [" "]},
+            headers={"X-CSRF-Token": csrf_token},
+        )
 
     assert catalog_response.status_code == 200
+    assert rebuild_response.status_code == 200
     assert cycle_response.status_code == 200
     assert discovery_response.status_code == 200
     assert hardware_response.status_code == 200
-    assert observed[0][0] == "refresh-historical-data-catalog"
+    assert autopilot_response.status_code == 200
+    assert forced_autopilot_response.status_code == 200
+    assert invalid_autopilot_response.status_code == 400
+    assert invalid_autopilot_response.json()["detail"] == "force_upstream_recompute must be a boolean"
+    assert empty_symbol_autopilot_response.status_code == 400
+    assert empty_symbol_autopilot_response.json()["detail"] == "symbols must include at least one non-empty symbol"
+    assert observed[0][0] == "check-historical-data-catalog"
     assert observed[0][1]["symbols"] == ["BTCUSDT", "ETHUSDT"]
     assert observed[0][1]["start_month"] == "2020-01"
     assert observed[0][1]["source_name"] == "historical_data_catalog"
-    assert observed[1][0] == "run-historical-research-cycle"
-    assert observed[2][0] == "run-discovery"
-    assert observed[3][0] == "benchmark-hardware-utilization"
-    assert "full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json" in str(observed[1][1]["spec_path"])
-    assert "exact_entry_sweep_btcusdt_durable_r104_v1.json" in str(observed[2][1]["spec_path"])
-    assert observed[2][1]["stable_run_id"] is True
-    assert observed[2][1]["overwrite_protection"] == "stable_run_id_output_dir"
-    assert observed[3][1]["cpu_workers"] == 2
-    assert observed[3][1]["matrix_size"] == 128
+    assert observed[0][1]["force_rebuild"] is False
+    assert observed[1][0] == "refresh-historical-data-catalog"
+    assert observed[1][1]["force_rebuild"] is True
+    assert observed[2][0] == "run-historical-research-cycle"
+    assert observed[3][0] == "run-discovery"
+    assert observed[4][0] == "benchmark-hardware-utilization"
+    assert observed[5][0] == "run-research-autopilot"
+    assert observed[6][0] == "run-research-autopilot"
+    assert "full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json" in str(observed[2][1]["spec_path"])
+    assert "exact_entry_sweep_btcusdt_durable_r104_v1.json" in str(observed[3][1]["spec_path"])
+    assert observed[3][1]["stable_run_id"] is True
+    assert observed[3][1]["overwrite_protection"] == "stable_run_id_output_dir"
+    assert observed[4][1]["cpu_workers"] == 2
+    assert observed[4][1]["matrix_size"] == 128
+    assert observed[5][1]["force_upstream_recompute"] is False
+    assert observed[6][1]["force_upstream_recompute"] is True
+    assert len(observed) == 7
 
 
 def test_operator_research_job_routes_default_to_active_catalog_specs(app_config, sample_bars, tmp_path) -> None:
@@ -1656,6 +1962,10 @@ def test_operator_progress_accepts_candidate_depth_catalog_artifact_ids(app_conf
     assert "required_output_missing:candidate_gate_report" not in by_key["btc_cycle"]["blockers"]
     assert by_key["btc_discovery"]["status"] == "complete"
     assert "exact_required_discovery_run_id_missing" not in by_key["btc_discovery"]["blockers"]
+    assert "exact_discovery_budget_mismatch" not in by_key["btc_discovery"]["blockers"]
+    assert "exact_discovery_planned_trials_mismatch" not in by_key["btc_discovery"]["blockers"]
+    assert "exact_discovery_completed_trials_mismatch" not in by_key["btc_discovery"]["blockers"]
+    assert "exact_discovery_failed_trials_present" not in by_key["btc_discovery"]["blockers"]
     assert by_key["research_analysis"]["status"] == "ready"
     assert by_key["research_analysis_delta"]["status"] == "waiting"
     assert by_key["frozen_entry_exit_lab"]["status"] == "waiting"
@@ -2724,6 +3034,66 @@ def test_operator_candidate_eligibility_completion_rejects_malformed_manifest(
     assert "eligibility_artifact_version_required" in status["blockers"]
 
 
+def test_operator_discovery_completion_rejects_legacy_all_execution_error_ledger(
+    app_config,
+    sample_bars,
+    tmp_path,
+) -> None:
+    research_dir = tmp_path / "research"
+    output_dir = research_dir / "discovery_runs" / "exact_entry_sweep_btcusdt_candidate_depth_v1"
+    output_dir.mkdir(parents=True)
+    blocked_path = output_dir / "blocked_candidates.parquet"
+    pd.DataFrame(
+        [
+            {"trial_id": "trial-000001", "blocker_code": "trial_execution_error"},
+            {"trial_id": "trial-000002", "blocker_code": "trial_execution_error"},
+        ]
+    ).to_parquet(blocked_path)
+    manifest = {
+        "run_id": "exact_entry_sweep_btcusdt_candidate_depth_v1",
+        "symbol": "BTCUSDT",
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "state": {"status": "completed"},
+        "budget": {"max_trials": 3_456},
+        "search_space": {"planned_trials": 3_456, "exhaustive": True, "sampled_fraction": 1.0},
+        "counts": {"completed_trials": 3_456},
+        "required_outputs": {
+            "discovery_spec_resolved": "discovery_spec_resolved.json",
+            "run_state": "run_state.json",
+            "blocked_candidates": str(blocked_path),
+            "filter_blockers": "filter_blockers.parquet",
+            "snapshots": "snapshots",
+            "trials": "trials",
+        },
+        "data_evidence": {"row_count": 221_952},
+    }
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_discovery_legacy_execution_error.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=app_config.operator_ui,
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    status = app.state.operator_service._required_artifact_status(
+        {"type": "discovery_run", "path": str(output_dir / "discovery_run_manifest.json"), "manifest": manifest},
+        "btc_discovery",
+        {"exact_entry_sweep_btcusdt_candidate_depth_v1"},
+    )
+
+    assert status["complete"] is False
+    assert "exact_discovery_all_trials_execution_error" in status["blockers"]
+
+
 def test_operator_research_analysis_route_requires_research_root_paths(app_config, sample_bars, tmp_path) -> None:
     research_dir = tmp_path / "research"
     research_dir.mkdir()
@@ -2984,13 +3354,20 @@ def test_operator_research_autopilot_blocks_when_catalog_missing_without_refresh
     assert job["status"] == "succeeded"
     assert job["result"]["autopilot_status"] == "blocked"
     assert job["result"]["blocked_reason"] == "historical_data_catalog_not_ready"
+    assert job["result"]["execution_status"] == "blocked"
+    assert job["result"]["status_detail"] == "historical_data_catalog_not_ready"
+    assert job["result"]["new_iteration_compute_executed"] is False
     manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
     assert manifest["research_only"] is True
     assert manifest["observe_only"] is True
     assert manifest["promotion_ready"] is False
     assert manifest["autopilot_status"] == "blocked"
+    assert manifest["execution_status"] == "blocked"
+    assert manifest["status_detail"] == "historical_data_catalog_not_ready"
     autopilot = next(item for item in artifacts if item["type"] == "research_autopilot")
     assert autopilot["summary"]["autopilot_status"] == "blocked"
+    assert autopilot["summary"]["execution_status"] == "blocked"
+    assert autopilot["summary"]["status_detail"] == "historical_data_catalog_not_ready"
 
 
 def test_operator_research_artifacts_marks_stale_running_autopilot_manifest(
@@ -3161,6 +3538,11 @@ def test_operator_research_autopilot_reuses_completed_outputs_and_runs_analysis_
     monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
     research_dir = tmp_path / "research"
     _write_completed_catalog_fixture(research_dir, write_artifacts=True)
+    older_gate_paths = _write_operator_gate_manifest_fixtures(research_dir, suffix="older")
+    for path in older_gate_paths.values():
+        os.utime(path, (1, 1))
+    gate_paths = _write_operator_gate_manifest_fixtures(research_dir, suffix="latest")
+    _write_operator_gate_manifest_fixtures(research_dir, symbol="ETHUSDT", suffix="latest")
     config = _operator_config(
         AppConfig(
             runtime_mode=RuntimeMode.PAPER,
@@ -3178,6 +3560,9 @@ def test_operator_research_autopilot_reuses_completed_outputs_and_runs_analysis_
 
     def fake_eligibility(request: dict[str, object], job_id: str) -> dict[str, object]:
         assert request.get("exit_lab_manifest_path")
+        assert Path(str(request.get("multiple_testing_manifest_path"))) == gate_paths["multiple_testing"]
+        assert Path(str(request.get("validation_floors_manifest_path"))) == gate_paths["validation_floors"]
+        assert request.get("gate_manifest_selection") == "latest_same_symbol_gate_manifests"
         output_dir = research_dir / "operator_runs" / "candidate_pack_eligibility" / job_id
         output_dir.mkdir(parents=True)
         eligibility_path = output_dir / "candidate_pack_eligibility.parquet"
@@ -3222,6 +3607,10 @@ def test_operator_research_autopilot_reuses_completed_outputs_and_runs_analysis_
                     "source_discovery_manifest_sha256": hashlib.sha256(discovery_manifest.read_bytes()).hexdigest(),
                     "source_cycle_manifest_path": request.get("cycle_manifest_path"),
                     "source_cycle_manifest_sha256": hashlib.sha256(cycle_manifest.read_bytes()).hexdigest(),
+                    "source_multiple_testing_manifest_path": request.get("multiple_testing_manifest_path"),
+                    "source_multiple_testing_manifest_sha256": hashlib.sha256(gate_paths["multiple_testing"].read_bytes()).hexdigest(),
+                    "source_validation_floors_manifest_path": request.get("validation_floors_manifest_path"),
+                    "source_validation_floors_manifest_sha256": hashlib.sha256(gate_paths["validation_floors"].read_bytes()).hexdigest(),
                     "required_outputs": {
                         "candidate_pack_eligibility_manifest": str(manifest_path),
                         "candidate_pack_eligibility": str(eligibility_path),
@@ -3245,6 +3634,9 @@ def test_operator_research_autopilot_reuses_completed_outputs_and_runs_analysis_
             "promotion_ready": False,
             "research_only": True,
             "observe_only": True,
+            "multiple_testing_manifest_path": request.get("multiple_testing_manifest_path"),
+            "validation_floors_manifest_path": request.get("validation_floors_manifest_path"),
+            "gate_manifest_selection": request.get("gate_manifest_selection"),
         }
 
     app.state.operator_service._run_isolated_discovery_candidate_pack_eligibility = fake_eligibility
@@ -3262,8 +3654,18 @@ def test_operator_research_autopilot_reuses_completed_outputs_and_runs_analysis_
     assert response.status_code == 200
     assert job["status"] == "succeeded"
     assert job["result"]["autopilot_status"] == "completed"
+    assert job["result"]["execution_status"] == "refreshed_downstream_evidence"
+    assert job["result"]["status_detail"] == "downstream_refresh_reused_upstream_evidence"
+    assert job["result"]["new_iteration_compute_executed"] is False
+    assert job["result"]["upstream_executed_step_count"] == 0
+    assert job["result"]["downstream_executed_step_count"] == 4
     assert job["result"]["executed_step_count"] == 4
     manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["execution_status"] == "refreshed_downstream_evidence"
+    assert manifest["status_detail"] == "downstream_refresh_reused_upstream_evidence"
+    assert manifest["new_iteration_compute_executed"] is False
+    assert manifest["upstream_executed_step_count"] == 0
+    assert manifest["downstream_executed_step_count"] == 4
     statuses = {(step["key"], step["status"]) for step in manifest["steps"]}
     assert ("historical_data_catalog", "skipped") in statuses
     assert ("historical_cycle", "skipped") in statuses
@@ -3272,11 +3674,893 @@ def test_operator_research_autopilot_reuses_completed_outputs_and_runs_analysis_
     assert ("research_analysis_delta", "executed") in statuses
     assert ("frozen_entry_exit_lab", "executed") in statuses
     assert ("candidate_eligibility", "executed") in statuses
+    eligibility_step = next(step for step in manifest["steps"] if step["key"] == "candidate_eligibility")
+    assert eligibility_step["result"]["multiple_testing_manifest_path"] == str(gate_paths["multiple_testing"])
+    assert eligibility_step["result"]["validation_floors_manifest_path"] == str(gate_paths["validation_floors"])
+    assert eligibility_step["result"]["gate_manifest_selection"] == "latest_same_symbol_gate_manifests"
     assert any(item["type"] == "research_autopilot" for item in artifacts)
     assert any(item["type"] == "research_analysis" for item in artifacts)
     assert any(item["type"] == "research_analysis_delta" for item in artifacts)
     assert any(item["type"] == "discovery_exit_lab" for item in artifacts)
     assert any(item["type"] == "candidate_pack_eligibility" for item in artifacts)
+
+
+def test_operator_research_autopilot_reports_reused_existing_evidence_when_no_steps_execute(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    fixture_paths = _write_operator_autopilot_reusable_artifacts(research_dir)
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_reused.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    def fail_if_executed(*args, **kwargs):
+        raise AssertionError("autopilot should reuse complete evidence without executing helper steps")
+
+    app.state.operator_service._run_isolated_research_analysis = fail_if_executed
+    app.state.operator_service._run_isolated_research_analysis_delta = fail_if_executed
+    app.state.operator_service._run_isolated_frozen_entry_exit_lab = fail_if_executed
+    app.state.operator_service._run_isolated_discovery_candidate_pack_eligibility = fail_if_executed
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"symbols": ["BTCUSDT"], "include_catalog_refresh": False, "include_eligibility": True},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
+        progress = client.get("/api/operator/research/progress").json()
+
+    assert response.status_code == 200
+    assert job["status"] == "succeeded"
+    assert job["result"]["autopilot_status"] == "completed"
+    assert job["result"]["execution_status"] == "reused_existing_evidence"
+    assert job["result"]["status_detail"] == "reused_existing_evidence"
+    assert job["result"]["executed_step_count"] == 0
+    manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["execution_status"] == "reused_existing_evidence"
+    assert manifest["status_detail"] == "reused_existing_evidence"
+    assert manifest["executed_step_count"] == 0
+    assert {step["status"] for step in manifest["steps"]} == {"skipped"}
+    eligibility_step = next(step for step in manifest["steps"] if step["key"] == "candidate_eligibility")
+    assert eligibility_step["result"]["multiple_testing_manifest_path"] == str(fixture_paths["multiple_testing"])
+    assert eligibility_step["result"]["validation_floors_manifest_path"] == str(fixture_paths["validation_floors"])
+    autopilot_artifact = next(item for item in artifacts if item["type"] == "research_autopilot")
+    assert autopilot_artifact["summary"]["execution_status"] == "reused_existing_evidence"
+    assert autopilot_artifact["summary"]["executed_step_count"] == 0
+    assert autopilot_artifact["summary"]["skipped_step_count"] == len(manifest["steps"])
+    readiness = progress["testing_readiness"]
+    assert readiness["knowledge_base"]["mode"] == "documentation_only_hypothesis_catalog"
+    assert readiness["knowledge_base"]["executable_registry"] is False
+    assert readiness["gate_manifest_alignment"]["BTCUSDT"]["eligibility_reflects_latest_gate_manifests"] is True
+    assert readiness["gate_manifest_alignment"]["BTCUSDT"]["gate_manifest_selection"] == "latest_same_symbol_gate_manifests"
+
+
+def test_operator_research_autopilot_reports_downstream_only_eligibility_refresh(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    fixture_paths = _write_operator_autopilot_reusable_artifacts(research_dir)
+    fixture_paths["candidate_eligibility"].unlink()
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_eligibility_only.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    def fail_if_non_eligibility_step_runs(*args, **kwargs):
+        raise AssertionError("only candidate eligibility should execute in this scenario")
+
+    def fake_eligibility(request: dict[str, object], job_id: str) -> dict[str, object]:
+        assert Path(str(request.get("multiple_testing_manifest_path"))) == fixture_paths["multiple_testing"]
+        assert Path(str(request.get("validation_floors_manifest_path"))) == fixture_paths["validation_floors"]
+        assert request.get("gate_manifest_selection") == "latest_same_symbol_gate_manifests"
+        output_dir = research_dir / "operator_runs" / "candidate_pack_eligibility" / job_id
+        output_dir.mkdir(parents=True)
+        eligibility_path = output_dir / "candidate_pack_eligibility.parquet"
+        rejections_path = output_dir / "candidate_pack_bridge_rejections.md"
+        pd.DataFrame([{"candidate_id": "blocked-candidate", "eligible_for_existing_candidate_pack_validator": False}]).to_parquet(eligibility_path)
+        rejections_path.write_text("blocked\n", encoding="utf-8")
+        discovery_manifest = Path(str(request.get("discovery_manifest_path")))
+        cycle_manifest = Path(str(request.get("cycle_manifest_path")))
+        exit_lab_manifest = Path(str(request.get("exit_lab_manifest_path")))
+        manifest_path = output_dir / "candidate_pack_eligibility_manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "discovery_candidate_pack_bridge_version": DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION,
+                    "eligibility_artifact_version": DISCOVERY_CANDIDATE_PACK_ELIGIBILITY_VERSION,
+                    "bridge_scope": "discovery_to_existing_research_candidate_pack_validator_eligibility_only",
+                    "claim_scope": "audit_only_no_pack_write_no_live_or_promotion_claim",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "live_signal_input": False,
+                    "position_sizing_input": False,
+                    "operator_control_input": False,
+                    "live_execution_input": False,
+                    "runtime_control_input": False,
+                    "live_fetch_used": False,
+                    "order_placement_used": False,
+                    "runtime_mode_changed": False,
+                    "exit_lab_gate_required": True,
+                    "multiple_testing_gate_required": True,
+                    "validation_floor_gate_required": True,
+                    "candidate_pack_written": False,
+                    "candidate_pack_paths": [],
+                    "source_discovery_manifest_path": str(discovery_manifest),
+                    "source_discovery_manifest_sha256": _file_sha256(discovery_manifest),
+                    "source_cycle_manifest_path": str(cycle_manifest),
+                    "source_cycle_manifest_sha256": _file_sha256(cycle_manifest),
+                    "source_exit_lab_manifest_path": str(exit_lab_manifest),
+                    "source_exit_lab_manifest_sha256": _file_sha256(exit_lab_manifest),
+                    "source_multiple_testing_manifest_path": str(fixture_paths["multiple_testing"]),
+                    "source_multiple_testing_manifest_sha256": _file_sha256(fixture_paths["multiple_testing"]),
+                    "source_validation_floors_manifest_path": str(fixture_paths["validation_floors"]),
+                    "source_validation_floors_manifest_sha256": _file_sha256(fixture_paths["validation_floors"]),
+                    "required_outputs": {
+                        "candidate_pack_eligibility_manifest": str(manifest_path),
+                        "candidate_pack_eligibility": str(eligibility_path),
+                        "candidate_pack_bridge_rejections": str(rejections_path),
+                    },
+                    "candidate_pack_eligibility_sha256": _file_sha256(eligibility_path),
+                    "candidate_pack_bridge_rejections_sha256": _file_sha256(rejections_path),
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "candidate_pack_eligibility_manifest_path": str(manifest_path),
+            "multiple_testing_manifest_path": request.get("multiple_testing_manifest_path"),
+            "validation_floors_manifest_path": request.get("validation_floors_manifest_path"),
+            "gate_manifest_selection": request.get("gate_manifest_selection"),
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+
+    app.state.operator_service._run_isolated_historical_research_cycle = fail_if_non_eligibility_step_runs
+    app.state.operator_service._run_isolated_discovery = fail_if_non_eligibility_step_runs
+    app.state.operator_service._run_isolated_research_analysis = fail_if_non_eligibility_step_runs
+    app.state.operator_service._run_isolated_research_analysis_delta = fail_if_non_eligibility_step_runs
+    app.state.operator_service._run_isolated_frozen_entry_exit_lab = fail_if_non_eligibility_step_runs
+    app.state.operator_service._run_isolated_discovery_candidate_pack_eligibility = fake_eligibility
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"symbols": ["BTCUSDT"], "include_catalog_refresh": False, "include_eligibility": True},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+
+    assert response.status_code == 200
+    assert job["status"] == "succeeded"
+    assert job["result"]["autopilot_status"] == "completed"
+    assert job["result"]["execution_status"] == "refreshed_downstream_evidence"
+    assert job["result"]["status_detail"] == "downstream_refresh_reused_upstream_evidence"
+    assert job["result"]["new_iteration_compute_executed"] is False
+    assert job["result"]["upstream_executed_step_count"] == 0
+    assert job["result"]["downstream_executed_step_count"] == 1
+    assert job["result"]["executed_step_count"] == 1
+    manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["execution_status"] == "refreshed_downstream_evidence"
+    assert manifest["status_detail"] == "downstream_refresh_reused_upstream_evidence"
+    statuses = [(step["key"], step["status"]) for step in manifest["steps"]]
+    assert statuses.count(("candidate_eligibility", "executed")) == 1
+    assert all(status == "skipped" for key, status in statuses if key != "candidate_eligibility")
+    eligibility_step = next(step for step in manifest["steps"] if step["key"] == "candidate_eligibility")
+    assert eligibility_step["result"]["gate_manifest_selection"] == "latest_same_symbol_gate_manifests"
+
+
+def test_operator_research_autopilot_force_upstream_recompute_runs_isolated_prerequisites(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    _write_operator_autopilot_reusable_artifacts(research_dir)
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_forced.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    calls: list[tuple[str, str, dict[str, object]]] = []
+
+    def safe_part(value: str) -> str:
+        safe = "".join(char.lower() if char.isalnum() else "-" for char in str(value)).strip("-")
+        return safe[:96] or "operator-job"
+
+    def write_cycle(spec_path: Path, job_id: str) -> dict[str, object]:
+        spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+        cycle_id = str(spec["cycle_id"])
+        symbol = str(spec["symbol"])
+        calls.append(
+            (
+                "cycle",
+                symbol,
+                {
+                    "job_id": job_id,
+                    "spec_path": str(spec_path),
+                    "spec_keys": sorted(spec),
+                },
+            )
+        )
+        assert "operator_job_id" not in spec
+        assert "operator_original_spec_path" not in spec
+        assert "operator_overwrite_protection" not in spec
+        output_dir = research_dir / "operator_runs" / "historical_cycles" / safe_part(cycle_id) / job_id
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "research_cycle_manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "cycle_id": cycle_id,
+                    "symbol": symbol,
+                    "candidate_count": 63,
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "required_outputs": {
+                        "cycle_spec_resolved": "cycle_spec_resolved.json",
+                        "candidate_rankings": "candidate_rankings.json",
+                        "candidate_gate_report": "candidate_gate_report.parquet",
+                        "backtest_index": "backtest_index.json",
+                    },
+                    "candidate_selection_performance_plan": {
+                        "materialized_search_candidate_count": 63,
+                        "bruteforce_equivalent_candidate_count": 2048,
+                    },
+                    "data_source": {"durable_public_archive_readiness": {"primary_bar_count": 221_952}},
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        return {"research_cycle_manifest_path": str(manifest_path), "research_only": True, "observe_only": True, "promotion_ready": False}
+
+    def write_discovery(
+        spec_path: Path,
+        job_id: str,
+        resume: bool,
+        stop_after_trials: int | None,
+        stable_run_id: bool = False,
+        force_isolated_output: bool = False,
+    ) -> dict[str, object]:
+        spec = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+        run_id = str(spec["run_id"])
+        symbol = str(spec["symbol"])
+        calls.append(
+            (
+                "discovery",
+                symbol,
+                {
+                    "job_id": job_id,
+                    "resume": resume,
+                    "stop_after_trials": stop_after_trials,
+                    "stable_run_id": stable_run_id,
+                    "force_isolated_output": force_isolated_output,
+                },
+            )
+        )
+        output_dir = research_dir / "operator_runs" / "discovery_runs" / safe_part(run_id) / job_id
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "discovery_run_manifest.json"
+        run_state_path = output_dir / "run_state.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "symbol": symbol,
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "state": {"status": "completed"},
+                    "budget": {"max_trials": 3_456},
+                    "search_space": {
+                        "planned_trials": 3_456,
+                        "exhaustive": True,
+                        "sampled_fraction": 1.0,
+                    },
+                    "counts": {"completed_trials": 3_456, "failed_trials": 0, "durable_trial_records": 3_456},
+                    "required_outputs": {
+                        "discovery_spec_resolved": "discovery_spec_resolved.json",
+                        "run_state": str(run_state_path),
+                        "blocked_candidates": "blocked_candidates.parquet",
+                        "filter_blockers": "filter_blockers.parquet",
+                        "snapshots": "snapshots",
+                        "trials": "trials",
+                    },
+                    "data_evidence": {"row_count": 221_952},
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        run_state_path.write_text(json.dumps({"run_id": run_id, "status": "completed"}, sort_keys=True), encoding="utf-8")
+        return {
+            "discovery_run_manifest_path": str(manifest_path),
+            "resume": resume,
+            "stable_run_id": stable_run_id,
+            "force_isolated_output": force_isolated_output,
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+
+    def symbol_from_cycle_request(request: dict[str, object]) -> str:
+        cycle_manifest = json.loads(Path(str(request["cycle_manifest_path"])).read_text(encoding="utf-8"))
+        return str(cycle_manifest["symbol"])
+
+    def write_analysis(request: dict[str, object], job_id: str) -> dict[str, object]:
+        symbol = symbol_from_cycle_request(request)
+        calls.append(("analysis", symbol, {"job_id": job_id}))
+        output_dir = research_dir / "operator_runs" / "analysis" / job_id
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "research_analysis.json"
+        markdown_path = output_dir / "research_analysis.md"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "analysis_version": "research-analysis-v1",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "cycle": {"available": True, "manifest": {"symbol": symbol}},
+                    "discovery": {"available": True, "symbol": symbol},
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        markdown_path.write_text("analysis\n", encoding="utf-8")
+        return {"research_analysis_path": str(manifest_path), "research_analysis_markdown_path": str(markdown_path)}
+
+    def write_delta(request: dict[str, object], job_id: str) -> dict[str, object]:
+        current_analysis = Path(str(request["current_analysis_path"]))
+        analysis_payload = json.loads(current_analysis.read_text(encoding="utf-8"))
+        symbol = str(((analysis_payload.get("cycle") or {}).get("manifest") or {}).get("symbol") or "BTCUSDT")
+        calls.append(("delta", symbol, {"job_id": job_id}))
+        output_dir = research_dir / "operator_runs" / "analysis_deltas" / job_id
+        output_dir.mkdir(parents=True)
+        manifest_path = output_dir / "research_analysis_delta.json"
+        markdown_path = output_dir / "research_analysis_delta.md"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "delta_version": "research-discovery-analysis-delta-v1",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "current": {"analysis_path": str(current_analysis), "symbol": symbol},
+                    "comparison_scope": {"compatible": True, "blocked_reasons": []},
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        markdown_path.write_text("delta\n", encoding="utf-8")
+        return {"research_analysis_delta_path": str(manifest_path), "research_analysis_delta_markdown_path": str(markdown_path)}
+
+    def write_exit_lab(request: dict[str, object], job_id: str) -> dict[str, object]:
+        discovery_manifest = json.loads(Path(str(request["discovery_manifest_path"])).read_text(encoding="utf-8"))
+        symbol = str(discovery_manifest["symbol"])
+        calls.append(("exit_lab", symbol, {"job_id": job_id}))
+        output_dir = research_dir / "operator_runs" / "frozen_entry_exit_lab" / job_id
+        output_dir.mkdir(parents=True)
+        gates_path = output_dir / "frozen_entry_exit_lab_candidate_gates.parquet"
+        pd.DataFrame([{"candidate_id": f"candidate-{symbol.lower()}", "exit_lab_gate_status": "blocked"}]).to_parquet(gates_path)
+        manifest_path = output_dir / "discovery_exit_lab_manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "exit_lab_version": "discovery-exit-lab-v1",
+                    "exit_lab_scope": "frozen_entry_primary_bar_exit_comparison",
+                    "symbol": symbol,
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "required_outputs": {"discovery_exit_lab_candidate_gates": str(gates_path)},
+                    "discovery_exit_lab_candidate_gates_sha256": _file_sha256(gates_path),
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        return {"exit_lab_manifest_path": str(manifest_path), "research_only": True, "observe_only": True, "promotion_ready": False}
+
+    def write_eligibility(request: dict[str, object], job_id: str) -> dict[str, object]:
+        discovery_manifest = Path(str(request["discovery_manifest_path"]))
+        cycle_manifest = Path(str(request["cycle_manifest_path"]))
+        exit_lab_manifest = Path(str(request["exit_lab_manifest_path"]))
+        symbol = str(json.loads(discovery_manifest.read_text(encoding="utf-8"))["symbol"])
+        calls.append(
+            (
+                "eligibility",
+                symbol,
+                {
+                    "job_id": job_id,
+                    "multiple_testing_manifest_path": request.get("multiple_testing_manifest_path"),
+                    "validation_floors_manifest_path": request.get("validation_floors_manifest_path"),
+                    "gate_manifest_selection": request.get("gate_manifest_selection"),
+                },
+            )
+        )
+        output_dir = research_dir / "operator_runs" / "candidate_pack_eligibility" / job_id
+        output_dir.mkdir(parents=True)
+        eligibility_path = output_dir / "candidate_pack_eligibility.parquet"
+        rejections_path = output_dir / "candidate_pack_bridge_rejections.md"
+        pd.DataFrame([{"candidate_id": f"candidate-{symbol.lower()}", "eligible_for_existing_candidate_pack_validator": False}]).to_parquet(eligibility_path)
+        rejections_path.write_text("missing gate manifests\n", encoding="utf-8")
+        manifest_path = output_dir / "candidate_pack_eligibility_manifest.json"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "discovery_candidate_pack_bridge_version": DISCOVERY_CANDIDATE_PACK_BRIDGE_VERSION,
+                    "eligibility_artifact_version": DISCOVERY_CANDIDATE_PACK_ELIGIBILITY_VERSION,
+                    "bridge_scope": "discovery_to_existing_research_candidate_pack_validator_eligibility_only",
+                    "claim_scope": "audit_only_no_pack_write_no_live_or_promotion_claim",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "live_signal_input": False,
+                    "position_sizing_input": False,
+                    "operator_control_input": False,
+                    "live_execution_input": False,
+                    "runtime_control_input": False,
+                    "live_fetch_used": False,
+                    "order_placement_used": False,
+                    "runtime_mode_changed": False,
+                    "exit_lab_gate_required": True,
+                    "multiple_testing_gate_required": True,
+                    "validation_floor_gate_required": True,
+                    "candidate_pack_written": False,
+                    "candidate_pack_paths": [],
+                    "source_discovery_manifest_path": str(discovery_manifest),
+                    "source_discovery_manifest_sha256": _file_sha256(discovery_manifest),
+                    "source_cycle_manifest_path": str(cycle_manifest),
+                    "source_cycle_manifest_sha256": _file_sha256(cycle_manifest),
+                    "source_exit_lab_manifest_path": str(exit_lab_manifest),
+                    "source_exit_lab_manifest_sha256": _file_sha256(exit_lab_manifest),
+                    "required_outputs": {
+                        "candidate_pack_eligibility_manifest": str(manifest_path),
+                        "candidate_pack_eligibility": str(eligibility_path),
+                        "candidate_pack_bridge_rejections": str(rejections_path),
+                    },
+                    "candidate_pack_eligibility_sha256": _file_sha256(eligibility_path),
+                    "candidate_pack_bridge_rejections_sha256": _file_sha256(rejections_path),
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        return {
+            "candidate_pack_eligibility_manifest_path": str(manifest_path),
+            "multiple_testing_manifest_path": request.get("multiple_testing_manifest_path"),
+            "validation_floors_manifest_path": request.get("validation_floors_manifest_path"),
+            "gate_manifest_selection": request.get("gate_manifest_selection"),
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+
+    app.state.operator_service._run_isolated_historical_research_cycle = write_cycle
+    app.state.operator_service._run_isolated_discovery = write_discovery
+    app.state.operator_service._run_isolated_research_analysis = write_analysis
+    app.state.operator_service._run_isolated_research_analysis_delta = write_delta
+    app.state.operator_service._run_isolated_frozen_entry_exit_lab = write_exit_lab
+    app.state.operator_service._run_isolated_discovery_candidate_pack_eligibility = write_eligibility
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"symbols": ["BTCUSDT"], "include_catalog_refresh": False, "include_eligibility": True, "force_upstream_recompute": True},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+
+    assert response.status_code == 200
+    assert job["status"] == "succeeded"
+    assert job["result"]["autopilot_status"] == "completed"
+    assert job["result"]["execution_status"] == "executed_upstream_compute"
+    assert job["result"]["status_detail"] == "forced_upstream_recompute_executed"
+    assert job["result"]["force_upstream_recompute"] is True
+    assert job["result"]["new_iteration_compute_executed"] is True
+    assert job["result"]["upstream_executed_step_count"] == 2
+    assert job["result"]["downstream_executed_step_count"] == 4
+    assert job["result"]["executed_step_count"] == 6
+    manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["execution_status"] == "executed_upstream_compute"
+    assert manifest["status_detail"] == "forced_upstream_recompute_executed"
+    assert manifest["force_upstream_recompute"] is True
+    statuses = [(step["key"], step["status"]) for step in manifest["steps"]]
+    assert ("historical_data_catalog", "skipped") in statuses
+    assert ("historical_cycle", "executed") in statuses
+    assert ("exact_discovery", "executed") in statuses
+    assert ("research_analysis", "executed") in statuses
+    assert ("research_analysis_delta", "executed") in statuses
+    assert ("frozen_entry_exit_lab", "executed") in statuses
+    assert ("candidate_eligibility", "executed") in statuses
+    discovery_step = next(step for step in manifest["steps"] if step["key"] == "exact_discovery")
+    assert discovery_step["result"]["resume"] is False
+    assert discovery_step["result"]["stable_run_id"] is False
+    assert discovery_step["result"]["force_isolated_output"] is True
+    eligibility_step = next(step for step in manifest["steps"] if step["key"] == "candidate_eligibility")
+    assert eligibility_step["result"]["multiple_testing_manifest_path"] is None
+    assert eligibility_step["result"]["validation_floors_manifest_path"] is None
+    assert eligibility_step["result"]["gate_manifest_selection"] == "missing_gate_manifests_fail_closed"
+    assert [item[0] for item in calls] == ["cycle", "discovery", "analysis", "delta", "exit_lab", "eligibility"]
+
+
+def test_operator_research_autopilot_forced_request_blocks_if_no_upstream_compute_runs(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    _write_completed_catalog_fixture(research_dir, write_artifacts=True)
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_forced_no_upstream.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    with TestClient(app):
+        result = asyncio.run(
+            app.state.operator_service._run_research_autopilot(
+                {
+                    "symbols": [" "],
+                    "include_catalog_refresh": False,
+                    "include_eligibility": True,
+                    "force_upstream_recompute": True,
+                },
+                "run-research-autopilot-forced-no-upstream",
+            )
+        )
+
+    assert result["autopilot_status"] == "blocked"
+    assert result["execution_status"] == "blocked"
+    assert result["blocked_reason"] == "forced_upstream_recompute_requested_but_no_upstream_compute_executed"
+    assert result["new_iteration_compute_executed"] is False
+    manifest = json.loads(Path(str(result["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    assert manifest["autopilot_status"] == "blocked"
+    assert manifest["execution_status"] == "blocked"
+    assert manifest["status_detail"] == "forced_upstream_recompute_requested_but_no_upstream_compute_executed"
+    assert manifest["force_upstream_recompute"] is True
+    assert manifest["upstream_executed_step_count"] == 0
+    blocked_step = manifest["steps"][-1]
+    assert blocked_step["key"] == "autopilot_compute_scope"
+    assert blocked_step["status"] == "blocked"
+
+
+def test_operator_research_autopilot_reuses_stable_discovery_when_artifact_index_misses_it(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    fixture_paths = _write_operator_autopilot_reusable_artifacts(research_dir)
+    run_id = "exact_entry_sweep_btcusdt_candidate_depth_v1"
+    current_spec = json.loads(fixture_paths["BTCUSDT_discovery_spec"].read_text(encoding="utf-8"))
+    current_spec["metadata"] = {"work_packet": "WPR106-61"}
+    fixture_paths["BTCUSDT_discovery_spec"].write_text(
+        json.dumps(current_spec, sort_keys=True),
+        encoding="utf-8",
+    )
+    stable_resolved_spec = dict(current_spec)
+    stable_resolved_spec.pop("metadata", None)
+    stable_dir = research_dir / "operator_runs" / "discovery_runs" / "exact-entry-sweep-btcusdt-candidate-depth-v1"
+    stable_dir.mkdir(parents=True, exist_ok=True)
+    stable_manifest = json.loads(fixture_paths["discovery"].read_text(encoding="utf-8"))
+    stable_manifest["required_outputs"]["discovery_spec_resolved"] = (
+        f"C:\\old-research-root\\{stable_dir.name}\\discovery_spec_resolved.json"
+    )
+    (stable_dir / "discovery_run_manifest.json").write_text(
+        json.dumps(stable_manifest, sort_keys=True),
+        encoding="utf-8",
+    )
+    (stable_dir / "discovery_spec_resolved.json").write_text(
+        json.dumps(stable_resolved_spec, sort_keys=True),
+        encoding="utf-8",
+    )
+    (stable_dir / "run_state.json").write_text(
+        json.dumps({"run_id": run_id, "status": "completed", "completed_trial_ids": []}, sort_keys=True),
+        encoding="utf-8",
+    )
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_stable_discovery_reuse.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    original_known_artifacts = app.state.operator_service._research_progress_known_artifacts
+
+    def known_artifacts_without_discovery() -> list[dict[str, object]]:
+        return [
+            artifact
+            for artifact in original_known_artifacts()
+            if artifact.get("type") != "discovery_run"
+        ]
+
+    app.state.operator_service._research_progress_known_artifacts = known_artifacts_without_discovery
+
+    def fail_if_discovery_runs(*args, **kwargs):
+        raise AssertionError("autopilot should reuse the completed stable discovery run")
+
+    app.state.operator_service._run_isolated_discovery = fail_if_discovery_runs
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"symbols": ["BTCUSDT"], "include_catalog_refresh": False, "include_eligibility": False},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+
+    assert response.status_code == 200
+    assert job["status"] == "succeeded"
+    assert job["result"]["autopilot_status"] == "completed"
+    assert job["result"]["execution_status"] == "reused_existing_evidence"
+    manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    exact_discovery = next(step for step in manifest["steps"] if step["key"] == "exact_discovery")
+    assert exact_discovery["status"] == "skipped"
+    assert exact_discovery["detail"] == "completed stable discovery artifact already complete"
+    assert exact_discovery["result"]["stable_discovery_reuse_status"] == "stable_discovery_artifact_complete"
+    assert exact_discovery["result"]["spec_match"] is True
+    assert exact_discovery["result"]["should_block"] is False
+    assert exact_discovery["result"]["manifest_path"] == str(stable_dir / "discovery_run_manifest.json")
+    assert exact_discovery["result"]["resolved_spec_path"] == str(stable_dir / "discovery_spec_resolved.json")
+    assert exact_discovery["result"]["current_spec_path"] == str(fixture_paths["BTCUSDT_discovery_spec"])
+
+
+def test_operator_research_autopilot_blocks_stale_completed_stable_discovery_spec(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    fixture_paths = _write_operator_autopilot_reusable_artifacts(research_dir)
+    run_id = "exact_entry_sweep_btcusdt_candidate_depth_v1"
+    stable_dir = research_dir / "operator_runs" / "discovery_runs" / "exact-entry-sweep-btcusdt-candidate-depth-v1"
+    stable_dir.mkdir(parents=True, exist_ok=True)
+    (stable_dir / "discovery_run_manifest.json").write_text(
+        fixture_paths["discovery"].read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    stale_spec = json.loads(fixture_paths["BTCUSDT_discovery_spec"].read_text(encoding="utf-8"))
+    stale_spec["budget"] = {"max_trials": 1}
+    (stable_dir / "discovery_spec_resolved.json").write_text(
+        json.dumps(stale_spec, sort_keys=True),
+        encoding="utf-8",
+    )
+    (stable_dir / "run_state.json").write_text(
+        json.dumps({"run_id": run_id, "status": "completed", "completed_trial_ids": []}, sort_keys=True),
+        encoding="utf-8",
+    )
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_autopilot_stale_stable_discovery.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    original_known_artifacts = app.state.operator_service._research_progress_known_artifacts
+
+    def known_artifacts_without_discovery() -> list[dict[str, object]]:
+        return [
+            artifact
+            for artifact in original_known_artifacts()
+            if artifact.get("type") != "discovery_run"
+        ]
+
+    app.state.operator_service._research_progress_known_artifacts = known_artifacts_without_discovery
+
+    def fail_if_discovery_runs(*args, **kwargs):
+        raise AssertionError("autopilot should block stale stable discovery instead of executing it")
+
+    app.state.operator_service._run_isolated_discovery = fail_if_discovery_runs
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-research-autopilot",
+            json={"symbols": ["BTCUSDT"], "include_catalog_refresh": False, "include_eligibility": False},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+
+    assert response.status_code == 200
+    assert job["status"] == "succeeded"
+    assert job["result"]["autopilot_status"] == "blocked"
+    assert job["result"]["blocked_reason"] == "completed_stable_discovery_artifact_stale"
+    manifest = json.loads(Path(str(job["result"]["research_autopilot_manifest_path"])).read_text(encoding="utf-8"))
+    exact_discovery = next(step for step in manifest["steps"] if step["key"] == "exact_discovery")
+    assert exact_discovery["status"] == "blocked"
+    assert exact_discovery["detail"] == "completed_stable_discovery_artifact_stale"
+    assert exact_discovery["result"]["stable_discovery_reuse_status"] == "completed_stable_discovery_artifact_stale"
+    assert exact_discovery["result"]["spec_match"] is False
+    assert exact_discovery["result"]["should_block"] is True
+    assert "stable_discovery_resolved_spec_mismatch" in exact_discovery["result"]["spec_blockers"]
+    assert "stable_discovery_resolved_spec_mismatch" in exact_discovery["result"]["blockers"]
+    assert exact_discovery["result"]["resolved_spec_path"] == str(stable_dir / "discovery_spec_resolved.json")
+    assert exact_discovery["result"]["current_spec_path"] == str(fixture_paths["BTCUSDT_discovery_spec"])
+
+
+def test_operator_discovery_stable_overwrite_refusal_falls_back_to_isolated_output(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    fixture_paths = _write_completed_catalog_fixture(research_dir, write_artifacts=False)
+    config = _operator_config(
+        AppConfig(
+            runtime_mode=RuntimeMode.PAPER,
+            db_path=tmp_path / "operator_discovery_overwrite_fallback.sqlite3",
+            webhook=app_config.webhook,
+            strategy=app_config.strategy,
+            binance=app_config.binance,
+            hyperliquid=app_config.hyperliquid,
+            research=replace(app_config.research, output_dir=research_dir),
+            operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+        )
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+    calls: list[dict[str, object]] = []
+
+    def fake_run_discovery(*, spec_path: Path, app_config: AppConfig, resume: bool, stop_after_trials: int | None):
+        payload = json.loads(Path(spec_path).read_text(encoding="utf-8"))
+        calls.append(
+            {
+                "payload": payload,
+                "resume": resume,
+                "stop_after_trials": stop_after_trials,
+            }
+        )
+        if payload.get("operator_stable_run_id") is True:
+            raise ValueError("completed discovery runs refuse overwrite")
+        output_dir = Path(str(payload["output_dir"]))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        manifest_path = output_dir / "discovery_run_manifest.json"
+        run_state_path = output_dir / "run_state.json"
+        interesting_path = output_dir / "interesting_candidates.parquet"
+        blocked_path = output_dir / "blocked_candidates.parquet"
+        filter_blockers_path = output_dir / "filter_blockers.parquet"
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "run_id": payload["run_id"],
+                    "symbol": payload["symbol"],
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "state": {"status": "completed"},
+                    "required_outputs": {"run_state": str(run_state_path)},
+                },
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        run_state_path.write_text(
+            json.dumps({"run_id": payload["run_id"], "status": "completed"}, sort_keys=True),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(
+            output_dir=output_dir,
+            manifest_path=manifest_path,
+            run_state_path=run_state_path,
+            interesting_candidates_path=interesting_path,
+            blocked_candidates_path=blocked_path,
+            filter_blockers_path=filter_blockers_path,
+            snapshot_paths=[],
+        )
+
+    monkeypatch.setattr("tradingbotsuite.operator_console.run_discovery", fake_run_discovery)
+
+    result = app.state.operator_service._run_isolated_discovery_with_stable_overwrite_fallback(
+        fixture_paths["BTCUSDT_discovery_spec"],
+        "run-research-autopilot-test-btcusdt-discovery",
+        True,
+        None,
+        True,
+    )
+
+    assert len(calls) == 2
+    stable_payload = calls[0]["payload"]
+    fallback_payload = calls[1]["payload"]
+    assert isinstance(stable_payload, dict)
+    assert isinstance(fallback_payload, dict)
+    assert stable_payload["operator_stable_run_id"] is True
+    assert stable_payload["operator_overwrite_protection"] == "resume_stable_run_id_output_dir"
+    assert fallback_payload["operator_stable_run_id"] is False
+    assert fallback_payload["operator_overwrite_protection"] == "isolated_job_output_dir"
+    assert calls[1]["resume"] is False
+    assert result["overwrite_fallback_used"] is True
+    assert result["stable_overwrite_error_text"] == "completed discovery runs refuse overwrite"
+    assert result["fallback_job_id"] == "run-research-autopilot-test-btcusdt-discovery-isolated-fallback"
+    assert result["force_isolated_output"] is True
+    assert result["resume"] is False
+    output_dir = Path(str(result["output_dir"]))
+    assert output_dir.parent.name == "exact-entry-sweep-btcusdt-candidate-depth-v1"
+    assert output_dir.name == "run-research-autopilot-test-btcusdt-discovery-isolated-fallback"
 
 
 def test_operator_research_autopilot_retries_failed_step_with_new_attempt_job_id(
@@ -3446,6 +4730,7 @@ def test_operator_research_autopilot_fails_after_retry_exhaustion(
         )
         job_id = response.json()["job_id"]
         job = _wait_for_job(client, job_id)
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
 
     assert response.status_code == 200
     assert job["status"] == "failed"
@@ -3457,11 +4742,18 @@ def test_operator_research_autopilot_fails_after_retry_exhaustion(
         )
     )
     assert manifest["autopilot_status"] == "failed"
+    assert manifest["execution_status"] == "failed"
+    assert manifest["status_detail"] == "persistent analysis failure"
+    assert manifest["active_step"] is None
     retry_step = next(step for step in manifest["steps"] if step["key"] == "research_analysis" and step["status"] == "retrying")
     failed_step = next(step for step in manifest["steps"] if step["key"] == "research_analysis" and step["status"] == "failed")
     assert retry_step["attempt"] == 1
     assert failed_step["attempt"] == 2
     assert failed_step["attempt_job_id"].endswith("-retry-2")
+    autopilot = next(item for item in artifacts if item["type"] == "research_autopilot")
+    assert autopilot["summary"]["autopilot_status"] == "failed"
+    assert autopilot["summary"]["execution_status"] == "failed"
+    assert autopilot["summary"]["status_detail"] == "persistent analysis failure"
 
 
 def test_operator_research_autopilot_completes_all_discoveries_before_eligibility(
@@ -4455,6 +5747,220 @@ def test_operator_research_experiment_accepts_spec_relative_output_dir(
     assert Path(job["result"]["output_dir"]) == (specs_dir / "relative-output").resolve()
 
 
+def test_operator_four_bar_knn_validation_job_queues_completes_and_lists_artifact(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_four_bar_validation.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    def fake_run_four_bar_knn_larger_validation(**kwargs):
+        output_dir = Path(kwargs["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        summary_json_path = output_dir / "four_bar_knn_larger_validation_summary.json"
+        summary_csv_path = output_dir / "four_bar_knn_larger_validation_summary.csv"
+        command_path = output_dir / "run_four_bar_knn_larger_validation.ps1"
+        manifest_path = output_dir / "four_bar_knn_larger_validation_manifest.json"
+        summary_json_path.write_text(
+            json.dumps(
+                {
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "records": [],
+                    "gate_pass_records": [],
+                    "next_phase": {"decision": "larger_validation_pending", "reason": "test"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        summary_csv_path.write_text("symbol,slug\n", encoding="utf-8")
+        command_path.write_text("$env:PYTHONPATH='src'\n", encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "experiment_manifest_version": "wpr106-77-four-bar-knn-larger-validation-manifest-v1",
+                    "validation_version": "wpr106-77-four-bar-knn-larger-validation-v1",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "intended_use": "research_observe_only",
+                    "live_signal_input": False,
+                    "position_sizing_input": False,
+                    "operator_control_input": False,
+                    "live_execution_input": False,
+                    "runtime_control_input": False,
+                    "sample_rows_per_interval": kwargs["sample_rows_per_interval"],
+                    "matrices": {"BTCUSDT": {"status": "skipped"}, "ETHUSDT": {"status": "skipped"}},
+                    "summary_json_path": str(summary_json_path),
+                    "summary_csv_path": str(summary_csv_path),
+                    "command_path": str(command_path),
+                    "next_phase": {"decision": "larger_validation_pending", "reason": "test"},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        class FakeResult:
+            def to_payload(self) -> dict[str, str]:
+                return {
+                    "output_dir": str(output_dir),
+                    "manifest_path": str(manifest_path),
+                    "summary_json_path": str(summary_json_path),
+                    "summary_csv_path": str(summary_csv_path),
+                    "command_path": str(command_path),
+                }
+
+        return FakeResult()
+
+    monkeypatch.setattr(
+        "tradingbotsuite.operator_console.run_four_bar_knn_larger_validation",
+        fake_run_four_bar_knn_larger_validation,
+    )
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/run-four-bar-knn-larger-validation",
+            json={"sample_rows_per_interval": 20, "workers": 1, "skip_matrix": True},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert job["status"] == "succeeded"
+    assert Path(str(job["result"]["manifest_path"])).exists()
+    validation_artifacts = [item for item in artifacts if item["type"] == "four_bar_knn_larger_validation"]
+    assert validation_artifacts
+    assert validation_artifacts[0]["summary"]["gate_pass_count"] == 0
+    assert validation_artifacts[0]["summary"]["next_phase_decision"] == "larger_validation_pending"
+
+
+def test_operator_four_bar_archive_mapping_job_queues_completes_and_lists_artifact(
+    app_config,
+    sample_bars,
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("TBS_SERVER_MONITOR_POLL_SECONDS", "3600")
+    research_dir = tmp_path / "research"
+    config = AppConfig(
+        runtime_mode=RuntimeMode.PAPER,
+        db_path=tmp_path / "operator_four_bar_archive_mapping.sqlite3",
+        webhook=app_config.webhook,
+        strategy=app_config.strategy,
+        binance=app_config.binance,
+        hyperliquid=app_config.hyperliquid,
+        research=replace(app_config.research, output_dir=research_dir),
+        operator_ui=OperatorUIConfig(enabled=True, secret="operator-secret"),
+    )
+    app = create_app(config)
+    app.state.engine.candle_client = FakeCandles(sample_bars)
+
+    def fake_map_local_binance_archive_four_bar_datasets(**kwargs):
+        output_dir = Path(kwargs["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        summary_json_path = output_dir / "four_bar_archive_mapping_summary.json"
+        command_path = output_dir / "run_map_binance_archive_four_bar_datasets.ps1"
+        matrix_command_path = output_dir / "run_archive_four_bar_knn_validation_matrix.ps1"
+        manifest_path = output_dir / "four_bar_archive_mapping_manifest.json"
+        summary_json_path.write_text(
+            json.dumps(
+                {
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "records": [{"symbol": "BTCUSDT", "row_count": 200}],
+                    "errors": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        command_path.write_text("$env:PYTHONPATH='src'\n", encoding="utf-8")
+        matrix_command_path.write_text("$env:PYTHONPATH='src'\n", encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(
+                {
+                    "manifest_version": "wpr106-79-local-binance-archive-four-bar-mapper-manifest-v1",
+                    "archive_mapping_version": "wpr106-79-local-binance-archive-four-bar-mapper-v1",
+                    "research_only": True,
+                    "observe_only": True,
+                    "promotion_ready": False,
+                    "intended_use": "research_observe_only",
+                    "live_signal_input": False,
+                    "position_sizing_input": False,
+                    "operator_control_input": False,
+                    "live_execution_input": False,
+                    "runtime_control_input": False,
+                    "phase_selected": "map_existing_larger_local_btc_eth_archive",
+                    "start_month": kwargs["start_month"],
+                    "end_month": kwargs["end_month"],
+                    "sample_rows_per_interval": kwargs["sample_rows_per_interval"],
+                    "datasets": {"BTCUSDT": {"row_count": 200}},
+                    "records": [{"symbol": "BTCUSDT", "row_count": 200}],
+                    "errors": [],
+                    "summary_json_path": str(summary_json_path),
+                    "command_path": str(command_path),
+                    "matrix_command_path": str(matrix_command_path),
+                    "matrix_execution": {"status": "not_run"},
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        class FakeResult:
+            def to_payload(self) -> dict[str, str]:
+                return {
+                    "output_dir": str(output_dir),
+                    "manifest_path": str(manifest_path),
+                    "summary_json_path": str(summary_json_path),
+                    "command_path": str(command_path),
+                    "matrix_command_path": str(matrix_command_path),
+                }
+
+        return FakeResult()
+
+    monkeypatch.setattr(
+        "tradingbotsuite.operator_console.map_local_binance_archive_four_bar_datasets",
+        fake_map_local_binance_archive_four_bar_datasets,
+    )
+
+    with TestClient(app) as client:
+        csrf_token = _login(client, "operator-secret")
+        response = client.post(
+            "/api/operator/research/jobs/map-binance-archive-four-bar-datasets",
+            json={"start_month": "2024-01", "end_month": "2024-03", "sample_rows_per_interval": 100, "matrix_workers": 1},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        job = _wait_for_job(client, response.json()["job_id"])
+        artifacts = client.get("/api/operator/research/artifacts").json()["items"]
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert job["status"] == "succeeded"
+    assert Path(str(job["result"]["manifest_path"])).exists()
+    mapping_artifacts = [item for item in artifacts if item["type"] == "four_bar_archive_mapping"]
+    assert mapping_artifacts
+    assert mapping_artifacts[0]["summary"]["dataset_count"] == 1
+    assert mapping_artifacts[0]["summary"]["matrix_execution_status"] == "not_run"
+
+
 def test_operator_hardware_utilization_job_queues_completes_and_lists_artifact(
     app_config,
     sample_bars,
@@ -4699,8 +6205,17 @@ def test_operator_historical_cycle_job_writes_isolated_output(app_config, sample
     isolated_output_dir = Path(str(isolated_payload["output_dir"]))
     isolated_output_dir.resolve().relative_to(research_dir.resolve())
     assert isolated_output_dir != original_output_dir
+    assert "operator_job_id" not in isolated_payload
+    assert "operator_original_spec_path" not in isolated_payload
+    assert "operator_overwrite_protection" not in isolated_payload
     assert not original_output_dir.exists()
     assert Path(str(job["result"]["isolated_spec_path"])).exists()
+    operator_metadata_path = Path(str(job["result"]["operator_metadata_path"]))
+    assert operator_metadata_path.exists()
+    operator_metadata = json.loads(operator_metadata_path.read_text(encoding="utf-8"))
+    assert operator_metadata["operator_job_id"] == job["job_id"]
+    assert operator_metadata["operator_original_spec_path"] == str(spec_path.resolve())
+    assert operator_metadata["operator_overwrite_protection"] == "isolated_output_dir"
     assert Path(str(job["result"]["research_cycle_manifest_path"])).exists()
 
 

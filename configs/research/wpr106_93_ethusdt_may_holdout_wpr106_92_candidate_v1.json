@@ -1,0 +1,73 @@
+{
+  "name": "WPR106-93 ethusdt May 2026 holdout benchmark for WPR106-92 KNN candidate",
+  "base_config_path": "no_rsi_knn_four_bar_ethusdt_r106_v1.json",
+  "dataset_path": "../../data/research/wpr106_93_may_2026_holdout_intake_and_knn_benchmark/benchmark_dataset/ethusdt_wpr106_92_candidate_pre_may_train_plus_may_2026_holdout_dataset.parquet",
+  "validation_version": "wpr106-93-may-2026-holdout-benchmark-v1",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "intended_use": "benchmark_holdout_only_not_tuning",
+  "live_execution_input": false,
+  "live_signal_input": false,
+  "operator_control_input": false,
+  "position_sizing_input": false,
+  "runtime_control_input": false,
+  "candidate_matrix_bounds": {
+    "may_2026_benchmark_only": true,
+    "no_may_tuning_or_selection": true,
+    "preselected_candidate_source_packet": "WPR106-92",
+    "holdout_train_end_fixed_before_may": true
+  },
+  "experiments": [
+    {
+      "name": "ETH May 2026 holdout benchmark for WPR106-92 wick-flow Lorentzian compatible lower-meta row",
+      "slug": "eth-may2026-holdout-wpr106-92-wick-flow-lorentzian-compatible-lower-meta",
+      "owning_agent": "KNN",
+      "run_order": 1,
+      "requires_new_data": true,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "preselected_wpr106_92_candidate",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "1h",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "4h"
+      },
+      "config_data_change": "May 2026 holdout benchmark using fixed WPR106-92 candidate settings; evaluation split isolates May out-of-sample rows.",
+      "expected_metric_movement": "Benchmark only: measure whether May 2026 contradicts the pre-May loose-stability story without tuning feedback.",
+      "risk": "Changing only walk-forward split isolation; any May result remains research-only and cannot by itself promote the candidate.",
+      "mutations": {
+        "knn.feature_pack": "price_wick_flow_no_context",
+        "knn.distance": "lorentzian",
+        "knn.distance_backend": "auto",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 48,
+        "knn.neighbor_weighting": [
+          "inverse_distance",
+          "softmax"
+        ],
+        "knn.primary_weighting": "inverse_distance",
+        "knn.regime_match_mode": "compatible",
+        "knn.same_regime_only": false,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.5,
+        "knn.expected_value_threshold": -0.00025,
+        "labels.primary_horizon": "4h",
+        "meta_model.probability_threshold": 0.48,
+        "evaluation.walk_forward_splits": 1,
+        "evaluation.min_training_rows": 8000
+      }
+    }
+  ]
+}

@@ -169,6 +169,40 @@ def test_vector_fixed_holding_matches_reference_engine_artifacts(tmp_path: Path)
         assert Path(output_path).exists()
 
 
+@pytest.mark.parametrize(
+    "entry_price_source,expected_fill_profile",
+    [
+        ("signal_bar_close_plus_latency", "signal_close_latency_fill"),
+        ("primary_bar_open_plus_latency", "primary_bar_latency_fill"),
+    ],
+)
+def test_vector_fixed_holding_matches_reference_for_latency_entry_sources(
+    tmp_path: Path,
+    entry_price_source: str,
+    expected_fill_profile: str,
+) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=160, variant="balanced")
+    common = {
+        "dataset_path": dataset.parquet_path,
+        "dataset_sha256": dataset.parquet_sha256,
+        "entry_price_source": entry_price_source,
+    }
+    reference = BacktestEngine().run(_spec(tmp_path, run_id=f"reference-{entry_price_source}", **common))
+    vector = VectorBacktestEngine().run(_spec(tmp_path, run_id=f"vector-{entry_price_source}", **common))
+
+    _assert_reference_vector_artifacts_match(reference, vector)
+    manifest = json.loads(reference.manifest_path.read_text(encoding="utf-8"))
+    trades = pd.read_parquet(reference.trades_path)
+    signals = pd.read_parquet(reference.signals_path).set_index("signal_id")
+
+    assert manifest["cost_model"]["fill_profile_id"] == expected_fill_profile
+    assert not trades.empty
+    if entry_price_source == "signal_bar_close_plus_latency":
+        first_trade = trades.iloc[0]
+        first_signal = signals.loc[first_trade["signal_id"]]
+        assert first_trade["entry_price"] == pytest.approx(float(first_signal["signal_bar_close"]))
+
+
 def test_vector_fixed_holding_alias_matches_reference_engine(tmp_path: Path) -> None:
     dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=160, variant="balanced")
     reference = BacktestEngine().run(
@@ -417,6 +451,7 @@ def test_cuda_fixed_holding_rejects_when_runtime_unavailable(tmp_path: Path) -> 
         },
         {"name": "vwap", "entry_price_source": "vwap_approximation"},
         {"name": "signal-close", "entry_price_source": "signal_bar_close_plus_latency"},
+        {"name": "primary-open-latency", "entry_price_source": "primary_bar_open_plus_latency"},
     ],
 )
 def test_cuda_fixed_holding_matches_reference_with_fake_cupy(

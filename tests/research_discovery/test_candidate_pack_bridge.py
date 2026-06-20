@@ -572,6 +572,32 @@ def test_bridge_blocks_missing_validation_floors_even_when_other_gates_pass(tmp_
     assert result.eligibility.loc[0, "research_candidate_gate_status"] == "passed"
 
 
+def test_bridge_selected_gate_manifests_do_not_bypass_missing_exit_lab(tmp_path: Path) -> None:
+    discovery = run_discovery(
+        spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
+        app_config=_app_config(tmp_path),
+        clock=_clock,
+    )
+    cycle_manifest = _cycle_outputs(tmp_path / "cycle-fixture")
+    multiple_testing = _write_multiple_testing(tmp_path, discovery)
+    validation_floors = _write_validation_floors(tmp_path, discovery)
+
+    result = evaluate_discovery_candidate_pack_eligibility(
+        discovery_manifest_path=discovery.manifest_path,
+        cycle_manifest_path=cycle_manifest,
+        multiple_testing_manifest_path=multiple_testing.manifest_path,
+        validation_floors_manifest_path=validation_floors.manifest_path,
+        candidate_id_map={"bridge-run-candidate-000001": "candidate-1"},
+    )
+
+    reasons = result.eligibility.loc[0, "bridge_reasons"]
+    assert result.manifest["summary"]["eligible_count"] == 0
+    assert result.eligibility.loc[0, "bridge_status"] == "blocked"
+    assert "exit_lab_manifest_required" in reasons
+    assert "multiple_testing_manifest_required" not in reasons
+    assert "validation_floor_manifest_required" not in reasons
+
+
 def test_bridge_blocks_validation_floor_failures(tmp_path: Path) -> None:
     discovery = run_discovery(
         spec_path=_write_spec(tmp_path / "specs" / "discovery.json"),
@@ -976,6 +1002,40 @@ def test_bridge_blocks_run_state_status_tamper_on_incomplete_run(tmp_path: Path)
     reasons = result.eligibility.loc[0, "bridge_reasons"]
     assert "discovery_run_state_manifest_state_mismatch" in reasons
     assert "discovery_completed_trial_count_mismatch" in reasons
+
+
+def test_bridge_reports_failed_discovery_trial_records(tmp_path: Path) -> None:
+    trials_dir = tmp_path / "trials"
+    trials_dir.mkdir()
+    reasons = candidate_pack_bridge._run_state_reasons(
+        {
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+            "run_id": "failed-run",
+            "status": "blocked",
+            "completed_trial_ids": ["trial-000001"],
+            "failed_trial_ids": ["trial-000001"],
+        },
+        {"trials": str(trials_dir)},
+        {
+            "run_id": "failed-run",
+            "state": {
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "run_id": "failed-run",
+                "status": "blocked",
+                "completed_trial_ids": ["trial-000001"],
+                "failed_trial_ids": ["trial-000001"],
+            },
+            "counts": {"completed_trials": 0, "failed_trials": 1, "durable_trial_records": 1},
+        },
+    )
+
+    assert "discovery_run_state_must_be_completed" in reasons
+    assert "discovery_failed_trial_records_present" in reasons
+    assert "discovery_manifest_processed_trial_record_count_mismatch" not in reasons
 
 
 def test_bridge_blocks_live_adjacent_trial_record_field(tmp_path: Path) -> None:

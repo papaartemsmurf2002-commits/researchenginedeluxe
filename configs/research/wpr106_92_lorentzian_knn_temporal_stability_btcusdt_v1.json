@@ -1,0 +1,408 @@
+{
+  "name": "WPR106-92 btcusdt Lorentzian KNN temporal stability refresh",
+  "base_config_path": "no_rsi_knn_four_bar_btcusdt_r106_v1.json",
+  "dataset_path": "../../data/research/wpr106_85_2024_forward_pre_may_archive_map/datasets/btcusdt_no_rsi_four_bar_binance_archive_2024-01_to_2026-04_8000_dataset.parquet",
+  "validation_version": "wpr106-92-lorentzian-knn-temporal-stability-refresh-v1",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "intended_use": "research_observe_only",
+  "live_execution_input": false,
+  "live_signal_input": false,
+  "operator_control_input": false,
+  "position_sizing_input": false,
+  "runtime_control_input": false,
+  "candidate_matrix_bounds": {
+    "broad_grid_allowed": true,
+    "feature_pack_changes_allowed": true,
+    "may_2026_excluded_from_tuning": true,
+    "no_rsi_core": true,
+    "scoped_lorentzian_knn_variant_search": true,
+    "temporal_stability_refresh": true,
+    "unimplemented_venue_dependency_allowed": false
+  },
+  "experiments": [
+    {
+      "name": "BTC 1h 4h microdrift Lorentzian compatible inverse open threshold",
+      "slug": "btc-1h-4h-microdrift-lorentzian-compatible-inverse-open",
+      "owning_agent": "KNN",
+      "run_order": 1,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_1h_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "1h",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "4h"
+      },
+      "config_data_change": "1h 4h microdrift Lorentzian compatible inverse open threshold",
+      "expected_metric_movement": "Increase active months around prior positive 1h->4h meta cells while preserving no-context flow logic.",
+      "risk": "Looser KNN/meta thresholds may admit unstable months; reject unless yearly losing-month caps improve.",
+      "mutations": {
+        "knn.feature_pack": "price_microdrift_flow_no_context",
+        "knn.distance": "lorentzian",
+        "knn.distance_backend": "auto",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 32,
+        "knn.neighbor_weighting": [
+          "inverse_distance",
+          "softmax"
+        ],
+        "knn.primary_weighting": "inverse_distance",
+        "knn.regime_match_mode": "compatible",
+        "knn.same_regime_only": false,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.5,
+        "knn.expected_value_threshold": -0.00025,
+        "labels.primary_horizon": "4h",
+        "meta_model.probability_threshold": 0.5
+      }
+    },
+    {
+      "name": "BTC 1h 4h microdrift Lorentzian same-fallback softmax open threshold",
+      "slug": "btc-1h-4h-microdrift-lorentzian-same-fallback-softmax-open",
+      "owning_agent": "KNN",
+      "run_order": 2,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_1h_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "1h",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "4h"
+      },
+      "config_data_change": "1h 4h microdrift Lorentzian same-fallback softmax open threshold",
+      "expected_metric_movement": "Test whether same-regime structure with all-regime fallback stabilizes active months better than compatible pooling.",
+      "risk": "Fallback can dilute regime semantics; monthly concentration decides usefulness.",
+      "mutations": {
+        "knn.feature_pack": "price_microdrift_flow_no_context",
+        "knn.distance": "lorentzian",
+        "knn.distance_backend": "auto",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 32,
+        "knn.neighbor_weighting": [
+          "inverse_distance",
+          "softmax"
+        ],
+        "knn.primary_weighting": "softmax",
+        "knn.regime_match_mode": "same_with_all_fallback",
+        "knn.same_regime_only": true,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.5,
+        "knn.expected_value_threshold": -0.00025,
+        "labels.primary_horizon": "4h",
+        "meta_model.probability_threshold": 0.5
+      }
+    },
+    {
+      "name": "BTC 1h 4h wick-flow Lorentzian compatible lower meta threshold",
+      "slug": "btc-1h-4h-wick-flow-lorentzian-compatible-lower-meta",
+      "owning_agent": "KNN",
+      "run_order": 3,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_1h_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "1h",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "4h"
+      },
+      "config_data_change": "1h 4h wick-flow Lorentzian compatible lower meta threshold",
+      "expected_metric_movement": "Revisit WPR106-86 best feature pack with lower meta threshold to test whether sparse positive cells can become active-month stable.",
+      "risk": "Lower meta threshold may increase losing months; only strict stability can advance it.",
+      "mutations": {
+        "knn.feature_pack": "price_wick_flow_no_context",
+        "knn.distance": "lorentzian",
+        "knn.distance_backend": "auto",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 48,
+        "knn.neighbor_weighting": [
+          "inverse_distance",
+          "softmax"
+        ],
+        "knn.primary_weighting": "inverse_distance",
+        "knn.regime_match_mode": "compatible",
+        "knn.same_regime_only": false,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.5,
+        "knn.expected_value_threshold": -0.00025,
+        "labels.primary_horizon": "4h",
+        "meta_model.probability_threshold": 0.48
+      }
+    },
+    {
+      "name": "BTC 1h 4h microdrift cosine all-regime uniform open threshold",
+      "slug": "btc-1h-4h-microdrift-cosine-all-uniform-open",
+      "owning_agent": "KNN",
+      "run_order": 4,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_1h_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "1h",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "4h"
+      },
+      "config_data_change": "1h 4h microdrift cosine all-regime uniform open threshold",
+      "expected_metric_movement": "Distance-control for directional microdrift similarity without Lorentzian magnitude compression.",
+      "risk": "All-regime directional similarity can overtrade; reject if cost or losing-month evidence degrades.",
+      "mutations": {
+        "knn.feature_pack": "price_microdrift_flow_no_context",
+        "knn.distance": "cosine",
+        "knn.distance_backend": "cpu",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 32,
+        "knn.neighbor_weighting": [
+          "uniform",
+          "softmax"
+        ],
+        "knn.primary_weighting": "uniform",
+        "knn.regime_match_mode": "all",
+        "knn.same_regime_only": false,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.5,
+        "knn.expected_value_threshold": -0.00025,
+        "labels.primary_horizon": "4h",
+        "meta_model.probability_threshold": 0.5
+      }
+    },
+    {
+      "name": "BTC 1h 4h microdrift Euclidean robust-z same-fallback balanced threshold",
+      "slug": "btc-1h-4h-microdrift-euclidean-same-fallback-inverse-balanced",
+      "owning_agent": "KNN",
+      "run_order": 5,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_1h_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "1h",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "4h"
+      },
+      "config_data_change": "1h 4h microdrift Euclidean robust-z same-fallback balanced threshold",
+      "expected_metric_movement": "Check whether robust-z Euclidean neighborhoods stabilize the same microdrift feature set better than Lorentzian.",
+      "risk": "Control only; no Lorentzian claim if it wins without broader gates.",
+      "mutations": {
+        "knn.feature_pack": "price_microdrift_flow_no_context",
+        "knn.distance": "euclidean_robust_z",
+        "knn.distance_backend": "cpu",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 32,
+        "knn.neighbor_weighting": [
+          "inverse_distance",
+          "uniform"
+        ],
+        "knn.primary_weighting": "inverse_distance",
+        "knn.regime_match_mode": "same_with_all_fallback",
+        "knn.same_regime_only": true,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.52,
+        "knn.expected_value_threshold": -0.0001,
+        "labels.primary_horizon": "4h",
+        "meta_model.probability_threshold": 0.52
+      }
+    },
+    {
+      "name": "BTC 15m 1h microdrift Lorentzian all-regime inverse open threshold",
+      "slug": "btc-15m-1h-microdrift-lorentzian-all-inverse-open",
+      "owning_agent": "KNN",
+      "run_order": 6,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_15m_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "15m",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "1h"
+      },
+      "config_data_change": "15m 1h microdrift Lorentzian all-regime inverse open threshold",
+      "expected_metric_movement": "Higher-activity 15m->1h control to test whether active rates improve stability when features avoid unavailable context.",
+      "risk": "May increase turnover; reject unless costs and monthly stability survive.",
+      "mutations": {
+        "knn.feature_pack": "price_microdrift_flow_no_context",
+        "knn.distance": "lorentzian",
+        "knn.distance_backend": "auto",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48
+        ],
+        "knn.primary_k": 21,
+        "knn.neighbor_weighting": [
+          "inverse_distance",
+          "softmax"
+        ],
+        "knn.primary_weighting": "inverse_distance",
+        "knn.regime_match_mode": "all",
+        "knn.same_regime_only": false,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.5,
+        "knn.expected_value_threshold": -0.00025,
+        "labels.primary_horizon": "1h",
+        "meta_model.probability_threshold": 0.5
+      }
+    },
+    {
+      "name": "BTC 15m 1h wick-flow Lorentzian compatible strict threshold",
+      "slug": "btc-15m-1h-wick-flow-lorentzian-compatible-strict",
+      "owning_agent": "KNN",
+      "run_order": 7,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_15m_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "15m",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "1h"
+      },
+      "config_data_change": "15m 1h wick-flow Lorentzian compatible strict threshold",
+      "expected_metric_movement": "Strict-threshold control for drawdown and losing-month reduction on the WPR106-86 wick/flow pack.",
+      "risk": "May become too sparse; reject if active months fall below stability floor.",
+      "mutations": {
+        "knn.feature_pack": "price_wick_flow_no_context",
+        "knn.distance": "lorentzian",
+        "knn.distance_backend": "auto",
+        "knn.k_values": [
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 32,
+        "knn.neighbor_weighting": [
+          "inverse_distance",
+          "softmax"
+        ],
+        "knn.primary_weighting": "inverse_distance",
+        "knn.regime_match_mode": "compatible",
+        "knn.same_regime_only": false,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.58,
+        "knn.expected_value_threshold": 0.0,
+        "labels.primary_horizon": "1h",
+        "meta_model.probability_threshold": 0.58
+      }
+    },
+    {
+      "name": "BTC 1h 4h price-path cosine all-regime softmax open threshold",
+      "slug": "btc-1h-4h-price-path-cosine-all-softmax-open",
+      "owning_agent": "KNN",
+      "run_order": 8,
+      "requires_new_data": false,
+      "can_run_on_current_artifacts": true,
+      "comparison_baselines": [
+        "wpr106_86_btc_1h_lorentzian_flow",
+        "no_trade",
+        "fixed_four_bar_holding"
+      ],
+      "four_bar_horizon": {
+        "base_interval": "1h",
+        "diagnostic_only": false,
+        "horizon_bars": 4,
+        "resolved_horizon": "4h"
+      },
+      "config_data_change": "1h 4h price-path cosine all-regime softmax open threshold",
+      "expected_metric_movement": "Minimal-feature control for whether wick/flow features are hurting temporal stability.",
+      "risk": "Control only; reject if positive windows are concentrated.",
+      "mutations": {
+        "knn.feature_pack": "price_close_path_4bar",
+        "knn.distance": "cosine",
+        "knn.distance_backend": "cpu",
+        "knn.k_values": [
+          8,
+          13,
+          21,
+          32,
+          48,
+          64
+        ],
+        "knn.primary_k": 32,
+        "knn.neighbor_weighting": [
+          "uniform",
+          "softmax"
+        ],
+        "knn.primary_weighting": "softmax",
+        "knn.regime_match_mode": "all",
+        "knn.same_regime_only": false,
+        "knn.allow_cross_regime_fallback": true,
+        "knn.vote_probability_threshold": 0.5,
+        "knn.expected_value_threshold": -0.00025,
+        "labels.primary_horizon": "4h",
+        "meta_model.probability_threshold": 0.5
+      }
+    }
+  ]
+}

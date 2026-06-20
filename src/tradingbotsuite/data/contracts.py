@@ -24,6 +24,7 @@ SUPPORTED_SOURCE_NAMES = (
     "bybit_archive",
     "crypto_lake",
     "hyperliquid_archive",
+    "okx_archive",
 )
 
 SOURCE_TYPES_BY_NAME = {
@@ -32,6 +33,7 @@ SOURCE_TYPES_BY_NAME = {
     "bybit_archive": "local_file",
     "crypto_lake": "local_file",
     "hyperliquid_archive": "local_file",
+    "okx_archive": "local_file",
 }
 
 REQUIRED_DATA_MANIFEST_FIELDS = (
@@ -159,6 +161,18 @@ DATA_SOURCE_DESCRIPTORS: dict[str, DataSourceDescriptor] = {
         notes=(
             "Registered-only until Bybit archive download/local export ingestion is normalized and validated.",
             "Historical downloads or REST backfills must not be treated as live receive-time evidence.",
+        ),
+    ),
+    "okx_archive": DataSourceDescriptor(
+        source_name="okx_archive",
+        source_type="local_file",
+        display_name="OKX Archive",
+        data_families=("trade", "kline", "funding_rate", "premium_index", "book_ticker", "depth_snapshot"),
+        implemented_for_ingestion=False,
+        diagnostic_only_by_default=True,
+        notes=(
+            "Registered-only until OKX historical downloads/API backfills have normalized ingestion, checksums, and gap validation.",
+            "Historical candles, trades, funding, mark/index context, and L2 downloads are diagnostic-only until point-in-time evidence exists.",
         ),
     ),
     "hyperliquid_archive": DataSourceDescriptor(
@@ -299,6 +313,28 @@ DATA_PROVIDER_CAPABILITIES: dict[tuple[str, str], DataProviderCapability] = {
             "book_ticker",
             "depth_snapshot",
             "liquidation",
+        )
+    },
+    **{
+        ("okx_archive", family): _capability(
+            "okx_archive",
+            family,
+            durability_class="registered_only",
+            retention_limit="ingestion_not_implemented",
+            history_start=None,
+            exchange_native=True,
+            normalized=False,
+            health_policy="registered_only_no_claims",
+            diagnostic_only_by_default=True,
+            candidate_ready_default=False,
+        )
+        for family in (
+            "trade",
+            "kline",
+            "funding_rate",
+            "premium_index",
+            "book_ticker",
+            "depth_snapshot",
         )
     },
     **{

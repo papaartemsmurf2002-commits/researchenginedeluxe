@@ -64,6 +64,7 @@ def test_supported_archive_descriptors_are_research_only_diagnostic_contracts() 
         "bybit_archive",
         "crypto_lake",
         "hyperliquid_archive",
+        "okx_archive",
     }
     for descriptor in descriptors:
         assert descriptor.source_name in SUPPORTED_ARCHIVE_SOURCES
@@ -91,6 +92,9 @@ def test_normalized_field_contracts_cover_market_and_hyperliquid_family_groups()
     ).required_fields
     assert "account_address" in get_archive_source_field_contract(
         "hyperliquid_archive", "user_fill"
+    ).required_fields
+    assert "close_price" in get_archive_source_field_contract(
+        "okx_archive", "kline"
     ).required_fields
     with pytest.raises(ValueError, match="not listed"):
         get_archive_source_field_contract("binance_vision", "user_fill")

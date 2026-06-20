@@ -1,12 +1,14 @@
 # Research Branch Distillation
 
-Date: 2026-05-05
-Branch: `research/v3-experimental-engine`
-Scope: trusted historical research only
+Date: 2026-06-04
+Branch: `main` local mirror of `research/v3-experimental-engine`
+Scope: modular historical strategy research and evidence iteration
 
 ## Executive Summary
 
-`research/v3-experimental-engine` is the research and experimentation branch for TradingBotSuite. Its job is to turn historical market data into reproducible, auditable research artifacts:
+ResearchEngineDeluxe is the research and experimentation engine for
+TradingBotSuite. Its job is to turn historical market data and strategy
+hypotheses into reproducible, auditable research artifacts:
 
 ```text
 provider data
@@ -20,9 +22,23 @@ provider data
   -> candidate pack only if all research gates pass
 ```
 
-The branch is not a live trading branch. Research outputs are not signals, not live configuration, not capital-allocation inputs, and not promotion evidence. The branch deliberately keeps artifacts `research_only`, `observe_only`, and `promotion_ready: false` unless a later promotion process explicitly changes that outside this research scope.
+The branch is not a live trading branch. That boundary is evidence hygiene, not
+the main product goal. The product goal is to test new strategies, refine
+existing families, generate analyzable rejection and success patterns, and make
+the next research iteration clearer than the last. Research outputs are
+manifests, metrics, ablations, validation floors, multiple-testing reports,
+rejection reports, and candidate diagnostics, not signals, live configuration,
+capital-allocation inputs, or promotion evidence.
 
-As of Stage R44, the development plan's research-engine implementation stop point has been reached and final crosscheck hardening has passed. The branch contains the historical research cycle, provider fixture intake, feature construction and caching, strategy plugins, backtesting engines, optimizer and stability analysis, candidate gates, candidate-pack validation, benchmark gates, and research UI surfaces. Stage 13 paper, shadow, testnet, live, canary, and promotion execution remain blocked.
+As of Stage R106, the core research implementation is structurally complete for
+the current iteration. The branch contains the historical research cycle,
+central historical-data catalog, provider fixture intake, feature construction
+and caching, strategy plugins, replay-overlay support, backtesting engines,
+optimizer and stability analysis, exit-lab, multiple-testing, validation floors,
+candidate eligibility, candidate-pack validation, benchmark evidence, autopilot
+wiring, and research UI surfaces. Current evidence still has zero eligible
+candidate-pack rows, which is a valid empirical result and a starting point for
+the next strategy-refinement iteration.
 
 ## What The Branch Does
 
@@ -56,9 +72,11 @@ The branch does not:
 
 Synthetic data still exists for contract tests and small benchmark tiers, but synthetic evidence is not acceptable for provider-backed candidate packs or empirical acceptance.
 
-## Governance Framework
+## Work Packet And Evidence Audit Model
 
-The branch is controlled by the orchestrator ledger and work-packet model:
+The branch is controlled by the orchestrator ledger and work-packet model. The
+model should be read as research-audit structure, not as a substitute for
+iteration:
 
 - `AGENTS.md` defines branch rules and validation baseline.
 - `docs/ORCHESTRATOR_STAGE_LEDGER.md` records current stage, packet status, and stage decisions.
@@ -67,7 +85,11 @@ The branch is controlled by the orchestrator ledger and work-packet model:
 - `docs/KNOWN_ISSUES.md` is the blocking issue registry.
 - `docs/contracts/` defines artifact, data, feature, backtest, strategy, boundary, and promotion contracts.
 
-The working rule is simple: before changing code or docs, open a packet, keep changes inside its allowed paths, validate, then close the packet and ledger.
+The working rule is simple: before changing code or docs, open a packet, keep
+changes inside its allowed paths, validate, then close the packet and ledger.
+Within that structure, new strategy work should be encouraged when it produces
+better hypotheses, cleaner ablations, faster compute, or more interpretable
+evidence.
 
 ## Package Map
 
@@ -85,7 +107,12 @@ The working rule is simple: before changing code or docs, open a packet, keep ch
 | Live boundary | `src/tradingbotsuite/live/`, `src/tradingbotsuite/promotion/` | Preflight and validators that reject research artifacts or research commands from live execution paths. |
 | Tests | `tests/` | Contract, historical-cycle, optimization, backtesting, feature, artifact, and live-boundary tests. |
 
-The primary active framework is `src/tradingbotsuite/`. A legacy `src/tradingbot/` package still exists with older backtest, indicator, optimization, data, and live-adjacent surfaces. Treat it as legacy/reference material unless a work packet explicitly scopes it. Current research execution, gates, and documentation should orient around `tradingbotsuite` and the ledger state, not older orientation files that predate the R40-R44 completion wave.
+The primary active framework is `src/tradingbotsuite/`. A legacy
+`src/tradingbot/` package still exists with older backtest, indicator,
+optimization, data, and live-adjacent surfaces. Treat it as legacy/reference
+material unless a work packet explicitly scopes it. Current research execution,
+gates, and documentation should orient around `tradingbotsuite` and the R106
+ledger state.
 
 ## Research Cycle Framework
 
@@ -178,9 +205,19 @@ Current strategy families include:
 - `funding_basis_v1`
 - `regime_adaptive_v1`
 - `hmm_knn_diagnostic_v1`
+- `perp_basis_convergence_v2`
+- `oi_flow_breakout_v2`
+- `funding_crowding_fade_v2`
+- `funding_window_timing_v1`
+- `hmm_routed_alpha_sleeves_v2`
+- `hmm_knn_local_analog_filter_v2`
+- `liquidation_absorption_classifier_v1`
 - `lc_reference_v1`
 
-HMM/KNN is diagnostic-first. It is intended as a regime-local similarity tool, optional filter, and explainability layer, not as a default live alpha engine.
+HMM/KNN is diagnostic-first. It is intended as a regime-local similarity tool,
+optional filter, replay overlay, and explainability layer. It can be used to
+generate research evidence and ablation questions, but it is not a standalone
+live alpha engine.
 
 ## Backtesting Framework
 
@@ -253,7 +290,11 @@ Benchmark tiers currently include:
 - `medium`: larger synthetic local benchmark.
 - `provider_latest_month`: local provider-fixture benchmark using the latest-month BTCUSDT context fixture.
 
-Benchmark reports record rows per second, candidate backtests per minute, feature rows per second, feature-cache reuse, memory peak, artifact overhead, deterministic repeat identity, optimizer parallel equivalence, and reference-versus-vector behavioral parity. These are regression guardrails and local observations, not production speed or profit claims.
+Benchmark reports record rows per second, candidate backtests per minute,
+feature rows per second, feature-cache reuse, memory peak, artifact overhead,
+deterministic repeat identity, optimizer parallel equivalence, and
+reference-versus-vector behavioral parity. These are research throughput
+measurements and regression controls, not production speed or profit claims.
 
 ## CLI Surface
 
@@ -324,18 +365,64 @@ Artifact formats are mostly JSON, JSONL, Markdown, and Parquet.
 
 ## Current Evidence State
 
-The research plan implementation reached its stop point at Stage R43, and Stage R44 completed final hardening.
+The current local checkout is the R106 research mirror. The research platform is
+ready to run new compute iterations after the WPR106-59 readiness checks show
+catalog reuse/check state, no active catalog rebuild, fresh autopilot status,
+and latest same-symbol gate manifests reflected in eligibility where available.
+WPR106-63 through WPR106-66 tighten that autopilot status and operator action
+surface so operators can tell whether a run reused evidence, refreshed
+downstream review artifacts, executed upstream compute, blocked, or failed, and
+so the new-compute action explicitly requests upstream recompute while keeping
+strict cycle specs schema-clean.
 
 Notable current evidence:
 
-- Latest-month BTCUSDT provider context fixture is durable in `data/research/fixtures/btcusdt_context_provider_latest_month_v1/`.
-- Provider-backed benchmark gate passed for `provider_latest_month`.
-- The WPR43 full-context WT3D/no-WT ablation cycle ran against provider fixture data.
-- Candidate gates remained blocked and no promotion-ready candidate pack was produced.
-- Stage R44 fixed final evidence hygiene, Windows path hygiene, holdout exactness, context gap detection, exit-policy grouping, and validation issues.
-- Full validation after R44 passed: `724` pytest tests.
+- The R106 Historical Data Catalog is candidate-depth ready for BTCUSDT and
+  ETHUSDT.
+- Active exact discovery completed 570,240 trials per symbol.
+- Active historical cycles rank rejected candidates only.
+- Active and replay-scope multiple-testing, validation-floor, and eligibility
+  evidence exist.
+- WPR106-49 removes missing gate-manifest blockers for replay-scope evidence,
+  but all replay rows remain blocked.
+- WPR106-59 wires latest same-symbol gate manifests into autopilot eligibility
+  and surfaces reused-existing-evidence status in the UI.
+- WPR106-63 through WPR106-66 add explicit autopilot compute-scope semantics:
+  `reused_existing_evidence`, `refreshed_downstream_evidence`,
+  `executed_upstream_compute`, `blocked`, and `failed`, plus separate operator
+  actions for new compute versus existing-evidence review and sidecar operator
+  metadata for isolated historical-cycle specs.
+- No candidate pack has been written from current evidence.
 
-Current status is best described as: historical research framework complete for the documented objective, empirical candidate acceptance still blocked by gates, and Stage 13 execution still not started.
+Current status is best described as: strategy implementation and research
+architecture are complete enough for new empirical iteration; candidate
+acceptance remains blocked by evidence, so the next work is to test better
+hypotheses and refine weak strategy families.
+
+## Research Autopilot Semantics
+
+Research Autopilot is an operator sequencer, not a profit claim and not a live
+signal source. A successful job must be interpreted through its
+`execution_status`:
+
+- `reused_existing_evidence`: all required artifacts were complete and no
+  helper compute executed.
+- `refreshed_downstream_evidence`: analysis, delta, exit-lab, or eligibility
+  refreshed on reused upstream cycle/discovery evidence.
+- `executed_upstream_compute`: catalog refresh, historical-cycle, or exact
+  discovery compute executed.
+- `blocked`: a prerequisite or gate failed closed before the requested workflow
+  could finish.
+- `failed`: a helper raised after bounded retry handling.
+
+Use `Run New Compute Iteration` / `force_upstream_recompute` only for a
+deliberate new isolated iteration from catalog-selected specs. Use `Review
+Existing Evidence` for a fast cache/reuse audit. Forced mode does not overwrite
+stable completed discovery artifacts. Its eligibility step only attaches
+multiple-testing and validation-floor manifests that match the fresh discovery
+artifact; otherwise missing gate evidence remains fail-closed. None of these
+statuses writes a candidate pack, changes runtime mode, places orders, or
+authorizes promotion.
 
 ## Validation Baseline
 
@@ -346,7 +433,8 @@ python -m compileall -q src\tradingbotsuite
 $env:PYTHONPATH='src'; python -m pytest tests\contracts -q
 ```
 
-Broaden validation when shared behavior changes. R44 full validation used:
+Broaden validation when shared behavior changes. Full-suite validation remains
+available when a packet changes shared behavior:
 
 ```powershell
 $env:PYTHONPATH='src'; python -m pytest -q
@@ -354,7 +442,8 @@ $env:PYTHONPATH='src'; python -m pytest -q
 
 ## How To Continue Work Safely
 
-1. Read `AGENTS.md` and `docs/ORCHESTRATOR_STAGE_LEDGER.md`.
+1. Read `AGENTS.md`, `docs/ACTIVE_INDEX.md`, and
+   `docs/ORCHESTRATOR_STAGE_LEDGER.md`.
 2. Confirm no open P0 issue and fewer than four unresolved P1 issues in `docs/KNOWN_ISSUES.md`.
 3. Write a work packet before editing.
 4. Keep edits inside the packet's allowed paths.
@@ -371,12 +460,19 @@ Start with these files:
 - `AGENTS.md`
 - `docs/ORCHESTRATOR_STAGE_LEDGER.md`
 - `docs/KNOWN_ISSUES.md`
-- `configs/research/full_cycle_btc_v1.json`
+- `configs/research/full_cycle_btcusdt_durable_public_archive_r104_deep_v1.json`
+- `configs/research/full_cycle_ethusdt_durable_public_archive_r104_deep_v1.json`
+- `configs/research/btc_eth_candidate_blueprints_v1.json`
+- `configs/research/strategy_family_matrix_existing_plugins_v1.json`
 - `src/tradingbotsuite/main.py`
 - `src/tradingbotsuite/research_cycle/spec.py`
 - `src/tradingbotsuite/research_cycle/runner.py`
 - `src/tradingbotsuite/research_cycle/benchmark.py`
 - `src/tradingbotsuite/research_artifacts/candidate_pack.py`
-- `docs/stage_reports/STAGE_R44_FINAL_CROSSCHECK_HARDENING_REPORT.md`
+- Latest `docs/stage_reports/STAGE_R106_*.md`
 
-The safest mental model is: this branch is a research evidence factory. It can collect, replay, compare, reject, and package historical evidence. It must not trade, promote, or imply that local research evidence is live-ready.
+The safest mental model is: this branch is a strategy evidence factory. It can
+collect, replay, compare, reject, ablate, benchmark, and package historical
+evidence. It should make it fast to learn which strategy ideas are weak and
+which deserve another iteration. It must not trade, promote, or imply that local
+research evidence is live-ready.

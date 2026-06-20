@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_ROOT = ROOT / "src" / "tradingbotsuite" / "research"
+RESEARCH_SANDBOX_ROOT = ROOT / "src" / "tradingbotsuite" / "research_sandbox"
 RESEARCH_DISCOVERY_ROOT = ROOT / "src" / "tradingbotsuite" / "research_discovery"
 RESEARCH_CYCLE_ROOT = ROOT / "src" / "tradingbotsuite" / "research_cycle"
 OPTIMIZATION_ROOT = ROOT / "src" / "tradingbotsuite" / "optimization"
@@ -50,6 +51,17 @@ def _imports(path: Path) -> set[str]:
 def test_research_modules_do_not_import_order_placement_paths() -> None:
     offenders: list[str] = []
     for path in sorted(RESEARCH_ROOT.rglob("*.py")):
+        for module in _imports(path):
+            for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
+                if module == forbidden or module.startswith(f"{forbidden}."):
+                    offenders.append(f"{path.relative_to(ROOT)} imports {module}")
+
+    assert offenders == []
+
+
+def test_research_sandbox_modules_do_not_import_order_placement_paths() -> None:
+    offenders: list[str] = []
+    for path in sorted(RESEARCH_SANDBOX_ROOT.rglob("*.py")):
         for module in _imports(path):
             for forbidden in FORBIDDEN_RESEARCH_IMPORTS:
                 if module == forbidden or module.startswith(f"{forbidden}."):

@@ -39,10 +39,14 @@ jobs:
       - name: Run contract tests
         run: python -m pytest tests/contracts -q
 
+      - name: Run rapid strategy sandbox tests
+        run: python -m pytest tests/research_sandbox -q
+
       - name: Run live and artifact boundary tests
         run: >
           python -m pytest
           tests/live/test_preflight.py
+          tests/live/test_cli_boundary.py
           tests/live/test_reject_research_artifacts.py
           tests/live/test_shadow_loader.py
           tests/live/test_promotion_candidate_validator.py

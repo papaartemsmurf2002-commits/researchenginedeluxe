@@ -1,0 +1,460 @@
+{
+  "spec_version": "historical-research-cycle-spec-v1",
+  "cycle_id": "wpr106-94-ethusdt-causal-session-filter-broad-search-v1",
+  "symbol": "ETHUSDT",
+  "work_packet": "WPR106-94-causal-session-filter-broad-search",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_pack_eligible": false,
+  "candidate_pack_written": false,
+  "order_placement_allowed": false,
+  "live_config_writes_allowed": false,
+  "sizing_policy_changed": false,
+  "maturity_label": "wpr106_94_2024_forward_pre_may_causal_session_filter_search",
+  "promotion_artifact_policy": {
+    "writes_promotion_artifacts": false,
+    "research_candidate_pack_scope": "disabled_until_pre_may_stability_and_may_holdout_gates_pass",
+    "promotion_ready": false,
+    "candidate_pack_eligible": false
+  },
+  "output_dir": "../../data/research/historical_cycles/wpr106_94_causal_session_filter_broad_search_ethusdt_v1",
+  "holding_windows": [
+    "24h",
+    "72h"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "../../data/research/wpr106_85_2024_forward_durable_public_archive_ethusdt/fixture_packs/ethusdt_public_archive_candidate_depth_v1/fixture_pack_manifest.json"
+    ],
+    "durable_fixture_readiness_config_path": "../../data/research/wpr106_85_2024_forward_durable_public_archive_ethusdt/active_readiness/durable_public_archive_fixture_readiness_ethusdt_candidate_depth_v1.json",
+    "local_fixture_dir": null,
+    "synthetic_fixture": false,
+    "synthetic_fallback_allowed": false,
+    "evidence_scope": "wpr106_94_2024_forward_pre_may_causal_session_filter_search",
+    "latest_window_rest_data_diagnostic_only": false,
+    "candidate_pack_eligible": false,
+    "durable_public_archive_required_for_candidate_ready": true,
+    "candidate_blocker_codes": [
+      "candidate_validation_gates_not_yet_passed",
+      "exit_lab_evidence_required",
+      "multiple_testing_and_validation_floors_required",
+      "may_2026_holdout_required_for_promising_leads"
+    ]
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol",
+      "features_price_perp_aggflow_no_wt"
+    ],
+    "materialized_prediction_overlays": [],
+    "aggtrade_orderflow_scope": {
+      "feature_set_id": "features_price_perp_aggflow_no_wt",
+      "context_family": "agg_trade_proxy",
+      "evidence_note": "AggTrade fields are observed trade-flow proxies, not true order-book OFI."
+    }
+  },
+  "strategies": [
+    "baseline_no_trade",
+    "trend_following_v1",
+    "volatility_breakout_v1",
+    "range_reversion_v1",
+    "sparse_event_filter_v1"
+  ],
+  "strategy_family_requirements": {
+    "active_entry_rate_policy": "explicitly_screen_1_to_5_trades_per_active_day_before_rejecting_density",
+    "claim_scope": "pre_may_causal_session_filter_screening_only",
+    "durable_public_archive_readiness_required": true,
+    "may_2026_holdout_required_for_promising_leads": true,
+    "may_2026_usage": "not_present_in_input_fixture; benchmark_holdout_only_for_later_promising_leads",
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "no_trade_comparator_strategy_id": "baseline_no_trade",
+    "transparent_comparator_strategy_ids": [
+      "trend_following_v1",
+      "volatility_breakout_v1",
+      "range_reversion_v1"
+    ],
+    "true_hmm_backend_used": false,
+    "tuning_window_start_utc": "2024-01-01T00:00:00Z",
+    "tuning_window_end_utc": "2026-04-30T23:59:59Z",
+    "density_search_policy": "session-filtered dense candidates are screened with costs, overlap/activity, split, and monthly evidence before any May holdout",
+    "causal_session_filter_policy": "allowed_hours_utc and allowed_weekdays_utc are computed from completed-bar UTC timestamps before entry selection; May 2026 and post-trade calendar exclusions are forbidden for tuning."
+  },
+  "validation": {
+    "walk_forward": "rolling_and_anchored",
+    "purge_embargo_bars": 8,
+    "stress_periods_required": true,
+    "min_splits": 2,
+    "trade_count_floor": 1,
+    "max_single_split_pnl_share": 0.75,
+    "min_cost_stress_survival_rate": 0.7,
+    "split_modes": [
+      "purged_embargoed_walk_forward",
+      "anchored_walk_forward"
+    ]
+  },
+  "optimizer": {
+    "method_sequence": [
+      "grid"
+    ],
+    "max_candidates_per_strategy": 96,
+    "top_regions_to_refine": 0,
+    "search_spaces": [
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "slope_threshold": [
+            0.08,
+            0.12
+          ],
+          "max_choppiness": [
+            58.0,
+            64.0
+          ],
+          "spacing_bars": [
+            4,
+            8
+          ],
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "volatility_breakout_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "shock_threshold": [
+            0.7,
+            1.0
+          ],
+          "atr_percentile_threshold": [
+            0.25,
+            0.45
+          ],
+          "spacing_bars": [
+            4,
+            8
+          ],
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "range_reversion_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "24h",
+        "parameters": {
+          "choppiness_threshold": [
+            55.0,
+            60.0
+          ],
+          "stretch_threshold": [
+            0.04,
+            0.08
+          ],
+          "spacing_bars": [
+            4,
+            6
+          ],
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "trend_following_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "72h",
+        "parameters": {
+          "slope_threshold": [
+            0.08,
+            0.12
+          ],
+          "max_choppiness": [
+            58.0,
+            64.0
+          ],
+          "spacing_bars": [
+            8,
+            18
+          ],
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "volatility_breakout_v1",
+        "feature_set_id": "features_price_trend_vol",
+        "holding_window": "72h",
+        "parameters": {
+          "shock_threshold": [
+            0.7,
+            1.0
+          ],
+          "atr_percentile_threshold": [
+            0.25,
+            0.45
+          ],
+          "spacing_bars": [
+            8,
+            18
+          ],
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "sparse_event_filter_v1",
+        "feature_set_id": "features_price_perp_aggflow_no_wt",
+        "holding_window": "24h",
+        "parameters": {
+          "base_model": "volatility_breakout",
+          "shock_threshold": [
+            0.7,
+            1.0
+          ],
+          "atr_percentile_threshold": [
+            0.25,
+            0.45
+          ],
+          "spacing_bars": 1,
+          "min_score": [
+            0.08,
+            0.16
+          ],
+          "score_window_bars": 96,
+          "top_n_per_window": [
+            3,
+            5
+          ],
+          "cooldown_bars": [
+            0,
+            12
+          ],
+          "max_side_share": 1.0,
+          "side_balance_min_trades": 0,
+          "allowed_sides": "both",
+          "side_filter_stage": "pre_selection",
+          "allowed_regimes": "any",
+          "allowed_volatility_buckets": "any",
+          "flow_confirmation": "off",
+          "flow_abs_threshold": 0.0,
+          "flow_count_z_min": -10.0,
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "sparse_event_filter_v1",
+        "feature_set_id": "features_price_perp_aggflow_no_wt",
+        "holding_window": "24h",
+        "parameters": {
+          "base_model": "trend_following",
+          "slope_threshold": [
+            0.08,
+            0.12
+          ],
+          "max_choppiness": [
+            58.0,
+            64.0
+          ],
+          "funding_penalty_threshold": 0.00025,
+          "spacing_bars": 1,
+          "min_score": [
+            0.08,
+            0.16
+          ],
+          "score_window_bars": 96,
+          "top_n_per_window": [
+            3,
+            5
+          ],
+          "cooldown_bars": [
+            0,
+            12
+          ],
+          "max_side_share": 1.0,
+          "side_balance_min_trades": 0,
+          "allowed_sides": "both",
+          "side_filter_stage": "pre_selection",
+          "allowed_regimes": "any",
+          "allowed_volatility_buckets": "any",
+          "flow_confirmation": "off",
+          "flow_abs_threshold": 0.0,
+          "flow_count_z_min": -10.0,
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      },
+      {
+        "strategy_id": "sparse_event_filter_v1",
+        "feature_set_id": "features_price_perp_aggflow_no_wt",
+        "holding_window": "72h",
+        "parameters": {
+          "base_model": "volatility_breakout",
+          "shock_threshold": 0.7,
+          "atr_percentile_threshold": [
+            0.25,
+            0.45
+          ],
+          "spacing_bars": 1,
+          "min_score": [
+            0.08,
+            0.16,
+            0.35
+          ],
+          "score_window_bars": 288,
+          "top_n_per_window": [
+            2,
+            3
+          ],
+          "cooldown_bars": [
+            24,
+            48
+          ],
+          "max_side_share": 1.0,
+          "side_balance_min_trades": 0,
+          "allowed_sides": "both",
+          "side_filter_stage": "pre_selection",
+          "allowed_regimes": "any",
+          "allowed_volatility_buckets": "any",
+          "flow_confirmation": [
+            "off",
+            "contrarian"
+          ],
+          "flow_abs_threshold": 0.05,
+          "flow_count_z_min": [
+            0.0,
+            0.5
+          ],
+          "allowed_hours_utc": [
+            "any",
+            "0|1|2|3|4|5|6|7",
+            "8|9|10|11|12|13|14|15",
+            "16|17|18|19|20|21|22|23"
+          ],
+          "allowed_weekdays_utc": [
+            "any",
+            "0|1|2|3|4",
+            "5|6"
+          ]
+        },
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {}
+      }
+    ]
+  },
+  "compute": {
+    "cpu_threads": 24,
+    "gpu_acceleration": "disabled",
+    "gpu_device_class": "nvidia_50_series",
+    "gpu_required": false,
+    "gpu_execution_profile": "fastest_exact",
+    "tensor_core_policy": "disabled"
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "wpr106_94_causal_session_filter_broad_search"
+      },
+      {
+        "exit_policy_id": "simple_runner_v1",
+        "exit_policy_params": {
+          "activation_pct": 0.008,
+          "runner_gap_pct": 0.004
+        },
+        "exit_policy_source": "wpr106_94_causal_session_filter_broad_search"
+      },
+      {
+        "exit_policy_id": "trailing_atr_after_profit",
+        "exit_policy_params": {
+          "activation_return": 0.006,
+          "trail_return": 0.004
+        },
+        "exit_policy_source": "wpr106_94_causal_session_filter_broad_search"
+      }
+    ]
+  },
+  "backtest_backend": "auto"
+}

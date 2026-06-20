@@ -14,5 +14,6 @@ candidate decision.
 
 | Artifact | Source | Use |
 | --- | --- | --- |
+| `WPR106-220-225-2024-forward-results-and-leads-catalog.md` | Internal WPR106-220 through WPR106-225 summary JSONs, Parquet artifacts, and ledger entries | Current 2024-forward result, validation, rejection, and remaining-lead catalog for the broad strategy search. |
 | `BTC_ETH_PERP_STRATEGY_KNOWLEDGE_BASE.md` | External master report from `C:/Users/papaa/Downloads/btc_eth_perp_strategies_master_report.md` | BTC/ETH perpetual strategy taxonomy, feature/data requirements, simulator standards, and red-team cautions for future testing design. |
 | `source_reports/btc_eth_perp_strategies_master_report.md` | Imported verbatim from `C:/Users/papaa/Downloads/btc_eth_perp_strategies_master_report.md` | Full detail reference when the catalog is too condensed; still hypothesis material only. |

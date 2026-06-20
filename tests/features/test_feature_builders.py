@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 
 import pandas as pd
 import pytest
@@ -625,6 +626,30 @@ def test_aggtrade_orderflow_v1_derives_trade_flow_proxy_columns() -> None:
     assert features["quality_aggtrade_source_present"].eq(1.0).all()
     assert features["quality_aggtrade_flow_proxy_not_ofi"].eq(1.0).all()
     assert "top_of_book_imbalance" not in built.result.manifest.feature_columns
+
+
+def test_price_perp_aggflow_no_wt_builds_wide_missingness_without_fragmentation_warning() -> None:
+    frame = _perp_context_v2_frame(row_count=240)
+    frame["agg_trade_count"] = [20.0 + (index % 5) for index in range(len(frame))]
+    frame["agg_large_trade_count"] = 3.0
+    frame["agg_large_buy_count"] = 2.0
+    frame["agg_large_sell_count"] = 1.0
+    frame["quality_agg_trade_flow_proxy_not_ofi_source"] = 1.0
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        built = build_registered_feature_set(frame, feature_set_id="features_price_perp_aggflow_no_wt")
+
+    performance_warnings = [
+        warning for warning in caught if issubclass(warning.category, pd.errors.PerformanceWarning)
+    ]
+    features = built.result.frame
+
+    assert performance_warnings == []
+    assert "missing_agg_trade_count_zscore" in features.columns
+    assert "missing_directional_slope_atr" in features.columns
+    assert "missing_volatility_shock_zscore" in features.columns
+    assert set(built.result.manifest.feature_columns) <= set(features.columns)
 
 
 def test_aggtrade_orderflow_v1_uses_materialized_agg_trade_without_depth_claim(tmp_path) -> None:

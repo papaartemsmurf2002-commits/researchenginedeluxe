@@ -18,6 +18,11 @@ from tradingbotsuite.data.historical_data_catalog import (
     default_historical_catalog_end_month,
 )
 from tradingbotsuite.research.data_pipeline import DATA_PIPELINE_DEFAULT_STAGE, DATA_PIPELINE_STAGES
+from tradingbotsuite.research.knn_four_bar_validation import FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL
+from tradingbotsuite.research.knn_four_bar_validation import (
+    FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_END_MONTH,
+    FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_START_MONTH,
+)
 from tradingbotsuite.operator_console import OperatorConsoleService
 from tradingbotsuite.research_cycle.hardware_benchmark import (
     DEFAULT_CPU_SECONDS,
@@ -560,18 +565,22 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         if not isinstance(symbols_raw, list) or not symbols_raw:
             raise HTTPException(status_code=400, detail="symbols must be a non-empty list")
         symbols = [str(symbol).strip().upper() for symbol in symbols_raw if str(symbol).strip()]
+        if not symbols:
+            raise HTTPException(status_code=400, detail="symbols must include at least one non-empty symbol")
         unsupported = sorted(set(symbols) - {"BTCUSDT", "ETHUSDT"})
         if unsupported:
             raise HTTPException(status_code=400, detail=f"unsupported symbols: {', '.join(unsupported)}")
+        force_rebuild = bool(payload.get("force_rebuild"))
         try:
             return await service.queue_job(
-                "refresh-historical-data-catalog",
+                "refresh-historical-data-catalog" if force_rebuild else "check-historical-data-catalog",
                 {
                     "symbols": symbols,
                     "start_month": month_value("start_month", DEFAULT_HISTORICAL_CATALOG_START_MONTH),
                     "end_month": month_value("end_month", default_historical_catalog_end_month()),
                     "source_name": "historical_data_catalog",
                     "market": "futures/um",
+                    "force_rebuild": force_rebuild,
                 },
             )
         except ValueError as exc:
@@ -636,6 +645,105 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/api/operator/research/jobs/run-four-bar-knn-larger-validation")
+    async def operator_run_four_bar_knn_larger_validation(request: Request):
+        require_same_origin(request)
+        session = require_session_json(request)
+        require_csrf(request, session)
+        payload = await read_json_object(request)
+
+        def bounded_int(field: str, default: int, minimum: int, maximum: int) -> int:
+            raw = payload.get(field, default)
+            try:
+                value = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail=f"{field} must be an integer") from exc
+            if value < minimum or value > maximum:
+                raise HTTPException(status_code=400, detail=f"{field} must be between {minimum} and {maximum}")
+            return value
+
+        def bool_field(field: str, default: bool) -> bool:
+            raw = payload.get(field, default)
+            if isinstance(raw, bool):
+                return raw
+            raise HTTPException(status_code=400, detail=f"{field} must be a boolean")
+
+        try:
+            return await service.queue_job(
+                "run-four-bar-knn-larger-validation",
+                {
+                    "sample_rows_per_interval": bounded_int(
+                        "sample_rows_per_interval",
+                        FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL,
+                        20,
+                        100000,
+                    ),
+                    "workers": bounded_int("workers", 1, 1, 4),
+                    "force": bool_field("force", False),
+                    "skip_monitor": bool_field("skip_monitor", False),
+                    "skip_matrix": bool_field("skip_matrix", False),
+                },
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/operator/research/jobs/map-binance-archive-four-bar-datasets")
+    async def operator_map_binance_archive_four_bar_datasets(request: Request):
+        require_same_origin(request)
+        session = require_session_json(request)
+        require_csrf(request, session)
+        payload = await read_json_object(request)
+
+        def bounded_int(field: str, default: int, minimum: int, maximum: int) -> int:
+            raw = payload.get(field, default)
+            try:
+                value = int(raw)
+            except (TypeError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail=f"{field} must be an integer") from exc
+            if value < minimum or value > maximum:
+                raise HTTPException(status_code=400, detail=f"{field} must be between {minimum} and {maximum}")
+            return value
+
+        def bool_field(field: str, default: bool) -> bool:
+            raw = payload.get(field, default)
+            if isinstance(raw, bool):
+                return raw
+            raise HTTPException(status_code=400, detail=f"{field} must be a boolean")
+
+        def month_field(field: str, default: str) -> str:
+            value = str(payload.get(field) or default).strip()
+            if len(value) != 7 or value[4] != "-":
+                raise HTTPException(status_code=400, detail=f"{field} must be YYYY-MM")
+            try:
+                month = int(value[5:])
+                int(value[:4])
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"{field} must be YYYY-MM") from exc
+            if month < 1 or month > 12:
+                raise HTTPException(status_code=400, detail=f"{field} must be YYYY-MM")
+            return value
+
+        archive_root = payload.get("archive_root")
+        try:
+            return await service.queue_job(
+                "map-binance-archive-four-bar-datasets",
+                {
+                    "archive_root": str(archive_root) if archive_root else None,
+                    "start_month": month_field("start_month", FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_START_MONTH),
+                    "end_month": month_field("end_month", FOUR_BAR_ARCHIVE_MAPPING_DEFAULT_END_MONTH),
+                    "sample_rows_per_interval": bounded_int(
+                        "sample_rows_per_interval",
+                        FOUR_BAR_KNN_LARGER_VALIDATION_DEFAULT_SAMPLE_ROWS_PER_INTERVAL,
+                        20,
+                        100000,
+                    ),
+                    "matrix_workers": bounded_int("matrix_workers", 1, 1, 4),
+                    "force": bool_field("force", False),
+                },
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/operator/research/jobs/run-historical-research-cycle")
     async def operator_run_historical_research_cycle(request: Request):
         require_same_origin(request)
@@ -686,6 +794,8 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
         if not isinstance(symbols_raw, list) or not symbols_raw:
             raise HTTPException(status_code=400, detail="symbols must be a non-empty list")
         symbols = [str(symbol).strip().upper() for symbol in symbols_raw if str(symbol).strip()]
+        if not symbols:
+            raise HTTPException(status_code=400, detail="symbols must include at least one non-empty symbol")
         unsupported = sorted(set(symbols) - {"BTCUSDT", "ETHUSDT"})
         if unsupported:
             raise HTTPException(status_code=400, detail=f"unsupported symbols: {', '.join(unsupported)}")
@@ -700,6 +810,12 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
                 raise HTTPException(status_code=400, detail=f"{field} must be between {minimum} and {maximum}")
             return value
 
+        def bool_field(field: str, default: bool) -> bool:
+            raw = payload.get(field, default)
+            if isinstance(raw, bool):
+                return raw
+            raise HTTPException(status_code=400, detail=f"{field} must be a boolean")
+
         stop_after = payload.get("discovery_stop_after_trials")
         if stop_after is not None and str(stop_after).strip() != "":
             stop_after = validate_stop_after_trials(stop_after)
@@ -711,9 +827,10 @@ def register_operator_routes(app: FastAPI, config: AppConfig, service: OperatorC
                 {
                     "symbols": list(dict.fromkeys(symbols)),
                     "max_steps": bounded_int("max_steps", 100, 1, 100),
-                    "include_catalog_refresh": bool(payload.get("include_catalog_refresh", True)),
-                    "include_eligibility": bool(payload.get("include_eligibility", True)),
-                    "include_trade_sortino": bool(payload.get("include_trade_sortino", True)),
+                    "include_catalog_refresh": bool_field("include_catalog_refresh", True),
+                    "include_eligibility": bool_field("include_eligibility", True),
+                    "include_trade_sortino": bool_field("include_trade_sortino", True),
+                    "force_upstream_recompute": bool_field("force_upstream_recompute", False),
                     "max_sortino_trade_files": bounded_int("max_sortino_trade_files", 1000, 0, 100000),
                     "discovery_stop_after_trials": stop_after,
                     "source_name": "research_autopilot",

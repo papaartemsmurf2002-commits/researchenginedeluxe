@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from tradingbotsuite.backtesting import COST_PROFILE_CONTRACT_VERSION, BacktestEngine, BacktestSpec
-from tradingbotsuite.backtesting.engine import BACKTEST_CACHE_POLICY, SUPPORTED_HOLDING_WINDOWS_MS
+from tradingbotsuite.backtesting.engine import BACKTEST_CACHE_POLICY, SUPPORTED_HOLDING_WINDOWS_MS, _market_frame
 from tradingbotsuite.backtesting.metrics import REQUIRED_BACKTEST_METRICS
 from tradingbotsuite.research.deterministic_datasets import write_hmm_knn_sweep_dataset
 
@@ -87,6 +87,26 @@ def test_required_metrics_include_costs_and_splits(tmp_path: Path) -> None:
     assert metrics["split_by_regime"]
     assert metrics["split_by_month"]
     assert metrics["split_by_volatility_bucket"]
+
+
+def test_backtest_market_frame_preserves_last_funding_rate_alias() -> None:
+    source = pd.DataFrame(
+        {
+            "bar_time_ms": [1_700_000_000_000, 1_700_000_900_000],
+            "symbol": ["BTCUSDT", "BTCUSDT"],
+            "open": [100.0, 101.0],
+            "high": [101.0, 102.0],
+            "low": [99.0, 100.0],
+            "close": [100.5, 101.5],
+            "volume": [1.0, 1.0],
+            "last_funding_rate": [0.0001, 0.0002],
+        }
+    )
+
+    market = _market_frame(source, symbol="BTCUSDT")
+
+    assert "last_funding_rate" in market.columns
+    assert market["last_funding_rate"].tolist() == [0.0001, 0.0002]
 
 
 def test_backtest_result_hash_is_reproducible(tmp_path: Path) -> None:
@@ -374,6 +394,42 @@ def test_unknown_cost_or_fill_profile_fails_closed(tmp_path: Path) -> None:
         BacktestEngine().run(BacktestSpec(run_id="bad-cost-profile", cost_profile_id="unknown_venue", **common))
     with pytest.raises(ValueError, match="unknown_fill_profile_id"):
         BacktestEngine().run(BacktestSpec(run_id="bad-fill-profile", fill_profile_id="optimistic_fill", **common))
+
+
+def test_signal_close_and_primary_open_latency_sources_have_distinct_fill_profiles(tmp_path: Path) -> None:
+    dataset = write_hmm_knn_sweep_dataset(output_dir=tmp_path / "datasets", row_count=120, variant="balanced")
+    common = {
+        "symbol": "BTCUSDT",
+        "output_dir": tmp_path / "backtests",
+        "dataset_path": dataset.parquet_path,
+        "dataset_sha256": dataset.parquet_sha256,
+        "strategy_id": "baseline_no_trade",
+        "holding_window": "1h",
+        "feature_set_id": "features_price_trend_vol",
+    }
+
+    old_source = BacktestEngine().run(
+        BacktestSpec(
+            run_id="signal-close-latency",
+            entry_price_source="signal_bar_close_plus_latency",
+            **common,
+        )
+    )
+    explicit_open = BacktestEngine().run(
+        BacktestSpec(
+            run_id="primary-open-latency",
+            entry_price_source="primary_bar_open_plus_latency",
+            **common,
+        )
+    )
+    old_manifest = json.loads(old_source.manifest_path.read_text(encoding="utf-8"))
+    open_manifest = json.loads(explicit_open.manifest_path.read_text(encoding="utf-8"))
+
+    assert old_manifest["execution_assumptions"]["entry_price_source"] == "signal_bar_close_plus_latency"
+    assert old_manifest["cost_model"]["fill_profile_id"] == "signal_close_latency_fill"
+    assert open_manifest["execution_assumptions"]["entry_price_source"] == "primary_bar_open_plus_latency"
+    assert open_manifest["cost_model"]["fill_profile_id"] == "primary_bar_latency_fill"
+    assert old_manifest["cache_key"] != open_manifest["cache_key"]
 
 
 def test_backtest_manifest_records_non_fixed_exit_policy_identity(tmp_path: Path) -> None:

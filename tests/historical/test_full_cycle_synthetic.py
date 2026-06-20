@@ -24,6 +24,7 @@ from tradingbotsuite.research_cycle import run_historical_research_cycle
 import tradingbotsuite.research_cycle.runner as runner_module
 from tradingbotsuite.research_cycle.runner import (
     _build_cycle_validation_splits,
+    _annotate_rankings_with_ablation_evidence,
     _candidate_space,
     _cost_stress_evidence_details,
     _cost_stress_scenarios,
@@ -33,6 +34,146 @@ from tradingbotsuite.research_cycle.runner import (
     _split_evidence_details,
 )
 from tradingbotsuite.research_cycle.spec import HistoricalResearchCycleSpec
+
+
+def test_sparse_aggflow_ablation_matches_price_only_core_parameters() -> None:
+    core = {
+        "allowed_sides": "long",
+        "atr_percentile_threshold": 0.65,
+        "base_model": "volatility_breakout",
+        "cooldown_bars": 48,
+        "max_side_share": 0.65,
+        "min_score": 0.5,
+        "score_window_bars": 288,
+        "shock_threshold": 1.3,
+        "side_balance_min_trades": 8,
+        "side_filter_stage": "post_selection",
+        "spacing_bars": 1,
+        "top_n_per_window": 2,
+    }
+    frame = pd.DataFrame(
+        [
+            {
+                "candidate_id": "aggflow-lead",
+                "strategy_id": "sparse_event_filter_v1",
+                "feature_set_id": "features_price_perp_aggflow_no_wt",
+                "holding_window": "72h",
+                "exit_policy_id": "fixed_holding_window",
+                "exit_policy_params_json": "{}",
+                "resolved_parameters_json": json.dumps(
+                    {
+                        **core,
+                        "flow_confirmation": "contrarian",
+                        "flow_abs_threshold": 0.1,
+                        "flow_count_z_min": 0.5,
+                    },
+                    sort_keys=True,
+                ),
+                "costed_expectancy": 0.02,
+                "final_score": 2.0,
+            },
+            {
+                "candidate_id": "price-comparator",
+                "strategy_id": "sparse_event_filter_v1",
+                "feature_set_id": "features_price_trend_vol",
+                "holding_window": "72h",
+                "exit_policy_id": "fixed_holding_window",
+                "exit_policy_params_json": "{}",
+                "resolved_parameters_json": json.dumps(
+                    {
+                        **core,
+                        "flow_confirmation": "off",
+                        "flow_abs_threshold": 0.0,
+                        "flow_count_z_min": -10.0,
+                    },
+                    sort_keys=True,
+                ),
+                "costed_expectancy": 0.01,
+                "final_score": 1.0,
+            },
+        ]
+    )
+
+    annotated = _annotate_rankings_with_ablation_evidence(frame)
+    lead = annotated.loc[annotated["candidate_id"] == "aggflow-lead"].iloc[0]
+
+    assert bool(lead["feature_ablation_passed"]) is True
+    assert lead["ablation_evidence_status"] == "comparator_feature_set_passed"
+    assert lead["ablation_comparator_candidate_id"] == "price-comparator"
+    assert float(lead["ablation_expectancy_delta"]) == pytest.approx(0.01)
+
+
+def test_side_veto_details_require_declared_side_and_negative_control() -> None:
+    params = {
+        "allowed_sides": "long",
+        "side_filter_stage": "post_selection",
+        "threshold": 0.5,
+    }
+    control_params = {**params, "allowed_sides": "short"}
+    lead = {
+        "candidate_id": "long-lead",
+        "strategy_id": "sparse_event_filter_v1",
+        "feature_set_id": "features_price_perp_aggflow_no_wt",
+        "holding_window": "72h",
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params_json": "{}",
+        "resolved_parameters_json": json.dumps(params, sort_keys=True),
+        "transparent_default_comparator_candidate_id": "transparent",
+        "expectancy_vs_transparent_default": 0.01,
+    }
+    control = {
+        **lead,
+        "candidate_id": "short-control",
+        "resolved_parameters_json": json.dumps(control_params, sort_keys=True),
+        "trade_count": 7,
+        "expectancy_vs_no_trade": -0.01,
+        "net_return_after_fees_slippage_funding": -0.05,
+    }
+    side_records = {
+        "long-lead": [{"side": "long", "trade_count": 8}],
+        "short-control": [{"side": "short", "trade_count": 7}],
+    }
+    controls = runner_module._side_veto_control_lookup([lead, control], side_records)
+
+    details = runner_module._side_evidence_details(
+        lead,
+        side_records["long-lead"],
+        side_veto_controls=controls,
+    )
+
+    assert details["status"] == "complete"
+    assert details["policy"] == "explicit_one_sided_side_veto"
+    assert details["required_sides"] == ["long"]
+    assert details["side_veto_control_candidate_id"] == "short-control"
+    assert details["side_veto_control_status"] == "passed"
+    assert "candidate_side_evidence_long_short_required" not in details["reasons"]
+
+
+def test_side_veto_details_fail_closed_without_control() -> None:
+    lead = {
+        "candidate_id": "long-lead",
+        "strategy_id": "sparse_event_filter_v1",
+        "feature_set_id": "features_price_perp_aggflow_no_wt",
+        "holding_window": "72h",
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params_json": "{}",
+        "resolved_parameters_json": json.dumps(
+            {"allowed_sides": "long", "side_filter_stage": "post_selection"},
+            sort_keys=True,
+        ),
+        "transparent_default_comparator_candidate_id": "transparent",
+        "expectancy_vs_transparent_default": 0.01,
+    }
+
+    details = runner_module._side_evidence_details(
+        lead,
+        [{"side": "long", "trade_count": 8}],
+        side_veto_controls={},
+    )
+
+    assert details["status"] == "incomplete"
+    assert "candidate_side_veto_control_evidence_required" in details["reasons"]
+    assert "candidate_side_evidence_long_short_required" not in details["reasons"]
 
 
 def _write_cycle_spec(tmp_path: Path) -> Path:
@@ -1264,6 +1405,90 @@ def test_full_cycle_explicit_exit_policy_candidates_write_identity_evidence(tmp_
         ranking_row = rankings.loc[rankings["candidate_id"].astype(str) == str(row["candidate_id"])].iloc[0]
         assert ranking_row["exit_policy_id"] == row["exit_policy_id"]
         assert ranking_row["exit_policy_params_json"] == row["exit_policy_params_json"]
+
+
+def test_full_cycle_context_exit_missing_columns_blocks_candidate_not_cycle(tmp_path: Path) -> None:
+    payload: dict[str, object] = {
+        "cycle_id": "context-exit-blocked-cycle",
+        "symbol": "BTCUSDT",
+        "output_dir": str(tmp_path / "research" / "historical_cycles" / "context-exit-blocked-cycle"),
+        "holding_windows": ["4h"],
+        "data": {
+            "synthetic_fixture": True,
+            "synthetic_row_count": 120,
+            "synthetic_variant": "balanced",
+        },
+        "features": {
+            "feature_sets": ["features_price_trend_vol"],
+        },
+        "strategies": ["trend_following_v1"],
+        "exit_policies": [
+            "fixed_holding_window",
+            {
+                "exit_policy_id": "funding_aware_exit_v1",
+                "exit_policy_params": {
+                    "funding_threshold": 0.00005,
+                    "pre_funding_window_h": 1.0,
+                    "min_expected_cost_bps": 0.5,
+                    "edge_buffer_bps": 2.0,
+                },
+            },
+        ],
+        "validation": {
+            "walk_forward": "rolling_and_anchored",
+            "purge_embargo_bars": 2,
+            "stress_periods_required": True,
+            "min_splits": 2,
+            "trade_count_floor": 1,
+        },
+        "optimizer": {
+            "max_candidates_per_strategy": 1,
+            "top_regions_to_refine": 1,
+        },
+    }
+    spec_path = tmp_path / "specs" / "context-exit-blocked-cycle.json"
+    spec_path.parent.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    result = run_historical_research_cycle(
+        spec_path=spec_path,
+        app_config=AppConfig(research=ResearchConfig(output_dir=tmp_path / "research")),
+    )
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    rankings = pd.read_parquet(result.candidate_rankings_path)
+    backtest_index = pd.read_parquet(result.backtest_index_path)
+    funding_rankings = rankings.loc[
+        (rankings["exit_policy_id"].astype(str) == "funding_aware_exit_v1")
+        & (rankings["strategy_id"].astype(str) == "trend_following_v1")
+    ]
+    funding_index = backtest_index.loc[
+        (backtest_index["evaluation_scope"].astype(str) == "aggregate")
+        & (backtest_index["exit_policy_id"].astype(str) == "funding_aware_exit_v1")
+        & (backtest_index["strategy_id"].astype(str) == "trend_following_v1")
+    ]
+
+    assert not funding_rankings.empty
+    assert not funding_index.empty
+    assert funding_rankings["aggregate_backtest_backend_used"].eq("blocked").any()
+    assert funding_rankings["failure_reasons"].astype(str).str.contains(
+        "exit_policy_context_unavailable:funding_aware_exit_v1"
+    ).any()
+    assert funding_index["backtest_backend_rejection_reason"].astype(str).str.contains(
+        "funding_aware_exit_v1 requires columns"
+    ).any()
+    blocked_manifest_path = Path(
+        str(
+            funding_index.loc[
+                funding_index["backtest_backend_used"].astype(str) == "blocked",
+                "backtest_manifest_path",
+            ].iloc[0]
+        )
+    )
+    blocked_manifest = json.loads(blocked_manifest_path.read_text(encoding="utf-8"))
+    assert blocked_manifest["blocked"] is True
+    assert blocked_manifest["blocker_code"] == "exit_policy_context_unavailable"
+    assert manifest["backtest_backend_summary"]["used_counts"]["blocked"] >= 1
 
 
 def test_cycle_backtest_backend_resolver_fails_or_falls_back_for_unsupported_vector_scope(tmp_path: Path) -> None:

@@ -1,0 +1,118 @@
+{
+  "version": "wpr106-75-no-rsi-knn-four-bar-ethusdt-r106-v1",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "asset_scope": ["ETHUSDT"],
+  "symbol": "ETHUSDT",
+  "dataset_path": null,
+  "four_bar_horizon": {
+    "version": "wpr106-75-four-bar-horizon-v1",
+    "base_interval": "15m",
+    "horizon_bars": 4,
+    "resolved_horizon": "1h",
+    "label_timing": "signal_close_plus_4_completed_bars",
+    "diagnostic_only": false,
+    "holding_window_supported": true
+  },
+  "venue_scope": {
+    "primary_next_intake": "okx_archive",
+    "secondary_next_intake": "bybit_archive",
+    "diagnostic_context": "hyperliquid_archive",
+    "venue_ingestion_required": false
+  },
+  "regimes": [
+    {"id": "S0", "name": "range_chop", "description": "Low-volatility range / chop"},
+    {"id": "S1", "name": "bull_trend", "description": "Bull trend / upside momentum"},
+    {"id": "S2", "name": "bear_trend", "description": "Bear trend / downside momentum"},
+    {"id": "S3", "name": "shock_transition", "description": "Shock / transition / liquidation volatility"}
+  ],
+  "hmm": {
+    "n_states": 4,
+    "posterior_threshold": 0.6,
+    "entropy_threshold": 0.78,
+    "flip_cooldown_bars": 3,
+    "random_state": 17,
+    "max_iter": 160,
+    "covariance_type": "diag",
+    "backend": "auto",
+    "emission_features": [
+      "directional_slope_atr",
+      "choppiness",
+      "realized_volatility",
+      "atr_percentile",
+      "volatility_shock_zscore",
+      "funding_rate",
+      "open_interest_change_pct",
+      "primary_signed_imbalance_ratio",
+      "top_of_book_imbalance"
+    ]
+  },
+  "wt3d": {
+    "price_column": "entry_price",
+    "fast_length": 10,
+    "normal_length": 21,
+    "slow_length": 55,
+    "slope_lag": 1,
+    "reversal_zone": 0.75,
+    "mtf_slow_window": 4
+  },
+  "knn": {
+    "feature_pack": "price_close_path_4bar",
+    "distance": "lorentzian",
+    "distance_backend": "cpu",
+    "k_values": [5, 8, 13, 21, 32, 48, 64, 96],
+    "primary_k": 21,
+    "neighbor_weighting": ["uniform", "inverse_distance", "softmax"],
+    "primary_weighting": "uniform",
+    "same_regime_only": true,
+    "allow_cross_regime_fallback": false,
+    "regime_match_mode": "same",
+    "compatible_regimes": {
+      "bull_trend": ["range_chop"],
+      "bear_trend": ["range_chop"],
+      "range_chop": ["bull_trend", "bear_trend"],
+      "shock_transition": []
+    },
+    "time_decay_half_life_bars": 672,
+    "min_neighbor_count": 5,
+    "vote_probability_threshold": 0.55,
+    "expected_value_threshold": 0.0
+  },
+  "labels": {
+    "event_sampling": "signal_close_four_completed_bars_research",
+    "label_column": "label_accept",
+    "pnl_column": "label_pnl_multiple",
+    "horizons": ["1h", "4h", "16h"],
+    "primary_horizon": "1h",
+    "include_mfe_mae": true,
+    "include_barrier_type": true
+  },
+  "meta_model": {
+    "backend": "xgboost",
+    "fallback_backend": "random_forest",
+    "probability_threshold": 0.55,
+    "random_state": 17,
+    "n_estimators": 80,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "device": "auto",
+    "tree_method": "hist"
+  },
+  "evaluation": {
+    "walk_forward_splits": 4,
+    "train_fraction": 0.6,
+    "min_training_rows": 50,
+    "fee_bps": 5.0,
+    "slippage_bps": 5.0,
+    "funding_cost_enabled": true,
+    "purge_embargo_bars": 4
+  },
+  "acceptance": {
+    "research_only": true,
+    "min_trade_count": 150,
+    "min_expectancy_after_cost": 0.0,
+    "max_single_split_pnl_share": 0.6,
+    "require_long_short_breakout": false
+  }
+}

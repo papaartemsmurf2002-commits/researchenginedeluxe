@@ -1,0 +1,83 @@
+{
+  "spec_version": "discovery-run-spec-v1",
+  "run_id": "fast_iter_knn_microdrift_1h_ethusdt_v1",
+  "symbol": "ETHUSDT",
+  "timeframe": "15m",
+  "discovery_mode": "entry_discovery_standard",
+  "research_output_dir": "data/research",
+  "feature_column_sets_path": "configs/discovery/feature_column_sets_v4.json",
+  "feature_column_set_ids": [
+    "price_trend_vol",
+    "compact_wt3d_base"
+  ],
+  "data": {
+    "dataset_manifest_paths": [
+      "data/research/fixtures/ethusdt_public_archive_multi_window_v1/fixture_pack_manifest.json"
+    ]
+  },
+  "budget": {
+    "max_trials": 24,
+    "trial_batch_size": 12,
+    "snapshot_interval_minutes": 10,
+    "rng_seed": 106703
+  },
+  "execution": {
+    "max_workers": 4,
+    "executor": "thread",
+    "persist_trial_artifacts": "interesting_only"
+  },
+  "search": {
+    "hmm_state_counts": [
+      3
+    ],
+    "hmm_posterior_thresholds": [
+      0.55
+    ],
+    "hmm_entropy_thresholds": [
+      0.78
+    ],
+    "label_horizons": [
+      "1h"
+    ],
+    "k_values": [
+      8,
+      13
+    ],
+    "min_neighbor_counts": [
+      3
+    ],
+    "distance_metrics": [
+      "cosine"
+    ],
+    "probability_thresholds": [
+      0.52,
+      0.55,
+      0.58
+    ],
+    "expected_value_thresholds": [
+      -0.00025,
+      0.0
+    ],
+    "min_neighbor_agreements": [
+      0.52
+    ],
+    "min_distance_qualities": [
+      0.0
+    ],
+    "vote_margin_thresholds": [
+      0.0
+    ],
+    "same_regime_only_values": [
+      false
+    ],
+    "regime_modes": [
+      "none"
+    ],
+    "min_splits": 2,
+    "purge_embargo_bars": 2,
+    "min_trade_count": 1,
+    "min_signal_rate": 0.0005,
+    "max_signal_rate": 0.25,
+    "min_realized_expectancy": -0.00025
+  }
+}

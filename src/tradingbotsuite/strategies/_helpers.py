@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 import pandas as pd
@@ -132,7 +132,52 @@ def spaced_indices(frame: pd.DataFrame, spacing: int) -> set[int]:
     return {index for index in range(len(frame)) if index % spacing == 0}
 
 
+def session_allowed_indices(frame: pd.DataFrame, config: Mapping[str, Any]) -> set[int]:
+    allowed_hours = _parse_integer_filter(config.get("allowed_hours_utc", "any"), minimum=0, maximum=23)
+    allowed_weekdays = _parse_integer_filter(config.get("allowed_weekdays_utc", "any"), minimum=0, maximum=6)
+    if allowed_hours == set() or allowed_weekdays == set():
+        return set()
+    if allowed_hours is None and allowed_weekdays is None:
+        return set(range(len(frame)))
+
+    time_column = next(
+        (column for column in ("feature_time_ms", "bar_time_ms", "signal_bar_time_ms") if column in frame.columns),
+        None,
+    )
+    if time_column is None:
+        return set()
+    raw_time = pd.to_numeric(frame[time_column], errors="coerce")
+    timestamps = pd.to_datetime(raw_time, unit="ms", utc=True, errors="coerce")
+    valid = timestamps.notna()
+    if allowed_hours is not None:
+        valid &= timestamps.dt.hour.isin(allowed_hours)
+    if allowed_weekdays is not None:
+        valid &= timestamps.dt.weekday.isin(allowed_weekdays)
+    return set(np.flatnonzero(valid.to_numpy()))
+
+
 def confidence_from_strength(value: float) -> float:
     if not math.isfinite(value):
         return 0.0
     return float(min(0.99, max(0.01, 0.5 + min(abs(value), 1.0) / 2.0)))
+
+
+def _parse_integer_filter(raw: Any, *, minimum: int, maximum: int) -> set[int] | None:
+    text = str(raw).strip().lower()
+    if text in {"", "*", "all", "any", "off"}:
+        return None
+    values: set[int] = set()
+    for item in text.replace("|", ",").replace(";", ",").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            value = int(item)
+        except ValueError:
+            return set()
+        if str(value) != item and not (item.startswith("+") and item[1:] == str(value)):
+            return set()
+        if value < minimum or value > maximum:
+            return set()
+        values.add(value)
+    return values if values else set()

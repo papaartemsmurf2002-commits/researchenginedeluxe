@@ -1,0 +1,114 @@
+{
+  "backtest_backend": "auto",
+  "candidate_pack_eligible": false,
+  "candidate_pack_written": false,
+  "compute": {
+    "cpu_threads": 48,
+    "gpu_acceleration": "prefer_nvidia_cuda_when_backend_available",
+    "gpu_device_class": "nvidia_50_series",
+    "gpu_execution_profile": "fastest_exact",
+    "gpu_required": false
+  },
+  "cycle_id": "wpr106-85-btcusdt-2024-forward-broad-screen-v1",
+  "data": {
+    "candidate_blocker_codes": [
+      "candidate_validation_gates_not_yet_passed",
+      "exit_lab_evidence_required",
+      "multiple_testing_and_validation_floors_required",
+      "may_2026_holdout_required_for_promising_leads"
+    ],
+    "candidate_pack_eligible": false,
+    "dataset_manifest_paths": [
+      "../../data/research/wpr106_85_2024_forward_durable_public_archive/fixture_packs/btcusdt_public_archive_candidate_depth_v1/fixture_pack_manifest.json"
+    ],
+    "durable_fixture_readiness_config_path": "../../data/research/wpr106_85_2024_forward_durable_public_archive/active_readiness/durable_public_archive_fixture_readiness_btcusdt_candidate_depth_v1.json",
+    "durable_public_archive_required_for_candidate_ready": true,
+    "evidence_scope": "wpr106_85_2024_forward_pre_may_broad_screen",
+    "latest_window_rest_data_diagnostic_only": false,
+    "local_fixture_dir": null,
+    "synthetic_fallback_allowed": false,
+    "synthetic_fixture": false
+  },
+  "exits": {
+    "exit_policies": [
+      {
+        "exit_policy_id": "fixed_holding_window",
+        "exit_policy_params": {},
+        "exit_policy_source": "wpr106_85_pre_may_first_pass_fixed_holding"
+      }
+    ]
+  },
+  "features": {
+    "feature_sets": [
+      "features_price_trend_vol",
+      "features_price_trend_vol_wt3d"
+    ],
+    "materialized_prediction_overlays": []
+  },
+  "holding_windows": [
+    "1h",
+    "4h",
+    "12h",
+    "24h"
+  ],
+  "live_config_writes_allowed": false,
+  "maturity_label": "wpr106_85_2024_forward_pre_may_broad_screen",
+  "observe_only": true,
+  "optimizer": {
+    "max_candidates_per_strategy": 8,
+    "method_sequence": [
+      "grid",
+      "stability_region_refine"
+    ],
+    "top_regions_to_refine": 2
+  },
+  "order_placement_allowed": false,
+  "output_dir": "../../data/research/historical_cycles/wpr106_85_2024_forward_broad_screen_btcusdt_v1",
+  "promotion_artifact_policy": {
+    "candidate_pack_eligible": false,
+    "promotion_ready": false,
+    "research_candidate_pack_scope": "blocked_until_pre_may_and_may_holdout_gates_pass",
+    "writes_promotion_artifacts": false
+  },
+  "promotion_ready": false,
+  "research_only": true,
+  "sizing_policy_changed": false,
+  "strategies": [
+    "baseline_no_trade",
+    "trend_following_v1",
+    "volatility_breakout_v1",
+    "range_reversion_v1"
+  ],
+  "strategy_family_requirements": {
+    "active_entry_rate_policy": "do_not_reject_1_to_5_trades_per_day_without_cost_overlap_and_monthly_evidence",
+    "claim_scope": "pre_may_price_path_and_trade_flow_proxy_screening_only",
+    "durable_public_archive_readiness_required": true,
+    "may_2026_holdout_required_for_promising_leads": true,
+    "may_2026_usage": "excluded_from_tuning_holdout_only_for_promising_leads",
+    "no_regime_baseline_required_when_regime_claimed": true,
+    "no_trade_comparator_strategy_id": "baseline_no_trade",
+    "transparent_comparator_strategy_ids": [
+      "trend_following_v1",
+      "volatility_breakout_v1",
+      "range_reversion_v1"
+    ],
+    "tuning_window_end_utc": "2026-04-30T23:59:59Z",
+    "tuning_window_start_utc": "2024-01-01T00:00:00Z",
+    "true_hmm_backend_used": false
+  },
+  "symbol": "BTCUSDT",
+  "validation": {
+    "max_single_split_pnl_share": 0.75,
+    "min_cost_stress_survival_rate": 0.7,
+    "min_splits": 2,
+    "purge_embargo_bars": 2,
+    "split_modes": [
+      "purged_embargoed_walk_forward",
+      "anchored_walk_forward"
+    ],
+    "stress_periods_required": true,
+    "trade_count_floor": 1,
+    "walk_forward": "rolling_and_anchored"
+  },
+  "work_packet": "WPR106-85-2024-forward-broad-strategy-search"
+}

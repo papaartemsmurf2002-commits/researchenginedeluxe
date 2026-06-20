@@ -419,6 +419,36 @@ SUPPORTED_ARCHIVE_SOURCES: dict[str, ArchiveSourceDescriptor] = {
             "source_caveat:bybit_archive_requires_ingestion_contract",
         ),
     ),
+    "okx_archive": ArchiveSourceDescriptor(
+        source_name="okx_archive",
+        source_type="exchange_archive",
+        display_name="OKX Archive",
+        asset_scope=("BTC", "ETH"),
+        symbol_scope=SUPPORTED_SYMBOLS,
+        likely_data_families=(
+            "trade",
+            "kline",
+            "funding_rate",
+            "premium_index",
+            "book_ticker",
+            "depth_snapshot",
+        ),
+        timestamp_requirements=(
+            "event_time_field required",
+            "receive_time_field required for promotion eligibility",
+            "historical downloads or REST backfills must be distinguished from live receive time",
+        ),
+        promotional_eligible_by_default=False,
+        diagnostic_only_by_default=True,
+        caveats=(
+            "OKX has the broadest next venue data surface for this packet, but no OKX parser, checksum policy, or gap validation exists yet.",
+            "Historical trade, candle, funding, mark/index, and L2 rows are registered-only until normalized ingestion contracts are implemented.",
+        ),
+        caveat_quality_flags=(
+            "source_caveat:okx_archive_registered_only",
+            "source_caveat:okx_archive_requires_ingestion_contract",
+        ),
+    ),
     "hyperliquid_archive": ArchiveSourceDescriptor(
         source_name="hyperliquid_archive",
         source_type="venue_archive",

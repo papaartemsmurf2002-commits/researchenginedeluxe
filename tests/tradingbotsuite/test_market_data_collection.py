@@ -6,6 +6,7 @@ import sys
 import urllib.error
 import zipfile
 from decimal import Decimal
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
@@ -48,6 +49,22 @@ from tradingbotsuite.research.market_data import (
 from tradingbotsuite.research.archive_sources import assert_valid_archive_source_manifest
 
 REMOVED_CHART_SOURCE = "trading" + "view"
+
+
+def _deterministic_zip_payload(member_name: str, rows: list[str]) -> bytes:
+    buffer = BytesIO()
+    member = zipfile.ZipInfo(member_name, date_time=(2024, 1, 1, 0, 0, 0))
+    member.compress_type = zipfile.ZIP_STORED
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(member, "\n".join(rows))
+    return buffer.getvalue()
+
+
+def test_archive_fixture_zip_payload_helper_is_byte_stable() -> None:
+    rows = ["timestamp,close", "2024-01-01,100"]
+    first = _deterministic_zip_payload("BTCUSDT-1m-2024-01.csv", rows)
+    second = _deterministic_zip_payload("BTCUSDT-1m-2024-01.csv", rows)
+    assert first == second
 
 
 class FakeHistoricalBinanceClient:
@@ -988,10 +1005,7 @@ def test_collect_candidate_depth_public_archive_fixtures_writes_active_specs_wit
     start_ms = 1_704_067_200_000
 
     def zip_payload(member_name: str, rows: list[str]) -> bytes:
-        buffer = __import__("io").BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr(member_name, "\n".join(rows))
-        return buffer.getvalue()
+        return _deterministic_zip_payload(member_name, rows)
 
     payloads: dict[str, bytes] = {}
 
@@ -1080,10 +1094,7 @@ def test_collect_candidate_depth_public_archive_fixtures_records_agg_trade_id_or
     start_ms = 1_704_067_200_000
 
     def zip_payload(member_name: str, rows: list[str]) -> bytes:
-        buffer = __import__("io").BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr(member_name, "\n".join(rows))
-        return buffer.getvalue()
+        return _deterministic_zip_payload(member_name, rows)
 
     payloads: dict[str, bytes] = {}
 
@@ -1151,10 +1162,7 @@ def test_collect_candidate_depth_public_archive_fixtures_reuses_verified_cache_a
     start_ms = 1_704_067_200_000
 
     def zip_payload(member_name: str, rows: list[str]) -> bytes:
-        buffer = __import__("io").BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr(member_name, "\n".join(rows))
-        return buffer.getvalue()
+        return _deterministic_zip_payload(member_name, rows)
 
     payloads: dict[str, bytes] = {}
     fetch_counts: dict[str, int] = {}
@@ -1241,10 +1249,7 @@ def test_collect_candidate_depth_public_archive_fixtures_reuses_completed_symbol
     start_ms = 1_704_067_200_000
 
     def zip_payload(member_name: str, rows: list[str]) -> bytes:
-        buffer = __import__("io").BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr(member_name, "\n".join(rows))
-        return buffer.getvalue()
+        return _deterministic_zip_payload(member_name, rows)
 
     def payload_for(url: str) -> bytes:
         if url.endswith(".CHECKSUM"):
@@ -1319,10 +1324,7 @@ def test_refresh_historical_data_catalog_records_provider_states_and_active_fixt
     start_ms = 1_704_067_200_000
 
     def zip_payload(member_name: str, rows: list[str]) -> bytes:
-        buffer = __import__("io").BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr(member_name, "\n".join(rows))
-        return buffer.getvalue()
+        return _deterministic_zip_payload(member_name, rows)
 
     def payload_for(url: str) -> bytes:
         if url.endswith(".CHECKSUM"):
@@ -1487,10 +1489,7 @@ def test_collect_candidate_depth_public_archive_fixtures_rejects_duplicate_sourc
     start_ms = 1_704_067_200_000
 
     def zip_payload(member_name: str, rows: list[str]) -> bytes:
-        buffer = __import__("io").BytesIO()
-        with zipfile.ZipFile(buffer, "w") as archive:
-            archive.writestr(member_name, "\n".join(rows))
-        return buffer.getvalue()
+        return _deterministic_zip_payload(member_name, rows)
 
     def payload_for(url: str) -> bytes:
         if url.endswith(".CHECKSUM"):

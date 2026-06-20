@@ -43,6 +43,7 @@ REQUIRED_STAGE6_STRATEGIES = {
     "hmm_routed_alpha_sleeves_v2",
     "hmm_knn_local_analog_filter_v2",
     "liquidation_absorption_classifier_v1",
+    "sparse_event_filter_v1",
     "regime_adaptive_v1",
     "lc_reference_v1",
     "hmm_knn_diagnostic_v1",
@@ -921,6 +922,43 @@ def test_liquidation_absorption_classifier_metadata_covers_required_contract() -
     assert "liquidation_context_missing_or_not_provider_backed" in metadata.failure_modes
 
 
+def test_sparse_event_filter_metadata_covers_required_contract() -> None:
+    plugin = get_strategy_plugin("sparse_event_filter_v1")
+    metadata = metadata_for_strategy("sparse_event_filter_v1")
+
+    assert plugin.allowed_holding_periods == ("24h", "72h")
+    assert plugin.required_feature_sets == ("features_price_trend_vol", "features_price_perp_aggflow_no_wt")
+    assert set(metadata.default_parameters) == {
+        "base_model",
+        "slope_threshold",
+        "max_choppiness",
+        "funding_penalty_threshold",
+        "shock_threshold",
+        "atr_percentile_threshold",
+        "spacing_bars",
+        "min_score",
+        "score_window_bars",
+        "top_n_per_window",
+        "cooldown_bars",
+        "max_side_share",
+        "side_balance_min_trades",
+        "allowed_sides",
+        "side_filter_stage",
+        "allowed_regimes",
+        "allowed_volatility_buckets",
+        "allowed_hours_utc",
+        "allowed_weekdays_utc",
+        "flow_confirmation",
+        "flow_abs_threshold",
+        "flow_count_z_min",
+    }
+    assert set(metadata.parameter_space) == set(metadata.default_parameters)
+    assert "sparse_top_score_not_selected" in metadata.failure_modes
+    assert "sparse_regime_filter" in metadata.failure_modes
+    assert "sparse_volatility_bucket_filter" in metadata.failure_modes
+    assert "sparse_session_filter" in metadata.failure_modes
+
+
 def test_no_trade_comparator_supports_perp_context_v2_feature_set() -> None:
     plugin = get_strategy_plugin(
         "baseline_no_trade",
@@ -929,6 +967,16 @@ def test_no_trade_comparator_supports_perp_context_v2_feature_set() -> None:
 
     assert plugin.predict(_perp_context_v2_signal_frame(row_count=24)).empty
     assert "features_perp_context_v2" in plugin.required_feature_sets
+
+
+def test_no_trade_comparator_supports_price_aggflow_feature_set() -> None:
+    plugin = get_strategy_plugin(
+        "baseline_no_trade",
+        config={"feature_set_id": "features_price_perp_aggflow_no_wt", "holding_period": "24h"},
+    )
+
+    assert plugin.predict(_sparse_event_filter_signal_frame(row_count=24)).empty
+    assert "features_price_perp_aggflow_no_wt" in plugin.required_feature_sets
 
 
 def test_no_trade_comparator_supports_liquidation_context_feature_set() -> None:
@@ -1005,6 +1053,427 @@ def test_baseline_strategy_outputs_follow_standard_signal_contract() -> None:
         assert len(signals) > 0
         assert signals["research_only"].all()
         assert set(signals["side"]).issubset({"long", "short", "flat"})
+
+
+def test_sparse_event_filter_outputs_research_only_signals() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    plugin = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={
+            "symbol": "BTCUSDT",
+            "holding_period": "24h",
+            "feature_set_id": "features_price_perp_aggflow_no_wt",
+            "base_model": "volatility_breakout",
+            "shock_threshold": 0.7,
+            "atr_percentile_threshold": 0.25,
+            "spacing_bars": 1,
+            "min_score": 0.0,
+            "score_window_bars": 96,
+            "top_n_per_window": 3,
+            "cooldown_bars": 12,
+            "flow_confirmation": "aligned",
+            "flow_abs_threshold": 0.05,
+            "flow_count_z_min": 0.0,
+        },
+    )
+
+    signals = plugin.predict(frame)
+    validation = validate_signal_frame(signals)
+
+    assert validation.valid is True, validation.errors
+    assert 0 < len(signals) <= 3
+    assert signals["research_only"].all()
+    assert signals["feature_set_id"].eq("features_price_perp_aggflow_no_wt").all()
+    assert signals["strategy_id"].eq("sparse_event_filter_v1").all()
+    assert signals["skip_reason"].eq("").all()
+
+
+def test_transparent_strategy_session_hour_filter_is_default_off_and_causal() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    base_config = {
+        "symbol": "BTCUSDT",
+        "holding_period": "24h",
+        "feature_set_id": "features_price_trend_vol",
+        "slope_threshold": 0.08,
+        "max_choppiness": 58.0,
+        "spacing_bars": 1,
+    }
+    default_signals = get_strategy_plugin("trend_following_v1", config=base_config).predict(frame)
+    first_hour = pd.to_datetime(frame["feature_time_ms"].iloc[0], unit="ms", utc=True).hour
+    filtered_signals = get_strategy_plugin(
+        "trend_following_v1",
+        config={**base_config, "allowed_hours_utc": str(first_hour)},
+    ).predict(frame)
+
+    assert len(default_signals) == len(frame)
+    assert 0 < len(filtered_signals) < len(default_signals)
+    signal_hours = pd.to_datetime(filtered_signals["signal_time_ms"], unit="ms", utc=True).dt.hour
+    assert set(signal_hours) == {first_hour}
+
+
+def test_sparse_event_filter_session_weekday_filter_applies_before_top_score_selection() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=6 * 96)
+    first_weekday = pd.to_datetime(frame["feature_time_ms"].iloc[0], unit="ms", utc=True).weekday()
+    plugin = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_price_trend_vol",
+            "base_model": "volatility_breakout",
+            "shock_threshold": 0.7,
+            "atr_percentile_threshold": 0.25,
+            "spacing_bars": 1,
+            "min_score": 0.0,
+            "score_window_bars": 96,
+            "top_n_per_window": 5,
+            "cooldown_bars": 0,
+            "allowed_weekdays_utc": str(first_weekday),
+        },
+    )
+
+    signals = plugin.predict(frame)
+
+    assert len(signals) == 5
+    signal_weekdays = pd.to_datetime(signals["signal_time_ms"], unit="ms", utc=True).dt.weekday
+    assert set(signal_weekdays) == {first_weekday}
+
+
+@pytest.mark.parametrize(
+    ("strategy_id", "config"),
+    [
+        (
+            "trend_following_v1",
+            {
+                "holding_period": "24h",
+                "feature_set_id": "features_price_trend_vol",
+                "slope_threshold": 0.08,
+                "max_choppiness": 58.0,
+                "spacing_bars": 1,
+            },
+        ),
+        (
+            "volatility_breakout_v1",
+            {
+                "holding_period": "24h",
+                "feature_set_id": "features_price_trend_vol",
+                "shock_threshold": 0.7,
+                "atr_percentile_threshold": 0.25,
+                "spacing_bars": 1,
+            },
+        ),
+        (
+            "range_reversion_v1",
+            {
+                "holding_period": "24h",
+                "feature_set_id": "features_price_trend_vol",
+                "choppiness_threshold": 55.0,
+                "stretch_threshold": 0.04,
+                "spacing_bars": 1,
+            },
+        ),
+        (
+            "sparse_event_filter_v1",
+            {
+                "holding_period": "24h",
+                "feature_set_id": "features_price_trend_vol",
+                "base_model": "volatility_breakout",
+                "shock_threshold": 0.7,
+                "atr_percentile_threshold": 0.25,
+                "spacing_bars": 1,
+                "min_score": 0.0,
+                "score_window_bars": 96,
+                "top_n_per_window": 3,
+                "cooldown_bars": 0,
+            },
+        ),
+    ],
+)
+def test_session_filters_fail_closed_on_invalid_values(strategy_id: str, config: dict[str, object]) -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    frame["choppiness"] = 60.0
+    plugin = get_strategy_plugin(strategy_id, config={**config, "allowed_hours_utc": "24"})
+
+    assert plugin.predict(frame).empty
+
+
+def test_sparse_event_filter_top_score_and_cooldown_reduce_dense_entries() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=192)
+    dense = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_price_trend_vol",
+            "base_model": "volatility_breakout",
+            "shock_threshold": 0.7,
+            "atr_percentile_threshold": 0.25,
+            "spacing_bars": 1,
+            "min_score": 0.0,
+            "score_window_bars": 96,
+            "top_n_per_window": 5,
+            "cooldown_bars": 0,
+        },
+    ).predict(frame)
+    sparse = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_price_trend_vol",
+            "base_model": "volatility_breakout",
+            "shock_threshold": 0.7,
+            "atr_percentile_threshold": 0.25,
+            "spacing_bars": 1,
+            "min_score": 0.0,
+            "score_window_bars": 96,
+            "top_n_per_window": 1,
+            "cooldown_bars": 24,
+        },
+    ).predict(frame)
+
+    assert len(dense) == 10
+    assert len(sparse) == 2
+    assert sparse["signal_time_ms"].is_monotonic_increasing
+
+
+def test_sparse_event_filter_side_balance_caps_dominant_side() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    frame["directional_slope_atr"] = 0.30
+    plugin = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_price_trend_vol",
+            "base_model": "volatility_breakout",
+            "shock_threshold": 0.7,
+            "atr_percentile_threshold": 0.25,
+            "spacing_bars": 1,
+            "score_window_bars": 24,
+            "top_n_per_window": 1,
+            "cooldown_bars": 0,
+            "max_side_share": 0.65,
+            "side_balance_min_trades": 4,
+        },
+    )
+
+    signals = plugin.predict(frame)
+
+    assert len(signals) == 4
+    assert set(signals["side"]) == {"long"}
+
+
+def test_sparse_event_filter_allowed_sides_vetoes_opposite_side() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    common_config = {
+        "holding_period": "24h",
+        "feature_set_id": "features_price_trend_vol",
+        "base_model": "volatility_breakout",
+        "shock_threshold": 0.7,
+        "atr_percentile_threshold": 0.25,
+        "spacing_bars": 1,
+        "score_window_bars": 96,
+        "top_n_per_window": 4,
+        "cooldown_bars": 0,
+    }
+
+    long_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_sides": "long"},
+    ).predict(frame)
+    short_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_sides": "short"},
+    ).predict(frame)
+    invalid_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_sides": "flat"},
+    ).predict(frame)
+
+    assert len(long_signals) == 4
+    assert set(long_signals["side"]) == {"long"}
+    assert len(short_signals) == 4
+    assert set(short_signals["side"]) == {"short"}
+    assert invalid_signals.empty
+
+
+def test_sparse_event_filter_allowed_regimes_apply_before_selection() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    frame["validation_regime"] = "range"
+    frame.loc[frame.index >= 32, "validation_regime"] = "trend"
+    frame.loc[frame.index >= 64, "validation_regime"] = "shock"
+    common_config = {
+        "holding_period": "24h",
+        "feature_set_id": "features_price_trend_vol",
+        "base_model": "volatility_breakout",
+        "shock_threshold": 0.7,
+        "atr_percentile_threshold": 0.25,
+        "spacing_bars": 1,
+        "score_window_bars": 24,
+        "top_n_per_window": 24,
+        "cooldown_bars": 0,
+    }
+
+    shock_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_regimes": "shock"},
+    ).predict(frame)
+    range_trend_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_regimes": "range|trend"},
+    ).predict(frame)
+    invalid_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_regimes": "weekend"},
+    ).predict(frame)
+
+    assert len(shock_signals) == 32
+    assert shock_signals["signal_time_ms"].min() >= frame.loc[64, "bar_time_ms"]
+    assert len(range_trend_signals) == 64
+    assert invalid_signals.empty
+
+
+def test_sparse_event_filter_allowed_volatility_buckets_apply_before_selection() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    frame["realized_volatility"] = 0.003
+    frame.loc[frame.index >= 24, "realized_volatility"] = 0.010
+    frame.loc[frame.index >= 48, "realized_volatility"] = 0.020
+    common_config = {
+        "holding_period": "24h",
+        "feature_set_id": "features_price_trend_vol",
+        "base_model": "volatility_breakout",
+        "shock_threshold": 0.7,
+        "atr_percentile_threshold": 0.25,
+        "spacing_bars": 1,
+        "score_window_bars": 24,
+        "top_n_per_window": 24,
+        "cooldown_bars": 0,
+    }
+
+    low_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_volatility_buckets": "low"},
+    ).predict(frame)
+    medium_high_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_volatility_buckets": "medium|high"},
+    ).predict(frame)
+    invalid_signals = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "allowed_volatility_buckets": "extreme"},
+    ).predict(frame)
+
+    assert len(low_signals) == 24
+    assert len(medium_high_signals) == 72
+    assert invalid_signals.empty
+
+
+def test_sparse_event_filter_volatility_bucket_filter_fails_closed_when_context_missing() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96).drop(columns=["atr_percentile"])
+    plugin = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_price_trend_vol",
+            "base_model": "trend_following",
+            "slope_threshold": 0.08,
+            "max_choppiness": 58.0,
+            "spacing_bars": 1,
+            "score_window_bars": 24,
+            "top_n_per_window": 24,
+            "allowed_volatility_buckets": "low",
+        },
+    )
+
+    assert plugin.predict(frame).empty
+
+
+def test_sparse_event_filter_post_selection_veto_preserves_top_score_competition() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96)
+    long_rows = frame["directional_slope_atr"] > 0.0
+    frame.loc[long_rows, "volatility_shock_zscore"] = 0.8
+    frame.loc[~long_rows, "volatility_shock_zscore"] = 3.0
+    common_config = {
+        "holding_period": "24h",
+        "feature_set_id": "features_price_trend_vol",
+        "base_model": "volatility_breakout",
+        "shock_threshold": 0.7,
+        "atr_percentile_threshold": 0.25,
+        "spacing_bars": 1,
+        "score_window_bars": 96,
+        "top_n_per_window": 4,
+        "cooldown_bars": 0,
+        "allowed_sides": "long",
+    }
+
+    pre_selection = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "side_filter_stage": "pre_selection"},
+    ).predict(frame)
+    post_selection = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "side_filter_stage": "post_selection"},
+    ).predict(frame)
+    invalid_stage = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={**common_config, "side_filter_stage": "after_the_fact"},
+    ).predict(frame)
+
+    assert len(pre_selection) == 4
+    assert set(pre_selection["side"]) == {"long"}
+    assert post_selection.empty
+    assert invalid_stage.empty
+
+
+def test_sparse_event_filter_aggtrade_confirmation_fails_closed_when_context_missing() -> None:
+    frame = _sparse_event_filter_signal_frame(row_count=96).drop(
+        columns=[
+            "agg_signed_quote_imbalance",
+            "agg_trade_count_zscore",
+            "quality_aggtrade_source_present",
+            "quality_aggtrade_context_missing",
+            "quality_aggtrade_latest_window_diagnostic",
+        ]
+    )
+    plugin = get_strategy_plugin(
+        "sparse_event_filter_v1",
+        config={
+            "holding_period": "24h",
+            "feature_set_id": "features_price_perp_aggflow_no_wt",
+            "base_model": "trend_following",
+            "slope_threshold": 0.08,
+            "max_choppiness": 58.0,
+            "spacing_bars": 1,
+            "flow_confirmation": "aligned",
+            "flow_abs_threshold": 0.05,
+        },
+    )
+
+    assert plugin.predict(frame).empty
+
+
+def test_range_reversion_does_not_fabricate_side_when_stretch_is_absent() -> None:
+    start_ms = 1_712_649_600_000
+    frame = pd.DataFrame(
+        {
+            "bar_time_ms": [start_ms + index * 900_000 for index in range(24)],
+            "feature_time_ms": [start_ms + index * 900_000 for index in range(24)],
+            "symbol": ["BTCUSDT"] * 24,
+            "close": [100.0] * 24,
+            "choppiness": [70.0] * 24,
+            "directional_slope_atr": [0.0] * 24,
+            "path_zscore_20": [0.0] * 24,
+        }
+    )
+    plugin = get_strategy_plugin(
+        "range_reversion_v1",
+        config={
+            "symbol": "BTCUSDT",
+            "holding_period": "24h",
+            "feature_set_id": "features_full_context_no_wt",
+            "spacing_bars": 1,
+            "stretch_threshold": 0.10,
+        },
+    )
+
+    assert plugin.predict(frame).empty
 
 
 def test_hmm_knn_plugin_is_feature_agnostic_and_wt3d_optional() -> None:
@@ -2226,3 +2695,35 @@ def _hmm_knn_local_analog_filter_v2_signal_frame(*, row_count: int) -> pd.DataFr
     frame.loc[short_rows, "p_up_barrier"] = 0.34
     frame.loc[short_rows, "p_down_barrier"] = 0.66
     return frame
+
+
+def _sparse_event_filter_signal_frame(*, row_count: int) -> pd.DataFrame:
+    rows = []
+    start_ms = 1_712_649_600_000
+    for index in range(row_count):
+        slope = 0.18 if index % 2 == 0 else -0.18
+        shock = 0.8 + (index % 24) / 20.0
+        flow = 0.18 if slope > 0.0 else -0.18
+        rows.append(
+            {
+                "bar_time_ms": start_ms + index * 900_000,
+                "feature_time_ms": start_ms + index * 900_000,
+                "symbol": "BTCUSDT",
+                "open": 100.0 + index,
+                "high": 101.0 + index,
+                "low": 99.0 + index,
+                "close": 100.5 + index,
+                "volume": 1_000.0 + index,
+                "directional_slope_atr": slope,
+                "choppiness": 45.0,
+                "funding_rate": 0.0,
+                "volatility_shock_zscore": shock,
+                "atr_percentile": 0.55,
+                "agg_signed_quote_imbalance": flow,
+                "agg_trade_count_zscore": 0.5,
+                "quality_aggtrade_source_present": 1.0,
+                "quality_aggtrade_context_missing": 0.0,
+                "quality_aggtrade_latest_window_diagnostic": 0.0,
+            }
+        )
+    return pd.DataFrame(rows)

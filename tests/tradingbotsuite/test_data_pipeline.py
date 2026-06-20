@@ -161,11 +161,12 @@ def _write_fast_hmm_knn_config(path: Path) -> Path:
 def test_archive_provider_descriptors_cover_expected_contract_sources() -> None:
     descriptors = {descriptor["source_name"]: descriptor for descriptor in archive_provider_descriptors()}
 
-    assert set(descriptors) == {"binance_vision", "bybit_archive", "crypto_lake", "hyperliquid_archive"}
+    assert set(descriptors) == {"binance_vision", "bybit_archive", "crypto_lake", "hyperliquid_archive", "okx_archive"}
     assert descriptors["binance_vision"]["implemented_for_ingestion"] is True
     assert descriptors["bybit_archive"]["implemented_for_ingestion"] is False
     assert descriptors["crypto_lake"]["implemented_for_ingestion"] is True
     assert descriptors["hyperliquid_archive"]["implemented_for_ingestion"] is False
+    assert descriptors["okx_archive"]["implemented_for_ingestion"] is False
 
 
 def test_prepare_hmm_knn_research_data_intake_writes_provider_journal_and_quality_manifests(tmp_path: Path) -> None:

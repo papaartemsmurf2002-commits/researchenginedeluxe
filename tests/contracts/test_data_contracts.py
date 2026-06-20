@@ -85,6 +85,7 @@ def test_data_sources_include_implemented_and_registered_only_providers() -> Non
         "bybit_archive",
         "crypto_lake",
         "hyperliquid_archive",
+        "okx_archive",
     }
     assert descriptors["binance_rest"].implemented_for_ingestion is True
     assert descriptors["binance_vision"].implemented_for_ingestion is True
@@ -93,6 +94,8 @@ def test_data_sources_include_implemented_and_registered_only_providers() -> Non
     assert descriptors["crypto_lake"].implemented_for_ingestion is True
     assert descriptors["hyperliquid_archive"].implemented_for_ingestion is False
     assert descriptors["hyperliquid_archive"].diagnostic_only_by_default is True
+    assert descriptors["okx_archive"].implemented_for_ingestion is False
+    assert descriptors["okx_archive"].diagnostic_only_by_default is True
 
 
 def test_provider_capability_registry_separates_durable_latest_window_and_free_sample_sources() -> None:
@@ -107,6 +110,9 @@ def test_provider_capability_registry_separates_durable_latest_window_and_free_s
     assert capabilities[("binance_usdm_rest", "funding_rate")].candidate_ready_default is False
     assert capabilities[("bybit_archive", "trade")].durability_class == "registered_only"
     assert capabilities[("bybit_archive", "trade")].candidate_ready_default is False
+    assert capabilities[("okx_archive", "kline")].durability_class == "registered_only"
+    assert capabilities[("okx_archive", "kline")].candidate_ready_default is False
+    assert capabilities[("okx_archive", "kline")].diagnostic_only_by_default is True
     assert capabilities[("crypto_lake", "liquidation")].durability_class == "local_vendor_export"
 
     free_sample = provider_capability_payload(
@@ -184,8 +190,12 @@ def test_zero_filled_protected_fields_are_rejected() -> None:
     assert "protected_fields_must_not_be_zero_filled:best_ask_price" in result.errors
 
 
-def test_registered_only_hyperliquid_manifest_is_valid_but_diagnostic() -> None:
-    for source_name, data_family in (("bybit_archive", "trade"), ("hyperliquid_archive", "order_event")):
+def test_registered_only_exchange_manifests_are_valid_but_diagnostic() -> None:
+    for source_name, data_family in (
+        ("bybit_archive", "trade"),
+        ("hyperliquid_archive", "order_event"),
+        ("okx_archive", "kline"),
+    ):
         manifest = registered_only_manifest(
             source_name=source_name,
             symbol="BTCUSDT",
