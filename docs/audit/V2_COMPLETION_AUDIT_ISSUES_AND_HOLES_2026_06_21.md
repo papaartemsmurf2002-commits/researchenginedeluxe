@@ -143,7 +143,7 @@ Concern:
 ### `ISSUE-R106-026` - Windows Socket Exhaustion Blocks Async Contract Setup
 
 Severity: P2
-Status: resolved by WPR106-421
+Status: open
 Source: `docs/KNOWN_ISSUES.md`
 
 Why it matters:
@@ -169,7 +169,7 @@ Concern:
 ### `ISSUE-R106-020` - Strategy And Exit Audit Follow-Up Risks Need Focused Tests
 
 Severity: P2
-Status: open
+Status: resolved by WPR106-421
 Source: `docs/KNOWN_ISSUES.md`
 
 Why it matters:
@@ -213,16 +213,17 @@ Concern:
   archive, backtest-data, ledger, validation, final-hard-test, and security
   contracts.
 
-### The V2 Work Is Still Local And Uncommitted
+### Baseline V2 Work Is Committed; Current Packets Still Need Commit Discipline
 
-The audited v2 docs, contracts, package, tests, and control-doc edits are
-present in the working tree as local changes. Many files are untracked.
+The audited v2 docs, contracts, package, tests, and control-doc edits were
+committed by the WPR106 baseline/stabilization packets. New manager-agent
+packets still need intentional staging, review, commit, and push discipline.
 
 Concern:
 
-- Local completion can be lost, omitted from a branch, or diverge from control
-  docs unless the changes are intentionally staged, reviewed, committed, and
-  pushed.
+- Packet-level completion can still be lost, omitted from a branch, or diverge
+  from control docs unless each new chunk is intentionally staged, reviewed,
+  committed, and pushed.
 
 ### Full-Suite Behavior Was Not Certified In One Process
 
@@ -265,6 +266,11 @@ The roadmap foundation implements contracts, schemas, local fixture-backed
 flows, and read-only visibility. It does not prove that a full Hyperliquid
 perpetual universe archive is populated and maintained for all instruments
 above the USD 5,000,000 notional threshold.
+
+WPR106-422 adds a fixture-backed autonomy dry-run for the operational loop, but
+the dry-run is intentionally `sandbox_diagnostic`. Its blocker report states
+that fixture output is not accepted research evidence and that real Hyperliquid
+archive operation remains required.
 
 Concern:
 
@@ -332,8 +338,9 @@ No source behavior was changed.
 
 2. Open a focused test-infrastructure packet if `ISSUE-R106-026` persists in a
    fresh session.
-3. Open focused packets for `ISSUE-R106-020` strategy/exit semantics.
+3. Keep `ISSUE-R106-020` closed unless independent review finds a new,
+   specific strategy/exit semantics gap.
 4. Run independent audit of high-risk v2 chunks before marking any audit chunk
    beyond `self_checked`.
-5. Stage and review the local v2 work intentionally so the control docs,
+5. Stage and review each new packet intentionally so the control docs,
    contracts, code, and tests cannot drift.

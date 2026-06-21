@@ -40,6 +40,7 @@ BOUNDED_CONTEXTS = (
     "validation",
     "ledger",
     "lead_book",
+    "autonomy",
     "workers",
     "audit",
     "security",

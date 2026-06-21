@@ -27,8 +27,13 @@ This is the first file to read after `AGENTS.md`.
   `ISSUE-R106-026` on this Windows/Python 3.11.0 host. WPR106-421 resolves
   `ISSUE-R106-020` by tightening latest-window strategy gates, GMM detector
   metadata, lower-frame no-hit proof, exit-policy alias artifacts, static
-  barrier canonical identity, and timestamped funding-path costs. Independent
-  audits and real data-operation proof remain follow-up work.
+  barrier canonical identity, and timestamped funding-path costs. WPR106-422
+  adds `redx autonomy dry-run`, a fixture-backed sandbox loop that writes an
+  autonomy manifest, blocker report, ledger row, and non-promotable Lead Book
+  row while proving the wiring remains research-only. It is not accepted
+  research evidence and it explicitly reports real Hyperliquid archive
+  operation as a blocker. Independent audits and real data-operation proof
+  remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import pyarrow.parquet as pq
+from pydantic import ValidationError
 
 from tradingbotsuite.v2.archive.layout import ArchiveLayout
 from tradingbotsuite.v2.archive.manifest_store import ArchiveManifestStore
@@ -27,6 +28,11 @@ from tradingbotsuite.v2.archive.rebuild import (
 )
 from tradingbotsuite.v2.archive.schemas import ArchiveLayer
 from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
+from tradingbotsuite.v2.autonomy import (
+    AutonomyDryRunConfig,
+    AutonomyLoopError,
+    run_autonomy_dry_run,
+)
 from tradingbotsuite.v2.backtest_data import (
     BacktestDataError,
     BacktestDataRequest,
@@ -356,6 +362,20 @@ def build_parser() -> argparse.ArgumentParser:
     lead_approve.add_argument("--lead-id", required=True)
     lead_approve.add_argument("--inspection-note-file", required=True)
     lead_approve.add_argument("--approving-agent-id", required=True)
+    autonomy = subparsers.add_parser(
+        "autonomy",
+        help="fixture-backed research-only autonomy dry-run commands",
+        description=f"Autonomy dry-run command group. {BOUNDARY_HELP}",
+    )
+    autonomy_subparsers = autonomy.add_subparsers(dest="autonomy_command")
+    autonomy_dry_run = autonomy_subparsers.add_parser(
+        "dry-run",
+        help="run the fixture-backed sandbox loop and write blocker evidence",
+    )
+    autonomy_dry_run.add_argument("--output-root", required=True)
+    autonomy_dry_run.add_argument("--run-id", default="autonomy-dry-run")
+    autonomy_dry_run.add_argument("--strategy-id", default="hl_funding_carry_v1")
+    autonomy_dry_run.add_argument("--created-by-id", default="codex-manager-agent")
     worker = subparsers.add_parser(
         "worker",
         help="durable local worker/job-store commands; no ASGI in-process execution",
@@ -446,6 +466,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _handle_ledger(args, parser)
     if args.command == "lead":
         return _handle_lead(args, parser)
+    if args.command == "autonomy":
+        return _handle_autonomy(args, parser)
     if args.command == "worker":
         return _handle_worker(args, parser)
     if args.command == "ui":
@@ -955,6 +977,36 @@ def _handle_lead(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
         print(f"lead_rejected={exc}")
         return 1
     parser.error(f"unsupported lead command: {args.lead_command}")
+    return 2
+
+
+def _handle_autonomy(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.autonomy_command is None:
+        parser.parse_args(["autonomy", "--help"])
+        return 0
+    if args.autonomy_command == "dry-run":
+        try:
+            result = run_autonomy_dry_run(
+                AutonomyDryRunConfig(
+                    output_root=args.output_root,
+                    run_id=args.run_id,
+                    strategy_id=args.strategy_id,
+                    created_by_id=args.created_by_id,
+                )
+            )
+        except (AutonomyLoopError, ValidationError) as exc:
+            print(f"autonomy_dry_run_rejected={exc}")
+            return 1
+        print(f"autonomy_manifest={result.manifest_path}")
+        print(f"blocker_report={result.blocker_report_path}")
+        print(f"ledger_path={result.ledger_path}")
+        print(f"lead_book_path={result.lead_book_path}")
+        print(f"backtest_run_dir={result.backtest_run_dir}")
+        print(f"status={result.status.value}")
+        print("evidence_mode=sandbox_diagnostic")
+        print("promotion_ready=false")
+        return 0
+    parser.error(f"unsupported autonomy command: {args.autonomy_command}")
     return 2
 
 
