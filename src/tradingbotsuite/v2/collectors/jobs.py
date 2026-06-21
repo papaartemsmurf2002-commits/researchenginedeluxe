@@ -711,6 +711,13 @@ def _run_microstructure_capture_job(
             worker_id=worker_id,
             datatype=datatype,
         )
+    if source_mode == "official_s3_l2_replay":
+        return _run_official_s3_l2_replay_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+            datatype=datatype,
+        )
     start_ts = _parse_datetime(_required_str(spec, "start_ts"))
     end_ts = _parse_datetime(_required_str(spec, "end_ts"))
     reconnect_attempts = int(spec.get("reconnect_attempts", 0))
@@ -770,6 +777,99 @@ def _run_microstructure_capture_job(
         archive_manifest_refs=archive_refs,
         gap_record_ids=gap_record_ids,
         reason=f"{datatype.value}_microstructure_capture_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_official_s3_l2_replay_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+    datatype: MicrostructureDataType,
+) -> WorkerRunResult:
+    if datatype not in {MicrostructureDataType.BBO, MicrostructureDataType.L2}:
+        raise ValueError("official_s3_l2_replay only supports datatype bbo or l2")
+    spec = job.input_spec
+    official_dataset = _canonical_hyperliquid_official_dataset(
+        str(spec.get("official_dataset", "market_data_l2_book"))
+    )
+    if official_dataset != "market_data_l2_book":
+        raise ValueError("official_s3_l2_replay requires official_dataset=market_data_l2_book")
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    records_path = _resolve_records_file(spec)
+    payloads = _read_records_file(
+        records_path,
+        records_format=str(spec.get("records_format", "auto")),
+    )
+    records = [
+        row
+        for payload in payloads
+        for row in _public_l2_book_microstructure_records(
+            payload,
+            datatype=datatype,
+            instrument_id=instrument_id,
+            source="official_s3/market_data_l2_book",
+        )
+    ]
+    if not records:
+        raise ValueError("official_s3_l2_replay payloads produced no rows")
+    source_endpoint = str(
+        spec.get("source_endpoint_or_subscription", "official_s3/market_data_l2_book")
+    )
+    capture = write_microstructure_raw_capture(
+        archive_root=archive_root,
+        records=records,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype=datatype,
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=str(spec.get("adapter_id", "hyperliquid_official_s3_l2_replay_v1")),
+        source_endpoint_or_subscription=source_endpoint,
+        instrument_id=instrument_id,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        storage_budget_bytes=int(spec.get("storage_budget_bytes", 1_000_000_000)),
+    )
+    archive_refs = (
+        f"raw_file_id={capture.raw_file.file_id}",
+        f"quality_report_id={capture.quality_report.quality_report_id}",
+        f"storage_report_id={capture.storage_report.storage_report_id}",
+    )
+    output_refs = (
+        "collector_mode=official_s3_l2_replay_capture",
+        "source_mode=official_s3_l2_replay",
+        f"datatype={datatype.value}",
+        f"row_count={capture.raw_file.row_count or 0}",
+        f"payload_count={len(payloads)}",
+        f"official_dataset={official_dataset}",
+        f"official_dataset_scope={_HYPERLIQUID_OFFICIAL_DATASET_SCOPES[official_dataset]}",
+        f"records_file_sha256={file_sha256(records_path)}",
+        f"records_file_row_count={len(payloads)}",
+        f"source_endpoint_or_subscription={source_endpoint}",
+        "official_s3_network_download=false",
+        "official_s3_l2_replay_caveat=trusted_decompressed_payloads_not_continuous_coverage",
+        f"storage_total_bytes={capture.storage_report.total_bytes}",
+        f"storage_within_budget={str(capture.storage_report.within_budget).lower()}",
+        "gap_evidence_recorded=false",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason=f"{datatype.value}_official_s3_l2_replay_capture_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -1177,8 +1277,19 @@ def _microstructure_source_mode(
         if has_records:
             raise ValueError("websocket_l2_bbo_capture source=public_api cannot include records")
         return "public_api"
+    if source == "official_s3_l2_replay":
+        if datatype not in {MicrostructureDataType.BBO, MicrostructureDataType.L2}:
+            raise ValueError("microstructure source=official_s3_l2_replay only supports datatype bbo or l2")
+        if "records" in spec and spec.get("records") is not None:
+            raise ValueError("websocket_l2_bbo_capture source=official_s3_l2_replay cannot include records")
+        if not spec.get("records_file"):
+            raise ValueError("websocket_l2_bbo_capture source=official_s3_l2_replay requires records_file")
+        return "official_s3_l2_replay"
     if source not in {"records", "inline"}:
-        raise ValueError("microstructure capture source must be public_api, public_websocket, or records")
+        raise ValueError(
+            "microstructure capture source must be official_s3_l2_replay, public_api, "
+            "public_websocket, or records"
+        )
     if not has_records:
         raise ValueError(f"microstructure capture source={source} requires records")
     return "records"
@@ -1488,10 +1599,10 @@ def _public_l2_book_microstructure_records(
     *,
     datatype: MicrostructureDataType,
     instrument_id: str,
+    source: str = "public_api/info/l2Book",
 ) -> list[dict[str, Any]]:
     snapshot_ts = _public_l2_book_time(payload)
     bid_levels, ask_levels = _public_l2_book_levels(payload)
-    source = "public_api/info/l2Book"
     if datatype == MicrostructureDataType.BBO:
         best_bid = bid_levels[0]
         best_ask = ask_levels[0]

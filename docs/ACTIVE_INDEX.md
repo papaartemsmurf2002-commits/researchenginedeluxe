@@ -90,11 +90,14 @@ This is the first file to read after `AGENTS.md`.
   with page-cap failure and per-page provenance. WPR106-440 makes
   Hyperliquid `official_s3_backfill` jobs classify trusted local official
   historical files, allow documented raw L2/asset-context/node-fill scopes, and
-  reject unsupported official candle/OHLCV claims before archive writes. Full
-  historical candle coverage beyond the public recent-window limit, normalized
-  historical trade coverage, normalized L2/asset-context replay, long-running
-  continuous trade capture, continuous BBO/L2 capture or historical L2 replay,
-  independent audits, and authoritative full-suite proof remain follow-up work.
+  reject unsupported official candle/OHLCV claims before archive writes.
+  WPR106-441 adds trusted local decompressed official `l2Book` JSON/JSONL
+  replay into BBO/L2 microstructure archive rows, with source hash, dataset
+  scope, and non-continuous-coverage caveats. Full historical candle coverage
+  beyond the public recent-window limit, normalized historical trade coverage,
+  asset-context replay, continuous BBO/L2 capture, accepted historical L2
+  coverage proof, independent audits, and authoritative full-suite proof remain
+  follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

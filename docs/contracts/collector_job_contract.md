@@ -103,6 +103,14 @@ request handling and they do not place orders.
   per venue response. They are snapshot intake evidence only and do not prove
   continuous WebSocket capture, historical L2 replay, queue-model realism, or
   accepted research evidence.
+- `websocket_l2_bbo_capture` jobs may use explicit
+  `source=official_s3_l2_replay` mode to normalize trusted local JSON/JSONL
+  files containing decompressed Hyperliquid official `l2Book` payloads into BBO
+  or L2 microstructure raw-capture rows. This mode requires `records_file` plus
+  `trusted_source_root`, supports only `official_dataset=market_data_l2_book`,
+  rejects inline `records`, performs no S3 download or LZ4 decompression, and
+  must return source hash, payload count, dataset scope, quality/storage refs,
+  and a non-continuous-coverage caveat.
 - `official_s3_backfill` jobs may preserve local official-file fixtures in the
   raw archive and must record native file SHA-256, byte count, source endpoint,
   row count when known, and storage budget status. Hyperliquid official-file

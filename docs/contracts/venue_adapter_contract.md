@@ -49,6 +49,12 @@ execution behavior to v2 research modules.
   `node_trades`. These records must expose source endpoint, dataset scope,
   file hash, and a raw-native/non-normalized caveat; they must not imply
   official historical candle/OHLCV coverage or normalized trade coverage.
+- Hyperliquid official `market_data_l2_book` replay may normalize trusted local
+  decompressed JSON/JSONL `l2Book` payload records into BBO/L2 microstructure
+  rows. It must retain source-file hash and dataset scope, use an explicit
+  official replay source label, and remain separate from network download,
+  LZ4 decompression, continuous capture, queue/fill realism, and accepted
+  coverage evidence.
 - The Hyperliquid public-WebSocket adapter may subscribe only to public market
   data streams explicitly scoped by packet. The current implemented stream is
   `trades` for bounded recent trade snapshots. It must preserve

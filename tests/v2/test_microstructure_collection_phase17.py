@@ -267,6 +267,165 @@ def test_public_l2_book_worker_rejects_public_api_with_local_records(tmp_path) -
     assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
+@pytest.mark.parametrize("datatype", ["bbo", "l2"])
+def test_official_s3_l2_replay_records_file_writes_microstructure(
+    tmp_path,
+    datatype: str,
+) -> None:
+    trusted_root = tmp_path / "trusted-official-l2"
+    trusted_root.mkdir()
+    payload_a = _l2_book_payload()
+    payload_b = dict(_l2_book_payload())
+    payload_b["time"] = int(START.timestamp() * 1000) + 1_000
+    records_file = trusted_root / "btc-l2book.jsonl"
+    records_file.write_text(
+        "\n".join(json.dumps(payload) for payload in (payload_a, payload_b)),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / f"archive-official-l2-{datatype}"
+    store = WorkerJobStore(tmp_path / f"jobs-official-l2-{datatype}.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id=f"JOB-official-l2-{datatype}",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_l2_replay",
+            "records_file": records_file.name,
+            "trusted_source_root": str(trusted_root),
+            "records_format": "jsonl",
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": datatype,
+            "date": "2026-01-01",
+            "run_id": f"run-official-l2-{datatype}",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "market_data_l2_book",
+            "source_endpoint_or_subscription": (
+                "s3://hyperliquid-archive/market_data/20260101/0/l2Book/BTC"
+            ),
+            "storage_budget_bytes": 1_000_000,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id=f"worker-official-l2-{datatype}",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    stored_rows = read_jsonl_zstd(
+        layout.resolve(manifest_rows[0].path),
+        uncompressed_size=manifest_rows[0].uncompressed_size_bytes or 0,
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=official_s3_l2_replay_capture" in loaded.output_refs
+    assert "source_mode=official_s3_l2_replay" in loaded.output_refs
+    assert f"datatype={datatype}" in loaded.output_refs
+    assert "row_count=2" in loaded.output_refs
+    assert "payload_count=2" in loaded.output_refs
+    assert "official_dataset=market_data_l2_book" in loaded.output_refs
+    assert "official_dataset_scope=official_hyperliquid_l2_book_snapshots" in loaded.output_refs
+    assert "records_file_row_count=2" in loaded.output_refs
+    assert "official_s3_network_download=false" in loaded.output_refs
+    assert (
+        "official_s3_l2_replay_caveat=trusted_decompressed_payloads_not_continuous_coverage"
+        in loaded.output_refs
+    )
+    assert any(ref.startswith("records_file_sha256=") for ref in loaded.output_refs)
+    assert [row.datatype for row in manifest_rows] == [datatype]
+    assert manifest_rows[0].row_count == 2
+    assert [row["event_type"] for row in stored_rows] == [datatype, datatype]
+    assert {row["source"] for row in stored_rows} == {"official_s3/market_data_l2_book"}
+    if datatype == "bbo":
+        assert stored_rows[0]["bid"] == 100.0
+        assert stored_rows[0]["ask"] == 100.5
+    else:
+        assert stored_rows[0]["bid_depth"] == pytest.approx(3.25)
+        assert stored_rows[0]["ask_depth"] == pytest.approx(4.75)
+        assert stored_rows[0]["book_levels"] == 4
+
+
+def test_official_s3_l2_replay_rejects_inline_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-official-l2-inline-reject"
+    store = WorkerJobStore(tmp_path / "jobs-official-l2-inline-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id="JOB-official-l2-inline-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_l2_replay",
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "l2",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "records": [_l2_book_payload()],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id="worker-official-l2-inline-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=official_s3_l2_replay cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
+def test_official_s3_l2_replay_rejects_non_l2_dataset(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-official-asset-ctxs"
+    trusted_root.mkdir()
+    records_file = trusted_root / "asset-ctxs.json"
+    records_file.write_text(json.dumps([_l2_book_payload()]), encoding="utf-8")
+    archive_root = tmp_path / "archive-official-l2-dataset-reject"
+    store = WorkerJobStore(tmp_path / "jobs-official-l2-dataset-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id="JOB-official-l2-dataset-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_l2_replay",
+            "records_file": records_file.name,
+            "trusted_source_root": str(trusted_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "l2",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "asset_ctxs",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id="worker-official-l2-dataset-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "requires official_dataset=market_data_l2_book" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
 def test_public_websocket_trade_worker_capture_writes_snapshot_microstructure(
     tmp_path,
     monkeypatch,
