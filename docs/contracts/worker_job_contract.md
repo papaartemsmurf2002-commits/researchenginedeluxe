@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`
 
 ## Purpose
 
@@ -124,6 +124,11 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   `succeeded` state and use their stored worker refs as audit evidence. It must
   report blockers for missing, incomplete, failed, cancelled, stale, retrying,
   or max-job-blocked planned jobs.
+- The executable autopilot fixture cycle may prove worker-chain operability by
+  generating fixture inputs, planning/enqueueing the declared bounded cycle,
+  running the real durable worker handlers, and writing the final generated
+  audit report. Its expected sandbox and missing-real-evidence blockers are
+  successful blocker-report output, not autonomous-ready evidence.
 
 ## Forbidden
 
@@ -158,3 +163,5 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   evidence.
 - Mutating claimed, running, terminal, missing, or non-planned worker jobs
   during bounded-cycle binding.
+- Treating a generated fixture worker chain as real venue archive operation,
+  accepted research evidence, scheduler proof, or promotion evidence.

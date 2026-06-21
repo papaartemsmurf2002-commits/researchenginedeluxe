@@ -11,6 +11,11 @@ from tradingbotsuite.v2.autonomy.cycle_planner import (
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
 )
+from tradingbotsuite.v2.autonomy.cycle_fixture import (
+    AutopilotFixtureCycleConfig,
+    AutopilotFixtureCycleSpecResult,
+    write_autopilot_fixture_cycle_spec,
+)
 from tradingbotsuite.v2.autonomy.cycle_runner import (
     AutopilotCycleRunnerError,
     load_autopilot_cycle_plan,
@@ -54,6 +59,8 @@ __all__ = [
     "AutopilotCyclePlanResult",
     "AutopilotCyclePlanStatus",
     "AutopilotCycleRunnerError",
+    "AutopilotFixtureCycleConfig",
+    "AutopilotFixtureCycleSpecResult",
     "AutopilotPlannedJob",
     "AutonomyBlockerReport",
     "AutonomyDataMode",
@@ -69,4 +76,5 @@ __all__ = [
     "plan_autopilot_research_cycle",
     "run_autopilot_cycle_plan",
     "run_autonomy_dry_run",
+    "write_autopilot_fixture_cycle_spec",
 ]

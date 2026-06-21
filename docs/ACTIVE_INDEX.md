@@ -150,10 +150,17 @@ This is the first file to read after `AGENTS.md`.
   validated as source-before-target, reject research-boundary targets, update
   only queued jobs with worker transition evidence, and turn missing or
   ambiguous refs into blockers. This does not infer readiness, mutate terminal
-  evidence, or add paper/live/order/sizing/runtime/promotion behavior. Full
-  historical candle coverage beyond the public recent-window limit,
-  long-running scheduler/daemon capture, accepted continuous historical
-  trade/L2 coverage proof, independent audits, real-archive loop acceptance,
+  evidence, or add paper/live/order/sizing/runtime/promotion behavior.
+  WPR106-454 adds `redx autopilot fixture-cycle-spec`, a generated
+  sandbox-diagnostic bounded-cycle fixture that can be planned, enqueued, and
+  run through the real durable worker chain from universe refresh through
+  archive, coverage, backtest, ledger, Lead Book, and generated audit report.
+  The fixture intentionally ends with sandbox/missing-real-evidence blockers
+  and remains operational wiring evidence only, not accepted research evidence
+  or autonomous-ready proof. Full historical candle coverage beyond the public
+  recent-window limit, long-running scheduler/daemon capture, accepted
+  continuous historical trade/L2 coverage proof, independent audits,
+  real-archive loop acceptance,
   and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition

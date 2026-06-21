@@ -378,6 +378,17 @@ missing, incomplete, ambiguous, unsafe, or non-queued binding conditions as
 blockers. This does not add scheduler/daemon behavior, direct venue calls,
 accepted evidence, autonomous-ready status, candidate-ready status,
 paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-454 v2 executable fixture cycle update: WPR106-454 adds
+`redx autopilot fixture-cycle-spec`, which writes a sandbox-diagnostic bounded
+cycle spec plus generated local Hyperliquid universe/candle fixture inputs
+under the requested output root. The generated spec declares bindings across
+universe refresh, archive write, coverage audit, vectorized backtest, ledger
+append/export, Lead Book upsert, and the planner-generated final audit job; the
+focused test plans, enqueues, and executes those jobs through the real durable
+worker handlers. The final audit is expected to complete with sandbox and
+missing-real-evidence blockers, so the fixture proves operability only and
+does not create accepted evidence, autonomous-ready status, candidate-ready
+status, paper/live/order/sizing/runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

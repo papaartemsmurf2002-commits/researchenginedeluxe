@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -31,12 +31,14 @@ from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
 from tradingbotsuite.v2.autonomy import (
     AutopilotCyclePlanError,
     AutopilotCycleRunnerError,
+    AutopilotFixtureCycleConfig,
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
     run_autopilot_cycle_plan,
     AutonomyDryRunConfig,
     AutonomyLoopError,
     run_autonomy_dry_run,
+    write_autopilot_fixture_cycle_spec,
 )
 from tradingbotsuite.v2.backtest_data import (
     BacktestDataError,
@@ -381,6 +383,18 @@ def build_parser() -> argparse.ArgumentParser:
         description=f"Autopilot planning command group. {BOUNDARY_HELP}",
     )
     autopilot_subparsers = autopilot.add_subparsers(dest="autopilot_command")
+    autopilot_fixture_cycle = autopilot_subparsers.add_parser(
+        "fixture-cycle-spec",
+        help="write a sandbox diagnostic bounded-cycle spec and fixture inputs without running jobs",
+    )
+    autopilot_fixture_cycle.add_argument("--output-root", required=True)
+    autopilot_fixture_cycle.add_argument("--run-id", default="autopilot-fixture-cycle")
+    autopilot_fixture_cycle.add_argument("--instrument-id", default="hyperliquid:perp:BTC")
+    autopilot_fixture_cycle.add_argument("--coin", default="BTC")
+    autopilot_fixture_cycle.add_argument("--start-ts", default="2024-01-01T00:00:00+00:00")
+    autopilot_fixture_cycle.add_argument("--end-ts", default="2024-08-01T00:00:00+00:00")
+    autopilot_fixture_cycle.add_argument("--asof-date", default="2024-01-01")
+    autopilot_fixture_cycle.add_argument("--created-by-id", default="codex-manager-agent")
     autopilot_cycle = autopilot_subparsers.add_parser(
         "research-cycle",
         help="plan or enqueue a bounded durable research cycle without running jobs",
@@ -1061,6 +1075,41 @@ def _handle_lead(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
 def _handle_autopilot(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.autopilot_command is None:
         parser.parse_args(["autopilot", "--help"])
+        return 0
+    if args.autopilot_command == "fixture-cycle-spec":
+        try:
+            result = write_autopilot_fixture_cycle_spec(
+                AutopilotFixtureCycleConfig(
+                    output_root=args.output_root,
+                    run_id=args.run_id,
+                    instrument_id=args.instrument_id,
+                    coin=args.coin,
+                    start_ts=_parse_datetime(args.start_ts),
+                    end_ts=_parse_datetime(args.end_ts),
+                    asof_date=date.fromisoformat(args.asof_date),
+                    created_by_id=args.created_by_id,
+                )
+            )
+        except (argparse.ArgumentTypeError, ValueError, ValidationError) as exc:
+            print(f"autopilot_fixture_cycle_spec_rejected={exc}")
+            return 1
+        print(f"cycle_spec={result.cycle_spec_path}")
+        print(f"fixture_root={result.fixture_root}")
+        print(f"universe_payload_file={result.universe_payload_file}")
+        print(f"candle_records_file={result.candle_records_file}")
+        print(f"archive_root={result.archive_root}")
+        print(f"backtest_output_root={result.backtest_output_root}")
+        print(f"ledger_path={result.ledger_path}")
+        print(f"lead_book_path={result.lead_book_path}")
+        print(f"suggested_plan_output_root={result.suggested_plan_output_root}")
+        print(f"suggested_job_store={result.suggested_job_store_path}")
+        print(f"declared_job_count={result.declared_job_count}")
+        print(f"declared_binding_count={result.declared_binding_count}")
+        for blocker in result.expected_audit_blockers:
+            print(f"expected_audit_blocker={blocker}")
+        print("evidence_mode=sandbox_diagnostic")
+        print("accepted_research_ready=false")
+        print("promotion_ready=false")
         return 0
     if args.autopilot_command == "research-cycle":
         try:

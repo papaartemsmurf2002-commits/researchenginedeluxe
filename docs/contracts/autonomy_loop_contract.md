@@ -1,7 +1,7 @@
 # Autonomy Loop Contract
 
 Status: v2 dry-run and bounded autopilot contract
-Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`
+Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`
 
 The autonomy loop is a research-only orchestration surface for proving that v2
 components can be wired together without weakening evidence rules. The dry-run
@@ -35,6 +35,8 @@ certification surface.
 - `AutopilotCycleJobExecution`
 - `AutopilotCycleExecutionManifest`
 - `AutopilotCycleExecutionResult`
+- `AutopilotFixtureCycleConfig`
+- `AutopilotFixtureCycleSpecResult`
 
 ## Required Loop
 
@@ -125,6 +127,32 @@ Execution manifests must preserve the full research-only invariant, set
   refs;
 - execution blockers plus any blockers found in the final audit report.
 
+## Executable Fixture Cycle Spec
+
+`redx autopilot fixture-cycle-spec` may write a canonical
+`autopilot_bounded_cycle_spec_v1` plus generated local fixture inputs under the
+requested output root. It is a bounded sandbox diagnostic fixture that exists
+to prove the planner, binding layer, durable worker runner, audit report,
+ledger, and Lead Book can execute as one chain.
+
+The generated fixture cycle declares:
+
+1. `universe_refresh` from a local Hyperliquid payload file.
+2. `recent_candle_bootstrap` from trusted local daily candle JSONL records.
+3. `coverage_audit` bound to the generated universe and archive snapshots.
+4. `vectorized_backtest` bound to the generated universe and archive
+   snapshots.
+5. `ledger_append_export` bound to the backtest run manifest.
+6. `lead_book_upsert` bound to the canonical ledger path.
+7. The planner-generated final `audit_check` job.
+
+Fixture cycle specs must stay `sandbox_diagnostic`, generated under the
+requested output root, and non-promotable. The command may print follow-on plan
+and job-store paths, but it must not enqueue jobs or run workers. A completed
+fixture cycle is operational wiring evidence only; the final audit report is
+expected to finish as `completed_with_blockers` until real Hyperliquid archive
+operation and independent completion audit evidence exist.
+
 ## Data Modes
 
 - `archive_fixture` is the default. It creates a local archive root under the
@@ -163,6 +191,10 @@ Execution manifests must preserve the full research-only invariant, set
 - Bounded cycle execution manifests are operational evidence only and are never
   accepted research evidence, autonomous-ready proof, candidate-pack evidence,
   or promotion evidence by themselves.
+- Fixture cycle specs and their completed worker-chain outputs are
+  sandbox-diagnostic operability evidence only and are never accepted research
+  evidence, autonomous-ready proof, candidate-pack evidence, or promotion
+  evidence by themselves.
 
 ## Forbidden
 
@@ -180,6 +212,9 @@ Execution manifests must preserve the full research-only invariant, set
 - Treating a bounded cycle execution manifest or passing generated audit report
   as autonomous-ready release proof without real archive coverage, independent
   audits, authoritative validation, and open-blocker closure.
+- Treating the executable fixture cycle as real Hyperliquid archive operation,
+  accepted strategy evidence, autonomous-ready certification, or a replacement
+  for independent completion audit.
 
 ## Acceptance
 
@@ -187,3 +222,9 @@ A dry-run is accepted as an operational wiring check only when it writes an
 `autonomy_manifest.json`, a `blocker_report.json`, a local append-only ledger,
 and a non-promotable Lead Book row under the requested output root. It is never
 accepted as strategy performance evidence.
+
+An executable fixture cycle is accepted as an operational worker-chain check
+only when it can be planned, enqueued, executed through durable workers, append
+one sandbox ledger row, upsert one non-promotable Lead Book row, and write the
+final generated audit report with explicit missing-real-evidence blockers. It
+is never accepted as autonomous-ready or strategy performance evidence.
