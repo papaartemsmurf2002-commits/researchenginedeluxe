@@ -22,6 +22,7 @@ from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
 from tradingbotsuite.v2.data_quality.coverage import coverage_report_for_bars
 from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore
 from tradingbotsuite.v2.data_quality.schemas import EvidenceMode
+from tradingbotsuite.v2.ledger import read_ledger
 from tradingbotsuite.v2.strategy_specs import example_strategy_payloads
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
@@ -542,6 +543,93 @@ def test_vectorized_backtest_worker_rejects_invalid_strategy_spec_before_run(tmp
     assert not (tmp_path / "runs" / "worker-vectorized-bad-spec" / "run_manifest.json").exists()
 
 
+def test_ledger_append_export_worker_records_backtest_run_and_generated_exports(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    run_manifest_path = _worker_backtest_run_manifest(
+        tmp_path,
+        store=store,
+        job_id="JOB-backtest-for-ledger",
+        run_id="worker-ledger-source-run",
+    )
+    ledger_path = tmp_path / "ledger" / "experiment_ledger.parquet"
+    csv_path = tmp_path / "ledger" / "experiment_ledger.csv"
+    xlsx_path = tmp_path / "ledger" / "experiment_ledger.xlsx"
+    queued = store.enqueue(
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        job_id="JOB-ledger-append-export",
+        input_spec={
+            "run_manifest_path": str(run_manifest_path),
+            "ledger_path": str(ledger_path),
+            "evidence_mode": "accepted_research",
+            "notes": "worker ledger append/export smoke",
+            "export_csv_path": str(csv_path),
+            "export_xlsx_path": str(xlsx_path),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        worker_id="worker-ledger",
+    )
+    loaded = store.load_job(queued.job_id)
+    rows = read_ledger(ledger_path)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "job_kind=ledger_append_export" in loaded.output_refs
+    assert "run_id=worker-ledger-source-run" in loaded.output_refs
+    assert "row_status=succeeded" in loaded.output_refs
+    assert any(ref.startswith("row_hash=") for ref in loaded.output_refs)
+    assert any(ref.startswith("ledger_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("export_csv_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("export_xlsx_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("archive_snapshot_id=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("universe_snapshot_id=") for ref in loaded.archive_manifest_refs)
+    assert len(rows) == 1
+    assert rows[0].run_id == "worker-ledger-source-run"
+    assert rows[0].evidence_mode == "accepted_research"
+    assert rows[0].research_only is True
+    assert rows[0].promotion_ready is False
+    assert csv_path.exists()
+    assert xlsx_path.exists()
+
+
+def test_ledger_append_export_worker_rejects_secret_like_ledger_path_before_write(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    run_manifest_path = _worker_backtest_run_manifest(
+        tmp_path,
+        store=store,
+        job_id="JOB-backtest-for-ledger-reject",
+        run_id="worker-ledger-reject-source-run",
+    )
+    queued = store.enqueue(
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        job_id="JOB-ledger-reject-secret-path",
+        max_attempts=1,
+        input_spec={
+            "run_manifest_path": str(run_manifest_path),
+            "ledger_path": str(tmp_path / ".env"),
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        worker_id="worker-ledger-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "reserved for secrets or local state" in (loaded.failure_reason or "")
+    assert not (tmp_path / ".env").exists()
+
+
 def test_recent_candle_bootstrap_worker_reads_trusted_jsonl_records_file(tmp_path) -> None:
     trusted_root = tmp_path / "trusted-source"
     trusted_root.mkdir()
@@ -890,7 +978,7 @@ def _backtest_archive_fixture(tmp_path: Path) -> _BacktestFixture:
     layout.initialize()
     store = ArchiveManifestStore(layout)
     start_ts = datetime(2024, 1, 1, tzinfo=UTC)
-    end_ts = datetime(2024, 7, 1, tzinfo=UTC)
+    end_ts = datetime(2024, 8, 1, tzinfo=UTC)
     rows = _backtest_daily_rows(start_ts, end_ts)
     write_parquet_rows(
         layout=layout,
@@ -990,6 +1078,47 @@ def _worker_backtest_strategy_spec() -> dict[str, object]:
     payload["risk"]["rebalance"] = "1d"
     payload["validation"]["min_backtest_months"] = 6
     return payload
+
+
+def _worker_backtest_run_manifest(
+    tmp_path: Path,
+    *,
+    store: WorkerJobStore,
+    job_id: str,
+    run_id: str,
+) -> Path:
+    fixture = _backtest_archive_fixture(tmp_path / job_id)
+    queued = store.enqueue(
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        job_id=job_id,
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "output_root": str(tmp_path / "runs"),
+            "run_id": run_id,
+            "experiment_id": "phase7-ledger-worker-backtest",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-08-01T00:00:00+00:00",
+            "asof_date": "2026-06-21",
+            "evidence_mode": "accepted_research",
+            "strategy_spec": _worker_backtest_strategy_spec(),
+        },
+    )
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        worker_id=f"worker-{job_id}",
+    )
+    loaded = store.load_job(queued.job_id)
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    return tmp_path / "runs" / run_id / "run_manifest.json"
 
 
 def _run_cli(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:

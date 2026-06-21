@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`
 
 ## Purpose
 
@@ -47,6 +47,11 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   worker job successfully when the worker produced the required failure
   artifacts. Data-service or strategy-spec preflight failures remain worker
   failures.
+- `ledger_append_export` jobs must run through the durable worker runner, append
+  one run manifest through the canonical ledger service, and optionally produce
+  generated CSV/XLSX exports from the canonical Parquet ledger.
+- Ledger worker jobs must reject secret-like or unsupported output path names
+  before appending or exporting.
 
 ## Forbidden
 
@@ -59,3 +64,5 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Running durable backtests against direct venue/API reads, unvalidated
   strategy specs, or arbitrary strategy-spec files without a trusted-file
   intake packet.
+- Treating CSV/XLSX ledger exports as canonical job state.
+- Writing ledger or export files to secret/local-state filenames.

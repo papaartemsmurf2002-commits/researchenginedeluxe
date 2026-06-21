@@ -9,6 +9,7 @@ from __future__ import annotations
 from tradingbotsuite.v2.backtest_engine.jobs import run_backtest_job
 from tradingbotsuite.v2.collectors.jobs import run_collector_job
 from tradingbotsuite.v2.data_quality.jobs import run_data_quality_job
+from tradingbotsuite.v2.ledger.jobs import run_ledger_job
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerRunResult
 
@@ -29,6 +30,10 @@ DATA_QUALITY_KINDS = {
 BACKTEST_KINDS = {
     WorkerJobKind.BACKTEST,
     WorkerJobKind.VECTORIZED_BACKTEST,
+}
+
+LEDGER_KINDS = {
+    WorkerJobKind.LEDGER_APPEND_EXPORT,
 }
 
 
@@ -54,6 +59,8 @@ def run_one_job(
             return run_data_quality_job(job=running, store=store, worker_id=worker_id)
         if job_kind in BACKTEST_KINDS:
             return run_backtest_job(job=running, store=store, worker_id=worker_id)
+        if job_kind in LEDGER_KINDS:
+            return run_ledger_job(job=running, store=store, worker_id=worker_id)
         raise ValueError(f"worker kind is not implemented in Phase 7: {job_kind.value}")
     except Exception as exc:
         failed = store.fail_job(

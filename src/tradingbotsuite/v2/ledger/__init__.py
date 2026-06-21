@@ -21,6 +21,7 @@ from tradingbotsuite.v2.ledger.service import (
     ledger_row_hash,
     read_ledger,
 )
+from tradingbotsuite.v2.ledger.jobs import run_ledger_job
 
 __all__ = [
     "LEDGER_SCHEMA_VERSION",
@@ -34,4 +35,5 @@ __all__ = [
     "ledger_row_from_manifest",
     "ledger_row_hash",
     "read_ledger",
+    "run_ledger_job",
 ]

@@ -52,8 +52,12 @@ This is the first file to read after `AGENTS.md`.
   declarative strategy specs and archive-backed `BacktestDataService` panels,
   returning run-manifest, data-manifest, coverage, archive-snapshot, and
   universe-snapshot refs without adding paper/live/order/sizing/runtime or
-  promotion behavior. Real venue/API collection, independent audits, and
-  authoritative full-suite proof remain follow-up work.
+  promotion behavior. WPR106-429 wires durable `ledger_append_export` jobs
+  through the worker runner so backtest run manifests append through the
+  canonical Parquet ledger and optionally produce generated CSV/XLSX views,
+  with secret-like output paths rejected before writes. Real venue/API
+  collection, Lead Book worker updates, independent audits, and authoritative
+  full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

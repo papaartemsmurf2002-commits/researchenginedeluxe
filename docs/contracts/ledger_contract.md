@@ -1,7 +1,7 @@
 # V2 Ledger Contract
 
 Status: v2 Phase 13 append-only ledger contract
-Audit ID: `V2-AUD-LEDGER-001`
+Audit IDs: `V2-AUD-LEDGER-001`, `V2-AUD-LEDGER-004`
 
 ## Purpose
 
@@ -26,6 +26,10 @@ views only.
 - Canonical rows are written to Parquet with deterministic row hashes and
   ledger indexes.
 - CSV and XLSX files are generated views from canonical Parquet only.
+- Durable `ledger_append_export` worker jobs delegate row creation to
+  `append_run_to_ledger`, preserve the duplicate-run and accepted-research
+  gates, and may only write generated CSV/XLSX views after the canonical
+  Parquet append succeeds.
 - Leaderboards exclude sandbox/current-universe rows when requested and rank
   costed net results using the `composite_v1` report.
 - Leaderboard rows include trial count, fold count, fold stability, and overfit
