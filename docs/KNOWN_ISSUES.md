@@ -23,7 +23,7 @@ Stage advancement stop rule:
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
 | P1 | 0 | 0 | 25 | 0 |
-| P2 | 2 | 0 | 6 | 0 |
+| P2 | 1 | 0 | 7 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
 
 ## ISSUE-R106-029: Direct v2 worker-store import can hit data-quality circular import
@@ -31,7 +31,7 @@ Stage advancement stop rule:
 Severity: P2
 Stage discovered: WPR106-433 - V2 public Hyperliquid candle collector
 Owner: Codex Manager Development Agent
-Status: open
+Status: resolved by WPR106-437
 Paths affected: `src/tradingbotsuite/v2/data_quality/__init__.py`, `src/tradingbotsuite/v2/workers/job_store.py`
 
 ### Problem
@@ -74,6 +74,29 @@ Use a scoped test-infrastructure or package-boundary packet to remove the eager
 or make it lazy, then add a fresh-interpreter regression for direct
 `WorkerJobStore` import. Preserve existing package exports for callers that use
 `from tradingbotsuite.v2.data_quality import run_data_quality_job`.
+
+### Resolution
+
+WPR106-437 replaces eager `tradingbotsuite.v2.data_quality` and
+`tradingbotsuite.v2.archive` package exports with lazy `__getattr__` shims for
+the exported symbols involved in the cycle. Fresh-interpreter regressions prove
+both direct `WorkerJobStore` import and
+`from tradingbotsuite.v2.data_quality import run_data_quality_job` succeed.
+
+Validation evidence:
+
+```powershell
+$env:PYTHONPATH='src'; python -m pytest tests/v2/test_import_boundaries_phase25.py -q
+# 2 passed
+$env:PYTHONPATH='src'; python -m pytest tests/v2 -q
+# 224 passed
+python -m compileall -q src/tradingbotsuite
+# passed
+$env:PYTHONPATH='src'; python -m pytest tests/contracts -q
+# 463 passed
+$env:PYTHONPATH='src'; python -c "from tradingbotsuite.v2.workers.job_store import WorkerJobStore; from tradingbotsuite.v2.data_quality import run_data_quality_job; print(WorkerJobStore.__name__, callable(run_data_quality_job))"
+# WorkerJobStore True
+```
 
 ## ISSUE-R106-026: Windows socket exhaustion blocks pytest-asyncio contract setup
 

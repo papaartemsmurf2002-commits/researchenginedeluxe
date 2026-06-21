@@ -6,13 +6,7 @@
 
 from __future__ import annotations
 
-from tradingbotsuite.v2.data_quality.coverage import (
-    coverage_report_for_bars,
-    expected_bar_count,
-    timeframe_to_timedelta,
-)
-from tradingbotsuite.v2.data_quality.jobs import run_data_quality_job
-from tradingbotsuite.v2.data_quality.schemas import CoverageReport, DataQualityCheck
+from importlib import import_module
 
 __all__ = [
     "CoverageReport",
@@ -22,3 +16,21 @@ __all__ = [
     "run_data_quality_job",
     "timeframe_to_timedelta",
 ]
+
+_EXPORT_MODULES = {
+    "CoverageReport": "tradingbotsuite.v2.data_quality.schemas",
+    "DataQualityCheck": "tradingbotsuite.v2.data_quality.schemas",
+    "coverage_report_for_bars": "tradingbotsuite.v2.data_quality.coverage",
+    "expected_bar_count": "tradingbotsuite.v2.data_quality.coverage",
+    "run_data_quality_job": "tradingbotsuite.v2.data_quality.jobs",
+    "timeframe_to_timedelta": "tradingbotsuite.v2.data_quality.coverage",
+}
+
+
+def __getattr__(name: str):
+    module_name = _EXPORT_MODULES.get(name)
+    if module_name is not None:
+        value = getattr(import_module(module_name), name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

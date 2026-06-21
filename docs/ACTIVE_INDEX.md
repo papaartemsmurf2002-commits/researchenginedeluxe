@@ -71,9 +71,7 @@ This is the first file to read after `AGENTS.md`.
   a temporary archive. WPR106-433 adds explicit public Hyperliquid
   `candleSnapshot` intake for durable `recent_candle_bootstrap` jobs, writing
   raw, bronze, silver, coverage, and optional snapshot refs with raw
-  request/response provenance while recording the documented recent-window
-  cap; `ISSUE-R106-029` records a P2 direct worker-store import-order risk
-  found during optional smoke scripting while the CLI worker path still works.
+  request/response provenance while recording the documented recent-window cap.
   WPR106-434 adds paginated public Hyperliquid `fundingHistory` intake for
   durable `funding_backfill` jobs, writing raw, bronze, and silver funding refs
   with per-page request/response provenance. WPR106-435 adds public Hyperliquid
@@ -82,7 +80,10 @@ This is the first file to read after `AGENTS.md`.
   one-shot snapshot intake only. WPR106-436 adds bounded public Hyperliquid
   WebSocket `trades` snapshot intake for durable trade microstructure capture
   jobs, writing raw-capture, quality, and storage refs with message/row/time
-  caps. Full historical candle backfill, historical trade coverage,
+  caps. WPR106-437 resolves `ISSUE-R106-029` by replacing eager data-quality
+  and archive package exports with lazy export shims and proving direct
+  `WorkerJobStore` imports work in a fresh interpreter. Full historical candle
+  backfill, historical trade coverage,
   long-running continuous trade capture, continuous BBO/L2 capture or
   historical L2 replay, independent audits, and authoritative full-suite proof
   remain follow-up work.
