@@ -143,7 +143,7 @@ Concern:
 ### `ISSUE-R106-026` - Windows Socket Exhaustion Blocks Async Contract Setup
 
 Severity: P2
-Status: open
+Status: resolved by WPR106-421
 Source: `docs/KNOWN_ISSUES.md`
 
 Why it matters:
@@ -182,19 +182,22 @@ Why it matters:
   fit-aware train-context wiring, cost-stress semantics, static
   volatility-scaled barrier naming, and path-dynamic funding-cost accounting.
 
-What needs to happen:
+Resolution:
 
-- Open one or more focused packets that choose the intended contract for each
-  item and add regression tests.
-- Keep all affected outputs research-only and blocked from candidate, paper,
-  live, sizing, runtime-mode, and promotion interpretation until the contracts
-  are explicit.
+- WPR106-421 adds focused contracts and regressions for latest-window strategy
+  gating, GMM detector metadata, fixed-holding alias identity,
+  lower-timeframe no-hit exit pricing/proof, static barrier canonical naming,
+  and path-dynamic funding-cost accounting.
+- Existing v2 validation and cost-model tests cover train-only validation rows,
+  gross-only rejection, and base/stress cost rows.
+- All affected outputs remain research-only and blocked from candidate, paper,
+  live, sizing, runtime-mode, and promotion interpretation.
 
 Concern:
 
-- These are not just cosmetic issues. They are places where strategy evidence
-  can become misleading if later agents overinterpret results before the
-  semantics are tightened.
+- These were not just cosmetic issues. Before WPR106-421, they were places
+  where strategy evidence could become misleading if later agents
+  overinterpreted results before the semantics were tightened.
 
 ## Additional Audit Holes And Concerns
 

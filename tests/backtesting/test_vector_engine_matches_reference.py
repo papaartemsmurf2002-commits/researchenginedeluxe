@@ -153,6 +153,11 @@ def test_vector_fixed_holding_matches_reference_engine_artifacts(tmp_path: Path)
     )
 
     _assert_reference_vector_artifacts_match(reference, vector)
+    trades = pd.read_parquet(reference.trades_path)
+    assert not trades.empty
+    assert trades["exit_policy"].eq("fixed_holding_window").all()
+    assert trades["requested_exit_policy"].eq("fixed_holding_window").all()
+    assert trades["canonical_exit_policy"].eq("fixed_holding_window").all()
     vector_manifest = json.loads(vector.manifest_path.read_text(encoding="utf-8"))
     vector_config = json.loads(vector.config_resolved_path.read_text(encoding="utf-8"))
 
@@ -191,6 +196,11 @@ def test_vector_fixed_holding_matches_reference_for_latency_entry_sources(
     vector = VectorBacktestEngine().run(_spec(tmp_path, run_id=f"vector-{entry_price_source}", **common))
 
     _assert_reference_vector_artifacts_match(reference, vector)
+    trades = pd.read_parquet(reference.trades_path)
+    assert not trades.empty
+    assert trades["exit_policy"].eq("fixed_holding_window").all()
+    assert trades["requested_exit_policy"].eq("fixed_holding_window").all()
+    assert trades["canonical_exit_policy"].eq("fixed_holding_window").all()
     manifest = json.loads(reference.manifest_path.read_text(encoding="utf-8"))
     trades = pd.read_parquet(reference.trades_path)
     signals = pd.read_parquet(reference.signals_path).set_index("signal_id")
@@ -225,6 +235,11 @@ def test_vector_fixed_holding_alias_matches_reference_engine(tmp_path: Path) -> 
     )
 
     _assert_reference_vector_artifacts_match(reference, vector)
+    trades = pd.read_parquet(reference.trades_path)
+    assert not trades.empty
+    assert trades["exit_policy"].eq("fixed_holding_window").all()
+    assert trades["requested_exit_policy"].eq("4h_time_exit").all()
+    assert trades["canonical_exit_policy"].eq("fixed_holding_window").all()
 
 
 def test_vector_no_trade_artifacts_match_reference_for_all_holding_windows(tmp_path: Path) -> None:

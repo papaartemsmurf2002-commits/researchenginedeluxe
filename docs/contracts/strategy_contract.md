@@ -49,5 +49,8 @@ Allowed sides are `long`, `short`, and `flat`.
 - Strategy plugins must not place orders.
 - Strategy plugins must not import live execution adapters.
 - Strategy claims require baseline comparison and out-of-sample evidence.
+- Perp-context strategy rows with `quality_latest_window_context_only > 0`
+  must fail closed before signal emission. Latest-window context can remain
+  diagnostic source coverage, but it is not accepted strategy evidence.
 - KNN/HMM must be a strategy plugin, not hardcoded into the backtest engine.
 - WT3D inclusion must be controlled by `feature_set_id` / config, not by engine code.

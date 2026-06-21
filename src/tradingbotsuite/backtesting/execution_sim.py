@@ -149,7 +149,11 @@ class ExecutionSimulator:
                 raise ValueError("same-bar entry/exit is forbidden without lower-timeframe sequence proof")
             exit_price = float(exit_result.policy_result.exit_price)
             holding_ms = int(exit_result.policy_result.exit_time_ms) - int(entry_time)
-            funding_rate = funding_rate_from_row(entry_row)
+            funding_rate = _path_funding_rate(
+                market,
+                entry_time_ms=entry_time,
+                exit_time_ms=int(exit_result.policy_result.exit_time_ms),
+            )
             spread_bps = _optional_float(entry_row.get("spread_bps"))
             cost = costs.estimate(
                 entry_price=entry_price,
@@ -179,6 +183,8 @@ class ExecutionSimulator:
                     "exit_target_holding_ms": int(exit_result.target_holding_ms),
                     "exit_used_fallback": bool(exit_result.used_end_of_data_fallback),
                     "exit_policy": exit_result.policy_result.exit_policy_id,
+                    "requested_exit_policy": str(assumptions.exit_policy_id),
+                    "canonical_exit_policy": _canonical_exit_policy_id(assumptions.exit_policy_id),
                     "barrier_hit_type": exit_result.policy_result.barrier_hit_type,
                     "max_adverse_excursion": exit_result.policy_result.max_adverse_excursion,
                     "max_favorable_excursion": exit_result.policy_result.max_favorable_excursion,
@@ -484,6 +490,8 @@ class ExecutionSimulator:
                 "exit_target_holding_ms",
                 "exit_used_fallback",
                 "exit_policy",
+                "requested_exit_policy",
+                "canonical_exit_policy",
                 "barrier_hit_type",
                 "max_adverse_excursion",
                 "max_favorable_excursion",
@@ -537,6 +545,46 @@ def _optional_float(value: object) -> float | None:
     return float(value)
 
 
+def _path_funding_rate(
+    market: pd.DataFrame,
+    *,
+    entry_time_ms: int,
+    exit_time_ms: int,
+) -> float | None:
+    holding_ms = int(exit_time_ms) - int(entry_time_ms)
+    if holding_ms <= 0 or "bar_time_ms" not in market.columns:
+        return None
+    frame = market.copy()
+    frame["bar_time_ms"] = pd.to_numeric(frame["bar_time_ms"], errors="coerce")
+    frame = frame.dropna(subset=["bar_time_ms"]).copy()
+    frame["bar_time_ms"] = frame["bar_time_ms"].astype("int64")
+    frame = frame.loc[
+        (frame["bar_time_ms"] >= int(entry_time_ms))
+        & (frame["bar_time_ms"] <= int(exit_time_ms))
+    ].sort_values("bar_time_ms", kind="mergesort")
+    if frame.empty:
+        return None
+    records = frame.to_dict("records")
+    weighted_rate = 0.0
+    covered_ms = 0
+    for index, row in enumerate(records):
+        rate = funding_rate_from_row(row)
+        if rate is None:
+            continue
+        segment_start = max(int(row["bar_time_ms"]), int(entry_time_ms))
+        segment_end = int(exit_time_ms)
+        if index + 1 < len(records):
+            segment_end = min(int(records[index + 1]["bar_time_ms"]), int(exit_time_ms))
+        if segment_end <= segment_start:
+            continue
+        duration_ms = segment_end - segment_start
+        weighted_rate += float(rate) * float(duration_ms)
+        covered_ms += duration_ms
+    if covered_ms <= 0:
+        return None
+    return weighted_rate / float(covered_ms)
+
+
 def _is_triple_barrier(exit_policy_id: str) -> bool:
     return str(exit_policy_id).lower() in {"triple_barrier", "triple_barrier_atr"}
 
@@ -566,8 +614,17 @@ def _is_fixed_holding_policy(exit_policy_id: str) -> bool:
     return value == "fixed_holding_window" or value.endswith("_time_exit")
 
 
+def _canonical_exit_policy_id(exit_policy_id: str) -> str:
+    value = str(exit_policy_id).lower()
+    if _is_fixed_holding_policy(value):
+        return "fixed_holding_window"
+    if value == "volatility_scaled_barrier":
+        return "static_primary_close_barrier"
+    return value
+
+
 def _sequence_proof(assumptions: ExecutionAssumptions, policy_result: ExitPolicyResult) -> str:
-    if assumptions.exit_price_source == "lower_timeframe_ohlc_sequence" and policy_result.barrier_hit_type != "time":
+    if assumptions.exit_price_source == "lower_timeframe_ohlc_sequence":
         return "lower_timeframe_ohlc"
     return "primary_bar_time"
 

@@ -1559,7 +1559,7 @@ def test_perp_basis_convergence_v2_fails_closed_on_invalid_context_values(column
     assert plugin.predict(frame).empty
 
 
-def test_perp_basis_convergence_v2_allows_latest_window_context_provenance() -> None:
+def test_perp_basis_convergence_v2_blocks_latest_window_context_provenance() -> None:
     plugin = get_strategy_plugin(
         "perp_basis_convergence_v2",
         config={
@@ -1575,7 +1575,7 @@ def test_perp_basis_convergence_v2_allows_latest_window_context_provenance() -> 
     frame = _perp_context_v2_signal_frame(row_count=24)
     frame["quality_latest_window_context_only"] = 1.0
 
-    assert not plugin.predict(frame).empty
+    assert plugin.predict(frame).empty
 
 
 def test_funding_crowding_fade_v2_outputs_research_only_signals() -> None:
@@ -1651,7 +1651,7 @@ def test_funding_crowding_fade_v2_requires_oi_confirmation() -> None:
     assert plugin.predict(frame).empty
 
 
-def test_funding_crowding_fade_v2_allows_latest_window_context_provenance() -> None:
+def test_funding_crowding_fade_v2_blocks_latest_window_context_provenance() -> None:
     plugin = get_strategy_plugin(
         "funding_crowding_fade_v2",
         config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
@@ -1659,7 +1659,7 @@ def test_funding_crowding_fade_v2_allows_latest_window_context_provenance() -> N
     frame = _funding_crowding_v2_signal_frame(row_count=24)
     frame["quality_latest_window_context_only"] = 1.0
 
-    assert not plugin.predict(frame).empty
+    assert plugin.predict(frame).empty
 
 
 def test_oi_flow_breakout_v2_outputs_research_only_signals() -> None:
@@ -1793,7 +1793,7 @@ def test_oi_flow_breakout_v2_fails_closed_on_invalid_spacing_bars() -> None:
     assert plugin.predict(frame).empty
 
 
-def test_oi_flow_breakout_v2_allows_latest_window_context_provenance() -> None:
+def test_oi_flow_breakout_v2_blocks_latest_window_context_provenance() -> None:
     plugin = get_strategy_plugin(
         "oi_flow_breakout_v2",
         config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
@@ -1801,7 +1801,7 @@ def test_oi_flow_breakout_v2_allows_latest_window_context_provenance() -> None:
     frame = _oi_flow_breakout_v2_signal_frame(row_count=24)
     frame["quality_latest_window_context_only"] = 1.0
 
-    assert not plugin.predict(frame).empty
+    assert plugin.predict(frame).empty
 
 
 def test_funding_window_timing_v1_outputs_research_only_signals() -> None:
@@ -1940,7 +1940,7 @@ def test_funding_window_timing_v1_fails_closed_on_invalid_numeric_parameters() -
     assert plugin.predict(frame).empty
 
 
-def test_funding_window_timing_v1_allows_latest_window_context_provenance() -> None:
+def test_funding_window_timing_v1_blocks_latest_window_context_provenance() -> None:
     plugin = get_strategy_plugin(
         "funding_window_timing_v1",
         config={"holding_period": "24h", "feature_set_id": "features_perp_context_v2", "spacing_bars": 1},
@@ -1948,7 +1948,7 @@ def test_funding_window_timing_v1_allows_latest_window_context_provenance() -> N
     frame = _funding_window_timing_v1_signal_frame(row_count=24)
     frame["quality_latest_window_context_only"] = 1.0
 
-    assert not plugin.predict(frame).empty
+    assert plugin.predict(frame).empty
 
 
 def test_hmm_routed_alpha_sleeves_v2_outputs_research_only_signals() -> None:
@@ -1998,6 +1998,7 @@ def test_hmm_routed_alpha_sleeves_v2_fails_closed_when_required_columns_are_miss
         ("quality_has_oi_gap", 1.0),
         ("quality_has_premium_gap", 1.0),
         ("quality_provider_backed_all_required", 0.0),
+        ("quality_latest_window_context_only", 1.0),
         ("quality_latest_window_context_only", float("nan")),
         ("max_regime_probability", 0.40),
         ("posterior_entropy", 0.99),

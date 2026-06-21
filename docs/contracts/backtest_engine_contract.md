@@ -50,6 +50,21 @@ research-only run artifacts.
   transaction-cost assumptions while leaving funding PnL explicit.
 - Cost manifests record cost model ID/hash, fee/funding/slippage/spread/impact
   assumptions, capacity cap, stress matrix, and cost sensitivity.
+- Trade artifacts record the requested exit-policy ID and a canonical
+  exit-policy ID. Fixed-holding aliases canonicalize to
+  `fixed_holding_window`; the legacy `volatility_scaled_barrier` request
+  canonicalizes to `static_primary_close_barrier` until a true as-of
+  volatility-scaled barrier encodes estimator/window/scale/timeframe/clipping
+  metadata.
+- Lower-timeframe triple-barrier exits use lower-frame OHLC rows for both
+  barrier hits and no-hit time exits. No-hit exits use the last completed
+  lower-frame close at or before the scheduled horizon and fail closed when
+  lower-frame horizon coverage is stale or missing.
+- GMM transition exits require detector metadata for train window, inference
+  window, feature version, parameter hash, and artifact hash before they can
+  be accepted as regime-context evidence.
+- Funding costs are applied from the timestamped in-trade funding path when
+  funding rows are available, not from a single entry-row estimate.
 - Volume participation cap breaches fail closed with required failure
   artifacts.
 - Gross-only reported/accepted metrics are rejected.

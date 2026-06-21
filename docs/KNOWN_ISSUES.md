@@ -23,7 +23,7 @@ Stage advancement stop rule:
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
 | P1 | 0 | 0 | 25 | 0 |
-| P2 | 2 | 0 | 5 | 0 |
+| P2 | 1 | 0 | 6 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
 
 ## ISSUE-R106-026: Windows socket exhaustion blocks pytest-asyncio contract setup
@@ -98,11 +98,20 @@ the asyncio loop self-pipe with `socket.socketpair()`. A direct post-run
 leftover Python test processes, so the issue remains classified as a local
 Windows/Python socket-stack validation blocker.
 
+WPR106-421 reproduced the same blocker on the default Python runtime while
+running an extra full `tests\contracts` sweep after packet-required validation
+had passed. The run reached 462 passed tests and then failed during
+`test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest`
+setup because Python failed to create the pytest-asyncio event-loop self-pipe
+with `WinError 10055`; compile, diff hygiene, focused contracts/backtesting,
+v2, and historical lanes all passed separately.
+
 ### Required resolution
 
 Before using this Windows session as final full-suite evidence again, clear or
 restart the local socket/network stack enough for pytest-asyncio event-loop
-setup to succeed, then rerun `PYTHONPATH=src py -3.11 -m pytest tests -q`. If
+setup to succeed, then rerun both `PYTHONPATH=src py -3.11 -m pytest tests -q`
+and default-Python `PYTHONPATH=src python -m pytest tests\contracts -q`. If
 the condition persists across fresh sessions, use Linux CI as the authoritative
 full-suite lane or add a scoped test-infrastructure packet that avoids
 socketpair-dependent async setup for local contract tests without weakening the
@@ -537,8 +546,8 @@ continued research iteration.
 Severity: P2
 Stage discovered: Stage R106 - strategy math audit and fast research nodes
 Owner: Codex Research Agent
-Status: open
-Paths affected: `src/tradingbotsuite/strategies/*`, `src/tradingbotsuite/backtesting/exits.py`, `src/tradingbotsuite/backtesting/execution_sim.py`, `src/tradingbotsuite/research_cycle/runner.py`, `tests/contracts/test_strategy_contracts.py`, `tests/backtesting/*`, `tests/historical/*`
+Status: resolved
+Paths affected: `src/tradingbotsuite/strategies/*`, `src/tradingbotsuite/backtesting/exits.py`, `src/tradingbotsuite/backtesting/execution_sim.py`, `src/tradingbotsuite/backtesting/vector_engine.py`, `src/tradingbotsuite/backtesting/cuda_engine.py`, `src/tradingbotsuite/backtesting/cuda_batched_engine.py`, `tests/contracts/test_strategy_contracts.py`, `tests/backtesting/*`, `tests/unit/test_execution_simulator.py`, `tests/historical/*`
 
 ### Problem
 
@@ -574,14 +583,19 @@ static barrier and path-funding accounting caveats above as P2 follow-up.
 
 ### Required resolution
 
-Open one or more focused follow-up packets to choose and test the intended
-contract for latest-window context gating, GMM detector metadata requirements,
-fixed-holding alias identity, lower-timeframe no-hit exit pricing/proof,
-fit-aware strategy train-context wiring, cost-stress pass/fail semantics,
-static versus volatility-scaled primary-bar barrier naming, and path-dynamic
-funding-cost accounting. These risks must remain research-only and cannot
-support candidate, paper, live, sizing, runtime-mode, or promotion claims until
-resolved.
+Resolved by WPR106-421. Perp-context strategies and basis/premium exits now
+fail closed on `quality_latest_window_context_only`; GMM transition exits
+require detector train/inference window, feature-version, params-hash, and
+artifact-hash metadata; fixed-holding aliases preserve requested identity while
+canonicalizing to `fixed_holding_window`; lower-timeframe no-hit exits use
+lower-frame time-exit proof and reject stale horizon coverage; timestamped
+funding-path rates feed realized funding costs in reference/vector/CUDA
+fixed-holding engines; and the legacy `volatility_scaled_barrier` request now
+records canonical artifact identity `static_primary_close_barrier`. Existing
+v2 validation and cost-model tests cover train-only validation rows,
+gross-only rejection, and base/stress cost rows. The resolution remains
+research-only and does not create candidate, paper, live, sizing, runtime-mode,
+or promotion claims.
 
 ## ISSUE-R106-019: Forced no-regime exact discovery produces failed trial ledgers
 

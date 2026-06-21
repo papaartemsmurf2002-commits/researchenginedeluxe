@@ -35,7 +35,15 @@ def _path() -> pd.DataFrame:
             "quality_has_oi_gap": [0.0] * 6,
             "quality_has_premium_gap": [0.0] * 6,
             "quality_provider_backed_all_required": [1.0] * 6,
+            "quality_latest_window_context_only": [0.0] * 6,
             "regime_detector_type": ["gmm"] * 6,
+            "regime_detector_train_start_ms": [START_MS - 30 * 24 * 60 * 60 * 1000] * 6,
+            "regime_detector_train_end_ms": [START_MS - 1] * 6,
+            "regime_detector_inference_start_ms": [START_MS] * 6,
+            "regime_detector_inference_end_ms": [START_MS + 5 * 900_000] * 6,
+            "regime_detector_feature_version": ["features_perp_context_v2"] * 6,
+            "regime_detector_params_hash": ["sha256:gmm-params"] * 6,
+            "regime_detector_artifact_sha256": ["sha256:gmm-artifact"] * 6,
             "max_regime_probability": [0.82, 0.81, 0.78, 0.76, 0.74, 0.72],
             "posterior_entropy": [0.20, 0.22, 0.31, 0.33, 0.35, 0.37],
             "recent_regime_flip": [False, False, True, False, False, False],
@@ -350,11 +358,43 @@ def test_basis_and_premium_normalization_skip_rows_with_context_quality_gap() ->
     assert premium.exit_reason == "holding_window"
 
 
+def test_basis_and_premium_normalization_skip_latest_window_context() -> None:
+    frame = _path().copy()
+    frame.loc[1:, "quality_latest_window_context_only"] = 1.0
+
+    basis = _run("basis_normalization_exit_v1", path=frame)
+    premium = _run("premium_normalization_exit_v1", path=frame)
+
+    assert basis.barrier_hit_type == "time"
+    assert basis.exit_reason == "holding_window"
+    assert premium.barrier_hit_type == "time"
+    assert premium.exit_reason == "holding_window"
+
+
 def test_gmm_transition_exit_rejects_non_gmm_detector_context() -> None:
     frame = _path().copy()
     frame["regime_detector_type"] = "none"
 
     with pytest.raises(ValueError, match="gmm_transition_exit_v1 requires gmm regime_detector_type"):
+        _run("gmm_transition_exit_v1", path=frame)
+
+
+@pytest.mark.parametrize(
+    "missing_column",
+    [
+        "regime_detector_train_start_ms",
+        "regime_detector_train_end_ms",
+        "regime_detector_inference_start_ms",
+        "regime_detector_inference_end_ms",
+        "regime_detector_feature_version",
+        "regime_detector_params_hash",
+        "regime_detector_artifact_sha256",
+    ],
+)
+def test_gmm_transition_exit_rejects_missing_detector_metadata(missing_column: str) -> None:
+    frame = _path().drop(columns=[missing_column])
+
+    with pytest.raises(ValueError, match="GMM detector metadata"):
         _run("gmm_transition_exit_v1", path=frame)
 
 

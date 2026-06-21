@@ -35,8 +35,8 @@ hygiene, focused v2 P1 regressions, full v2 tests, default-Python contracts,
 and cached diff hygiene. The packet does not claim autonomous-ready,
 candidate-ready, paper/live, order/sizing/runtime, or promotion-ready status;
 Python 3.11 pytest setup, full-suite authoritative validation, independent
-audits, operational archive proof, `ISSUE-R106-026`, and `ISSUE-R106-020`
-remain follow-up work.
+audits, operational archive proof, and `ISSUE-R106-026` remain follow-up work;
+`ISSUE-R106-020` is resolved by WPR106-421.
 Current WPR106-420 v2 validation-environment update: WPR106-420 installs local
 Python 3.11 runtime/dev dependencies, adds a Windows pytest selector event-loop
 policy, and fixes deterministic v2 worker transition ordering for same-tick
@@ -46,6 +46,18 @@ locally. Monolithic full-suite certification is still blocked by
 `socket.socketpair()` while pytest-asyncio creates an event-loop self-pipe
 before the async contract test body runs. No autonomous-ready, paper/live,
 order/sizing/runtime, candidate-pack, or promotion-ready claim exists.
+Current WPR106-421 strategy/exit semantics update: WPR106-421 closes
+`ISSUE-R106-020` with focused research-only contracts and tests. Perp-context
+strategy plugins and basis/premium exits fail closed on latest-window context;
+GMM transition exits require detector train/inference window, feature-version,
+params-hash, and artifact-hash metadata; lower-timeframe triple-barrier no-hit
+exits use lower-frame time-exit proof and reject stale horizon coverage;
+reference/vector/CUDA fixed-holding trade artifacts preserve requested and
+canonical exit-policy IDs; `volatility_scaled_barrier` records canonical
+`static_primary_close_barrier` identity; and realized funding costs use
+timestamped in-trade funding paths when available. This packet does not create
+autonomous-ready, candidate-ready, paper/live, order/sizing/runtime, or
+promotion-ready claims.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`
@@ -7001,6 +7013,7 @@ WPR105-107 implementation note:
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR106-421-strategy-exit-semantics-closeout | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-421-strategy-exit-semantics-closeout.md`, `docs/KNOWN_ISSUES.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/strategy_contract.md`, `docs/contracts/backtest_engine_contract.md`, `src/tradingbotsuite/strategies/**`, `src/tradingbotsuite/backtesting/**`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_backtest_contracts.py`, `tests/backtesting/**`, `tests/unit/test_execution_simulator.py` | Resolves `ISSUE-R106-020`: latest-window context is blocked for perp-context strategy evidence, GMM exits require detector metadata, lower-frame no-hit exits use lower-frame horizon proof, fixed-holding aliases preserve requested/canonical identity, static close-barrier canonical identity is explicit, and timestamped funding-path costs are used by reference/vector/CUDA fixed-holding lanes. Focused strategy, backtesting, unit execution, combined contracts/backtesting, and v2 validation passed; no autonomous-ready, candidate-ready, paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-420-python311-windows-pytest-certification | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-420-python311-windows-pytest-certification.md`, `docs/KNOWN_ISSUES.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `tests/conftest.py`, `src/tradingbotsuite/v2/workers/job_store.py` | Installs local Python 3.11 dev dependencies, adds Windows test selector event-loop policy, and fixes v2 worker transition audit ordering. Python 3.11 exact async contract reproduction, exact worker transition reproduction, contracts, and v2 tests passed. Monolithic `py -3.11 -m pytest tests -q` remains blocked by local Windows/Python 3.11.0 `socket.socketpair()` exhaustion under `ISSUE-R106-026`; no autonomous-ready or paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-419-v2-boundary-p1-fixes | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-419-v2-boundary-p1-fixes.md`, `docs/KNOWN_ISSUES.md`, `docs/audit/V2_AUDIT_INDEX.md`, `src/tradingbotsuite/v2/archive/microstructure.py`, `src/tradingbotsuite/v2/collectors/jobs.py`, `src/tradingbotsuite/v2/strategy_specs/schemas.py`, `src/tradingbotsuite/v2/backtest_engine/engine.py`, `tests/v2/test_microstructure_collection_phase17.py`, `tests/v2/test_strategy_specs_phase10.py`, `tests/v2/test_backtest_engine_phase11.py` | Resolves `ISSUE-R106-027` and `ISSUE-R106-028`: official-file backfill requires a trusted source root and rejects secret/local-state/traversal sources before archive writes; signal rows/frames and vectorized trades/positions carry the full canonical false boundary invariant. Validation passed with 28 focused tests, 173 v2 tests, Python 3.11 compile, 462 default-Python contracts, and cached diff hygiene. No live/runtime/order/sizing/promotion/candidate-pack path was touched. |
 | WPR106-418-v2-foundation-baseline-stabilization | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-418-v2-foundation-baseline-stabilization.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, v2 foundation paths | Classifies and commits the v2 foundation baseline at `9bea1b87025fb8b17df54362101b6d3ffb0213d6` after WPR106-419 fixed two P1 boundary findings. Validation evidence includes Python 3.11 compile, focused security hygiene, focused P1 regressions, full v2 tests, default-Python contracts, and cached diff hygiene. Python 3.11 pytest setup and final full-suite authoritative validation remain follow-up work; no autonomous-ready or paper/live/order/sizing/runtime/promotion claim exists. |

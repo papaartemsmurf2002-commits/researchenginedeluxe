@@ -8,7 +8,7 @@ from typing import Any, Mapping
 import numpy as np
 import pandas as pd
 
-from tradingbotsuite.backtesting.costs import CostModel, funding_rate_from_row
+from tradingbotsuite.backtesting.costs import CostModel
 from tradingbotsuite.backtesting.engine import (
     BACKTEST_CACHE_POLICY,
     BACKTEST_ENGINE_VERSION,
@@ -29,7 +29,7 @@ from tradingbotsuite.backtesting.engine import (
     _stable_hash,
     _write_json,
 )
-from tradingbotsuite.backtesting.execution_sim import _equity_curve
+from tradingbotsuite.backtesting.execution_sim import _canonical_exit_policy_id, _equity_curve, _path_funding_rate
 from tradingbotsuite.backtesting.exits import fixed_holding_window_exit
 from tradingbotsuite.backtesting.metrics import REQUIRED_BACKTEST_METRICS, calculate_backtest_metrics
 from tradingbotsuite.backtesting.vector_engine import (
@@ -353,7 +353,11 @@ def _cuda_fixed_holding_trades(
             exit_reason=exit_reason,
         )
         holding_ms = int(exit_result.time_in_trade_ms)
-        funding_rate = funding_rate_from_row(entry_row)
+        funding_rate = _path_funding_rate(
+            ordered_market,
+            entry_time_ms=entry_time,
+            exit_time_ms=int(exit_result.exit_time_ms),
+        )
         spread_bps = _optional_float(entry_row.get("spread_bps"))
         cost = costs.estimate(
             entry_price=entry_price,
@@ -383,6 +387,8 @@ def _cuda_fixed_holding_trades(
                 "exit_target_holding_ms": int(assumptions.holding_period_ms),
                 "exit_used_fallback": bool(used_fallback),
                 "exit_policy": exit_result.exit_policy_id,
+                "requested_exit_policy": str(assumptions.exit_policy_id),
+                "canonical_exit_policy": _canonical_exit_policy_id(assumptions.exit_policy_id),
                 "barrier_hit_type": exit_result.barrier_hit_type,
                 "max_adverse_excursion": exit_result.max_adverse_excursion,
                 "max_favorable_excursion": exit_result.max_favorable_excursion,

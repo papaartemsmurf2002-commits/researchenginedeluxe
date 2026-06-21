@@ -24,8 +24,11 @@ This is the first file to read after `AGENTS.md`.
   WPR106-420 installs local Python 3.11 dev dependencies, proves 3.11 v2 and
   contract suites pass, and fixes deterministic v2 worker transition ordering,
   but monolithic full-suite authoritative validation remains blocked by
-  `ISSUE-R106-026` on this Windows/Python 3.11.0 host. Independent audits, real
-  data-operation proof, and `ISSUE-R106-020` also remain follow-up work.
+  `ISSUE-R106-026` on this Windows/Python 3.11.0 host. WPR106-421 resolves
+  `ISSUE-R106-020` by tightening latest-window strategy gates, GMM detector
+  metadata, lower-frame no-hit proof, exit-policy alias artifacts, static
+  barrier canonical identity, and timestamped funding-path costs. Independent
+  audits and real data-operation proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

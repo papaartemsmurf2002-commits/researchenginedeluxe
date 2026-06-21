@@ -23,6 +23,15 @@ _KNN_EXIT_CONTEXT_COLUMNS = (
     "hmm_fit_end_row",
     "source_row_index",
 )
+_GMM_DETECTOR_METADATA_COLUMNS = (
+    "regime_detector_train_start_ms",
+    "regime_detector_train_end_ms",
+    "regime_detector_inference_start_ms",
+    "regime_detector_inference_end_ms",
+    "regime_detector_feature_version",
+    "regime_detector_params_hash",
+    "regime_detector_artifact_sha256",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +204,10 @@ def triple_barrier_exit_from_lower_timeframe(
                 approximate=approximate,
             )
 
+    time_exit_row = lower.iloc[-1]
+    actual_exit_time = int(time_exit_row["bar_time_ms"])
+    if not _lower_timeframe_covers_horizon(lower, time_exit_ms=int(time_exit_ms)):
+        raise ValueError("lower timeframe sequence coverage missing for scheduled exit horizon")
     adverse, favorable = _mae_mfe(
         side=side,
         entry_price=entry_price,
@@ -202,13 +215,13 @@ def triple_barrier_exit_from_lower_timeframe(
         path_low=path_low,
     )
     return ExitPolicyResult(
-        exit_time_ms=int(time_exit_ms),
-        exit_price=float(time_exit_price),
+        exit_time_ms=actual_exit_time,
+        exit_price=float(time_exit_row["close"]),
         exit_reason="holding_window",
         barrier_hit_type="time",
         max_adverse_excursion=adverse,
         max_favorable_excursion=favorable,
-        time_in_trade_ms=int(time_exit_ms) - int(entry_time_ms),
+        time_in_trade_ms=actual_exit_time - int(entry_time_ms),
         costs_applied=bool(costs_applied),
         exit_policy_id=exit_policy_id,
         approximate=False,
@@ -874,6 +887,8 @@ def _gmm_transition_exit_v1(
     _require_columns(path, ("hmm_fit_end_row", "source_row_index"), exit_policy_id)
     if not _gmm_detector_allows(path.iloc[0], path, required=True):
         raise ValueError("gmm_transition_exit_v1 requires gmm regime_detector_type")
+    if not _gmm_detector_metadata_allows(path.iloc[0], path):
+        raise ValueError("gmm_transition_exit_v1 requires GMM detector metadata")
     if not _split_safe_regime_row(path.iloc[0]):
         raise ValueError("gmm_transition_exit_v1 requires split-safe GMM regime context")
     entry_regime = _string_value(path.iloc[0].get(regime_column))
@@ -882,6 +897,8 @@ def _gmm_transition_exit_v1(
 
     for _, row in path.iloc[1:].iterrows():
         if not _gmm_detector_allows(row, path, required=False):
+            continue
+        if not _gmm_detector_metadata_allows(row, path):
             continue
         if not _split_safe_regime_row(row):
             continue
@@ -1382,14 +1399,39 @@ def _premium_context_quality_allows(row: pd.Series, path: pd.DataFrame) -> bool:
         provider_backed = _optional_numeric(row.get("quality_provider_backed_all_required"))
         if provider_backed is None or provider_backed <= 0.0:
             return False
+    if "quality_latest_window_context_only" in path.columns:
+        latest_window_context = _optional_numeric(row.get("quality_latest_window_context_only"))
+        if latest_window_context is None or latest_window_context > 0.0:
+            return False
     return True
 
 
 def _gmm_detector_allows(row: pd.Series, path: pd.DataFrame, *, required: bool) -> bool:
     if "regime_detector_type" not in path.columns:
-        return True
+        return not required
     detector = _string_value(row.get("regime_detector_type"))
     return detector == "gmm"
+
+
+def _gmm_detector_metadata_allows(row: pd.Series, path: pd.DataFrame) -> bool:
+    if not set(_GMM_DETECTOR_METADATA_COLUMNS) <= set(path.columns):
+        return False
+    train_start = _integer_marker(row.get("regime_detector_train_start_ms"))
+    train_end = _integer_marker(row.get("regime_detector_train_end_ms"))
+    inference_start = _integer_marker(row.get("regime_detector_inference_start_ms"))
+    inference_end = _integer_marker(row.get("regime_detector_inference_end_ms"))
+    bar_time = _integer_marker(row.get("bar_time_ms"))
+    if None in {train_start, train_end, inference_start, inference_end, bar_time}:
+        return False
+    if not (int(train_start) <= int(train_end) < int(inference_start) <= int(inference_end)):
+        return False
+    if int(bar_time) < int(inference_start) or int(bar_time) > int(inference_end):
+        return False
+    return (
+        bool(_string_value(row.get("regime_detector_feature_version")))
+        and bool(_string_value(row.get("regime_detector_params_hash")))
+        and bool(_string_value(row.get("regime_detector_artifact_sha256")))
+    )
 
 
 def _split_safe_regime_row(row: pd.Series) -> bool:
@@ -1626,6 +1668,30 @@ def _lower_timeframe_slice(
         & (lower["bar_time_ms"] <= int(time_exit_ms))
     ].copy()
     return lower.sort_values("bar_time_ms", kind="mergesort").dropna(subset=["high", "low", "close"])
+
+
+def _lower_timeframe_covers_horizon(lower: pd.DataFrame, *, time_exit_ms: int) -> bool:
+    horizon = int(time_exit_ms)
+    times = (
+        pd.to_numeric(lower["bar_time_ms"], errors="coerce")
+        .dropna()
+        .astype("int64")
+        .drop_duplicates()
+        .sort_values(kind="mergesort")
+    )
+    if times.empty:
+        return False
+    latest = int(times.iloc[-1])
+    if latest == horizon:
+        return True
+    if latest > horizon:
+        return False
+    diffs = times.diff().dropna()
+    positive_diffs = diffs.loc[diffs > 0]
+    if positive_diffs.empty:
+        return False
+    expected_cadence_ms = int(positive_diffs.median())
+    return horizon - latest <= expected_cadence_ms
 
 
 def _mae_mfe(*, side: str, entry_price: float, path_high: float, path_low: float) -> tuple[float, float]:

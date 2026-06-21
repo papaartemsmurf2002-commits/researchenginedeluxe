@@ -63,9 +63,80 @@ def test_execution_simulator_adds_exit_metadata_columns() -> None:
         initial_equity=10_000.0,
     )
 
-    assert {"entry_bar_index", "exit_bar_index", "exit_target_time_ms", "exit_used_fallback", "exit_policy"} <= set(trades.columns)
+    assert {
+        "entry_bar_index",
+        "exit_bar_index",
+        "exit_target_time_ms",
+        "exit_used_fallback",
+        "exit_policy",
+        "requested_exit_policy",
+        "canonical_exit_policy",
+    } <= set(trades.columns)
     assert trades.iloc[0]["exit_reason"] == "holding_window"
     assert trades.iloc[0]["exit_policy"] == "fixed_holding_window"
+    assert trades.iloc[0]["requested_exit_policy"] == "fixed_holding_window"
+    assert trades.iloc[0]["canonical_exit_policy"] == "fixed_holding_window"
+
+
+def test_execution_simulator_preserves_fixed_holding_alias_identity() -> None:
+    market = _market()
+    trades, _ = ExecutionSimulator().simulate(
+        pd.DataFrame(
+            {
+                "signal_id": ["s1"],
+                "symbol": ["BTCUSDT"],
+                "decision_time_ms": [int(market.iloc[0]["bar_time_ms"])],
+                "side": ["long"],
+                "signal_bar_close": [100.0],
+            }
+        ),
+        market,
+        costs=CostModel(),
+        assumptions=ExecutionAssumptions(
+            interval_ms=900_000,
+            entry_latency_ms=900_000,
+            entry_price_source="next_bar_open",
+            min_holding_ms=3_600_000,
+            max_holding_ms=7 * 24 * 60 * 60 * 1000,
+            holding_period_ms=3_600_000,
+            exit_policy_id="4h_time_exit",
+        ),
+        initial_equity=10_000.0,
+    )
+
+    assert trades.iloc[0]["exit_policy"] == "fixed_holding_window"
+    assert trades.iloc[0]["requested_exit_policy"] == "4h_time_exit"
+    assert trades.iloc[0]["canonical_exit_policy"] == "fixed_holding_window"
+
+
+def test_execution_simulator_applies_funding_from_position_path() -> None:
+    market = _market()
+    market["funding_rate"] = [0.0, 0.0, 0.0008, 0.0008, 0.0008, 0.0008, 0.0, 0.0]
+    trades, _ = ExecutionSimulator().simulate(
+        pd.DataFrame(
+            {
+                "signal_id": ["s1"],
+                "symbol": ["BTCUSDT"],
+                "decision_time_ms": [int(market.iloc[0]["bar_time_ms"])],
+                "side": ["long"],
+                "signal_bar_close": [100.0],
+            }
+        ),
+        market,
+        costs=CostModel(fee_bps=0.0, slippage_bps=0.0, spread_bps=0.0, funding_rate=0.0),
+        assumptions=ExecutionAssumptions(
+            interval_ms=900_000,
+            entry_latency_ms=900_000,
+            entry_price_source="next_bar_open",
+            min_holding_ms=3_600_000,
+            max_holding_ms=7 * 24 * 60 * 60 * 1000,
+            holding_period_ms=3_600_000,
+        ),
+        initial_equity=10_000.0,
+    )
+
+    assert trades.iloc[0]["funding_return"] == pytest.approx(-0.000075)
+    assert trades.iloc[0]["net_return"] < trades.iloc[0]["gross_return"]
 
 
 def test_execution_simulator_marks_end_of_data_fallback() -> None:
@@ -205,12 +276,20 @@ def test_triple_barrier_falls_back_to_time_exit_when_no_barrier_hit() -> None:
         time_exit_price=100.5,
         target_return=0.02,
         stop_return=0.01,
-        lower_timeframe_market_data=_lower(entry_time, [(60_000, 100.5, 99.5, 100.0)]),
+        lower_timeframe_market_data=_lower(
+            entry_time,
+            [
+                (3_540_000, 100.5, 99.5, 100.9),
+                (3_600_000, 100.6, 99.6, 101.25),
+            ],
+        ),
         costs_applied=True,
     )
 
     assert result.exit_reason == "holding_window"
     assert result.barrier_hit_type == "time"
+    assert result.exit_time_ms == entry_time + 3_600_000
+    assert result.exit_price == pytest.approx(101.25)
     assert result.exit_policy_id == "triple_barrier_atr"
 
 
@@ -231,15 +310,32 @@ def test_triple_barrier_rejects_missing_lower_timeframe_coverage() -> None:
         )
 
 
+def test_triple_barrier_rejects_stale_lower_timeframe_no_hit_horizon() -> None:
+    entry_time = 1_712_649_600_000
+
+    with pytest.raises(ValueError, match="scheduled exit horizon"):
+        triple_barrier_exit_from_lower_timeframe(
+            entry_time_ms=entry_time,
+            entry_price=100.0,
+            side="long",
+            time_exit_ms=entry_time + 3_600_000,
+            time_exit_price=100.5,
+            target_return=0.02,
+            stop_return=0.01,
+            lower_timeframe_market_data=_lower(entry_time, [(60_000, 100.5, 99.5, 100.0)]),
+            costs_applied=True,
+        )
+
+
 def test_triple_barrier_filters_lower_timeframe_rows_by_symbol() -> None:
     entry_time = 1_712_649_600_000
     lower = pd.DataFrame(
         {
-            "symbol": ["ETHUSDT", "BTCUSDT"],
-            "bar_time_ms": [entry_time + 60_000, entry_time + 120_000],
-            "high": [103.0, 100.5],
-            "low": [98.5, 99.5],
-            "close": [100.0, 100.1],
+            "symbol": ["ETHUSDT", "BTCUSDT", "BTCUSDT"],
+            "bar_time_ms": [entry_time + 60_000, entry_time + 3_540_000, entry_time + 3_600_000],
+            "high": [103.0, 100.5, 100.6],
+            "low": [98.5, 99.5, 99.6],
+            "close": [100.0, 100.1, 100.2],
         }
     )
 

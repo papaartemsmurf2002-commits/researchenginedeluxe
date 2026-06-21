@@ -424,10 +424,10 @@ def test_lower_timeframe_rows_at_or_before_entry_are_ignored() -> None:
     entry_time = int(market.iloc[0]["bar_time_ms"])
     lower = pd.DataFrame(
         {
-            "bar_time_ms": [entry_time, entry_time + 60_000],
-            "high": [103.0, 100.5],
-            "low": [98.0, 99.5],
-            "close": [100.0, 100.1],
+            "bar_time_ms": [entry_time, entry_time + 60_000, entry_time + 3_600_000],
+            "high": [103.0, 100.5, 100.6],
+            "low": [98.0, 99.5, 99.6],
+            "close": [100.0, 100.1, 100.2],
         }
     )
 
@@ -460,7 +460,9 @@ def test_lower_timeframe_rows_at_or_before_entry_are_ignored() -> None:
     )
 
     assert trades.iloc[0]["exit_reason"] == "holding_window"
-    assert trades.iloc[0]["exit_sequence_proof"] == "primary_bar_time"
+    assert trades.iloc[0]["exit_time_ms"] == entry_time + 3_600_000
+    assert trades.iloc[0]["exit_price"] == pytest.approx(100.2)
+    assert trades.iloc[0]["exit_sequence_proof"] == "lower_timeframe_ohlc"
 
 
 def test_triple_barrier_rejects_lower_timeframe_coverage_gap() -> None:
@@ -593,6 +595,11 @@ def test_primary_bar_exit_policies_record_trade_metadata(
 
     row = trades.iloc[0]
     assert row["exit_policy"] == policy
+    assert row["requested_exit_policy"] == policy
+    if policy == "volatility_scaled_barrier":
+        assert row["canonical_exit_policy"] == "static_primary_close_barrier"
+    else:
+        assert row["canonical_exit_policy"] == policy
     assert row["barrier_hit_type"] == barrier
     assert row["exit_sequence_proof"] == "primary_bar_time"
     assert row["exit_price_source"] == "primary_close"

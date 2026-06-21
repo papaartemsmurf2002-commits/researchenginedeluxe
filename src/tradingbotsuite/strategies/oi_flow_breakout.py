@@ -136,6 +136,7 @@ def _quality_allows_signal(row: pd.Series) -> bool:
         and float(checks["quality_has_oi_gap"]) == 0.0
         and float(checks["quality_has_premium_gap"]) == 0.0
         and float(checks["quality_provider_backed_all_required"]) == 1.0
+        and float(checks["quality_latest_window_context_only"]) == 0.0
     )
 
 
