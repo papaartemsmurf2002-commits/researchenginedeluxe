@@ -81,6 +81,10 @@ snapshots through the backtest data service, not direct venue APIs.
 - Official S3-style backfill files must be copied into the raw archive in their
   native file format and recorded in `file_manifest` plus ingestion-run
   manifests.
+- Trusted local official node fill/trade replay may write normalized raw
+  `trades` microstructure rows, but those rows remain raw replay intake
+  evidence and do not by themselves prove historical trade coverage, queue/fill
+  realism, accepted evidence, or promotion readiness.
 - Microstructure quality reports must expose row counts, event windows, gaps,
   reconnect evidence, and warning status for trades, BBO, and L2 captures.
 - Storage budget reports must make archive growth visible by total bytes, layer

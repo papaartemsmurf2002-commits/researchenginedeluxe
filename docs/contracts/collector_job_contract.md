@@ -91,6 +91,15 @@ request handling and they do not place orders.
   count, and elapsed seconds. They are recent streaming intake evidence only
   and do not prove historical trade coverage, long-running continuous capture,
   accepted research evidence, or queue/fill realism.
+- `websocket_trade_capture` jobs may use explicit
+  `source=official_s3_node_trade_replay` mode to normalize trusted local
+  JSON/JSONL files containing decompressed Hyperliquid official
+  `node_fills_by_block`, `node_fills`, or `node_trades` payloads into raw
+  trade microstructure rows. This mode requires `records_file` plus
+  `trusted_source_root`, rejects inline `records`, performs no S3 download or
+  LZ4 decompression, filters rows to the requested instrument/coin, and must
+  return source hash, payload count, trade row count, skipped row count,
+  dataset scope, quality/storage refs, and a coverage-certification caveat.
 - `websocket_l2_bbo_capture` jobs may preserve fixture BBO or L2 records to the
   raw archive, but they must not claim queue-model or fill realism.
 - `websocket_l2_bbo_capture` jobs may also use explicit unsigned public
@@ -157,6 +166,10 @@ request handling and they do not place orders.
   validation gates must still prove archive snapshots, coverage, 2024+ dates,
   six usable months, lockbox exclusion, and as-of universe before accepted
   evidence.
+- Official node fill/trade replay rows are intake evidence only; backtest-data
+  and validation gates must still prove archive snapshots, coverage, 2024+
+  dates, six usable months, lockbox exclusion, and as-of universe before
+  accepted evidence.
 - Candle and funding archive-write jobs must not read arbitrary local files
   outside a trusted source root.
 - Reconnect attempts, gap reasons, missing periods, and retry evidence must be

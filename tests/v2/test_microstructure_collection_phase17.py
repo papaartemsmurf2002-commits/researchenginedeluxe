@@ -553,6 +553,270 @@ def test_public_websocket_trade_worker_rejects_public_websocket_with_local_recor
     assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
+def test_official_s3_node_fills_replay_records_file_writes_trade_rows(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-official-node-fills"
+    trusted_root.mkdir()
+    records_file = trusted_root / "node-fills-by-block.jsonl"
+    payloads = [
+        {
+            "block_time": "2026-01-01T00:00:00Z",
+            "fills": [
+                {
+                    "coin": "BTC",
+                    "side": "B",
+                    "time": 1767225600000,
+                    "px": "100.0",
+                    "sz": "1.25",
+                    "hash": "0xhash-a",
+                    "tid": 101,
+                },
+                {
+                    "coin": "SOL",
+                    "side": "A",
+                    "time": 1767225600500,
+                    "px": "150.0",
+                    "sz": "3.0",
+                    "hash": "0xhash-sol",
+                    "tid": 102,
+                },
+            ],
+        },
+        {
+            "fills": [
+                {
+                    "coin": "BTC",
+                    "side": "A",
+                    "time": 1767225601000,
+                    "px": "100.5",
+                    "sz": "2.00",
+                    "hash": "0xhash-b",
+                    "tid": 103,
+                }
+            ]
+        },
+    ]
+    records_file.write_text("\n".join(json.dumps(payload) for payload in payloads), encoding="utf-8")
+    archive_root = tmp_path / "archive-official-node-fills"
+    store = WorkerJobStore(tmp_path / "jobs-official-node-fills.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-official-node-fills",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_node_trade_replay",
+            "records_file": records_file.name,
+            "trusted_source_root": str(trusted_root),
+            "records_format": "jsonl",
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "coin": "BTC",
+            "date": "2026-01-01",
+            "run_id": "run-official-node-fills",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "node_fills_by_block",
+            "source_endpoint_or_subscription": "s3://hl-mainnet-node-data/node_fills_by_block/00000001.lz4",
+            "storage_budget_bytes": 1_000_000,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-official-node-fills",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    stored_rows = read_jsonl_zstd(
+        layout.resolve(manifest_rows[0].path),
+        uncompressed_size=manifest_rows[0].uncompressed_size_bytes or 0,
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=official_s3_node_trade_replay_capture" in loaded.output_refs
+    assert "source_mode=official_s3_node_trade_replay" in loaded.output_refs
+    assert "datatype=trades" in loaded.output_refs
+    assert "row_count=2" in loaded.output_refs
+    assert "trade_row_count=2" in loaded.output_refs
+    assert "payload_count=2" in loaded.output_refs
+    assert "skipped_row_count=1" in loaded.output_refs
+    assert "official_dataset=node_fills_by_block" in loaded.output_refs
+    assert "official_dataset_scope=official_hyperliquid_node_fills_by_block" in loaded.output_refs
+    assert "records_file_row_count=2" in loaded.output_refs
+    assert "coin=BTC" in loaded.output_refs
+    assert "official_s3_network_download=false" in loaded.output_refs
+    assert (
+        "official_s3_node_trade_replay_caveat=trusted_decompressed_payloads_not_coverage_certification"
+        in loaded.output_refs
+    )
+    assert any(ref.startswith("records_file_sha256=") for ref in loaded.output_refs)
+    assert [row.datatype for row in manifest_rows] == ["trades"]
+    assert manifest_rows[0].row_count == 2
+    assert [row["event_type"] for row in stored_rows] == ["trade", "trade"]
+    assert {row["instrument_id"] for row in stored_rows} == {INSTRUMENT}
+    assert {row["source"] for row in stored_rows} == {"official_s3/node_fills_by_block"}
+    assert [row["price"] for row in stored_rows] == [100.0, 100.5]
+    assert [row["size"] for row in stored_rows] == [1.25, 2.0]
+    assert [row["side"] for row in stored_rows] == ["B", "A"]
+    assert [row["trade_id"] for row in stored_rows] == [
+        "BTC:1767225600000:101",
+        "BTC:1767225601000:103",
+    ]
+
+
+def test_official_s3_node_trades_replay_accepts_l1_trade_shape(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-official-node-trades"
+    trusted_root.mkdir()
+    records_file = trusted_root / "node-trades.json"
+    records_file.write_text(
+        json.dumps(
+            [
+                {
+                    "coin": "BTC",
+                    "side": "B",
+                    "time": "2024-07-26T08:26:25.899",
+                    "px": "51.367",
+                    "sz": "0.31",
+                    "hash": "0xad8e0566e813bdf98176040e6d51bd011100efa789e89430cdf17964235f55d8",
+                    "side_info": [
+                        {"user": "0xbuyer", "oid": 1},
+                        {"user": "0xseller", "oid": 2},
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / "archive-official-node-trades"
+    store = WorkerJobStore(tmp_path / "jobs-official-node-trades.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-official-node-trades",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_node_trade_replay",
+            "records_file": records_file.name,
+            "trusted_source_root": str(trusted_root),
+            "records_format": "json",
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "coin": "BTC",
+            "date": "2024-07-26",
+            "run_id": "run-official-node-trades",
+            "start_ts": "2024-07-26T08:00:00+00:00",
+            "end_ts": "2024-07-26T09:00:00+00:00",
+            "official_dataset": "node_trades",
+            "source_endpoint_or_subscription": "s3://hl-mainnet-node-data/node_trades/hourly/20240726/08",
+            "storage_budget_bytes": 1_000_000,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-official-node-trades",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    stored_rows = read_jsonl_zstd(
+        layout.resolve(manifest_rows[0].path),
+        uncompressed_size=manifest_rows[0].uncompressed_size_bytes or 0,
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "official_dataset=node_trades" in loaded.output_refs
+    assert "official_dataset_scope=official_hyperliquid_node_trades_legacy" in loaded.output_refs
+    assert "row_count=1" in loaded.output_refs
+    assert stored_rows[0]["ts"] == "2024-07-26T08:26:25.899000Z"
+    assert stored_rows[0]["source"] == "official_s3/node_trades"
+    assert stored_rows[0]["trade_id"] == (
+        "0xad8e0566e813bdf98176040e6d51bd011100efa789e89430cdf17964235f55d8:0"
+    )
+
+
+def test_official_s3_node_trade_replay_rejects_inline_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-official-node-trades-inline-reject"
+    store = WorkerJobStore(tmp_path / "jobs-official-node-trades-inline-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-official-node-trades-inline-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_node_trade_replay",
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "node_fills",
+            "records": [{"coin": "BTC", "time": 1767225600000, "px": "100", "sz": "1"}],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-official-node-trades-inline-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=official_s3_node_trade_replay cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
+def test_official_s3_node_trade_replay_rejects_non_node_dataset(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-official-node-trades-dataset-reject"
+    trusted_root.mkdir()
+    records_file = trusted_root / "node-trades.json"
+    records_file.write_text(
+        json.dumps([{"coin": "BTC", "time": 1767225600000, "px": "100", "sz": "1"}]),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / "archive-official-node-trades-dataset-reject"
+    store = WorkerJobStore(tmp_path / "jobs-official-node-trades-dataset-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-official-node-trades-dataset-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_node_trade_replay",
+            "records_file": records_file.name,
+            "trusted_source_root": str(trusted_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "asset_ctxs",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-official-node-trades-dataset-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "requires official_dataset=node_fills_by_block" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
 def test_official_s3_backfill_preserves_native_file_and_manifest(tmp_path) -> None:
     trusted_root = tmp_path / "trusted-s3"
     trusted_root.mkdir()

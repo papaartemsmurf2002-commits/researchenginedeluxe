@@ -713,6 +713,13 @@ def _run_microstructure_capture_job(
             worker_id=worker_id,
             datatype=datatype,
         )
+    if source_mode == "official_s3_node_trade_replay":
+        return _run_official_s3_node_trade_replay_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+            datatype=datatype,
+        )
     if source_mode == "official_s3_l2_replay":
         return _run_official_s3_l2_replay_job(
             job=job,
@@ -961,6 +968,103 @@ def _run_public_websocket_trade_capture_job(
         output_refs=output_refs,
         archive_manifest_refs=archive_refs,
         reason="trades_public_websocket_snapshot_capture_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_official_s3_node_trade_replay_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+    datatype: MicrostructureDataType,
+) -> WorkerRunResult:
+    if datatype != MicrostructureDataType.TRADES:
+        raise ValueError("official_s3_node_trade_replay only supports datatype trades")
+    spec = job.input_spec
+    official_dataset = _canonical_hyperliquid_official_dataset(
+        str(spec.get("official_dataset", ""))
+    )
+    allowed_datasets = {"node_fills_by_block", "node_fills", "node_trades"}
+    if official_dataset not in allowed_datasets:
+        raise ValueError(
+            "official_s3_node_trade_replay requires official_dataset=node_fills_by_block, "
+            "node_fills, or node_trades"
+        )
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    coin = _hyperliquid_coin_from_spec(spec, instrument_id=instrument_id)
+    records_path = _resolve_records_file(spec)
+    payloads = _read_node_trade_payload_file(
+        records_path,
+        records_format=str(spec.get("records_format", "auto")),
+    )
+    rows, skipped_rows = _official_node_trade_rows(
+        payloads,
+        instrument_id=instrument_id,
+        coin=coin,
+        source=f"official_s3/{official_dataset}",
+    )
+    if not rows:
+        raise ValueError("official_s3_node_trade_replay payloads produced no matching trade rows")
+    source_endpoint = str(
+        spec.get("source_endpoint_or_subscription", f"official_s3/{official_dataset}")
+    )
+    capture = write_microstructure_raw_capture(
+        archive_root=archive_root,
+        records=rows,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype=datatype,
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=str(spec.get("adapter_id", "hyperliquid_official_s3_node_trade_replay_v1")),
+        source_endpoint_or_subscription=source_endpoint,
+        instrument_id=instrument_id,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        storage_budget_bytes=int(spec.get("storage_budget_bytes", 1_000_000_000)),
+    )
+    archive_refs = (
+        f"raw_file_id={capture.raw_file.file_id}",
+        f"quality_report_id={capture.quality_report.quality_report_id}",
+        f"storage_report_id={capture.storage_report.storage_report_id}",
+    )
+    output_refs = (
+        "collector_mode=official_s3_node_trade_replay_capture",
+        "source_mode=official_s3_node_trade_replay",
+        f"datatype={datatype.value}",
+        f"row_count={capture.raw_file.row_count or 0}",
+        f"trade_row_count={capture.raw_file.row_count or 0}",
+        f"payload_count={len(payloads)}",
+        f"skipped_row_count={skipped_rows}",
+        f"official_dataset={official_dataset}",
+        f"official_dataset_scope={_HYPERLIQUID_OFFICIAL_DATASET_SCOPES[official_dataset]}",
+        f"records_file_sha256={file_sha256(records_path)}",
+        f"records_file_row_count={len(payloads)}",
+        f"source_endpoint_or_subscription={source_endpoint}",
+        f"coin={coin}",
+        "official_s3_network_download=false",
+        "official_s3_node_trade_replay_caveat=trusted_decompressed_payloads_not_coverage_certification",
+        f"storage_total_bytes={capture.storage_report.total_bytes}",
+        f"storage_within_budget={str(capture.storage_report.within_budget).lower()}",
+        "gap_evidence_recorded=false",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="trades_official_s3_node_trade_replay_capture_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -1395,10 +1499,18 @@ def _microstructure_source_mode(
         if not spec.get("records_file"):
             raise ValueError("websocket_l2_bbo_capture source=official_s3_l2_replay requires records_file")
         return "official_s3_l2_replay"
+    if source == "official_s3_node_trade_replay":
+        if datatype != MicrostructureDataType.TRADES:
+            raise ValueError("microstructure source=official_s3_node_trade_replay only supports datatype trades")
+        if "records" in spec and spec.get("records") is not None:
+            raise ValueError("websocket_trade_capture source=official_s3_node_trade_replay cannot include records")
+        if not spec.get("records_file"):
+            raise ValueError("websocket_trade_capture source=official_s3_node_trade_replay requires records_file")
+        return "official_s3_node_trade_replay"
     if source not in {"records", "inline"}:
         raise ValueError(
-            "microstructure capture source must be official_s3_l2_replay, public_api, "
-            "public_websocket, or records"
+            "microstructure capture source must be official_s3_l2_replay, "
+            "official_s3_node_trade_replay, public_api, public_websocket, or records"
         )
     if not has_records:
         raise ValueError(f"microstructure capture source={source} requires records")
@@ -1565,6 +1677,37 @@ def _read_asset_context_records_file(path: Path, *, records_format: str) -> list
     raise ValueError("records_format must be auto, json, jsonl, or ndjson")
 
 
+def _read_node_trade_payload_file(path: Path, *, records_format: str) -> list[dict[str, Any]]:
+    normalized = records_format.lower()
+    if normalized == "auto":
+        normalized = "json" if path.suffix.lower() == ".json" else "jsonl"
+    if normalized == "json":
+        return _node_trade_payloads_from_json(json.loads(path.read_text(encoding="utf-8")))
+    if normalized in {"jsonl", "ndjson"}:
+        payloads: list[dict[str, Any]] = []
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"collector JSONL node trade line {line_number} is invalid JSON") from exc
+            payloads.extend(_node_trade_payloads_from_json(payload))
+        if not payloads:
+            raise ValueError("collector JSONL node trade records_file must contain at least one payload")
+        return payloads
+    raise ValueError("records_format must be auto, json, jsonl, or ndjson")
+
+
+def _node_trade_payloads_from_json(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        return [dict(payload)]
+    if isinstance(payload, list):
+        return _coerce_record_rows(payload)
+    raise ValueError("node trade payload must be an object or list of objects")
+
+
 def _asset_context_records_from_payload(payload: Any) -> list[dict[str, Any]]:
     meta_context_record = _asset_context_meta_record(payload)
     if meta_context_record is not None:
@@ -1681,6 +1824,121 @@ def _coerce_record_rows(value: list[Any]) -> list[dict[str, Any]]:
             raise ValueError(f"collector records_file[{index}] must be an object")
         rows.append(dict(item))
     return rows
+
+
+def _official_node_trade_rows(
+    payloads: list[dict[str, Any]],
+    *,
+    instrument_id: str,
+    coin: str,
+    source: str,
+) -> tuple[list[dict[str, Any]], int]:
+    rows: list[dict[str, Any]] = []
+    skipped = 0
+    sequence = 0
+    for payload in payloads:
+        for item in _iter_node_trade_items(payload):
+            item_coin = str(item.get("coin") or "").strip()
+            if item_coin and item_coin != coin:
+                skipped += 1
+                continue
+            rows.append(
+                _official_node_trade_row(
+                    item,
+                    instrument_id=instrument_id,
+                    sequence=sequence,
+                    source=source,
+                )
+            )
+            sequence += 1
+    return rows, skipped
+
+
+def _iter_node_trade_items(payload: dict[str, Any]):
+    if _is_trade_like_payload(payload):
+        yield payload
+        return
+    for key in ("fills", "trades", "data"):
+        value = payload.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, list):
+            raise ValueError(f"official node trade payload {key} must be a list")
+        for index, item in enumerate(value):
+            if not isinstance(item, dict):
+                raise ValueError(f"official node trade payload {key}[{index}] must be an object")
+            row = dict(item)
+            if row.get("time") is None and payload.get("time") is not None:
+                row["time"] = payload["time"]
+            yield row
+        return
+    raise ValueError("official node trade payload must contain trade fields or fills/trades/data list")
+
+
+def _is_trade_like_payload(payload: dict[str, Any]) -> bool:
+    return payload.get("px") is not None and payload.get("sz") is not None and (
+        payload.get("time") is not None or payload.get("ts") is not None
+    )
+
+
+def _official_node_trade_row(
+    item: dict[str, Any],
+    *,
+    instrument_id: str,
+    sequence: int,
+    source: str,
+) -> dict[str, Any]:
+    time_value = item.get("time")
+    if time_value is None:
+        time_value = item.get("ts")
+    if time_value is None:
+        raise ValueError("official node trade row is missing time")
+    price = _positive_float(_required_trade_value(item, "px"), field="px")
+    size = _positive_float(_required_trade_value(item, "sz"), field="sz")
+    trade_id = _official_node_trade_id(item, instrument_id=instrument_id, time_value=time_value, sequence=sequence)
+    return {
+        "ts": _official_node_trade_datetime(time_value).isoformat(timespec="milliseconds"),
+        "instrument_id": instrument_id,
+        "event_type": "trade",
+        "sequence": sequence,
+        "price": price,
+        "size": size,
+        "side": str(item.get("side")) if item.get("side") is not None else None,
+        "trade_id": trade_id,
+        "source": source,
+    }
+
+
+def _official_node_trade_id(
+    item: dict[str, Any],
+    *,
+    instrument_id: str,
+    time_value: Any,
+    sequence: int,
+) -> str:
+    tid = item.get("tid")
+    if tid is not None:
+        return f"{item.get('coin') or instrument_id}:{_official_node_trade_millis(time_value)}:{tid}"
+    tx_hash = item.get("hash")
+    if tx_hash is not None:
+        return f"{tx_hash}:{sequence}"
+    oid = item.get("oid")
+    if oid is not None:
+        return f"{item.get('coin') or instrument_id}:{_official_node_trade_millis(time_value)}:{oid}:{sequence}"
+    return f"{instrument_id}:{_official_node_trade_millis(time_value)}:{sequence}"
+
+
+def _official_node_trade_datetime(value: Any) -> datetime:
+    if isinstance(value, str) and not value.isdigit():
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+    return _timestamp_datetime(value)
+
+
+def _official_node_trade_millis(value: Any) -> int:
+    return int(_official_node_trade_datetime(value).timestamp() * 1000)
 
 
 def _public_candle_records(payload: Any) -> list[dict[str, Any]]:

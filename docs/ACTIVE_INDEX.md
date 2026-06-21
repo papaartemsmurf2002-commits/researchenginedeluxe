@@ -96,11 +96,14 @@ This is the first file to read after `AGENTS.md`.
   scope, and non-continuous-coverage caveats. WPR106-442 adds trusted local
   decompressed official `asset_ctxs` JSON/JSONL replay into raw, bronze, and
   silver `asset_contexts` archive rows, with source hash, dataset scope,
-  normalization refs, and non-continuous-coverage caveats. Full historical
-  candle coverage beyond the public recent-window limit, normalized historical
-  trade coverage, continuous BBO/L2 capture, accepted historical L2/context
-  coverage proof, independent audits, and authoritative full-suite proof remain
-  follow-up work.
+  normalization refs, and non-continuous-coverage caveats. WPR106-443 adds
+  trusted local decompressed official `node_fills_by_block`, `node_fills`, and
+  legacy `node_trades` JSON/JSONL replay into raw trade microstructure rows,
+  with instrument filtering, source hash, dataset scope, quality/storage refs,
+  and coverage-certification caveats. Full historical candle coverage beyond
+  the public recent-window limit, continuous BBO/L2 capture, accepted
+  historical trade/L2/context coverage proof, independent audits, and
+  authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
