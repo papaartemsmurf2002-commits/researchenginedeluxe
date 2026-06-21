@@ -1,0 +1,57 @@
+# V2-AUDIT-ID: V2-AUD-WORKER-001
+# V2-CONTRACTS: docs/contracts/worker_job_contract.md, docs/contracts/collector_job_contract.md
+# V2-BOUNDARY: research_only, worker_runner, no_live_imports
+# V2-OWNER: v2_workers
+"""Worker runner for one durable v2 job at a time."""
+
+from __future__ import annotations
+
+from tradingbotsuite.v2.collectors.jobs import run_collector_job
+from tradingbotsuite.v2.workers.job_store import WorkerJobStore
+from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerRunResult
+
+COLLECTOR_KINDS = {
+    WorkerJobKind.UNIVERSE_REFRESH,
+    WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+    WorkerJobKind.FUNDING_BACKFILL,
+    WorkerJobKind.WEBSOCKET_CAPTURE,
+    WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+    WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+    WorkerJobKind.OFFICIAL_S3_BACKFILL,
+}
+
+
+def run_one_job(
+    *,
+    store: WorkerJobStore,
+    kind: WorkerJobKind | str,
+    worker_id: str,
+    forbid_asgi: bool = False,
+) -> WorkerRunResult | None:
+    if forbid_asgi:
+        raise RuntimeError("worker jobs must not run inside ASGI/operator process")
+    job_kind = WorkerJobKind(kind)
+    claimed = store.claim_next(kind=job_kind, worker_id=worker_id)
+    if claimed is None:
+        return None
+    running = store.start_job(claimed.job_id, worker_id=worker_id)
+    store.heartbeat(running.job_id, worker_id=worker_id, details={"phase": "running"})
+    try:
+        if job_kind in COLLECTOR_KINDS:
+            return run_collector_job(job=running, store=store, worker_id=worker_id)
+        raise ValueError(f"worker kind is not implemented in Phase 7: {job_kind.value}")
+    except Exception as exc:
+        failed = store.fail_job(
+            running.job_id,
+            worker_id=worker_id,
+            reason=str(exc),
+            retryable=running.attempts < running.max_attempts,
+        )
+        return WorkerRunResult(
+            job_id=running.job_id,
+            status=failed.status,
+            output_refs=failed.output_refs,
+            archive_manifest_refs=failed.archive_manifest_refs,
+            gap_record_ids=failed.gap_record_ids,
+            failure_reason=failed.failure_reason,
+        )

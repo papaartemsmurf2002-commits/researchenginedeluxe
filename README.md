@@ -1,36 +1,46 @@
 # ResearchEngineDeluxe
 
-ResearchEngineDeluxe is a modular strategy-research workbench for BTC/ETH
-perpetual futures. Its purpose is to test new strategy theories, refine
-existing strategy families, and produce reproducible evidence patterns that can
-be compared, rejected, ablated, and iterated quickly.
+ResearchEngineDeluxe v2 is a research-only, data-first, multi-instrument
+perpetual-futures research platform. Its active direction is Hyperliquid-first:
+discover and archive perpetual instruments above USD 5,000,000 daily notional
+volume, enforce 2024+ data, 6+ usable months, 0.98 coverage, dynamic lockbox,
+and as-of universe rules, then evaluate agent-safe strategy ideas through
+strict non-promotable research evidence.
 
-The project is not a live trading system. The no-live boundary exists to keep
-research evidence clean: outputs are manifests, metrics, rejections, ablations,
-validation floors, multiple-testing reports, and candidate diagnostics, not
-paper/live signals, sizing instructions, order-placement behavior, or promotion
-authorization.
+BTC and ETH remain useful fixture, smoke-test, reference, and legacy evidence
+symbols. They are not the full v2 product scope.
+
+The project is not a live trading system, paper trading system, execution
+system, sizing system, order-placement system, or promotion system. The
+research boundary exists to keep evidence clean: outputs are manifests,
+metrics, rejections, ablations, validation floors, multiple-testing reports,
+lead diagnostics, and audit records, not paper/live signals, sizing
+instructions, order-placement behavior, or promotion authorization.
 
 The active Python package is still named `tradingbotsuite` for compatibility.
 This repository contains two related Python codebases:
 
 - `tradingbot`: the legacy Lorentzian Classification signal-generation, backtest, optimization, and data-cache package.
-- `tradingbotsuite`: the active BTC runtime, operator console, market-data reliability, execution-safety, and research experiment stack.
+- `tradingbotsuite`: the active research platform, operator console,
+  market-data reliability, execution-safety, and experiment stack.
 
 Legacy vendor-specific import, chart replay, parity diagnostics, source-script references, and gate-research paths have been removed. Research signal rows are now generic SQLite research events, while Binance, Binance Vision, Crypto Lake, and Hyperliquid sources are market-data/context providers only.
 
-## Current Strategy Readiness
+## Current V2 Readiness
 
-The active `tradingbotsuite` strategy surface is structurally complete for the
-next research iteration. The registry and checked configs cover transparent
-baselines, trend/range/volatility strategies, perp-context v2 strategies,
-funding and OI flow strategies, GMM/regime-assisted strategies, HMM/KNN local
-analog filters, liquidation diagnostics, and LC reference material.
+The existing `tradingbotsuite` strategy and sandbox surfaces are useful legacy
+and transition assets. The registry and checked configs cover transparent
+baselines, trend/range/volatility strategies, perp-context strategies, funding
+and OI flow strategies, GMM/regime-assisted strategies, HMM/KNN local analog
+filters, liquidation diagnostics, rapid sandbox tooling, and LC reference
+material.
 
-That means the next work is empirical: compute new iterations, inspect the
-evidence patterns, refine strategy hypotheses, and rerun focused experiments.
-Current completed evidence still has zero eligible candidate-pack rows, so the
-platform is ready to test and learn, not to claim a working tradable strategy.
+V2 is not complete yet. Phase 0 source-lock and safety-rail documents exist,
+but later packets must still implement the v2 package skeleton, contracts,
+archive, Hyperliquid universe manager, coverage service, durable collectors,
+lockbox-aware backtest data service, declarative strategy lane, backtest
+artifacts, cost models, append-only ledger, Lead Book, validation workflow, and
+final hard-test governance.
 
 ## Install
 
@@ -68,7 +78,7 @@ Run a backtest:
 python -m tradingbot.cli backtest --config examples\default.yaml --symbol BTC
 ```
 
-Run the BTC research experiment bundle:
+Run a legacy BTC research experiment bundle:
 
 ```powershell
 tradingbotsuite run-research-experiment --spec configs\experiments\v2_btc_phase1_research_experiment.json
@@ -120,10 +130,10 @@ quickstart is also embedded in the operator UI `Guides` page.
 
 ## Repository Map
 
-For the current research branch architecture, package responsibilities,
-dependency map, and unsafe-to-rewrite areas, read
-`docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md` before changing shared
-infrastructure.
+For the active product scope, read `docs/PRODUCT_SCOPE.md`. For the current
+research branch architecture, package responsibilities, dependency map, and
+unsafe-to-rewrite areas, read `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`
+before changing shared infrastructure.
 
 - `src/tradingbot/features_lc.py`: Lorentzian Classification feature helpers.
 - `src/tradingbot/kernels_lc.py`: rational quadratic and Gaussian kernel helpers.
@@ -131,13 +141,15 @@ infrastructure.
 - `src/tradingbot/backtest.py`: backtest and execution simulation.
 - `src/tradingbot/data/`: data providers and cache resolution.
 - `examples/`: reproducible YAML profiles.
-- `src/tradingbotsuite/`: BTC runtime engine, Binance microstructure, Hyperliquid execution adapter, operator UI, and research pipeline.
+- `src/tradingbotsuite/`: active research suite, legacy runtime-adjacent
+  guarded surfaces, operator UI, and research pipeline.
 - `tests/`: unit and regression tests.
 - `configs/tradingbotsuite/`: runtime config examples and non-secret placeholders.
 
 ## Rules
 
 - Read `docs/ACTIVE_INDEX.md` before starting work.
+- Read `docs/PRODUCT_SCOPE.md` and `docs/V2_NO_TOUCH_PATHS.md` before v2 work.
 - Do not treat research outputs as live signals.
 - Do not weaken evidence controls; zero eligible candidates is useful rejection
   evidence.

@@ -1,0 +1,112 @@
+# V2 Audit Index
+
+Status: initial Phase 0 index
+Source: `docs/V2_READY_TO_USE_IMPLEMENTATION_ROADMAP.md`
+
+No large unbounded audit is allowed. Every v2 change belongs to one audit chunk
+with an ID, scope, files, contracts, tests, and auditor note.
+
+## Audit States
+
+```text
+planned
+  -> implemented
+  -> self_checked
+  -> independent_agent_audited
+  -> fixed_after_audit
+  -> accepted
+```
+
+Additional states: `blocked`, `needs_ceo_decision`, `superseded`,
+`rolled_back`.
+
+## Active And Planned Chunks
+
+| Audit ID | Area | Status | Purpose | Primary files/contracts | Required evidence |
+| --- | --- | --- | --- | --- | --- |
+| V2-AUD-SCOPE-001 | scope | self_checked | Establish v2 product identity, source lock, decision register, and top-level framing. | `docs/PRODUCT_SCOPE.md`, `docs/V2_DECISION_REGISTER.md`, `README.md`, `START_HERE.md`, `AGENTS.md`, `docs/ACTIVE_INDEX.md` | Diff hygiene and stale framing audit completed in WPR106-391. |
+| V2-AUD-SEC-001 | security | self_checked | Establish no-touch registry and audit prompt before code-heavy work. | `docs/V2_NO_TOUCH_PATHS.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/audit/prompts/V2_CHUNK_AUDITOR_PROMPT.md` | Diff hygiene and no-touch checklist coverage completed in WPR106-391. |
+| V2-AUD-PKG-001 | package | self_checked | Add v2 package skeleton, config defaults, and import-boundary test. | `src/tradingbotsuite/v2/**`, `tests/v2/**`, security boundary contract | Package imports without live/order dependencies; focused v2 tests passed in WPR106-392. |
+| V2-AUD-SCOPE-002 | scope | self_checked | Add minimal v2 CLI shell that exposes research-only boundary without running jobs. | `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_cli_smoke.py` | CLI help and boundary output passed in WPR106-392. |
+| V2-AUD-CONTRACTS-001 | contracts | self_checked | Create schema-first v2 contract docs for archive, universe, data quality, backtest data, strategy specs, engine artifacts, costs, ledger, lead book, validation, workers, and security. | `docs/contracts/*_contract.md`, `docs/V2_LEGACY_CLASSIFICATION.md`, `tests/v2/test_contract_docs.py` | Contract docs exist before broad implementation; schema-name contract test passed in WPR106-393. |
+| V2-AUD-SCOPE-003 | scope | self_checked | Add initial schema model names and minimal validation skeletons matching Phase 2 contracts. | `src/tradingbotsuite/v2/**/schemas.py`, `src/tradingbotsuite/v2/**/models.py`, `src/tradingbotsuite/v2/validation/policies.py`, `tests/v2/test_contract_foundation.py` | Initial schema models validate defaults in WPR106-393. |
+| V2-AUD-SCOPE-004 | scope | self_checked | Record v2 roadmap phase and milestone implementation status after Phase 21 and Phase 22 deferral. | `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`, `docs/work_packets/WPR106-414-v2-roadmap-milestone-status-closeout.md` | WPR106-414 validation passed: diff hygiene passed with existing LF-to-CRLF warnings only, full compile passed, and contracts passed with 462 tests. |
+| V2-AUD-SCOPE-005 | scope | self_checked | Sync top-level control docs to the v2 roadmap status after WPR106-414. | `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/work_packets/WPR106-415-v2-control-doc-sync-and-completion-audit.md` | WPR106-415 validation passed: diff hygiene passed with existing LF-to-CRLF warnings only, full compile passed, and contracts passed with 462 tests. |
+| V2-AUD-COMPLETE-001 | completion_audit | self_checked | Record v2 completion-audit issues, holes, validation limitations, and concerns after WPR106-416. | `docs/audit/V2_COMPLETION_AUDIT_ISSUES_AND_HOLES_2026_06_21.md`, `docs/work_packets/WPR106-417-v2-audit-issues-and-holes-register.md` | WPR106-417 documents passed compile/contracts/v2 validation, the environment-blocked monolithic full-suite limitation, open known issues, boundary-scan meaning, and non-bug concerns without changing source behavior or stage-gate status. |
+| V2-AUD-STAB-001 | stabilization | implemented | Classify and stabilize the uncommitted v2 foundation before baseline commit/push. | `docs/work_packets/WPR106-418-v2-foundation-baseline-stabilization.md`, v2 foundation paths | WPR106-418 found two P1 boundary issues before baseline commit and routed them through WPR106-419; baseline SHA and push evidence are recorded after the baseline commit exists. |
+| V2-AUD-SEC-004 | security | self_checked | Require official-file backfill sources to stay inside a trusted source root and reject secret/local-state source names before archive writes. | `src/tradingbotsuite/v2/archive/microstructure.py`, `src/tradingbotsuite/v2/collectors/jobs.py`, `tests/v2/test_microstructure_collection_phase17.py` | WPR106-419 focused tests passed; `.env`, credential, and traversal sources fail before raw archive or manifest writes; no live/runtime/order/sizing/promotion path was touched. |
+| V2-AUD-STRAT-003 | strategy | self_checked | Add full canonical research-only invariant fields to signal rows and signal frames. | `src/tradingbotsuite/v2/strategy_specs/schemas.py`, `tests/v2/test_strategy_specs_phase10.py` | WPR106-419 focused tests passed; compiled signal frames expose all invariant keys and forbidden signal-row flags fail validation. |
+| V2-AUD-BTENG-003 | backtest_engine | self_checked | Add full canonical research-only invariant columns to signal-bearing vectorized backtest trades and positions. | `src/tradingbotsuite/v2/backtest_engine/engine.py`, `tests/v2/test_backtest_engine_phase11.py` | WPR106-419 focused tests passed; `positions.parquet` and `trades.parquet` include all invariant columns with forbidden flags false. |
+| V2-AUD-LEGACY-001 | legacy | self_checked | Inventory and classify legacy subsystems before v2 reuse or wrapping. | `docs/V2_LEGACY_CLASSIFICATION.md`, `docs/V2_LEGACY_SUBSYSTEM_AUDIT.md`, `tests/v2/test_legacy_classification_docs.py` | Required subsystem inventory and no-touch/freeze classifications passed in WPR106-394. |
+| V2-AUD-LEGACY-010 | legacy | self_checked | Wrap audited legacy strategy parameter metadata into v2 strategy plugin manifests without enabling plugin execution. | `docs/V2_LEGACY_SUBSYSTEM_AUDIT.md`, `src/tradingbotsuite/v2/strategy_plugins/**`, `tests/v2/test_legacy_strategy_plugin_phase18.py` | Phase 18 validation passed in WPR106-409: focused tests 5 passed, full v2 131 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+| V2-AUD-ARCH-001 | archive | self_checked | Add archive contract, archive config skeleton, and deterministic hashing primitives. | `docs/contracts/archive_contract.md`, `src/tradingbotsuite/v2/archive/schemas.py`, `src/tradingbotsuite/v2/archive/hashing.py` | Canonical JSON, file SHA-256, and sorted manifest-row hash tests passed in WPR106-393. |
+| V2-AUD-SEC-002 | security | self_checked | Add initial v2 root containment path policy. | `src/tradingbotsuite/v2/security/path_policy.py`, `tests/v2/test_contract_foundation.py` | Parent traversal rejection test passed in WPR106-393. |
+| V2-AUD-SEC-003 | security | self_checked | Add v2 secret fail-closed policy, logging redaction, trusted artifact hash/root validation, pickle-like artifact blocking, and research-only command classification. | `docs/contracts/security_boundary_contract.md`, `src/tradingbotsuite/v2/security/hygiene.py`, `tests/v2/test_security_hygiene_phase21.py` | Phase 21 validation passed in WPR106-412: focused tests 14 passed, full v2 156 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+| V2-AUD-UI-001 | ui | self_checked | Add a read-only v2 visibility snapshot contract, static HTML renderer, and render-only CLI command without modifying legacy GUI paths or running jobs in a UI process. | `docs/contracts/ui_visibility_contract.md`, `src/tradingbotsuite/v2/ui/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_ui_visibility_phase22.py` | Phase 22 validation passed in WPR106-416: focused tests 13 passed, full v2 169 passed, v2/full compile passed, contracts 462 passed, diff hygiene passed with existing LF-to-CRLF warnings only, and Playwright local HTTP smoke verified title/sections with zero forbidden interactive markup. |
+| V2-AUD-ARCH-002 | archive | self_checked | Implement archive layout, raw JSONL.zst writer, Parquet table writer, manifest store, ingestion run records, archive init, and archive validation. | `src/tradingbotsuite/v2/archive/layout.py`, `src/tradingbotsuite/v2/archive/raw_writer.py`, `src/tradingbotsuite/v2/archive/parquet_writer.py`, `src/tradingbotsuite/v2/archive/manifest_store.py`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/archive/test_archive_phase4.py` | Archive init, raw-before-normalization, manifest identity, deterministic bronze/silver rebuild, and missing-file validation tests passed in WPR106-395. |
+| V2-AUD-ARCH-003 | archive | self_checked | Implement deterministic archive snapshot records and snapshot CLI command. | `src/tradingbotsuite/v2/archive/snapshots.py`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/archive/test_archive_phase4.py` | Snapshot ID changes with input changes and CLI snapshot writes snapshot record in WPR106-395. |
+| V2-AUD-ARCH-004 | archive | self_checked | Implement bronze/silver candle, funding, and context market-data pipelines. | archive contract, `src/tradingbotsuite/v2/archive/market_data.py`, `src/tradingbotsuite/v2/archive/rebuild.py`, `src/tradingbotsuite/v2/archive/normalization_store.py`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/archive/test_archive_phase8.py` | Raw-to-bronze-to-silver fixture flow, stable silver bar schema, complete-window derived bars, funding/context normalization, normalization manifests, safe path partitions, and initial snapshot tests passed in WPR106-399. |
+| V2-AUD-ARCH-005 | archive | self_checked | Add microstructure raw capture schemas, official-file preservation, storage budget reports, and record-only retention/backup policy evidence. | archive contract, `src/tradingbotsuite/v2/archive/microstructure.py`, `src/tradingbotsuite/v2/archive/layout.py`, `tests/v2/test_microstructure_collection_phase17.py` | Phase 17 validation passed in WPR106-408: focused tests 6 passed, full v2 126 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+| V2-AUD-UNIV-001 | universe | self_checked | Implement fixture-backed Hyperliquid universe manager, instrument catalog, raw-before-parse archiving, as-of/current modes, and universe CLI commands. | `docs/contracts/universe_contract.md`, `src/tradingbotsuite/v2/universe/**`, `src/tradingbotsuite/v2/venues/hyperliquid/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_universe_phase5.py` | USD 5M threshold, non-BTC/ETH eligibility, below-threshold exclusion, archived excluded instruments, as-of selection, current sandbox mode, and CLI tests passed in WPR106-396. |
+| V2-AUD-HIP3-001 | hip3 | self_checked | Represent HIP-3/RWA prefixed symbols with namespace metadata and block accepted evidence when required reference metadata is missing. | `src/tradingbotsuite/v2/universe/hyperliquid.py`, `src/tradingbotsuite/v2/universe/rules.py`, `tests/v2/test_universe_phase5.py` | HIP-3 complete-metadata eligibility and missing-metadata blocker tests passed in WPR106-396. |
+| V2-AUD-QUAL-001 | quality | self_checked | Implement coverage and data-quality reporting. | data quality contract, `src/tradingbotsuite/v2/data_quality/**`, `src/tradingbotsuite/v2/cli/main.py` | Expected-row, missing-day, queryable manifest, duplicate/stale/zero-volume/outlier, sandbox non-evidence, CLI, and coverage >= 0.98 enforcement tests passed in WPR106-397. |
+| V2-AUD-QUAL-002 | quality | self_checked | Integrate silver market-data builds with coverage and normalization evidence. | data quality contract, `src/tradingbotsuite/v2/archive/rebuild.py`, `src/tradingbotsuite/v2/data_quality/**`, `tests/v2/archive/test_archive_phase8.py` | Silver bar builds write coverage manifests, incomplete derived windows are normalization evidence, and snapshots include coverage/quality manifest hashes in WPR106-399. |
+| V2-AUD-WORKER-001 | worker | self_checked | Implement durable local worker/job store. | worker job contract, `src/tradingbotsuite/v2/workers/**`, `src/tradingbotsuite/v2/cli/main.py` | SQLite WAL durability, claim/run/heartbeat/retry/cancel/stale transitions, ASGI-process rejection, CLI, and terminal-state tests passed in WPR106-398. |
+| V2-AUD-COLLECT-001 | collectors | self_checked | Implement initial durable collector job handlers and gap-evidence skeletons. | collector job contract, `src/tradingbotsuite/v2/collectors/**`, `docs/V2_OPERATIONS_RUNBOOK.md` | Universe-refresh archive manifest refs, recent candle/funding API-cap diagnostic refs, and WebSocket reconnect gap-record tests passed in WPR106-398. |
+| V2-AUD-COLLECT-002 | collectors | self_checked | Add fixture-backed trade, BBO, L2, and official-file backfill collector job handlers with durable gap and storage evidence. | collector job contract, `src/tradingbotsuite/v2/collectors/**`, `src/tradingbotsuite/v2/workers/**`, `tests/v2/test_microstructure_collection_phase17.py` | Phase 17 validation passed in WPR106-408: focused tests 6 passed, full v2 126 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+| V2-AUD-BTDATA-001 | backtest_data | self_checked | Enforce 2024+, 6-month minimum, dynamic lockbox, coverage, and as-of universe in data reads. | `src/tradingbotsuite/v2/backtest_data/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_backtest_data_phase9.py` | Phase 9 service tests passed in WPR106-400: pre-2024, <6 usable months, lockbox overlap, current-universe evidence, low coverage, warmup separation, requested-field projection, deterministic manifest, and CLI load-panel behavior. |
+| V2-AUD-STRAT-001 | strategy | self_checked | Implement declarative strategy spec validator, registry, examples, and deterministic signal-frame compiler. | `src/tradingbotsuite/v2/strategy_specs/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_strategy_specs_phase10.py` | Phase 10 tests passed in WPR106-401: five built-in declarative examples validate, invalid specs fail clearly, network/secrets/files/live/order/lockbox/arbitrary-Python content is rejected, spec hashes change with material content, CLI validation works, and an in-memory fixture panel compiles to a deterministic research-only signal frame. |
+| V2-AUD-STRAT-002 | strategy_plugins | self_checked | Implement metadata-only v2 `StrategyPluginManifest` wrappers for audited legacy strategy metadata while keeping Python plugin execution forbidden. | `docs/contracts/strategy_plugin_contract.md`, `src/tradingbotsuite/v2/strategy_plugins/**`, `tests/v2/test_legacy_strategy_plugin_phase18.py` | Phase 18 validation passed in WPR106-409: focused tests 5 passed, full v2 131 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+| V2-AUD-BTENG-001 | backtest_engine | self_checked | Implement vectorized fixture backtest and shared run artifacts. | `src/tradingbotsuite/v2/backtest_engine/**`, `tests/v2/test_backtest_engine_phase11.py` | Phase 11 tests passed in WPR106-402: three declarative templates run over the same data snapshot, required run artifacts are written, manifest-based metric recomputation matches, funding/fees affect net metrics, missing data fails closed with artifacts, event-driven placeholder writes the same failure contract, and gross-only runs are rejected. |
+| V2-AUD-BTENG-002 | backtest_engine | self_checked | Implement fixture-only event-driven engine skeleton and microstructure path. | `src/tradingbotsuite/v2/backtest_engine/**`, `tests/v2/test_event_driven_phase16.py` | Phase 16 tests passed in WPR106-407: event-driven fixture runs consume local BBO/L2 microstructure rows, output the shared run artifact contract, preserve research-only/no-order boundary flags, fail closed with artifacts when microstructure rows are missing, sort event queues deterministically, block undocumented maker assumptions, and allow maker fixture runs only with documented queue-model metadata. |
+| V2-AUD-COST-001 | cost | self_checked | Implement conservative cost, funding, slippage, spread, impact, and capacity models. | `docs/contracts/cost_model_contract.md`, `src/tradingbotsuite/v2/costs/**`, `src/tradingbotsuite/v2/backtest_engine/**`, `tests/v2/test_cost_models_phase12.py` | Phase 12 tests passed in WPR106-403: fees apply to turnover, funding changes net returns, spread/slippage/impact reduce net results, maker assumptions require queue modeling, liquidity participation cap fails closed, gross-only metrics are rejected, cost manifests record model hash/sensitivity, and base/stress_2x/stress_3x cost rows are produced. |
+| V2-AUD-LEDGER-001 | ledger | self_checked | Implement append-only ledger and generated exports. | `docs/contracts/ledger_contract.md`, `src/tradingbotsuite/v2/ledger/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_ledger_phase13.py` | Phase 13 tests passed in WPR106-404: missing manifests and validation status are rejected, failed trials are recorded, duplicate run IDs fail, canonical Parquet rows are hash/index checked, CSV/XLSX exports are generated from the canonical ledger, manual spreadsheet edits are not canonical, sandbox/current-universe rows are excluded from strict leaderboard output, and ranking uses net rather than gross results. |
+| V2-AUD-VAL-001 | validation | self_checked | Implement walk-forward validation and overfit controls. | `docs/contracts/validation_contract.md`, `src/tradingbotsuite/v2/validation/**`, `src/tradingbotsuite/v2/ledger/**`, `tests/v2/test_validation_phase14.py` | Phase 14 tests passed in WPR106-405: sweeps require complete trial logs, walk-forward folds are time ordered, purge/embargo rows are excluded, missing sweep experiment IDs fail, post-lockbox tuning is rejected, large trial-family and PBO diagnostics warn on overfit risk, and leaderboard rows expose trial count plus fold stability. |
+| V2-AUD-LEAD-001 | lead | self_checked | Implement Lead Book schema, workflow, and gates. | `docs/contracts/lead_book_contract.md`, `src/tradingbotsuite/v2/lead_book/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_lead_book_phase15.py` | Phase 15 tests passed in WPR106-406: agents create source-hashed leads, Parquet/CSV store works, deep validation requires human inspection and agent approval, ROI observed/projected fields are required, ROI projection is marked not-claim, six losing months and low trade frequency fail gates, profit concentration warns/fails at thresholds, diminishing returns warnings are recorded, and missing pre-2024 fallback metadata blocks the lead. |
+| V2-AUD-FINAL-001 | final | self_checked | Implement deep-validation governance, one-active serious-lead lock, pre-2024 diagnostic fallback records, max-three final hard-test slots, frozen evidence requirements, post-lockbox edit rejection, and non-live survivor reports. | `docs/contracts/validation_contract.md`, `docs/contracts/lead_book_contract.md`, `src/tradingbotsuite/v2/validation/final_hard_test.py`, `tests/v2/test_final_validation_phase20.py` | Phase 20 validation passed in WPR106-411: focused tests 7 passed, full v2 142 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+| V2-AUD-VAL-002 | validation | self_checked | Extend validation governance beyond walk-forward/overfit into deep-validation scorecards and final hard-test workflow guards. | validation contract, `src/tradingbotsuite/v2/validation/final_hard_test.py`, `tests/v2/test_final_validation_phase20.py` | Phase 20 validation passed in WPR106-411: focused tests 7 passed, full v2 142 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+| V2-AUD-XVENUE-001 | cross_venue | self_checked | Implement fixture-only venue adapter capability schemas and first comparable Binance USDT-M fixture archive/backtest-data path after the Hyperliquid foundation. | `docs/contracts/venue_adapter_contract.md`, `docs/contracts/backtest_data_service_contract.md`, `src/tradingbotsuite/v2/venues/**`, `src/tradingbotsuite/v2/universe/store.py`, `tests/v2/test_cross_venue_phase19.py` | Phase 19 validation passed in WPR106-410: focused tests 4 passed, full v2 135 passed, v2/full compile passed, contract docs 2 passed, contracts 462 passed, and diff hygiene passed with existing LF-to-CRLF warnings only. |
+
+## Phase 0 Repo State Snapshot
+
+Captured: 2026-06-20T23:01:35+03:00
+
+```yaml
+branch: main
+git_sha: 5711d6413f882992e02141f56ed5da908ac13a44
+package_roots:
+  - src/tradingbot
+  - src/tradingbotsuite
+v2_source_lock:
+  canonical_copy: docs/V2_READY_TO_USE_IMPLEMENTATION_ROADMAP.md
+  imported_source: docs/REDX_V2_READY_TO_USE_IMPLEMENTATION_ROADMAP_2026_06_20.md
+validation_baseline:
+  docs_only_phase0:
+    - git diff --check
+    - rg stale framing audit over README.md docs/ START_HERE.md AGENTS.md
+  implementation_baseline_for_later_packets:
+    - python -m compileall -q src/tradingbotsuite
+    - PYTHONPATH=src python -m pytest tests/contracts -q
+known_validation_limitations:
+  - docs/KNOWN_ISSUES.md currently records open P2 Windows socket exhaustion
+    risk for local pytest-asyncio contract setup.
+milestone_status_at_phase0_capture:
+  M0: partially implemented by Phase 0 docs; v2 package skeleton still pending
+  M1: not implemented
+  M2: not implemented
+  M3: not implemented
+  M4: not implemented
+  M5: not implemented
+current_milestone_status_source: docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md
+```
+
+## Code Marker Template
+
+New v2 modules should include a module-level marker:
+
+```python
+# V2-AUDIT-ID: V2-AUD-BTDATA-001
+# V2-CONTRACTS: docs/contracts/backtest_data_service_contract.md
+# V2-BOUNDARY: research_only, no_live_imports, lockbox_enforced
+# V2-OWNER: backtest_data
+```

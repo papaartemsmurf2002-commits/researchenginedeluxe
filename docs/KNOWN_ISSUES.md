@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-06-18
+Last updated: 2026-06-21
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,7 +22,7 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
-| P1 | 0 | 0 | 23 | 0 |
+| P1 | 0 | 0 | 25 | 0 |
 | P2 | 2 | 0 | 5 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
 
@@ -71,6 +71,19 @@ import-boundary, and package compile validation passed, while
 and then failed during the same async test's event-loop socketpair setup before
 the test body ran.
 
+WPR106-417 reproduced the blocker during a v2 completion audit on
+2026-06-21. Full package compile, contract tests, v2 tests, and many grouped
+non-v2 suites passed, but monolithic and async/operator broad-suite validation
+could not be certified in the Windows session. Failures were again in
+`socket.socketpair()` while pytest-asyncio or Starlette/FastAPI TestClient was
+creating event loops, with `WinError 10055` occurring before the affected test
+bodies ran. A short cooldown sometimes made a direct `socket.socketpair()`
+probe pass again, but the async test process could still exhaust the same host
+resource. A temporary Python 3.11 validation environment outside the repo
+confirmed the same underlying socketpair failure after the host entered the
+bad state, so the audit kept this classified as a local validation-environment
+blocker rather than a source assertion failure.
+
 ### Required resolution
 
 Before using this Windows session as final full-contract evidence again, clear
@@ -86,6 +99,85 @@ Open. This issue records a validation-environment blocker only. It does not
 indicate a sandbox manifest-builder assertion failure, candidate-pack write,
 paper/live signal, sizing instruction, order placement, runtime-mode change, or
 promotion claim.
+
+## ISSUE-R106-027: Official S3 backfill accepted arbitrary local source files
+
+Severity: P1
+Stage discovered: WPR106-418 v2 foundation baseline stabilization
+Owner: Codex Manager Development Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/v2/archive/microstructure.py`, `src/tradingbotsuite/v2/collectors/jobs.py`, `tests/v2/test_microstructure_collection_phase17.py`
+
+### Problem
+
+The v2 official S3 backfill preservation path accepted a caller-controlled
+`source_file` and only checked that it was a local file before copying it into
+the raw archive. A malformed or careless job spec could copy `.env`,
+credential files, local SQLite databases, or private cache files into archive
+storage, which conflicts with the v2 no-touch registry for secrets and local
+state.
+
+### Evidence
+
+The WPR106-418 boundary subagent found that
+`_run_official_s3_backfill_job()` passed `source_file` directly to
+`preserve_official_s3_backfill_file()`, and that preservation only checked
+`Path(source_file).is_file()` before writing archive output and manifest rows.
+
+### Required resolution
+
+Official-file preservation must require a trusted source root, resolve source
+files inside that root, reject traversal and secret/local-state file names
+before archive writes, and add regressions proving rejected inputs do not write
+raw files or manifest rows.
+
+### Resolution notes
+
+Resolved by WPR106-419. Official S3 backfill jobs now require
+`trusted_source_root`; source paths are resolved under that root; traversal,
+`.env`, credential/key-like names, and local database/cache suffixes fail before
+archive layout writes or manifest rows. Focused tests cover valid preservation
+and rejected `.env`, credential, and traversal sources. The fix does not create
+candidate-pack, paper/live, order, sizing, runtime-mode, or promotion behavior.
+
+## ISSUE-R106-028: Signal-bearing v2 artifacts omitted full boundary invariant
+
+Severity: P1
+Stage discovered: WPR106-418 v2 foundation baseline stabilization
+Owner: Codex Manager Development Agent
+Status: resolved
+Paths affected: `src/tradingbotsuite/v2/strategy_specs/schemas.py`, `src/tradingbotsuite/v2/backtest_engine/engine.py`, `tests/v2/test_strategy_specs_phase10.py`, `tests/v2/test_backtest_engine_phase11.py`
+
+### Problem
+
+Some v2 artifacts carrying `signal` or weight fields only emitted
+`research_only`, `observe_only`, and `promotion_ready` boundary fields. The
+canonical v2 invariant also requires explicit false values for candidate,
+paper/live signal, sizing, order-placement, and runtime-mode fields. Omitting
+those fields made signal-bearing artifacts less self-describing than the
+product-scope invariant requires.
+
+### Evidence
+
+The WPR106-418 boundary subagent found that `SignalRow`, `SignalFrame`,
+`positions.parquet`, and `trades.parquet` omitted some canonical forbidden
+flags even though those artifacts include strategy signal or target-weight
+columns.
+
+### Required resolution
+
+Add the full canonical invariant to signal rows/frames and signal-bearing
+backtest artifacts, validate that forbidden flags remain false, and add tests
+for serialized signal rows plus Parquet columns and values.
+
+### Resolution notes
+
+Resolved by WPR106-419. Signal rows and frames now carry and validate the full
+research-only invariant. Vectorized backtest positions and trades now write the
+same invariant columns with forbidden flags set false. Focused tests assert the
+compiled signal-frame fields and Parquet columns/values. The fix adds explicit
+false boundary evidence only; it does not authorize candidate-pack, paper/live,
+order, sizing, runtime-mode, or promotion behavior.
 
 ## ISSUE-R106-025: May 2026 holdout archive is not yet available locally
 

@@ -1,0 +1,448 @@
+# V2-AUDIT-ID: V2-AUD-COLLECT-001
+# V2-CONTRACTS: docs/contracts/collector_job_contract.md, docs/contracts/worker_job_contract.md
+# V2-BOUNDARY: research_only, durable_collectors, no_live_imports
+# V2-OWNER: v2_collectors
+"""Initial durable collector job handlers for v2 workers."""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from tradingbotsuite.v2.archive.hashing import canonical_json_hash
+from tradingbotsuite.v2.archive.microstructure import (
+    MicrostructureDataType,
+    parse_microstructure_datatype,
+    preserve_official_s3_backfill_file,
+    write_microstructure_raw_capture,
+)
+from tradingbotsuite.v2.config.time import utc_now
+from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
+from tradingbotsuite.v2.universe.models import UniverseMode
+from tradingbotsuite.v2.workers.job_store import WorkerJobStore
+from tradingbotsuite.v2.workers.models import (
+    WorkerJobKind,
+    WorkerJobRecord,
+    WorkerJobStatus,
+    WorkerRunResult,
+)
+
+
+class CollectorJobStatus(str, Enum):
+    QUEUED = WorkerJobStatus.QUEUED.value
+    RUNNING = WorkerJobStatus.RUNNING.value
+    SUCCEEDED = WorkerJobStatus.SUCCEEDED.value
+    FAILED = WorkerJobStatus.FAILED.value
+    CANCELLED = WorkerJobStatus.CANCELLED.value
+    STALE = WorkerJobStatus.STALE.value
+
+
+class CollectorJobRecord(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    job_id: str = Field(min_length=1)
+    kind: WorkerJobKind
+    status: CollectorJobStatus
+    input_spec_hash: str = Field(min_length=64, max_length=64)
+    archive_manifest_refs: tuple[str, ...] = ()
+    output_refs: tuple[str, ...] = ()
+    failure_reason: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+
+    @classmethod
+    def from_worker_job(cls, record: WorkerJobRecord) -> "CollectorJobRecord":
+        return cls(
+            job_id=record.job_id,
+            kind=record.kind,
+            status=CollectorJobStatus(record.status.value),
+            input_spec_hash=record.input_spec_hash,
+            archive_manifest_refs=record.archive_manifest_refs,
+            output_refs=record.output_refs,
+            failure_reason=record.failure_reason,
+        )
+
+
+def run_collector_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    if job.kind == WorkerJobKind.UNIVERSE_REFRESH:
+        return _run_universe_refresh_job(job=job, store=store, worker_id=worker_id)
+    if job.kind == WorkerJobKind.RECENT_CANDLE_BOOTSTRAP:
+        return _run_recent_candle_bootstrap_job(job=job, store=store, worker_id=worker_id)
+    if job.kind == WorkerJobKind.FUNDING_BACKFILL:
+        return _run_funding_backfill_job(job=job, store=store, worker_id=worker_id)
+    if job.kind == WorkerJobKind.WEBSOCKET_CAPTURE:
+        return _run_websocket_capture_skeleton(job=job, store=store, worker_id=worker_id)
+    if job.kind == WorkerJobKind.WEBSOCKET_TRADE_CAPTURE:
+        return _run_microstructure_capture_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+            datatype=MicrostructureDataType.TRADES,
+        )
+    if job.kind == WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE:
+        return _run_microstructure_capture_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+            datatype=parse_microstructure_datatype(str(job.input_spec.get("datatype", ""))),
+        )
+    if job.kind == WorkerJobKind.OFFICIAL_S3_BACKFILL:
+        return _run_official_s3_backfill_job(job=job, store=store, worker_id=worker_id)
+    raise ValueError(f"unsupported collector job kind: {job.kind.value}")
+
+
+def _run_universe_refresh_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    result = refresh_hyperliquid_universe(
+        archive_root=_required_str(spec, "archive_root"),
+        payload_file=spec.get("payload_file"),
+        asof_date=_parse_date(_required_str(spec, "asof_date")),
+        min_day_notional_usd=int(spec.get("min_day_notional_usd", 5_000_000)),
+        mode=UniverseMode(str(spec.get("mode", UniverseMode.AS_OF.value))),
+        include_hip3_dexs=bool(spec.get("include_hip3_dexs", False)),
+    )
+    output_refs = (
+        f"universe_snapshot_id={result.snapshot_id}",
+        f"eligible_count={result.eligible_count}",
+        f"instrument_count={result.instrument_count}",
+    )
+    archive_refs = (
+        f"raw_file_id={result.raw_file_id}",
+        f"universe_snapshot_id={result.snapshot_id}",
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="universe_refresh_job_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_recent_candle_bootstrap_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    warning = _api_cap_warning(
+        job=job,
+        scope="recent_candle_bootstrap",
+        instrument_id=str(spec.get("instrument_id", "unknown")),
+        timeframe=str(spec.get("timeframe", "1m")),
+    )
+    output_refs = (
+        warning,
+        "collector_mode=diagnostic_skeleton",
+        "archive_manifest_ref=pending_until_phase8_normalization",
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=("archive_manifest_ref=pending_until_phase8_normalization",),
+        reason="recent_candle_bootstrap_diagnostic_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+    )
+
+
+def _run_funding_backfill_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    warning = _api_cap_warning(
+        job=job,
+        scope="funding_backfill",
+        instrument_id=str(spec.get("instrument_id", "unknown")),
+        timeframe="funding",
+    )
+    output_refs = (
+        warning,
+        "collector_mode=diagnostic_skeleton",
+        "archive_manifest_ref=pending_until_phase8_normalization",
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=("archive_manifest_ref=pending_until_phase8_normalization",),
+        reason="funding_backfill_diagnostic_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+    )
+
+
+def _run_websocket_capture_skeleton(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    reconnect_attempts = int(spec.get("reconnect_attempts", 1))
+    backoff_seconds = int(spec.get("backoff_seconds", 1))
+    reason = str(spec.get("gap_reason", "websocket_capture_not_started_in_phase7_skeleton"))
+    start_ts = _optional_datetime(spec.get("start_ts"))
+    end_ts = _optional_datetime(spec.get("end_ts"))
+    gap = store.record_gap(
+        job_id=job.job_id,
+        kind=job.kind,
+        reason=reason,
+        worker_id=worker_id,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        backoff_seconds=backoff_seconds,
+        reconnect_attempts=reconnect_attempts,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=(
+            "collector_mode=websocket_capture_skeleton",
+            f"gap_record_id={gap.gap_record_id}",
+            "archive_manifest_ref=gap_record_only",
+        ),
+        archive_manifest_refs=("archive_manifest_ref=gap_record_only",),
+        gap_record_ids=(gap.gap_record_id,),
+        reason="websocket_capture_gap_recorded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_microstructure_capture_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+    datatype: MicrostructureDataType,
+) -> WorkerRunResult:
+    if datatype not in {MicrostructureDataType.TRADES, MicrostructureDataType.BBO, MicrostructureDataType.L2}:
+        raise ValueError("microstructure capture job requires datatype trades, bbo, or l2")
+    spec = job.input_spec
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    reconnect_attempts = int(spec.get("reconnect_attempts", 0))
+    backoff_seconds = int(spec.get("backoff_seconds", 0))
+    gap_reason = str(spec.get("gap_reason", "")).strip()
+    has_gap_evidence = bool(gap_reason) or reconnect_attempts > 0
+    capture = write_microstructure_raw_capture(
+        archive_root=_required_str(spec, "archive_root"),
+        records=_required_records(spec),
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype=datatype,
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=str(spec.get("adapter_id", "fixture_microstructure_v1")),
+        source_endpoint_or_subscription=str(
+            spec.get("source_endpoint_or_subscription", f"fixture/websocket/{datatype.value}")
+        ),
+        instrument_id=_required_str(spec, "instrument_id"),
+        start_ts=start_ts,
+        end_ts=end_ts,
+        storage_budget_bytes=int(spec.get("storage_budget_bytes", 1_000_000_000)),
+        reconnect_attempts=reconnect_attempts,
+        gap_count=1 if has_gap_evidence else 0,
+    )
+    gap_record_ids: tuple[str, ...] = ()
+    if has_gap_evidence:
+        gap = store.record_gap(
+            job_id=job.job_id,
+            kind=job.kind,
+            reason=gap_reason or "microstructure_reconnect_recorded",
+            worker_id=worker_id,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            backoff_seconds=backoff_seconds,
+            reconnect_attempts=reconnect_attempts,
+        )
+        gap_record_ids = (gap.gap_record_id,)
+    archive_refs = (
+        f"raw_file_id={capture.raw_file.file_id}",
+        f"quality_report_id={capture.quality_report.quality_report_id}",
+        f"storage_report_id={capture.storage_report.storage_report_id}",
+    )
+    output_refs = (
+        "collector_mode=fixture_microstructure_capture",
+        f"datatype={datatype.value}",
+        f"row_count={capture.raw_file.row_count or 0}",
+        f"storage_total_bytes={capture.storage_report.total_bytes}",
+        f"storage_within_budget={str(capture.storage_report.within_budget).lower()}",
+        f"gap_evidence_recorded={str(has_gap_evidence).lower()}",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        gap_record_ids=gap_record_ids,
+        reason=f"{datatype.value}_microstructure_capture_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_official_s3_backfill_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    raw_file, storage_report = preserve_official_s3_backfill_file(
+        archive_root=_required_str(spec, "archive_root"),
+        source_file=_required_str(spec, "source_file"),
+        trusted_source_root=_required_str(spec, "trusted_source_root"),
+        venue=str(spec.get("venue", "hyperliquid")),
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=str(spec.get("adapter_id", "official_s3_backfill_fixture_v1")),
+        source_endpoint_or_subscription=str(
+            spec.get("source_endpoint_or_subscription", "official_s3_backfill_fixture")
+        ),
+        instrument_id=spec.get("instrument_id"),
+        start_ts=_parse_datetime(_required_str(spec, "start_ts")),
+        end_ts=_parse_datetime(_required_str(spec, "end_ts")),
+        storage_budget_bytes=int(spec.get("storage_budget_bytes", 1_000_000_000)),
+        row_count=int(spec.get("row_count", 0)),
+        filename=spec.get("filename"),
+    )
+    archive_refs = (
+        f"raw_file_id={raw_file.file_id}",
+        f"storage_report_id={storage_report.storage_report_id}",
+    )
+    output_refs = (
+        "collector_mode=official_s3_backfill_preserve_local_file",
+        f"row_count={raw_file.row_count or 0}",
+        f"storage_total_bytes={storage_report.total_bytes}",
+        f"storage_within_budget={str(storage_report.within_budget).lower()}",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="official_s3_backfill_preserved",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _api_cap_warning(
+    *,
+    job: WorkerJobRecord,
+    scope: str,
+    instrument_id: str,
+    timeframe: str,
+) -> str:
+    warning_id = canonical_json_hash(
+        {
+            "job_id": job.job_id,
+            "scope": scope,
+            "instrument_id": instrument_id,
+            "timeframe": timeframe,
+            "input_spec_hash": job.input_spec_hash,
+        }
+    )[:16]
+    return f"api_cap_warning_id={warning_id}:latest_window_or_api_cap_must_not_support_accepted_evidence"
+
+
+def _required_str(spec: dict[str, Any], key: str) -> str:
+    value = spec.get(key)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"collector job spec requires {key}")
+    return value
+
+
+def _parse_date(value: str) -> date:
+    return date.fromisoformat(value)
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError("collector timestamps must include timezone")
+    return parsed
+
+
+def _optional_datetime(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    raise ValueError(f"unsupported datetime value: {value!r}")
+
+
+def _required_records(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    value = spec.get("records")
+    if not isinstance(value, list) or not value:
+        raise ValueError("collector job spec requires non-empty records")
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"collector records[{index}] must be an object")
+        rows.append(dict(item))
+    return rows
+
+
+def normalize_payload_file(path: str | Path | None) -> str | None:
+    if path is None:
+        return None
+    return str(Path(path))

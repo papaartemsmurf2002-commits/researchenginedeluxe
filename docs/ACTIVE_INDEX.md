@@ -1,15 +1,32 @@
 # Active Index
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
 This is the first file to read after `AGENTS.md`.
 
 ## Immediate Next-Agent Handoff
 
+- Read `docs/audit/V2_COMPLETION_AUDIT_ISSUES_AND_HOLES_2026_06_21.md`,
+  `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`,
+  `docs/V2_FUTURE_UI_DEFERRAL.md`, `docs/PRODUCT_SCOPE.md`,
+  `docs/V2_DECISION_REGISTER.md`, `docs/V2_NO_TOUCH_PATHS.md`,
+  `docs/audit/V2_AUDIT_INDEX.md`, and
+  `docs/V2_READY_TO_USE_IMPLEMENTATION_ROADMAP.md` before v2 implementation
+  work. WPR106-391 through WPR106-416 implement the v2 roadmap phases, map M0
+  through M5, and add Phase 22 as a read-only static visibility UI rather than
+  a legacy GUI rewrite or job-running UI process. WPR106-417 records the
+  follow-up completion-audit issues, holes, validation limitations, and
+  concerns; it does not change the research-only boundary or stage-gate status.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
-  more sandbox feature work. It is the authoritative research-only completion
-  roadmap and makes Phase 0 repo-state stabilization mandatory before the
+  more legacy sandbox feature work. It remains useful historical transition
+  guidance and makes repo-state stabilization mandatory before the
   materializer, dashboard, strict-validation bridge, or performance work.
+- Read `docs/RESEARCH_ROADMAP_DIRECTION_COMPARISON_2026_06_20.md` when
+  evaluating the imported v2 multi-venue Hyperliquid-perp roadmap in
+  `docs/RESEARCH_ENGINE_DELUXE_V2_MULTI_VENUE_PERP_RESEARCH_ROADMAP.md`.
+  WPR106-388 and WPR106-389 are source/reference packages. WPR106-391 is the
+  later packet that changes the active canonical identity and Phase 0 docs,
+  without claiming implementation evidence.
 - Read `docs/SANDBOX_FIRST_LOOK_RECOMMENDATIONS.md` before resuming sandbox
   development. It is a first-look recommendation memo, not an implementation
   guideline. It recommends audit-first posture before continuing the
@@ -69,16 +86,23 @@ This is the first file to read after `AGENTS.md`.
 
 ## Canonical Identity
 
-ResearchEngineDeluxe is a modular BTC/ETH perpetual-futures research engine.
-Its purpose is to test new strategy theories, refine existing strategy
-families, and generate analyzable evidence patterns fast enough to support
-iterative research.
+ResearchEngineDeluxe v2 is a research-only, data-first, multi-instrument
+perpetual-futures research platform. The active default direction is
+Hyperliquid-first: instruments above USD 5,000,000 daily notional volume,
+owned archives, as-of universe snapshots, 2024+ evidence, 6+ usable months,
+12-month preference, 0.98 coverage, dynamic lockbox exclusion, declarative
+strategy evaluation, append-only experiment ledger, Lead Book, and
+audit-by-chunk migration.
+
+BTC and ETH remain fixture, smoke-test, reference, and legacy evidence symbols.
+They are not the full v2 product scope.
 
 The product surface is research evidence, not live execution. It produces
 manifests, metrics, rejections, ablations, multiple-testing evidence,
-validation-floor evidence, candidate-readiness diagnostics, and operator
+validation-floor evidence, lead diagnostics, audit records, and operator
 visibility. It does not produce live signals, paper signals, order-placement
-instructions, sizing instructions, or promotion authorization.
+instructions, sizing instructions, runtime-mode changes, candidate-pack
+promotion, or promotion authorization.
 
 The Python package name remains `tradingbotsuite` for compatibility. Treat that
 as an implementation detail unless a future package-rename packet scopes a
@@ -963,6 +987,14 @@ facts.
 - Current stage: Stage R106 centralized historical data catalog complete,
   fail-closed no-candidate decision.
 - Current stage owner: Codex Research Agent.
+- Latest local v2 roadmap status packet:
+  `docs/work_packets/WPR106-414-v2-roadmap-milestone-status-closeout.md`.
+- Latest local v2 control-doc sync packet:
+  `docs/work_packets/WPR106-415-v2-control-doc-sync-and-completion-audit.md`.
+- V2 roadmap status:
+  `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md` records Phases 0 through 22 and
+  M0 through M5. This is a research-only platform foundation status, not a
+  candidate-ready, paper/live, order, sizing, runtime-mode, or promotion claim.
 - Latest local completion roadmap packet:
   `docs/work_packets/WPR106-360-research-engine-completion-roadmap.md`.
 - Latest local completion roadmap expansion packet:
@@ -1714,13 +1746,14 @@ exist. `Review Existing Evidence` is the fast cache/reuse audit. Downstream-only
 eligibility refresh is not a new upstream iteration. Forced cycle handoff keeps
 strict `historical_research_cycle` specs free of operator-only metadata.
 
-## Current Gate State
+## Legacy R106 Gate State
 
-The strategy implementation surface is structurally complete for the current
-research iteration: active plugins, checked strategy configs, BTC/ETH candidate
-blueprints, durable cycle configs, replay-overlay support, exit-lab,
+The inherited R106 strategy implementation surface is structurally complete for
+its BTC/ETH evidence scope: active plugins, checked strategy configs, BTC/ETH
+candidate blueprints, durable cycle configs, replay-overlay support, exit-lab,
 multiple-testing, validation-floor, and candidate-eligibility surfaces all
-exist and are contract-tested.
+exist and are contract-tested. Under v2, treat this as legacy/reference
+research infrastructure and evidence, not as the full product scope.
 
 No candidate-ready trading claim exists. No candidate pack should be written
 from current evidence. Zero eligible candidates remains a valid research
@@ -1771,17 +1804,42 @@ See `docs/KNOWN_ISSUES.md` for the blocking source of truth.
 
 1. `AGENTS.md`
 2. `docs/ACTIVE_INDEX.md`
-3. `docs/ORCHESTRATOR_STAGE_LEDGER.md`
-4. `docs/KNOWN_ISSUES.md`
-5. `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`
-6. Latest relevant `docs/stage_reports/STAGE_R106_*.md`
-7. Relevant source and tests for the scoped packet
+3. `docs/PRODUCT_SCOPE.md`
+4. `docs/V2_DECISION_REGISTER.md`
+5. `docs/V2_NO_TOUCH_PATHS.md`
+6. `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`
+7. `docs/V2_FUTURE_UI_DEFERRAL.md`
+8. `docs/audit/V2_AUDIT_INDEX.md`
+9. `docs/ORCHESTRATOR_STAGE_LEDGER.md`
+10. `docs/KNOWN_ISSUES.md`
+11. `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`
+12. Latest relevant `docs/stage_reports/STAGE_R106_*.md`
+13. Relevant source and tests for the scoped packet
 
 ## Near-Term Work Order
 
+Active v2 work should follow `docs/V2_READY_TO_USE_IMPLEMENTATION_ROADMAP.md`
+and `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`. WPR106-391 through WPR106-416
+implement the roadmap foundation through Phase 22 as a research-only v2
+platform. Do not rerun early v2 foundation phases unless a new audit finds a
+concrete gap. Future v2 work should be one of:
+
+- an explicitly scoped independent audit/fix packet for existing v2 behavior;
+- a later UI extension packet that preserves the `V2-AUD-UI-001` read-only
+  boundary or explicitly scopes any new command delegation through workers;
+- a new roadmap extension packet with contracts, tests, and research-only
+  boundary proof.
+
+Do not start paper/live features, order placement, sizing, runtime-mode
+mutation, arbitrary Python strategy execution, or promotion behavior from the
+v2 roadmap foundation.
+
+Inherited R106 strategy and sandbox work remains useful as legacy/reference
+research, but it is no longer the active product scope by itself.
+
 New strategies, filters, models, and refinements should be added through
-scoped research packets when they improve hypothesis testing, ablation quality,
-or evidence generation. Keep them research-only, comparator-backed, and
+scoped research packets only when they advance the v2 roadmap or explicitly
+classified legacy migration. Keep them research-only, comparator-backed, and
 manifested so failures produce analyzable rejection data instead of vague
 closed status.
 
