@@ -15,6 +15,10 @@ from pathlib import Path
 import pyarrow.parquet as pq
 from pydantic import ValidationError
 
+from tradingbotsuite.v2.audit import (
+    AutonomousReadinessStatus,
+    run_autonomous_readiness_audit_from_file,
+)
 from tradingbotsuite.v2.archive.layout import ArchiveLayout
 from tradingbotsuite.v2.archive.manifest_store import ArchiveManifestStore
 from tradingbotsuite.v2.archive.rebuild import (
@@ -377,6 +381,18 @@ def build_parser() -> argparse.ArgumentParser:
     lead_approve.add_argument("--lead-id", required=True)
     lead_approve.add_argument("--inspection-note-file", required=True)
     lead_approve.add_argument("--approving-agent-id", required=True)
+    audit = subparsers.add_parser(
+        "audit",
+        help="research-only audit and blocker-report commands",
+        description=f"Audit command group. {BOUNDARY_HELP}",
+    )
+    audit_subparsers = audit.add_subparsers(dest="audit_command")
+    autonomous_readiness = audit_subparsers.add_parser(
+        "autonomous-readiness",
+        help="evaluate autonomous research-readiness evidence and write a blocker report",
+    )
+    autonomous_readiness.add_argument("--evidence-file", required=True)
+    autonomous_readiness.add_argument("--output-path", required=True)
     autopilot = subparsers.add_parser(
         "autopilot",
         help="bounded research-only cycle planning commands",
@@ -523,6 +539,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _handle_ledger(args, parser)
     if args.command == "lead":
         return _handle_lead(args, parser)
+    if args.command == "audit":
+        return _handle_audit(args, parser)
     if args.command == "autopilot":
         return _handle_autopilot(args, parser)
     if args.command == "autonomy":
@@ -1069,6 +1087,34 @@ def _handle_lead(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
         print(f"lead_rejected={exc}")
         return 1
     parser.error(f"unsupported lead command: {args.lead_command}")
+    return 2
+
+
+def _handle_audit(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.audit_command is None:
+        parser.parse_args(["audit", "--help"])
+        return 0
+    if args.audit_command == "autonomous-readiness":
+        try:
+            report = run_autonomous_readiness_audit_from_file(
+                args.evidence_file,
+                output_path=args.output_path,
+            )
+        except (ValueError, ValidationError) as exc:
+            print(f"autonomous_readiness_audit_rejected={exc}")
+            return 1
+        print(f"readiness_report={Path(args.output_path).resolve(strict=False)}")
+        print(f"report_id={report.report_id}")
+        print(f"status={report.status.value}")
+        print(f"autonomous_research_ready={str(report.autonomous_research_ready).lower()}")
+        print(f"blocker_count={report.blocker_count}")
+        for blocker in report.blocker_reasons:
+            print(f"blocker={blocker}")
+        print("promotion_ready=false")
+        if report.status == AutonomousReadinessStatus.AUTONOMOUS_RESEARCH_READY:
+            return 0
+        return 1
+    parser.error(f"unsupported audit command: {args.audit_command}")
     return 2
 
 

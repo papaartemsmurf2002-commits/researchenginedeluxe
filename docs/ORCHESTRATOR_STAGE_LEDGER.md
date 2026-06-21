@@ -389,6 +389,16 @@ worker handlers. The final audit is expected to complete with sandbox and
 missing-real-evidence blockers, so the fixture proves operability only and
 does not create accepted evidence, autonomous-ready status, candidate-ready
 status, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-455 v2 autonomous readiness audit-gate update: WPR106-455 adds
+`redx audit autonomous-readiness`, `AutonomousReadinessEvidence`, and
+`AutonomousReadinessReport` so the execution brief's final checklist can be
+evaluated as a deterministic JSON blocker report. The gate requires checklist
+items, a completed cycle execution manifest, a passing final durable audit
+report, a nonempty canonical ledger, a nonempty Lead Book, and zero open P0/P1
+counts. Missing or failed evidence blocks readiness; this packet does not
+collect data, run long jobs, resolve real-archive evidence gaps, certify
+strategy quality, create accepted evidence, or add candidate-ready,
+paper/live/order/sizing/runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

@@ -162,6 +162,12 @@ This is the first file to read after `AGENTS.md`.
   continuous historical trade/L2 coverage proof, independent audits,
   real-archive loop acceptance,
   and authoritative full-suite proof remain follow-up work.
+  WPR106-455 adds `redx audit autonomous-readiness`, a deterministic
+  manager-gate report that consumes checklist evidence plus cycle, final audit,
+  ledger, and Lead Book artifacts. Missing or failed evidence becomes an
+  explicit blocker report; the command does not collect data, certify strategy
+  quality, create accepted evidence, or add candidate/paper/live/order/sizing/
+  runtime/promotion behavior.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

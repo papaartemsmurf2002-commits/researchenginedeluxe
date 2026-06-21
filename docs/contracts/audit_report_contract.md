@@ -1,7 +1,7 @@
 # V2 Audit Report Contract
 
 Status: v2 durable audit/blocker report contract
-Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`, `V2-AUD-AUDIT-002`, `V2-AUD-AUDIT-003`, `V2-AUD-AUDIT-004`, `V2-AUD-AUDIT-005`
+Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`, `V2-AUD-AUDIT-002`, `V2-AUD-AUDIT-003`, `V2-AUD-AUDIT-004`, `V2-AUD-AUDIT-005`, `V2-AUD-AUDIT-006`
 
 ## Purpose
 
@@ -55,6 +55,10 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
   job after planned jobs have succeeded, been skipped as already successful, or
   produced explicit blockers. The resulting report remains the cycle blocker
   report and must not mark autonomous readiness even if it has no blockers.
+- Autonomous readiness gates may consume a final durable audit report as one
+  required artifact, but only a separate `AutonomousReadinessReport` may express
+  the manager-level `autonomous_research_ready` gate status. Durable audit
+  reports themselves must continue to keep `accepted_research_ready=false`.
 
 ## Forbidden
 
@@ -69,3 +73,6 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
 - Treating a generated audit report with no blockers as sufficient release
   evidence without independent audits, authoritative full-suite validation, real
   archive coverage evidence, and open-blocker closure.
+- Treating a passing final audit report as a substitute for the autonomous
+  readiness evidence checklist, ledger, Lead Book, cycle execution manifest, and
+  open-issue counts.
