@@ -11,6 +11,7 @@ from tradingbotsuite.v2.data_quality.coverage import (
     expected_bar_count,
     timeframe_to_timedelta,
 )
+from tradingbotsuite.v2.data_quality.jobs import run_data_quality_job
 from tradingbotsuite.v2.data_quality.schemas import CoverageReport, DataQualityCheck
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "DataQualityCheck",
     "coverage_report_for_bars",
     "expected_bar_count",
+    "run_data_quality_job",
     "timeframe_to_timedelta",
 ]

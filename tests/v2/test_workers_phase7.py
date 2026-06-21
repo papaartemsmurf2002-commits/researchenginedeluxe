@@ -261,6 +261,187 @@ def test_funding_backfill_worker_writes_archive_layers(tmp_path) -> None:
     assert all(row.research_only and row.observe_only and not row.promotion_ready for row in silver_rows)
 
 
+def test_coverage_audit_worker_writes_reports_from_silver_archive_file(tmp_path) -> None:
+    archive_root = tmp_path / "archive-coverage"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-candles-for-coverage",
+        input_spec={
+            "archive_root": str(archive_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-candles-for-coverage",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "records": [_candle_row(index) for index in range(60)],
+            "derive_timeframes": [],
+            "skip_coverage": True,
+        },
+    )
+    candle_result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-candles-for-coverage",
+    )
+    assert candle_result is not None
+    silver_file_id = _silver_bars_file_id(archive_root, timeframe="1m")
+    queued = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-coverage-audit",
+        input_spec={
+            "archive_root": str(archive_root),
+            "silver_file_id": silver_file_id,
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        worker_id="worker-coverage",
+    )
+    loaded = store.load_job(queued.job_id)
+    coverage_store = CoverageManifestStore(ArchiveLayout(archive_root))
+    reports = coverage_store.load_coverage_reports()
+    checks = coverage_store.load_quality_checks()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "job_kind=coverage_audit" in loaded.output_refs
+    assert "coverage_ratio=1.000000000000" in loaded.output_refs
+    assert "quality_status=non_evidence" in loaded.output_refs
+    assert "evidence_eligible=false" in loaded.output_refs
+    assert "blocker_reasons=sandbox_diagnostic_non_evidence" in loaded.output_refs
+    assert any(ref.startswith("coverage_report_id=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("quality_check_ids=") for ref in loaded.archive_manifest_refs)
+    assert reports[0].coverage_ratio == 1.0
+    assert reports[0].source_row_count == 60
+    assert {check.check_type for check in checks} == {
+        "duplicate_timestamps",
+        "zero_volume",
+        "stale_segments",
+        "return_outliers",
+        "spread_outliers",
+        "funding_outliers",
+    }
+
+
+def test_coverage_audit_worker_records_low_coverage_blockers_without_job_failure(tmp_path) -> None:
+    archive_root = tmp_path / "archive-low-coverage"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-low-coverage-candles",
+        input_spec={
+            "archive_root": str(archive_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-low-coverage-candles",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "records": [_candle_row(index) for index in range(58)],
+            "derive_timeframes": [],
+            "skip_coverage": True,
+        },
+    )
+    assert run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-low-coverage-candles",
+    ) is not None
+    silver_file_id = _silver_bars_file_id(archive_root, timeframe="1m")
+    queued = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-low-coverage-audit",
+        input_spec={
+            "archive_root": str(archive_root),
+            "silver_file_id": silver_file_id,
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        worker_id="worker-low-coverage",
+    )
+    loaded = store.load_job(queued.job_id)
+    report = CoverageManifestStore(ArchiveLayout(archive_root)).load_coverage_reports()[0]
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "coverage_ratio=0.966666666667" in loaded.output_refs
+    assert "quality_status=fail" in loaded.output_refs
+    assert "evidence_eligible=false" in loaded.output_refs
+    assert "blocker_reasons=coverage_below_minimum" in loaded.output_refs
+    assert report.blocker_reasons == ("coverage_below_minimum",)
+
+
+def test_coverage_audit_worker_rejects_non_silver_bars_file_without_report_write(tmp_path) -> None:
+    archive_root = tmp_path / "archive-coverage-reject"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-raw-for-coverage-reject",
+        input_spec={
+            "archive_root": str(archive_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-raw-for-coverage-reject",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "records": [_candle_row(0)],
+            "derive_timeframes": [],
+            "skip_coverage": True,
+        },
+    )
+    candle_result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-raw-for-coverage-reject",
+    )
+    assert candle_result is not None
+    raw_file_id = _ref_value(candle_result.archive_manifest_refs, "raw_file_id")
+    queued = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-coverage-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "file_id": raw_file_id,
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        worker_id="worker-coverage-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+    coverage_store = CoverageManifestStore(ArchiveLayout(archive_root))
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "requires a silver bars archive file" in (loaded.failure_reason or "")
+    assert coverage_store.load_coverage_reports() == []
+    assert coverage_store.load_quality_checks() == []
+
+
 def test_recent_candle_bootstrap_worker_reads_trusted_jsonl_records_file(tmp_path) -> None:
     trusted_root = tmp_path / "trusted-source"
     trusted_root.mkdir()
@@ -642,3 +823,21 @@ def _candle_row(index: int) -> dict[str, object]:
         "volume": 10 + index,
         "trade_count": index + 1,
     }
+
+
+def _silver_bars_file_id(archive_root: Path, *, timeframe: str) -> str:
+    matches = [
+        row
+        for row in ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest()
+        if row.layer == ArchiveLayer.SILVER and row.datatype == "bars" and row.timeframe == timeframe
+    ]
+    assert len(matches) == 1
+    return matches[0].file_id
+
+
+def _ref_value(refs: tuple[str, ...], key: str) -> str:
+    prefix = f"{key}="
+    for ref in refs:
+        if ref.startswith(prefix):
+            return ref.removeprefix(prefix)
+    raise AssertionError(f"{key} not found in refs: {refs}")

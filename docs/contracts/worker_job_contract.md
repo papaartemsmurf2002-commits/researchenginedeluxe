@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit ID: `V2-AUD-WORKER-001`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`
 
 ## Purpose
 
@@ -35,6 +35,10 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   ASGI/operator-process path.
 - Job outputs must include archive manifest refs or explicit diagnostic gap
   records.
+- `coverage_audit` jobs must run through the durable worker runner and write
+  coverage/quality manifest refs instead of requiring in-process UI/API calls.
+- Coverage blockers found by a successful audit are output evidence, not hidden
+  logs and not worker-system failures.
 
 ## Forbidden
 
@@ -42,3 +46,5 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Hidden retries without job records.
 - Silent stale heartbeat recovery.
 - Terminal state changes without a transition record.
+- Running data-quality audits against venue APIs or non-archive local files in
+  the worker path.

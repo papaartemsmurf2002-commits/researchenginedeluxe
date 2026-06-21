@@ -44,8 +44,11 @@ This is the first file to read after `AGENTS.md`.
   no-record API-cap diagnostics explicit. WPR106-426 adds trusted local
   `records_file` intake for those collector jobs, bounded to a declared source
   root with JSON/JSONL parsing, unsafe-file rejection, source SHA-256 refs, and
-  fail-before-archive behavior for rejected files. Real venue/API collection,
-  independent audits, and authoritative full-suite proof remain follow-up work.
+  fail-before-archive behavior for rejected files. WPR106-427 wires the
+  existing `coverage_audit` worker kind to durable archive-backed coverage and
+  quality manifest writes for silver bars, with blocker evidence surfaced
+  through worker output refs. Real venue/API collection, independent audits,
+  and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

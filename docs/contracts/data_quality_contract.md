@@ -1,7 +1,7 @@
 # V2 Data Quality Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-QUAL-001`, `V2-AUD-QUAL-002`
+Audit IDs: `V2-AUD-QUAL-001`, `V2-AUD-QUAL-004`
 
 ## Purpose
 
@@ -38,6 +38,14 @@ research evidence.
   silver bar files.
 - Archive snapshots that include silver bars should include coverage and
   quality manifest hashes when available.
+- Durable `coverage_audit` worker jobs read local archive manifest rows and
+  silver bar Parquet files only.
+- Coverage-audit worker outputs must write coverage and quality-check
+  manifests and return coverage report IDs, quality-check IDs, coverage ratio,
+  quality status, evidence eligibility, and blocker reasons.
+- A successful coverage-audit job can report low coverage or quality blockers;
+  those blockers are research evidence and must not be hidden as worker-system
+  failures.
 
 ## Forbidden
 
@@ -47,3 +55,5 @@ research evidence.
 - Silently repairing gaps, stale rows, zero-volume rows, or outliers without
   provenance.
 - Building derived timeframe coverage while omitting incomplete-window evidence.
+- Running coverage-audit worker jobs on non-silver-bars files or direct venue
+  fetches.

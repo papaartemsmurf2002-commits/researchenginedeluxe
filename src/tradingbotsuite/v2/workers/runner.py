@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from tradingbotsuite.v2.collectors.jobs import run_collector_job
+from tradingbotsuite.v2.data_quality.jobs import run_data_quality_job
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerRunResult
 
@@ -18,6 +19,10 @@ COLLECTOR_KINDS = {
     WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
     WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
     WorkerJobKind.OFFICIAL_S3_BACKFILL,
+}
+
+DATA_QUALITY_KINDS = {
+    WorkerJobKind.COVERAGE_AUDIT,
 }
 
 
@@ -39,6 +44,8 @@ def run_one_job(
     try:
         if job_kind in COLLECTOR_KINDS:
             return run_collector_job(job=running, store=store, worker_id=worker_id)
+        if job_kind in DATA_QUALITY_KINDS:
+            return run_data_quality_job(job=running, store=store, worker_id=worker_id)
         raise ValueError(f"worker kind is not implemented in Phase 7: {job_kind.value}")
     except Exception as exc:
         failed = store.fail_job(
