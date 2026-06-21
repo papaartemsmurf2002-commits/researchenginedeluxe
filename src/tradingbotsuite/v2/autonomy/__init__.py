@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from tradingbotsuite.v2.autonomy.runner import AutonomyLoopError, run_autonomy_dry_run
 from tradingbotsuite.v2.autonomy.schemas import (
+    AutonomyDataMode,
     AutonomyBlockerReport,
     AutonomyDryRunConfig,
     AutonomyDryRunManifest,
@@ -19,6 +20,7 @@ from tradingbotsuite.v2.autonomy.schemas import (
 
 __all__ = [
     "AutonomyBlockerReport",
+    "AutonomyDataMode",
     "AutonomyDryRunConfig",
     "AutonomyDryRunManifest",
     "AutonomyDryRunResult",

@@ -32,8 +32,11 @@ This is the first file to read after `AGENTS.md`.
   autonomy manifest, blocker report, ledger row, and non-promotable Lead Book
   row while proving the wiring remains research-only. It is not accepted
   research evidence and it explicitly reports real Hyperliquid archive
-  operation as a blocker. Independent audits and real data-operation proof
-  remain follow-up work.
+  operation as a blocker. WPR106-423 upgrades that dry-run so the default path
+  creates a local archive root, silver bars, coverage report, archive snapshot,
+  fixture as-of universe, and `BacktestDataService` manifest before the
+  backtest, while still staying `sandbox_diagnostic`. Independent audits and
+  real data-operation proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

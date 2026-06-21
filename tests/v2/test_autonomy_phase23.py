@@ -49,11 +49,17 @@ def test_autonomy_dry_run_writes_research_loop_artifacts(tmp_path) -> None:
         "archive_fixture",
         "coverage_fixture",
         "strategy_spec_validation",
+        "backtest_data_preflight",
         "backtest",
         "ledger_append",
         "lead_book_update",
         "blocker_report",
     }
+    assert manifest["artifact_paths"]["archive_root"].endswith("archive")
+    assert Path(manifest["artifact_paths"]["archive_fixture"]).exists()
+    assert Path(manifest["artifact_paths"]["coverage_fixture"]).exists()
+    assert Path(manifest["artifact_paths"]["universe_fixture"]).exists()
+    assert Path(manifest["artifact_paths"]["backtest_data_manifest"]).exists()
     assert manifest["evidence_mode"] == "sandbox_diagnostic"
     assert manifest["research_only"] is True
     assert manifest["observe_only"] is True
@@ -128,6 +134,23 @@ def test_autonomy_cli_rejects_unsafe_run_id(tmp_path, capsys) -> None:
 
     assert exit_code == 1
     assert "autonomy_dry_run_rejected=" in output
+
+
+def test_autonomy_manifest_fixture_mode_remains_available(tmp_path) -> None:
+    result = run_autonomy_dry_run(
+        AutonomyDryRunConfig(
+            output_root=str(tmp_path),
+            run_id="manifest-fixture-loop",
+            data_mode="manifest_fixture",
+        )
+    )
+    manifest = _read_json(Path(result.manifest_path))
+    step_names = {step["name"] for step in manifest["steps"]}
+
+    assert result.status == AutonomyLoopStatus.COMPLETED_WITH_BLOCKERS
+    assert "archive_fixture" in step_names
+    assert "backtest_data_preflight" not in step_names
+    assert Path(manifest["artifact_paths"]["archive_fixture"]).suffix == ".json"
 
 
 def test_autonomy_dry_run_rejects_accepted_research_mode(tmp_path) -> None:

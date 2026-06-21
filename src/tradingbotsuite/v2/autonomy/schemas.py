@@ -26,6 +26,11 @@ class AutonomyLoopStatus(str, Enum):
     FAILED = "failed"
 
 
+class AutonomyDataMode(str, Enum):
+    ARCHIVE_FIXTURE = "archive_fixture"
+    MANIFEST_FIXTURE = "manifest_fixture"
+
+
 class AutonomyDryRunConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -33,6 +38,7 @@ class AutonomyDryRunConfig(BaseModel):
     run_id: str = Field(default="autonomy-dry-run", pattern=r"^[A-Za-z0-9_.-]+$")
     output_root: str = Field(min_length=1)
     strategy_id: str = "hl_funding_carry_v1"
+    data_mode: AutonomyDataMode = AutonomyDataMode.ARCHIVE_FIXTURE
     evidence_mode: str = "sandbox_diagnostic"
     created_by_id: str = "codex-manager-agent"
 

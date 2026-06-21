@@ -375,6 +375,11 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy_dry_run.add_argument("--output-root", required=True)
     autonomy_dry_run.add_argument("--run-id", default="autonomy-dry-run")
     autonomy_dry_run.add_argument("--strategy-id", default="hl_funding_carry_v1")
+    autonomy_dry_run.add_argument(
+        "--data-mode",
+        default="archive_fixture",
+        choices=["archive_fixture", "manifest_fixture"],
+    )
     autonomy_dry_run.add_argument("--created-by-id", default="codex-manager-agent")
     worker = subparsers.add_parser(
         "worker",
@@ -991,6 +996,7 @@ def _handle_autonomy(args: argparse.Namespace, parser: argparse.ArgumentParser) 
                     output_root=args.output_root,
                     run_id=args.run_id,
                     strategy_id=args.strategy_id,
+                    data_mode=args.data_mode,
                     created_by_id=args.created_by_id,
                 )
             )
