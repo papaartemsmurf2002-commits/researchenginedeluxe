@@ -92,6 +92,11 @@ snapshots through the backtest data service, not direct venue APIs.
   readiness.
 - Microstructure quality reports must expose row counts, event windows, gaps,
   reconnect evidence, and warning status for trades, BBO, and L2 captures.
+- Public WebSocket capture-session reports may be written under
+  `manifests/websocket_capture_sessions/`. They must record stream, datatype,
+  instrument, coin, caps, request/response provenance, row counts, archive
+  refs, worker identity, timestamps, and the full research-only boundary
+  invariant.
 - Storage budget reports must make archive growth visible by total bytes, layer
   bytes, largest files, and budget status.
 - Retention and backup policy records are record-only evidence in this phase;
@@ -107,5 +112,8 @@ snapshots through the backtest data service, not direct venue APIs.
 - Treating raw microstructure captures or official-file backfills as live
   execution proof, paper trading evidence, order readiness, or promotion-ready
   evidence.
+- Treating public WebSocket capture-session reports as historical coverage
+  proof, event completeness proof, queue/fill realism, accepted evidence, or
+  promotion-ready evidence.
 - Applying retention/backup policy records by deleting, moving, or uploading
   archive files in this branch phase.

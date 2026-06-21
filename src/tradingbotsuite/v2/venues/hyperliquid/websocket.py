@@ -342,7 +342,10 @@ class HyperliquidWebSocketClient:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     break
-                raw_message = websocket.recv(timeout=remaining)
+                try:
+                    raw_message = websocket.recv(timeout=remaining)
+                except TimeoutError:
+                    break
                 message = _decode_message(raw_message)
                 messages.append(message)
                 row_count += row_counter(message)

@@ -427,6 +427,51 @@ def test_hyperliquid_websocket_client_records_public_candle_snapshot_provenance(
     assert result.raw_response.order_placement_instruction is False
 
 
+def test_hyperliquid_websocket_client_preserves_partial_capture_on_timeout() -> None:
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {
+                    "channel": "subscriptionResponse",
+                    "data": {"subscription": {"type": "candle", "coin": "BTC", "interval": "1m"}},
+                },
+                {"channel": "candle", "data": [_hyperliquid_candle_row(0)]},
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send(self, raw_message: str) -> None:
+            assert json.loads(raw_message) == {
+                "method": "subscribe",
+                "subscription": {"type": "candle", "coin": "BTC", "interval": "1m"},
+            }
+
+        def recv(self, timeout=None) -> str:
+            if not self.messages:
+                raise TimeoutError("quiet stream")
+            return json.dumps(self.messages.pop(0))
+
+    client = HyperliquidWebSocketClient(
+        ws_url="wss://example.test/ws",
+        timeout=3.0,
+        connect=lambda url, **kwargs: FakeWebSocket(),
+    )
+    result = client.fetch_candle_snapshot(
+        coin="BTC",
+        interval="1m",
+        max_messages=5,
+        max_rows=5,
+        max_seconds=3.0,
+    )
+
+    assert result.raw_response.row_count == 1
+    assert [message["channel"] for message in result.payload] == ["subscriptionResponse", "candle"]
+
+
 def test_hyperliquid_websocket_client_records_public_bbo_snapshot_provenance() -> None:
     sent_messages: list[dict[str, object]] = []
 

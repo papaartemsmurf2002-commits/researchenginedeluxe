@@ -126,11 +126,14 @@ This is the first file to read after `AGENTS.md`.
   `websocket_l2_bbo_capture` BBO/L2 jobs, writing raw microstructure capture,
   quality, and storage refs with public WebSocket request/response provenance,
   while explicitly keeping `continuous_capture=false` and
-  `accepted_historical_coverage_proof=false`. Full historical candle coverage
-  beyond the public recent-window limit, unattended continuous candle capture,
-  unattended continuous BBO/L2 capture, accepted continuous historical
-  trade/L2 coverage proof, independent audits, and authoritative full-suite
-  proof remain follow-up work.
+  `accepted_historical_coverage_proof=false`. WPR106-450 adds opt-in
+  `capture_mode=unattended_session` evidence for bounded public WebSocket
+  candle, trade, BBO, and L2 capture segments, including session heartbeats and
+  JSON capture-session reports under archive manifests, while still keeping
+  accepted historical coverage proof false. Full historical candle coverage
+  beyond the public recent-window limit, long-running scheduler/daemon capture,
+  accepted continuous historical trade/L2 coverage proof, independent audits,
+  and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

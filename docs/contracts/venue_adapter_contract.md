@@ -84,6 +84,9 @@ execution behavior to v2 research modules.
   optional L2 aggregation parameters, WebSocket URL, row/message/time caps, raw
   payload hash, message count, BBO row count or L2 level count, and bounded
   snapshot evidence scope.
+- Public WebSocket receive timeouts after at least one captured message may
+  terminate a bounded capture cleanly while preserving the partial raw payload
+  and provenance. A timeout before any message remains a failed capture.
 - Cross-venue rows preserve venue provenance and must not dilute the
   Hyperliquid-first default.
 - Venue capabilities must fail closed if they declare secret access, signed

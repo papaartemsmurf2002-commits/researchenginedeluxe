@@ -33,7 +33,7 @@ from tradingbotsuite.v2.archive.rebuild import (
     raw_candles_to_bronze,
     raw_funding_to_bronze,
 )
-from tradingbotsuite.v2.config.time import utc_now
+from tradingbotsuite.v2.config.time import utc_isoformat, utc_now
 from tradingbotsuite.v2.security.path_policy import resolve_within_root
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
@@ -78,6 +78,7 @@ _UNSAFE_RECORDS_FILE_SUFFIXES = frozenset(
 )
 _PUBLIC_INFO_TIME_RANGE_PAGE_LIMIT = 500
 _PUBLIC_CANDLE_SNAPSHOT_ROW_LIMIT = 5000
+_PUBLIC_WEBSOCKET_CAPTURE_MODES = frozenset({"snapshot", "unattended_session"})
 _HYPERLIQUID_OFFICIAL_DATASET_SCOPES = {
     "market_data_l2_book": "official_hyperliquid_l2_book_snapshots",
     "asset_ctxs": "official_hyperliquid_asset_contexts",
@@ -719,6 +720,14 @@ def _run_public_websocket_candle_capture_job(
     max_messages = int(spec.get("max_public_ws_messages", 20))
     max_rows = int(spec.get("max_public_ws_rows", 200))
     max_seconds = float(spec.get("max_public_ws_seconds", spec.get("public_ws_timeout", 20.0)))
+    capture_mode = _public_websocket_capture_mode(spec)
+    session_started_at = utc_now()
+    if capture_mode == "unattended_session":
+        store.heartbeat(
+            job.job_id,
+            worker_id=worker_id,
+            details={"phase": "public_websocket_capture_session", "stream": "candle"},
+        )
     fetch = HyperliquidWebSocketClient(
         ws_url=str(spec.get("public_ws_url", "wss://api.hyperliquid.xyz/ws")),
         timeout=float(spec.get("public_ws_timeout", max_seconds)),
@@ -773,12 +782,37 @@ def _run_public_websocket_candle_capture_job(
         bronze=bronze,
         silver=silver,
     )
+    session_refs = _record_public_websocket_capture_session(
+        archive_root=archive_root,
+        job_id=job.job_id,
+        worker_id=worker_id,
+        capture_mode=capture_mode,
+        stream="candle",
+        datatype="candles",
+        instrument_id=instrument_id,
+        coin=coin,
+        started_at=session_started_at,
+        fetch=fetch,
+        normalized_row_count=raw_file.row_count or 0,
+        archive_refs=archive_refs,
+        max_messages=max_messages,
+        max_rows=max_rows,
+        max_seconds=max_seconds,
+        timeframe=timeframe,
+    )
+    if session_refs:
+        store.heartbeat(
+            job.job_id,
+            worker_id=worker_id,
+            details={"phase": "public_websocket_capture_session_archived", "stream": "candle"},
+        )
     output_refs = (
-        "collector_mode=public_websocket_candle_archive_write",
+        _public_websocket_candle_collector_mode(capture_mode),
         "source_mode=public_websocket",
-        "continuous_capture=false",
+        f"capture_mode={capture_mode}",
+        f"continuous_capture={str(capture_mode == 'unattended_session').lower()}",
         "accepted_historical_coverage_proof=false",
-        "websocket_candle_snapshot_caveat=bounded_public_stream_snapshot_not_unattended_continuous_capture",
+        _public_websocket_caveat_ref(capture_mode, snapshot_key="websocket_candle_snapshot_caveat"),
         f"datatype={_candle_datatype_value(spec.get('datatype'))}",
         f"row_count={raw_file.row_count or 0}",
         f"ws_message_count={len(fetch.payload)}",
@@ -794,6 +828,7 @@ def _run_public_websocket_candle_capture_job(
         f"max_public_ws_rows={max_rows}",
         f"max_public_ws_seconds={max_seconds}",
         "gap_evidence_recorded=false",
+        *session_refs,
         *archive_refs,
     )
     record = store.succeed_job(
@@ -1140,6 +1175,14 @@ def _run_public_websocket_trade_capture_job(
     max_messages = int(spec.get("max_public_ws_messages", 20))
     max_rows = int(spec.get("max_public_ws_rows", 200))
     max_seconds = float(spec.get("max_public_ws_seconds", spec.get("public_ws_timeout", 20.0)))
+    capture_mode = _public_websocket_capture_mode(spec)
+    session_started_at = utc_now()
+    if capture_mode == "unattended_session":
+        store.heartbeat(
+            job.job_id,
+            worker_id=worker_id,
+            details={"phase": "public_websocket_capture_session", "stream": "trades"},
+        )
     fetch = HyperliquidWebSocketClient(
         ws_url=str(spec.get("public_ws_url", "wss://api.hyperliquid.xyz/ws")),
         timeout=float(spec.get("public_ws_timeout", max_seconds)),
@@ -1174,9 +1217,36 @@ def _run_public_websocket_trade_capture_job(
         f"quality_report_id={capture.quality_report.quality_report_id}",
         f"storage_report_id={capture.storage_report.storage_report_id}",
     )
+    session_refs = _record_public_websocket_capture_session(
+        archive_root=archive_root,
+        job_id=job.job_id,
+        worker_id=worker_id,
+        capture_mode=capture_mode,
+        stream="trades",
+        datatype=datatype.value,
+        instrument_id=instrument_id,
+        coin=coin,
+        started_at=session_started_at,
+        fetch=fetch,
+        normalized_row_count=capture.raw_file.row_count or 0,
+        archive_refs=archive_refs,
+        max_messages=max_messages,
+        max_rows=max_rows,
+        max_seconds=max_seconds,
+    )
+    if session_refs:
+        store.heartbeat(
+            job.job_id,
+            worker_id=worker_id,
+            details={"phase": "public_websocket_capture_session_archived", "stream": "trades"},
+        )
     output_refs = (
-        "collector_mode=public_websocket_trade_snapshot_capture",
+        _public_websocket_trade_collector_mode(capture_mode),
         "source_mode=public_websocket",
+        f"capture_mode={capture_mode}",
+        f"continuous_capture={str(capture_mode == 'unattended_session').lower()}",
+        "accepted_historical_coverage_proof=false",
+        _public_websocket_caveat_ref(capture_mode, snapshot_key="websocket_trade_snapshot_caveat"),
         f"datatype={datatype.value}",
         f"row_count={capture.raw_file.row_count or 0}",
         f"ws_message_count={len(fetch.payload)}",
@@ -1193,6 +1263,7 @@ def _run_public_websocket_trade_capture_job(
         f"storage_total_bytes={capture.storage_report.total_bytes}",
         f"storage_within_budget={str(capture.storage_report.within_budget).lower()}",
         "gap_evidence_recorded=false",
+        *session_refs,
         *archive_refs,
     )
     record = store.succeed_job(
@@ -1229,6 +1300,14 @@ def _run_public_websocket_l2_bbo_capture_job(
     max_messages = int(spec.get("max_public_ws_messages", 20))
     max_rows = int(spec.get("max_public_ws_rows", 200))
     max_seconds = float(spec.get("max_public_ws_seconds", spec.get("public_ws_timeout", 20.0)))
+    capture_mode = _public_websocket_capture_mode(spec)
+    session_started_at = utc_now()
+    if capture_mode == "unattended_session":
+        store.heartbeat(
+            job.job_id,
+            worker_id=worker_id,
+            details={"phase": "public_websocket_capture_session", "stream": datatype.value},
+        )
     client = HyperliquidWebSocketClient(
         ws_url=str(spec.get("public_ws_url", "wss://api.hyperliquid.xyz/ws")),
         timeout=float(spec.get("public_ws_timeout", max_seconds)),
@@ -1285,12 +1364,39 @@ def _run_public_websocket_l2_bbo_capture_job(
         f"quality_report_id={capture.quality_report.quality_report_id}",
         f"storage_report_id={capture.storage_report.storage_report_id}",
     )
+    session_refs = _record_public_websocket_capture_session(
+        archive_root=archive_root,
+        job_id=job.job_id,
+        worker_id=worker_id,
+        capture_mode=capture_mode,
+        stream="bbo" if datatype == MicrostructureDataType.BBO else "l2Book",
+        datatype=datatype.value,
+        instrument_id=instrument_id,
+        coin=coin,
+        started_at=session_started_at,
+        fetch=fetch,
+        normalized_row_count=capture.raw_file.row_count or 0,
+        archive_refs=archive_refs,
+        max_messages=max_messages,
+        max_rows=max_rows,
+        max_seconds=max_seconds,
+    )
+    if session_refs:
+        store.heartbeat(
+            job.job_id,
+            worker_id=worker_id,
+            details={"phase": "public_websocket_capture_session_archived", "stream": datatype.value},
+        )
     output_refs = (
-        "collector_mode=public_websocket_l2_bbo_snapshot_capture",
+        _public_websocket_l2_bbo_collector_mode(capture_mode),
         "source_mode=public_websocket",
-        "continuous_capture=false",
+        f"capture_mode={capture_mode}",
+        f"continuous_capture={str(capture_mode == 'unattended_session').lower()}",
         "accepted_historical_coverage_proof=false",
-        "public_websocket_l2_bbo_snapshot_caveat=bounded_public_stream_snapshot_not_unattended_continuous_capture",
+        _public_websocket_caveat_ref(
+            capture_mode,
+            snapshot_key="public_websocket_l2_bbo_snapshot_caveat",
+        ),
         f"datatype={datatype.value}",
         f"row_count={capture.raw_file.row_count or 0}",
         f"ws_message_count={len(fetch.payload)}",
@@ -1308,6 +1414,7 @@ def _run_public_websocket_l2_bbo_capture_job(
         f"storage_total_bytes={capture.storage_report.total_bytes}",
         f"storage_within_budget={str(capture.storage_report.within_budget).lower()}",
         "gap_evidence_recorded=false",
+        *session_refs,
         *archive_refs,
     )
     record = store.succeed_job(
@@ -1899,6 +2006,121 @@ def _optional_l2_book_n_sig_figs(spec: dict[str, Any]) -> int | None:
     if value is None and "nSigFigs" in spec:
         value = spec.get("nSigFigs")
     return _optional_int(value)
+
+
+def _public_websocket_capture_mode(spec: dict[str, Any]) -> str:
+    mode = str(spec.get("capture_mode", "snapshot")).strip() or "snapshot"
+    if mode not in _PUBLIC_WEBSOCKET_CAPTURE_MODES:
+        allowed = ", ".join(sorted(_PUBLIC_WEBSOCKET_CAPTURE_MODES))
+        raise ValueError(f"public websocket capture_mode must be one of: {allowed}")
+    return mode
+
+
+def _public_websocket_candle_collector_mode(capture_mode: str) -> str:
+    if capture_mode == "unattended_session":
+        return "collector_mode=public_websocket_candle_capture_session_archive_write"
+    return "collector_mode=public_websocket_candle_archive_write"
+
+
+def _public_websocket_trade_collector_mode(capture_mode: str) -> str:
+    if capture_mode == "unattended_session":
+        return "collector_mode=public_websocket_trade_capture_session"
+    return "collector_mode=public_websocket_trade_snapshot_capture"
+
+
+def _public_websocket_l2_bbo_collector_mode(capture_mode: str) -> str:
+    if capture_mode == "unattended_session":
+        return "collector_mode=public_websocket_l2_bbo_capture_session"
+    return "collector_mode=public_websocket_l2_bbo_snapshot_capture"
+
+
+def _public_websocket_caveat_ref(capture_mode: str, *, snapshot_key: str) -> str:
+    if capture_mode == "unattended_session":
+        return (
+            "public_websocket_capture_session_caveat="
+            "bounded_unattended_public_stream_segment_not_historical_coverage_proof"
+        )
+    return f"{snapshot_key}=bounded_public_stream_snapshot_not_unattended_continuous_capture"
+
+
+def _record_public_websocket_capture_session(
+    *,
+    archive_root: str,
+    job_id: str,
+    worker_id: str,
+    capture_mode: str,
+    stream: str,
+    datatype: str,
+    instrument_id: str,
+    coin: str,
+    started_at: datetime,
+    fetch: Any,
+    normalized_row_count: int,
+    archive_refs: tuple[str, ...],
+    max_messages: int,
+    max_rows: int,
+    max_seconds: float,
+    timeframe: str | None = None,
+) -> tuple[str, ...]:
+    if capture_mode != "unattended_session":
+        return ()
+    finished_at = utc_now()
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    report = {
+        "job_id": job_id,
+        "worker_id": worker_id,
+        "capture_mode": capture_mode,
+        "source_mode": "public_websocket",
+        "stream": stream,
+        "datatype": datatype,
+        "instrument_id": instrument_id,
+        "coin": coin,
+        "timeframe": timeframe,
+        "started_at": utc_isoformat(started_at),
+        "finished_at": utc_isoformat(finished_at),
+        "venue_adapter_id": fetch.capability.adapter_id,
+        "source_endpoint_or_subscription": fetch.raw_request.source,
+        "raw_request_id": fetch.raw_request.request_id,
+        "raw_response_id": fetch.raw_response.response_id,
+        "raw_payload_sha256": fetch.raw_response.raw_payload_sha256,
+        "ws_message_count": len(fetch.payload),
+        "ws_source_row_count": fetch.raw_response.row_count,
+        "normalized_row_count": normalized_row_count,
+        "max_public_ws_messages": max_messages,
+        "max_public_ws_rows": max_rows,
+        "max_public_ws_seconds": max_seconds,
+        "archive_refs": list(archive_refs),
+        "continuous_capture": True,
+        "continuous_capture_segment": True,
+        "accepted_historical_coverage_proof": False,
+        "capture_session_caveat": "bounded_unattended_public_stream_segment_not_historical_coverage_proof",
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "candidate_evidence": False,
+        "candidate_pack_eligible": False,
+        "live_signal": False,
+        "paper_signal": False,
+        "sizing_instruction": False,
+        "order_placement_instruction": False,
+        "runtime_mode_change": False,
+    }
+    session_id = canonical_json_hash(report)
+    report["capture_session_id"] = session_id
+    report_path = layout.resolve(
+        "manifests",
+        "websocket_capture_sessions",
+        f"{session_id}.json",
+    )
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, sort_keys=True, indent=2), encoding="utf-8")
+    return (
+        "unattended_capture_session=true",
+        "continuous_capture_segment=true",
+        f"capture_session_id={session_id}",
+        f"capture_session_path={layout.relative_to_root(report_path)}",
+    )
 
 
 def _required_records(spec: dict[str, Any]) -> list[dict[str, Any]]:

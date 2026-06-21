@@ -61,6 +61,12 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   message/row/time caps, stream row/level counts, and bounded snapshot caveats.
   They must not claim unattended continuous capture, historical BBO/L2 coverage
   proof, queue/fill realism, or accepted historical coverage proof.
+- Public WebSocket candle, trade, BBO, and L2 jobs with
+  `capture_mode=unattended_session` must emit session start/archive heartbeats,
+  write a capture-session report under archive manifests, return session refs,
+  and keep `accepted_historical_coverage_proof=false`. These jobs are bounded
+  unattended capture segments, not scheduler proof or accepted historical
+  coverage proof.
 - `vectorized_backtest` jobs must run through the durable worker runner, load
   panels only through `BacktestDataService`, validate inline declarative
   strategy specs before strategy code sees rows, and return run-manifest,
@@ -107,6 +113,8 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   `source=public_api` and unsigned public-info provenance refs.
 - Running public WebSocket BBO/L2 capture without explicit
   `source=public_websocket` and public WebSocket provenance refs.
+- Treating public WebSocket capture-session heartbeats or reports as
+  autonomous-ready certification, scheduler proof, or accepted coverage proof.
 - Running durable backtests against direct venue/API reads, unvalidated
   strategy specs, or arbitrary strategy-spec files without a trusted-file
   intake packet.

@@ -57,6 +57,16 @@ request handling and they do not place orders.
   count, and elapsed seconds. They are recent streaming intake evidence only
   and do not prove unattended continuous capture, historical candle coverage,
   accepted research evidence, or full archive readiness.
+- Public WebSocket candle, trade, BBO, and L2 jobs may opt into
+  `capture_mode=unattended_session`. Session jobs must still use bounded
+  message, row, and elapsed-time caps; emit `capture_mode`,
+  `continuous_capture`, `accepted_historical_coverage_proof=false`, and a
+  session caveat; write a durable capture-session report under the archive
+  manifests tree; and preserve request/response plus archive refs.
+- Public WebSocket session jobs are bounded unattended capture segments only.
+  They do not prove historical coverage, full archive readiness, accepted
+  research evidence, event completeness, queue/fill realism, scheduler
+  operation, or promotion readiness.
 - Recent candle bootstrap jobs may also use the explicit unsigned public
   Hyperliquid `source=public_api` mode for `/info` `candleSnapshot` requests.
   Public candle jobs must split requested time ranges into fixed-width page
@@ -221,6 +231,10 @@ request handling and they do not place orders.
   and validation gates must still prove archive snapshots, coverage, 2024+
   dates, six usable months, lockbox exclusion, and as-of universe before
   accepted evidence.
+- Public WebSocket capture-session reports are intake evidence only;
+  backtest-data and validation gates must still prove archive snapshots,
+  coverage, 2024+ dates, six usable months, lockbox exclusion, and as-of
+  universe before accepted evidence.
 - Candle and funding archive-write jobs must not read arbitrary local files
   outside a trusted source root.
 - Reconnect attempts, gap reasons, missing periods, and retry evidence must be
@@ -258,5 +272,8 @@ request handling and they do not place orders.
 - Treating bounded public WebSocket BBO/L2 snapshots as historical BBO/L2
   coverage, unattended continuous capture, queue/fill realism, or accepted
   historical coverage proof.
+- Treating bounded public WebSocket capture-session reports as accepted
+  historical coverage proof, scheduler proof, queue/fill realism, full archive
+  readiness, or autonomous-ready certification.
 - Treating fixture microstructure captures as live execution proof or
   promotion-ready evidence.

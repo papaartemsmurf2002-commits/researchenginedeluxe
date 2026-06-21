@@ -2713,6 +2713,132 @@ def test_websocket_candle_public_websocket_worker_writes_archive_layers(
     assert manifest_store.load_archive_snapshots()
 
 
+def test_websocket_candle_public_websocket_unattended_session_writes_report(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-ws-public-candles-session"
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {
+                    "channel": "subscriptionResponse",
+                    "data": {"subscription": {"type": "candle", "coin": "BTC", "interval": "1m"}},
+                },
+                {
+                    "channel": "candle",
+                    "data": [_hyperliquid_candle_row(index) for index in range(5)],
+                },
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send(self, raw_message: str) -> None:
+            assert json.loads(raw_message) == {
+                "method": "subscribe",
+                "subscription": {"type": "candle", "coin": "BTC", "interval": "1m"},
+            }
+
+        def recv(self, timeout=None) -> str:
+            if not self.messages:
+                raise TimeoutError("quiet stream")
+            return json.dumps(self.messages.pop(0))
+
+    class FakeHyperliquidWebSocketClient:
+        def __init__(self, ws_url: str, timeout: float) -> None:
+            self._client = HyperliquidWebSocketClient(
+                ws_url=ws_url,
+                timeout=timeout,
+                connect=lambda url, **kwargs: FakeWebSocket(),
+            )
+
+        def fetch_candle_snapshot(self, **kwargs):
+            return self._client.fetch_candle_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidWebSocketClient",
+        FakeHyperliquidWebSocketClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        job_id="JOB-ws-public-candles-session",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "capture_mode": "unattended_session",
+            "public_ws_url": "wss://example.test/ws",
+            "public_ws_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "candles",
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-ws-public-candles-session",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:05:00+00:00",
+            "derive_timeframes": ["5m"],
+            "max_public_ws_messages": 5,
+            "max_public_ws_rows": 5,
+            "max_public_ws_seconds": 3.0,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        worker_id="worker-ws-public-candles-session",
+    )
+    loaded = store.load_job(queued.job_id)
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+
+    session_path = [
+        ref.removeprefix("capture_session_path=")
+        for ref in loaded.output_refs
+        if ref.startswith("capture_session_path=")
+    ][0]
+    report = json.loads((archive_root / session_path).read_text(encoding="utf-8"))
+    heartbeat_phases = [heartbeat.details.get("phase") for heartbeat in store.list_heartbeats(queued.job_id)]
+
+    assert "collector_mode=public_websocket_candle_capture_session_archive_write" in loaded.output_refs
+    assert "capture_mode=unattended_session" in loaded.output_refs
+    assert "continuous_capture=true" in loaded.output_refs
+    assert "accepted_historical_coverage_proof=false" in loaded.output_refs
+    assert "unattended_capture_session=true" in loaded.output_refs
+    assert "continuous_capture_segment=true" in loaded.output_refs
+    assert (
+        "public_websocket_capture_session_caveat="
+        "bounded_unattended_public_stream_segment_not_historical_coverage_proof"
+        in loaded.output_refs
+    )
+    assert any(ref.startswith("capture_session_id=") for ref in loaded.output_refs)
+    assert report["capture_mode"] == "unattended_session"
+    assert report["stream"] == "candle"
+    assert report["datatype"] == "candles"
+    assert report["instrument_id"] == INSTRUMENT
+    assert report["continuous_capture"] is True
+    assert report["continuous_capture_segment"] is True
+    assert report["accepted_historical_coverage_proof"] is False
+    assert report["promotion_ready"] is False
+    assert report["candidate_pack_eligible"] is False
+    assert report["order_placement_instruction"] is False
+    assert report["runtime_mode_change"] is False
+    assert report["ws_message_count"] == 2
+    assert report["ws_source_row_count"] == 5
+    assert report["normalized_row_count"] == 5
+    assert "raw_file_id=" in " ".join(report["archive_refs"])
+    assert "public_websocket_capture_session" in heartbeat_phases
+    assert "public_websocket_capture_session_archived" in heartbeat_phases
+
+
 def test_websocket_candle_public_websocket_rejects_mixed_local_records(tmp_path) -> None:
     archive_root = tmp_path / "archive-ws-public-candles-mixed"
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
@@ -2748,6 +2874,41 @@ def test_websocket_candle_public_websocket_rejects_mixed_local_records(tmp_path)
     assert "cannot mix source=public_websocket with local records" in (
         loaded.failure_reason or ""
     )
+    assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
+
+
+def test_websocket_public_websocket_rejects_unknown_capture_mode(tmp_path) -> None:
+    archive_root = tmp_path / "archive-ws-public-unknown-capture-mode"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        job_id="JOB-ws-public-unknown-capture-mode",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "capture_mode": "forever",
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "candles",
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:05:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        worker_id="worker-ws-public-unknown-capture-mode",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "capture_mode must be one of" in (loaded.failure_reason or "")
     assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
 
 

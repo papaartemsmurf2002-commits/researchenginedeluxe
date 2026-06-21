@@ -353,6 +353,125 @@ def test_public_websocket_l2_bbo_worker_capture_writes_snapshot_microstructure(
         assert stored_rows[0]["book_levels"] == 4
 
 
+@pytest.mark.parametrize("datatype", ["bbo", "l2"])
+def test_public_websocket_l2_bbo_unattended_session_writes_report(
+    tmp_path,
+    monkeypatch,
+    datatype: str,
+) -> None:
+    archive_root = tmp_path / f"archive-public-ws-session-{datatype}"
+
+    class FakeHyperliquidWebSocketClient:
+        def __init__(self, ws_url: str, timeout: float) -> None:
+            self.ws_url = ws_url
+            self.timeout = timeout
+
+        def fetch_bbo_snapshot(self, **kwargs):
+            from tradingbotsuite.v2.venues.hyperliquid import HyperliquidWebSocketClient as RealClient
+
+            client = RealClient(
+                ws_url=self.ws_url,
+                timeout=self.timeout,
+                connect=_fake_bbo_websocket_connect,
+            )
+            return client.fetch_bbo_snapshot(**kwargs)
+
+        def fetch_l2_book_snapshot(self, **kwargs):
+            from tradingbotsuite.v2.venues.hyperliquid import HyperliquidWebSocketClient as RealClient
+
+            client = RealClient(
+                ws_url=self.ws_url,
+                timeout=self.timeout,
+                connect=_fake_l2_book_websocket_connect,
+            )
+            return client.fetch_l2_book_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidWebSocketClient",
+        FakeHyperliquidWebSocketClient,
+    )
+    input_spec = {
+        "archive_root": str(archive_root),
+        "source": "public_websocket",
+        "capture_mode": "unattended_session",
+        "public_ws_url": "wss://example.test/ws",
+        "public_ws_timeout": 3.0,
+        "venue": "hyperliquid",
+        "instrument_id": INSTRUMENT,
+        "coin": "BTC",
+        "datatype": datatype,
+        "date": "2026-01-01",
+        "run_id": f"run-public-ws-session-{datatype}",
+        "start_ts": "2026-01-01T00:00:00+00:00",
+        "end_ts": "2026-01-01T00:01:00+00:00",
+        "max_public_ws_messages": 5,
+        "max_public_ws_rows": 4 if datatype == "l2" else 2,
+        "max_public_ws_seconds": 3.0,
+        "storage_budget_bytes": 1_000_000,
+    }
+    if datatype == "l2":
+        input_spec["n_sig_figs"] = 5
+        input_spec["mantissa"] = 2
+    store = WorkerJobStore(tmp_path / f"jobs-public-ws-session-{datatype}.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id=f"JOB-public-ws-session-{datatype}",
+        input_spec=input_spec,
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id=f"worker-public-ws-session-{datatype}",
+    )
+    loaded = store.load_job(queued.job_id)
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+
+    session_path = [
+        ref.removeprefix("capture_session_path=")
+        for ref in loaded.output_refs
+        if ref.startswith("capture_session_path=")
+    ][0]
+    report = json.loads((archive_root / session_path).read_text(encoding="utf-8"))
+    heartbeat_phases = [heartbeat.details.get("phase") for heartbeat in store.list_heartbeats(queued.job_id)]
+
+    assert "collector_mode=public_websocket_l2_bbo_capture_session" in loaded.output_refs
+    assert "capture_mode=unattended_session" in loaded.output_refs
+    assert "continuous_capture=true" in loaded.output_refs
+    assert "accepted_historical_coverage_proof=false" in loaded.output_refs
+    assert "unattended_capture_session=true" in loaded.output_refs
+    assert "continuous_capture_segment=true" in loaded.output_refs
+    assert (
+        "public_websocket_capture_session_caveat="
+        "bounded_unattended_public_stream_segment_not_historical_coverage_proof"
+        in loaded.output_refs
+    )
+    assert report["capture_mode"] == "unattended_session"
+    assert report["datatype"] == datatype
+    assert report["stream"] == ("bbo" if datatype == "bbo" else "l2Book")
+    assert report["instrument_id"] == INSTRUMENT
+    assert report["coin"] == "BTC"
+    assert report["continuous_capture"] is True
+    assert report["continuous_capture_segment"] is True
+    assert report["accepted_historical_coverage_proof"] is False
+    assert report["promotion_ready"] is False
+    assert report["candidate_evidence"] is False
+    assert report["candidate_pack_eligible"] is False
+    assert report["live_signal"] is False
+    assert report["paper_signal"] is False
+    assert report["order_placement_instruction"] is False
+    assert report["runtime_mode_change"] is False
+    assert report["ws_message_count"] == 2
+    assert report["ws_source_row_count"] == (1 if datatype == "bbo" else 4)
+    assert report["normalized_row_count"] == 1
+    assert "raw_file_id=" in " ".join(report["archive_refs"])
+    assert "public_websocket_capture_session" in heartbeat_phases
+    assert "public_websocket_capture_session_archived" in heartbeat_phases
+
+
 def test_public_l2_book_worker_rejects_public_api_with_local_records(tmp_path) -> None:
     archive_root = tmp_path / "archive-public-l2-reject"
     store = WorkerJobStore(tmp_path / "jobs-public-l2-reject.sqlite")
@@ -684,6 +803,100 @@ def test_public_websocket_trade_worker_capture_writes_snapshot_microstructure(
         "BTC:1767225600500:124",
     ]
     assert all(row["source"] == "public_websocket/trades" for row in stored_rows)
+
+
+def test_public_websocket_trade_unattended_session_writes_report(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    archive_root = tmp_path / "archive-public-ws-trades-session"
+
+    class FakeHyperliquidWebSocketClient:
+        def __init__(self, ws_url: str, timeout: float) -> None:
+            self.ws_url = ws_url
+            self.timeout = timeout
+
+        def fetch_trade_snapshot(self, **kwargs):
+            from tradingbotsuite.v2.venues.hyperliquid import HyperliquidWebSocketClient as RealClient
+
+            client = RealClient(
+                ws_url=self.ws_url,
+                timeout=self.timeout,
+                connect=_fake_trade_websocket_connect,
+            )
+            return client.fetch_trade_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidWebSocketClient",
+        FakeHyperliquidWebSocketClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs-public-ws-trades-session.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-public-ws-trades-session",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "capture_mode": "unattended_session",
+            "public_ws_url": "wss://example.test/ws",
+            "public_ws_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "coin": "BTC",
+            "date": "2026-01-01",
+            "run_id": "run-public-ws-trades-session",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "max_public_ws_messages": 5,
+            "max_public_ws_rows": 2,
+            "max_public_ws_seconds": 3.0,
+            "storage_budget_bytes": 1_000_000,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-public-ws-trades-session",
+    )
+    loaded = store.load_job(queued.job_id)
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+
+    session_path = [
+        ref.removeprefix("capture_session_path=")
+        for ref in loaded.output_refs
+        if ref.startswith("capture_session_path=")
+    ][0]
+    report = json.loads((archive_root / session_path).read_text(encoding="utf-8"))
+    heartbeat_phases = [heartbeat.details.get("phase") for heartbeat in store.list_heartbeats(queued.job_id)]
+
+    assert "collector_mode=public_websocket_trade_capture_session" in loaded.output_refs
+    assert "capture_mode=unattended_session" in loaded.output_refs
+    assert "continuous_capture=true" in loaded.output_refs
+    assert "accepted_historical_coverage_proof=false" in loaded.output_refs
+    assert "unattended_capture_session=true" in loaded.output_refs
+    assert "continuous_capture_segment=true" in loaded.output_refs
+    assert (
+        "public_websocket_capture_session_caveat="
+        "bounded_unattended_public_stream_segment_not_historical_coverage_proof"
+        in loaded.output_refs
+    )
+    assert report["stream"] == "trades"
+    assert report["datatype"] == "trades"
+    assert report["instrument_id"] == INSTRUMENT
+    assert report["continuous_capture"] is True
+    assert report["accepted_historical_coverage_proof"] is False
+    assert report["candidate_pack_eligible"] is False
+    assert report["order_placement_instruction"] is False
+    assert report["ws_message_count"] == 2
+    assert report["ws_source_row_count"] == 3
+    assert report["normalized_row_count"] == 2
+    assert "raw_file_id=" in " ".join(report["archive_refs"])
+    assert "public_websocket_capture_session" in heartbeat_phases
+    assert "public_websocket_capture_session_archived" in heartbeat_phases
 
 
 def test_public_websocket_trade_worker_rejects_public_websocket_with_local_records(tmp_path) -> None:
