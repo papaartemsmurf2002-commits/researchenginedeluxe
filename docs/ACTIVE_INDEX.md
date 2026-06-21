@@ -144,8 +144,15 @@ This is the first file to read after `AGENTS.md`.
   writes a blocker report. It does not add a daemon scheduler, direct venue
   calls, direct WebSocket control, coverage certification, accepted evidence,
   autonomous-ready status, or paper/live/order/sizing/runtime/promotion
-  behavior. Full historical candle coverage beyond the public recent-window
-  limit, long-running scheduler/daemon capture, accepted continuous historical
+  behavior. WPR106-453 adds planner-declared output-ref bindings so an
+  enqueued bounded cycle can pass earlier successful worker refs into later
+  still-queued planned job input specs before execution. Bindings are
+  validated as source-before-target, reject research-boundary targets, update
+  only queued jobs with worker transition evidence, and turn missing or
+  ambiguous refs into blockers. This does not infer readiness, mutate terminal
+  evidence, or add paper/live/order/sizing/runtime/promotion behavior. Full
+  historical candle coverage beyond the public recent-window limit,
+  long-running scheduler/daemon capture, accepted continuous historical
   trade/L2 coverage proof, independent audits, real-archive loop acceptance,
   and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning

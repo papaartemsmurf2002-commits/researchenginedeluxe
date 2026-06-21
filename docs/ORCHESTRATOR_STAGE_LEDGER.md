@@ -367,6 +367,17 @@ not-next, incomplete, failed, and max-job blockers; writes
 a daemon scheduler, direct venue calls, direct WebSocket control, accepted
 historical coverage proof, accepted evidence, autonomous-ready status,
 candidate-ready status, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-453 v2 bounded autopilot binding update: WPR106-453 adds
+explicit output-ref bindings to bounded autopilot cycle plans so earlier
+successful worker outputs can be copied into later queued planned job input
+specs immediately before execution. The planner validates known jobs,
+source-before-target ordering, and research-boundary-safe target paths. The
+runner applies bindings only to queued next-for-kind target jobs, recomputes
+the target `input_spec_hash`, appends worker transition evidence, and reports
+missing, incomplete, ambiguous, unsafe, or non-queued binding conditions as
+blockers. This does not add scheduler/daemon behavior, direct venue calls,
+accepted evidence, autonomous-ready status, candidate-ready status,
+paper/live/order/sizing/runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

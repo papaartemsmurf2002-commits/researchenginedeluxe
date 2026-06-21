@@ -1,7 +1,7 @@
 # Autonomy Loop Contract
 
 Status: v2 dry-run and bounded autopilot contract
-Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`
+Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`
 
 The autonomy loop is a research-only orchestration surface for proving that v2
 components can be wired together without weakening evidence rules. The dry-run
@@ -28,6 +28,7 @@ certification surface.
 - `AutonomyDryRunResult`
 - `AutopilotCyclePlanConfig`
 - `AutopilotCycleJobSpec`
+- `AutopilotCycleBindingSpec`
 - `AutopilotPlannedJob`
 - `AutopilotCyclePlanManifest`
 - `AutopilotCyclePlanResult`
@@ -74,6 +75,13 @@ The generated audit job must include:
 Plan manifests must preserve the full research-only invariant and set
 `accepted_research_ready=false`.
 
+Plans may declare explicit output-ref bindings from an earlier planned worker
+job to a later planned worker job input. Binding declarations must name the
+source job ID, target job ID, target input-spec path, and source output-ref
+prefix. The source job must precede the target job, target input paths must not
+touch research-boundary fields, and generated audit jobs are not binding
+targets.
+
 ## Bounded Autopilot Cycle Execution
 
 `redx autopilot run-cycle-plan` may load an `enqueued`
@@ -92,6 +100,12 @@ stored output refs as loop evidence for the final generated audit job. Missing,
 failed, stale, cancelled, claimed, running, retrying, not-next, or max-job-
 blocked planned jobs must become explicit execution blockers.
 
+Before running a queued planned job, the runner may apply only the bindings
+declared in the plan manifest for that target job. Binding requires the source
+job to have succeeded and to expose exactly one matching value for the declared
+output-ref prefix. Missing, incomplete, ambiguous, or unsafe bindings must
+block the target job instead of mutating it.
+
 When a non-audit planned job blocks, the runner may still attempt the generated
 final `audit_check` job when the audit job is queued, next for its kind, and
 inside the max-job cap. That audit report is the blocker report for the cycle;
@@ -107,6 +121,8 @@ Execution manifests must preserve the full research-only invariant, set
 - executed and skipped job counts;
 - audit job ID and audit report path;
 - every planned job action and status;
+- input-spec hash before/after any applied binding and the applied binding
+  refs;
 - execution blockers plus any blockers found in the final audit report.
 
 ## Data Modes

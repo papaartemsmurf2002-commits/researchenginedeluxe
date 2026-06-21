@@ -15,6 +15,7 @@ from pydantic import ValidationError
 
 from tradingbotsuite.v2.archive.hashing import canonical_json_hash
 from tradingbotsuite.v2.autonomy.schemas import (
+    AutopilotCycleBindingSpec,
     AutopilotCycleJobSpec,
     AutopilotCyclePlanConfig,
     AutopilotCyclePlanManifest,
@@ -125,6 +126,7 @@ def plan_autopilot_research_cycle(
         )
     _validate_job_specs(parsed.jobs)
     _validate_required_stage_coverage(parsed.jobs)
+    _validate_bindings(parsed.jobs, parsed.bindings)
 
     root = Path(output_root).resolve()
     run_root = (root / parsed.run_id).resolve()
@@ -176,6 +178,7 @@ def plan_autopilot_research_cycle(
         "status": status.value,
         "job_store_path": None if job_store_path is None else str(Path(job_store_path).resolve(strict=False)),
         "planned_jobs": [job.model_dump(mode="json") for job in all_planned_jobs],
+        "bindings": [binding.model_dump(mode="json") for binding in parsed.bindings],
         "audit_report_path": str(audit_report_path),
         "required_successful_job_kinds": [kind.value for kind in required_successful],
         "required_artifact_ref_prefixes": list(required_prefixes),
@@ -191,6 +194,7 @@ def plan_autopilot_research_cycle(
         job_store_path=identity["job_store_path"],
         plan_manifest_path=str(plan_manifest_path),
         planned_jobs=all_planned_jobs,
+        bindings=parsed.bindings,
         audit_job_id=audit_job_id,
         audit_report_path=str(audit_report_path),
         required_successful_job_kinds=tuple(identity["required_successful_job_kinds"]),
@@ -237,6 +241,40 @@ def _validate_required_stage_coverage(jobs: tuple[AutopilotCycleJobSpec, ...]) -
         raise AutopilotCyclePlanError(
             "bounded cycle is missing required stage(s): " + ",".join(missing)
         )
+
+
+def _validate_bindings(
+    jobs: tuple[AutopilotCycleJobSpec, ...],
+    bindings: tuple[AutopilotCycleBindingSpec, ...],
+) -> None:
+    if not bindings:
+        return
+    job_ids = {job.job_id for job in jobs}
+    order_by_job_id = {job.job_id: index for index, job in enumerate(jobs)}
+    for binding in bindings:
+        if binding.source_job_id not in job_ids:
+            raise AutopilotCyclePlanError(
+                f"binding source_job_id is not a planned job: {binding.source_job_id}"
+            )
+        if binding.target_job_id not in job_ids:
+            raise AutopilotCyclePlanError(
+                f"binding target_job_id is not a planned job: {binding.target_job_id}"
+            )
+        source_order = order_by_job_id[binding.source_job_id]
+        target_order = order_by_job_id[binding.target_job_id]
+        if source_order >= target_order:
+            raise AutopilotCyclePlanError(
+                "binding source job must precede target job: "
+                f"{binding.source_job_id}->{binding.target_job_id}"
+            )
+        boundary_path = _find_boundary_override_path(
+            _input_path_as_dict(binding.target_input_path)
+        )
+        if boundary_path is not None:
+            raise AutopilotCyclePlanError(
+                "binding target_input_path attempts boundary override: "
+                f"{binding.target_input_path}"
+            )
 
 
 def _planned_jobs(
@@ -324,6 +362,15 @@ def _required_job_kind_order(parsed: AutopilotCyclePlanConfig) -> tuple[WorkerJo
 
 def _unique_kinds(kinds: tuple[WorkerJobKind, ...]) -> tuple[WorkerJobKind, ...]:
     return tuple(dict.fromkeys(kinds))
+
+
+def _input_path_as_dict(path: str) -> dict[str, Any]:
+    root: dict[str, Any] = {}
+    current = root
+    for segment in path.split("."):
+        current[segment] = {}
+        current = current[segment]
+    return root
 
 
 def _find_boundary_override_path(value: Any, *, prefix: str = "input_spec") -> str | None:

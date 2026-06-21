@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from pydantic import ValidationError
 
 from tradingbotsuite.v2.archive.hashing import canonical_json_hash
 from tradingbotsuite.v2.autonomy.schemas import (
+    AutopilotCycleBindingSpec,
     AutopilotCycleExecutionManifest,
     AutopilotCycleExecutionResult,
     AutopilotCycleExecutionStatus,
@@ -26,6 +28,21 @@ from tradingbotsuite.v2.autonomy.schemas import (
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobRecord, WorkerJobStatus
 from tradingbotsuite.v2.workers.runner import run_one_job
+
+_BOUNDARY_INPUT_KEYS = frozenset(
+    {
+        "research_only",
+        "observe_only",
+        "promotion_ready",
+        "candidate_evidence",
+        "candidate_pack_eligible",
+        "live_signal",
+        "paper_signal",
+        "sizing_instruction",
+        "order_placement_instruction",
+        "runtime_mode_change",
+    }
+)
 
 
 class AutopilotCycleRunnerError(ValueError):
@@ -61,6 +78,7 @@ def run_autopilot_cycle_plan(
         raise AutopilotCycleRunnerError("bounded cycle plan has no planned jobs")
     if any(not planned.enqueued for planned in plan.planned_jobs):
         raise AutopilotCycleRunnerError("bounded cycle plan contains unenqueued jobs")
+    _validate_plan_bindings(plan)
 
     store_path = _resolve_job_store_path(plan, job_store_path=job_store_path)
     job_limit = max_jobs if max_jobs is not None else len(plan.planned_jobs)
@@ -100,6 +118,9 @@ def run_autopilot_cycle_plan(
             store=store,
             planned=planned,
             worker_id=worker_id,
+            bindings=tuple(
+                binding for binding in plan.bindings if binding.target_job_id == planned.job_id
+            ),
         )
         executions.append(execution)
         execution_blockers.extend(execution.blocker_reasons)
@@ -189,11 +210,42 @@ def _resolve_job_store_path(
     return plan_store or requested_store  # type: ignore[return-value]
 
 
+def _validate_plan_bindings(plan: AutopilotCyclePlanManifest) -> None:
+    if not plan.bindings:
+        return
+    order_by_job_id = {job.job_id: job.dependency_order for job in plan.planned_jobs}
+    generated_job_ids = {job.job_id for job in plan.planned_jobs if job.generated_by_planner}
+    for binding in plan.bindings:
+        if binding.source_job_id not in order_by_job_id:
+            raise AutopilotCycleRunnerError(
+                f"binding source_job_id is not in the plan manifest: {binding.source_job_id}"
+            )
+        if binding.target_job_id not in order_by_job_id:
+            raise AutopilotCycleRunnerError(
+                f"binding target_job_id is not in the plan manifest: {binding.target_job_id}"
+            )
+        if binding.source_job_id in generated_job_ids or binding.target_job_id in generated_job_ids:
+            raise AutopilotCycleRunnerError(
+                "bounded cycle bindings cannot use generated audit jobs"
+            )
+        if order_by_job_id[binding.source_job_id] >= order_by_job_id[binding.target_job_id]:
+            raise AutopilotCycleRunnerError(
+                "binding source job must precede target job: "
+                f"{binding.source_job_id}->{binding.target_job_id}"
+            )
+        unsafe_segment = _unsafe_input_path_segment(binding.target_input_path)
+        if unsafe_segment is not None:
+            raise AutopilotCycleRunnerError(
+                f"binding target_input_path attempts boundary override: {unsafe_segment}"
+            )
+
+
 def _run_or_skip_planned_job(
     *,
     store: WorkerJobStore,
     planned: AutopilotPlannedJob,
     worker_id: str,
+    bindings: tuple[AutopilotCycleBindingSpec, ...],
 ) -> AutopilotCycleJobExecution:
     before = store.load_job(planned.job_id)
     if before is None:
@@ -235,6 +287,25 @@ def _run_or_skip_planned_job(
             blocker_reasons=(reason,),
         )
 
+    bind_record, applied_bindings, binding_blockers = _apply_bindings(
+        store=store,
+        target=before,
+        bindings=bindings,
+        worker_id=worker_id,
+    )
+    if binding_blockers:
+        return _job_execution(
+            planned,
+            action=AutopilotCycleJobExecutionAction.BLOCKED_BINDING,
+            status_before=before.status.value,
+            status_after=bind_record.status.value,
+            input_spec_hash_before=before.input_spec_hash,
+            input_spec_hash_after=bind_record.input_spec_hash,
+            record=bind_record,
+            applied_bindings=applied_bindings,
+            blocker_reasons=binding_blockers,
+        )
+
     result = run_one_job(store=store, kind=planned.kind, worker_id=worker_id)
     after = store.load_job(planned.job_id)
     blockers: list[str] = []
@@ -250,9 +321,112 @@ def _run_or_skip_planned_job(
         action=AutopilotCycleJobExecutionAction.RAN,
         status_before=before.status.value,
         status_after=record.status.value,
+        input_spec_hash_before=before.input_spec_hash,
+        input_spec_hash_after=bind_record.input_spec_hash,
         record=record,
+        applied_bindings=applied_bindings,
         blocker_reasons=tuple(blockers),
     )
+
+
+def _apply_bindings(
+    *,
+    store: WorkerJobStore,
+    target: WorkerJobRecord,
+    bindings: tuple[AutopilotCycleBindingSpec, ...],
+    worker_id: str,
+) -> tuple[WorkerJobRecord, tuple[str, ...], tuple[str, ...]]:
+    if not bindings:
+        return target, (), ()
+    blockers: list[str] = []
+    applied: list[str] = []
+    bound_spec = deepcopy(target.input_spec)
+    for binding in bindings:
+        unsafe_segment = _unsafe_input_path_segment(binding.target_input_path)
+        if unsafe_segment is not None:
+            blockers.append(
+                f"binding_target_input_path_forbidden:{binding.target_job_id}:{unsafe_segment}"
+            )
+            continue
+        source = store.load_job(binding.source_job_id)
+        if source is None:
+            blockers.append(
+                f"binding_source_job_missing:{binding.target_job_id}:{binding.source_job_id}"
+            )
+            continue
+        if source.status != WorkerJobStatus.SUCCEEDED:
+            blockers.append(
+                "binding_source_job_not_succeeded:"
+                f"{binding.target_job_id}:{binding.source_job_id}:{source.status.value}"
+            )
+            continue
+        values = _matching_ref_values(source, binding.source_ref_prefix)
+        if not values:
+            blockers.append(
+                f"binding_ref_missing:{binding.target_job_id}:{binding.source_job_id}:{binding.source_ref_prefix}"
+            )
+            continue
+        if len(values) > 1:
+            blockers.append(
+                "binding_ref_ambiguous:"
+                f"{binding.target_job_id}:{binding.source_job_id}:{binding.source_ref_prefix}"
+            )
+            continue
+        try:
+            _set_input_path(bound_spec, binding.target_input_path, values[0])
+        except ValueError as exc:
+            blockers.append(
+                f"binding_target_input_path_invalid:{binding.target_job_id}:{binding.target_input_path}:{exc}"
+            )
+            continue
+        applied.append(
+            "input_spec."
+            f"{binding.target_input_path}<={binding.source_job_id}:{binding.source_ref_prefix}{values[0]}"
+        )
+    if blockers:
+        return target, (), tuple(blockers)
+    try:
+        updated = store.update_queued_input_spec(
+            target.job_id,
+            input_spec=bound_spec,
+            worker_id=worker_id,
+            reason="autopilot_cycle_binding_applied",
+        )
+    except (KeyError, ValueError) as exc:
+        return target, (), (f"binding_input_spec_update_failed:{target.job_id}:{exc}",)
+    return updated, tuple(applied), ()
+
+
+def _matching_ref_values(record: WorkerJobRecord, prefix: str) -> tuple[str, ...]:
+    values = []
+    for ref in (*record.output_refs, *record.archive_manifest_refs):
+        if not ref.startswith(prefix):
+            continue
+        value = ref[len(prefix) :]
+        if value:
+            values.append(value)
+    return tuple(dict.fromkeys(values))
+
+
+def _set_input_path(spec: dict[str, Any], path: str, value: str) -> None:
+    current = spec
+    segments = path.split(".")
+    for segment in segments[:-1]:
+        next_value = current.get(segment)
+        if next_value is None:
+            next_value = {}
+            current[segment] = next_value
+        if not isinstance(next_value, dict):
+            raise ValueError(f"non_object_segment:{segment}")
+        current = next_value
+    current[segments[-1]] = value
+
+
+def _unsafe_input_path_segment(path: str) -> str | None:
+    for segment in path.split("."):
+        if segment in _BOUNDARY_INPUT_KEYS:
+            return segment
+    return None
 
 
 def _job_execution(
@@ -261,7 +435,10 @@ def _job_execution(
     action: AutopilotCycleJobExecutionAction,
     status_before: str | None = None,
     status_after: str | None = None,
+    input_spec_hash_before: str | None = None,
+    input_spec_hash_after: str | None = None,
     record: WorkerJobRecord | None = None,
+    applied_bindings: tuple[str, ...] = (),
     blocker_reasons: tuple[str, ...] = (),
 ) -> AutopilotCycleJobExecution:
     return AutopilotCycleJobExecution(
@@ -272,6 +449,9 @@ def _job_execution(
         action=action,
         status_before=status_before,
         status_after=status_after,
+        input_spec_hash_before=input_spec_hash_before,
+        input_spec_hash_after=input_spec_hash_after,
+        applied_bindings=applied_bindings,
         output_refs=record.output_refs if record else (),
         archive_manifest_refs=record.archive_manifest_refs if record else (),
         gap_record_ids=record.gap_record_ids if record else (),

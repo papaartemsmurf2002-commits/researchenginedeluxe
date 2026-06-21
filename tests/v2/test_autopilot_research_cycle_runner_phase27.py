@@ -85,6 +85,33 @@ def test_bounded_cycle_runner_rejects_job_store_mismatch(tmp_path) -> None:
         raise AssertionError("expected job-store mismatch rejection")
 
 
+def test_bounded_cycle_runner_rejects_invalid_plan_binding_manifest(tmp_path) -> None:
+    result = plan_autopilot_research_cycle(
+        _cycle_spec(run_id="cycle-run-bad-binding-manifest"),
+        output_root=tmp_path / "plans",
+        job_store_path=tmp_path / "jobs.sqlite",
+        enqueue=True,
+    )
+    manifest_path = Path(result.plan_manifest_path)
+    manifest = _read_json(manifest_path)
+    manifest["bindings"] = [
+        {
+            "source_job_id": "JOB-cycle-run-bad-binding-manifest-backtest",
+            "target_job_id": "JOB-cycle-run-bad-binding-manifest-coverage",
+            "target_input_path": "archive_snapshot_id",
+            "source_ref_prefix": "archive_snapshot_id=",
+        }
+    ]
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+
+    try:
+        run_autopilot_cycle_plan(result.plan_manifest_path)
+    except AutopilotCycleRunnerError as exc:
+        assert "source job must precede target job" in str(exc)
+    else:
+        raise AssertionError("expected invalid binding manifest rejection")
+
+
 def test_bounded_cycle_runner_blocks_when_planned_job_is_not_next_for_kind(tmp_path) -> None:
     job_store_path = tmp_path / "jobs.sqlite"
     store = WorkerJobStore(job_store_path)
@@ -119,6 +146,106 @@ def test_bounded_cycle_runner_blocks_when_planned_job_is_not_next_for_kind(tmp_p
     assert manifest["job_executions"][-1]["job_id"] == result.audit_job_id
     assert manifest["job_executions"][-1]["action"] == "ran"
     assert store.load_job("JOB-unrelated-universe").status == WorkerJobStatus.QUEUED
+
+
+def test_bounded_cycle_runner_binds_source_output_ref_before_running_target(tmp_path) -> None:
+    job_store_path = tmp_path / "jobs.sqlite"
+    payload = _cycle_spec(run_id="cycle-run-bind")
+    payload["jobs"][1]["input_spec"] = {"archive_root": "ARCHIVE_ROOT"}
+    payload["bindings"] = [
+        {
+            "source_job_id": "JOB-cycle-run-bind-universe",
+            "target_job_id": "JOB-cycle-run-bind-candles",
+            "target_input_path": "instrument_id",
+            "source_ref_prefix": "instrument_id=",
+        }
+    ]
+    result = plan_autopilot_research_cycle(
+        payload,
+        output_root=tmp_path / "plans",
+        job_store_path=job_store_path,
+        enqueue=True,
+    )
+    store = WorkerJobStore(job_store_path)
+    _seed_successful_job(
+        store,
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        job_id="JOB-cycle-run-bind-universe",
+        output_refs=("universe_snapshot_id=UNIV", "instrument_id=hyperliquid:perp:BTC"),
+    )
+    original = store.load_job("JOB-cycle-run-bind-candles")
+    assert original is not None
+    assert "instrument_id" not in original.input_spec
+
+    execution = run_autopilot_cycle_plan(
+        result.plan_manifest_path,
+        worker_id="runner-bind",
+        max_jobs=1,
+    )
+    manifest = _read_json(Path(execution.execution_manifest_path))
+    bound = store.load_job("JOB-cycle-run-bind-candles")
+    transitions = store.list_transitions("JOB-cycle-run-bind-candles")
+
+    assert bound is not None
+    assert bound.status == WorkerJobStatus.SUCCEEDED
+    assert bound.input_spec["instrument_id"] == "hyperliquid:perp:BTC"
+    assert bound.input_spec_hash != original.input_spec_hash
+    assert any(
+        transition.reason == "autopilot_cycle_binding_applied"
+        for transition in transitions
+    )
+    candle_execution = manifest["job_executions"][1]
+    assert candle_execution["action"] == "ran"
+    assert candle_execution["input_spec_hash_before"] == original.input_spec_hash
+    assert candle_execution["input_spec_hash_after"] == bound.input_spec_hash
+    assert candle_execution["applied_bindings"] == [
+        "input_spec.instrument_id<=JOB-cycle-run-bind-universe:instrument_id=hyperliquid:perp:BTC"
+    ]
+    assert execution.status.value == "completed_with_blockers"
+    assert "max_jobs_exhausted_before:JOB-cycle-run-bind-coverage" in execution.blocker_reasons
+
+
+def test_bounded_cycle_runner_blocks_when_binding_ref_is_missing(tmp_path) -> None:
+    job_store_path = tmp_path / "jobs.sqlite"
+    payload = _cycle_spec(run_id="cycle-run-bind-missing")
+    payload["jobs"][1]["input_spec"] = {"archive_root": "ARCHIVE_ROOT"}
+    payload["bindings"] = [
+        {
+            "source_job_id": "JOB-cycle-run-bind-missing-universe",
+            "target_job_id": "JOB-cycle-run-bind-missing-candles",
+            "target_input_path": "instrument_id",
+            "source_ref_prefix": "instrument_id=",
+        }
+    ]
+    result = plan_autopilot_research_cycle(
+        payload,
+        output_root=tmp_path / "plans",
+        job_store_path=job_store_path,
+        enqueue=True,
+    )
+    store = WorkerJobStore(job_store_path)
+    _seed_successful_job(
+        store,
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        job_id="JOB-cycle-run-bind-missing-universe",
+        output_refs=("universe_snapshot_id=UNIV",),
+    )
+
+    execution = run_autopilot_cycle_plan(
+        result.plan_manifest_path,
+        worker_id="runner-bind-missing",
+    )
+    manifest = _read_json(Path(execution.execution_manifest_path))
+    bound = store.load_job("JOB-cycle-run-bind-missing-candles")
+
+    assert bound is not None
+    assert bound.status == WorkerJobStatus.QUEUED
+    assert "instrument_id" not in bound.input_spec
+    assert manifest["job_executions"][1]["action"] == "blocked_binding"
+    assert (
+        "binding_ref_missing:JOB-cycle-run-bind-missing-candles:"
+        "JOB-cycle-run-bind-missing-universe:instrument_id="
+    ) in execution.blocker_reasons
 
 
 def test_autopilot_run_cycle_plan_cli_prints_execution_manifest(tmp_path, capsys) -> None:
@@ -178,6 +305,28 @@ def _seed_successful_loop_jobs(store: WorkerJobStore, *, run_id: str) -> None:
         )
         assert succeeded.status == WorkerJobStatus.SUCCEEDED
         time.sleep(0.002)
+
+
+def _seed_successful_job(
+    store: WorkerJobStore,
+    *,
+    kind: WorkerJobKind,
+    job_id: str,
+    output_refs: tuple[str, ...],
+) -> None:
+    worker_id = "seed-single-success"
+    claimed = store.claim_next(kind=kind, worker_id=worker_id)
+    assert claimed is not None
+    assert claimed.job_id == job_id
+    running = store.start_job(job_id, worker_id=worker_id)
+    assert running.status == WorkerJobStatus.RUNNING
+    succeeded = store.succeed_job(
+        job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+    )
+    assert succeeded.status == WorkerJobStatus.SUCCEEDED
+    time.sleep(0.002)
 
 
 def _cycle_spec(*, run_id: str) -> dict:

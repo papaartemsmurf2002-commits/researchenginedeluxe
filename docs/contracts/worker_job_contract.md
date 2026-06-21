@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`
 
 ## Purpose
 
@@ -107,11 +107,19 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Bounded autopilot cycle plans must reject unsupported worker kinds,
   user-supplied `audit_check` jobs, boundary override keys in job specs, and
   cycle sizes above the declared cap before enqueueing any jobs.
+- Bounded autopilot cycle plans may declare source-output-ref to target-input
+  bindings only when the source planned job precedes the target planned job.
+  Binding declarations are plan metadata, not completed evidence.
 - Bounded autopilot cycle execution may run enqueued planned jobs through the
   durable worker runner, but only after proving that the planned queued job is
   the next queued job for its worker kind. If a different queued job would be
   claimed first, execution must block and report the mismatch instead of
   running that kind.
+- Bounded autopilot cycle execution may update a planned job input spec only
+  while that job is still `queued`, only from planner-declared bindings, and
+  only after the source job has succeeded with exactly one matching output ref.
+  The update must recompute `input_spec_hash` and append a same-status worker
+  transition before the job is claimed.
 - Bounded autopilot cycle execution may skip planned jobs already in
   `succeeded` state and use their stored worker refs as audit evidence. It must
   report blockers for missing, incomplete, failed, cancelled, stale, retrying,
@@ -148,3 +156,5 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Treating a bounded cycle execution manifest as autonomous-ready proof,
   accepted historical coverage proof, candidate-pack evidence, or promotion
   evidence.
+- Mutating claimed, running, terminal, missing, or non-planned worker jobs
+  during bounded-cycle binding.

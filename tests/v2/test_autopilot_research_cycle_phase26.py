@@ -114,6 +114,79 @@ def test_bounded_research_cycle_enqueue_adds_jobs_and_generated_audit(tmp_path) 
     assert "missing_evidence:successful_job_kind:universe_refresh" in report["blocker_reasons"]
 
 
+def test_bounded_research_cycle_plan_persists_declared_bindings(tmp_path) -> None:
+    payload = _cycle_spec(run_id="cycle-bind-plan")
+    payload["bindings"] = [
+        {
+            "source_job_id": "JOB-cycle-bind-plan-universe",
+            "target_job_id": "JOB-cycle-bind-plan-candles",
+            "target_input_path": "instrument_id",
+            "source_ref_prefix": "instrument_id=",
+        }
+    ]
+    config = AutopilotCyclePlanConfig.model_validate(payload)
+
+    result = plan_autopilot_research_cycle(
+        config,
+        output_root=tmp_path / "plans",
+        job_store_path=tmp_path / "jobs.sqlite",
+        enqueue=False,
+    )
+    manifest = _read_json(Path(result.plan_manifest_path))
+
+    assert manifest["bindings"] == payload["bindings"]
+
+
+def test_bounded_research_cycle_rejects_out_of_order_binding(tmp_path) -> None:
+    payload = _cycle_spec(run_id="cycle-bad-binding")
+    payload["bindings"] = [
+        {
+            "source_job_id": "JOB-cycle-bad-binding-backtest",
+            "target_job_id": "JOB-cycle-bad-binding-coverage",
+            "target_input_path": "archive_snapshot_id",
+            "source_ref_prefix": "archive_snapshot_id=",
+        }
+    ]
+    config = AutopilotCyclePlanConfig.model_validate(payload)
+
+    try:
+        plan_autopilot_research_cycle(
+            config,
+            output_root=tmp_path / "plans",
+            job_store_path=tmp_path / "jobs.sqlite",
+            enqueue=False,
+        )
+    except AutopilotCyclePlanError as exc:
+        assert "source job must precede target job" in str(exc)
+    else:
+        raise AssertionError("expected out-of-order binding rejection")
+
+
+def test_bounded_research_cycle_rejects_boundary_binding_target(tmp_path) -> None:
+    payload = _cycle_spec(run_id="cycle-bad-binding-boundary")
+    payload["bindings"] = [
+        {
+            "source_job_id": "JOB-cycle-bad-binding-boundary-universe",
+            "target_job_id": "JOB-cycle-bad-binding-boundary-candles",
+            "target_input_path": "promotion_ready",
+            "source_ref_prefix": "instrument_id=",
+        }
+    ]
+    config = AutopilotCyclePlanConfig.model_validate(payload)
+
+    try:
+        plan_autopilot_research_cycle(
+            config,
+            output_root=tmp_path / "plans",
+            job_store_path=tmp_path / "jobs.sqlite",
+            enqueue=False,
+        )
+    except AutopilotCyclePlanError as exc:
+        assert "boundary override" in str(exc)
+    else:
+        raise AssertionError("expected boundary binding target rejection")
+
+
 def test_bounded_research_cycle_rejects_boundary_override_before_enqueue(tmp_path) -> None:
     payload = _cycle_spec(run_id="cycle-bad-boundary")
     payload["jobs"][0]["input_spec"]["promotion_ready"] = True

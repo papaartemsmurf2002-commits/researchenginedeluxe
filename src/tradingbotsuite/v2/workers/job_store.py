@@ -157,6 +157,38 @@ class WorkerJobStore:
                 for row in connection.execute(query, values).fetchall()
             ]
 
+    def update_queued_input_spec(
+        self,
+        job_id: str,
+        *,
+        input_spec: Mapping[str, Any],
+        worker_id: str | None,
+        reason: str = "queued_input_spec_updated",
+    ) -> WorkerJobRecord:
+        self.initialize()
+        spec = _jsonable(dict(input_spec))
+        spec_hash = canonical_json_hash(spec)
+        with self._connect() as connection:
+            current = self._require_job(connection, job_id)
+            if current.status != WorkerJobStatus.QUEUED:
+                raise ValueError(f"cannot update input_spec for job in status {current.status.value}")
+            updated = current.model_copy(
+                update={
+                    "input_spec_hash": spec_hash,
+                    "input_spec": spec,
+                }
+            )
+            self._upsert_job(connection, updated)
+            self._insert_transition(
+                connection,
+                job_id=job_id,
+                from_status=current.status,
+                to_status=updated.status,
+                worker_id=worker_id,
+                reason=reason,
+            )
+            return updated
+
     def claim_next(
         self,
         *,

@@ -182,6 +182,25 @@ class AutopilotCycleJobSpec(BaseModel):
         return self
 
 
+class AutopilotCycleBindingSpec(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    source_job_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_.:-]+$")
+    target_job_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_.:-]+$")
+    target_input_path: str = Field(
+        min_length=1,
+        pattern=r"^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$",
+    )
+    source_ref_prefix: str = Field(min_length=1)
+
+    @field_validator("source_ref_prefix")
+    @classmethod
+    def _require_value_prefix(cls, value: str) -> str:
+        if not value.endswith("="):
+            raise ValueError("binding source_ref_prefix must end with '='")
+        return value
+
+
 class AutopilotCyclePlanConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -189,6 +208,7 @@ class AutopilotCyclePlanConfig(BaseModel):
     run_id: str = Field(min_length=1, pattern=r"^[A-Za-z0-9_.-]+$")
     mode: AutopilotCycleMode = AutopilotCycleMode.BOUNDED
     jobs: tuple[AutopilotCycleJobSpec, ...] = Field(min_length=1)
+    bindings: tuple[AutopilotCycleBindingSpec, ...] = Field(default=(), max_length=500)
     max_jobs: int = Field(default=10, ge=1, le=100)
     audit_job_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]+$")
     audit_report_path: str | None = None
@@ -231,6 +251,7 @@ class AutopilotCyclePlanManifest(BaseModel):
     job_store_path: str | None = None
     plan_manifest_path: str = Field(min_length=1)
     planned_jobs: tuple[AutopilotPlannedJob, ...]
+    bindings: tuple[AutopilotCycleBindingSpec, ...] = ()
     audit_job_id: str = Field(min_length=1)
     audit_report_path: str = Field(min_length=1)
     required_successful_job_kinds: tuple[str, ...]
@@ -279,6 +300,7 @@ class AutopilotCycleJobExecutionAction(str, Enum):
     RAN = "ran"
     SKIPPED_ALREADY_SUCCEEDED = "skipped_already_succeeded"
     BLOCKED_MISSING = "blocked_missing"
+    BLOCKED_BINDING = "blocked_binding"
     BLOCKED_NOT_NEXT_FOR_KIND = "blocked_not_next_for_kind"
     BLOCKED_STATUS = "blocked_status"
     NOT_RUN_AFTER_BLOCKER = "not_run_after_blocker"
@@ -295,6 +317,9 @@ class AutopilotCycleJobExecution(BaseModel):
     action: AutopilotCycleJobExecutionAction
     status_before: str | None = None
     status_after: str | None = None
+    input_spec_hash_before: str | None = Field(default=None, min_length=64, max_length=64)
+    input_spec_hash_after: str | None = Field(default=None, min_length=64, max_length=64)
+    applied_bindings: tuple[str, ...] = ()
     output_refs: tuple[str, ...] = ()
     archive_manifest_refs: tuple[str, ...] = ()
     gap_record_ids: tuple[str, ...] = ()
