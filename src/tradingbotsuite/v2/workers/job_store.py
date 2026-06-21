@@ -485,7 +485,7 @@ class WorkerJobStore:
         if job_id is not None:
             query += " WHERE job_id = ?"
             values.append(job_id)
-        query += " ORDER BY transitioned_at, transition_id"
+        query += " ORDER BY transitioned_at, rowid"
         with self._connect() as connection:
             return [
                 WorkerTransition.model_validate_json(row["transition_json"])

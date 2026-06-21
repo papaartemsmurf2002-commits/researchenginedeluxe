@@ -84,14 +84,29 @@ confirmed the same underlying socketpair failure after the host entered the
 bad state, so the audit kept this classified as a local validation-environment
 blocker rather than a source assertion failure.
 
+WPR106-420 installed the repo runtime/dev dependencies into the local Python
+3.11.0 interpreter and proved the pinned v2 and contract lanes can run:
+`py -3.11 -m pytest tests\v2 -q` passed 173 tests and
+`py -3.11 -m pytest tests\contracts -q` passed 462 tests. The packet also
+fixed a deterministic v2 worker transition ordering issue exposed by the
+pinned lane. The monolithic `py -3.11 -m pytest tests -q` suite still could
+not be certified: a long-process prefix failed before
+`test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest`
+because Python 3.11.0 on this Windows host hit `WinError 10055` while creating
+the asyncio loop self-pipe with `socket.socketpair()`. A direct post-run
+`socket.socketpair()` probe also failed after four attempts even with no
+leftover Python test processes, so the issue remains classified as a local
+Windows/Python socket-stack validation blocker.
+
 ### Required resolution
 
-Before using this Windows session as final full-contract evidence again, clear
-or restart the local socket/network stack enough for pytest-asyncio event-loop
-setup to succeed, then rerun `PYTHONPATH=src python -m pytest tests/contracts
--q`. If the condition persists across fresh sessions, add a scoped test
-infrastructure packet that avoids socketpair-dependent async setup for local
-contract tests without weakening the async behavior under test.
+Before using this Windows session as final full-suite evidence again, clear or
+restart the local socket/network stack enough for pytest-asyncio event-loop
+setup to succeed, then rerun `PYTHONPATH=src py -3.11 -m pytest tests -q`. If
+the condition persists across fresh sessions, use Linux CI as the authoritative
+full-suite lane or add a scoped test-infrastructure packet that avoids
+socketpair-dependent async setup for local contract tests without weakening the
+async behavior under test.
 
 ### Resolution notes
 

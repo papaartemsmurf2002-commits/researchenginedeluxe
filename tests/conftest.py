@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import sys
 from decimal import Decimal
 from pathlib import Path
 
@@ -10,6 +12,14 @@ from fastapi.testclient import TestClient
 from tradingbotsuite.config import AppConfig, BinanceConfig, HyperliquidConfig, StrategyConfig, WebhookConfig
 from tradingbotsuite.core.models import Bar, RuntimeMode
 from tradingbotsuite.web.app import create_app
+
+
+if (
+    sys.platform == "win32"
+    and sys.version_info < (3, 14)
+    and hasattr(asyncio, "WindowsSelectorEventLoopPolicy")
+):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 class FakeBinanceCandleClient:
