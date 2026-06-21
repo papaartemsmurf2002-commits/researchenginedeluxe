@@ -1,7 +1,7 @@
 # V2 Audit Report Contract
 
 Status: v2 durable audit/blocker report contract
-Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`, `V2-AUD-AUDIT-002`, `V2-AUD-AUDIT-003`
+Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`, `V2-AUD-AUDIT-002`, `V2-AUD-AUDIT-003`, `V2-AUD-AUDIT-004`
 
 ## Purpose
 
@@ -47,6 +47,10 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
 - Generated report files are JSON artifacts and must be hash-addressed in
   worker output refs.
 - Secret-like or unsupported report output paths must fail before writes.
+- Bounded autopilot cycle plans must generate the final `audit_check` job from
+  the declared target job IDs, required successful kinds, required artifact ref
+  prefixes, and required job-kind order. A generated audit job remains a queued
+  worker job until explicitly run through the durable worker runner.
 
 ## Forbidden
 
@@ -57,3 +61,4 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
 - Writing blocker reports to secret/local-state filenames.
 - Producing candidate, paper, live, order, sizing, runtime-mode, or promotion
   claims from audit reports.
+- Treating a planned or queued audit job as an audit result.

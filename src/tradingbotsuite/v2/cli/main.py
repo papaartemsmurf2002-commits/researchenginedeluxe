@@ -29,6 +29,9 @@ from tradingbotsuite.v2.archive.rebuild import (
 from tradingbotsuite.v2.archive.schemas import ArchiveLayer
 from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
 from tradingbotsuite.v2.autonomy import (
+    AutopilotCyclePlanError,
+    load_autopilot_cycle_spec,
+    plan_autopilot_research_cycle,
     AutonomyDryRunConfig,
     AutonomyLoopError,
     run_autonomy_dry_run,
@@ -370,6 +373,22 @@ def build_parser() -> argparse.ArgumentParser:
     lead_approve.add_argument("--lead-id", required=True)
     lead_approve.add_argument("--inspection-note-file", required=True)
     lead_approve.add_argument("--approving-agent-id", required=True)
+    autopilot = subparsers.add_parser(
+        "autopilot",
+        help="bounded research-only cycle planning commands",
+        description=f"Autopilot planning command group. {BOUNDARY_HELP}",
+    )
+    autopilot_subparsers = autopilot.add_subparsers(dest="autopilot_command")
+    autopilot_cycle = autopilot_subparsers.add_parser(
+        "research-cycle",
+        help="plan or enqueue a bounded durable research cycle without running jobs",
+    )
+    autopilot_cycle.add_argument("--mode", default="bounded", choices=["bounded"])
+    autopilot_cycle.add_argument("--cycle-spec-file", required=True)
+    autopilot_cycle.add_argument("--output-root", required=True)
+    autopilot_cycle.add_argument("--job-store", required=True)
+    autopilot_cycle.add_argument("--enqueue", action="store_true")
+    autopilot_cycle.add_argument("--max-jobs", type=int)
     autonomy = subparsers.add_parser(
         "autonomy",
         help="fixture-backed research-only autonomy dry-run commands",
@@ -479,6 +498,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _handle_ledger(args, parser)
     if args.command == "lead":
         return _handle_lead(args, parser)
+    if args.command == "autopilot":
+        return _handle_autopilot(args, parser)
     if args.command == "autonomy":
         return _handle_autonomy(args, parser)
     if args.command == "worker":
@@ -1023,6 +1044,40 @@ def _handle_lead(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
         print(f"lead_rejected={exc}")
         return 1
     parser.error(f"unsupported lead command: {args.lead_command}")
+    return 2
+
+
+def _handle_autopilot(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.autopilot_command is None:
+        parser.parse_args(["autopilot", "--help"])
+        return 0
+    if args.autopilot_command == "research-cycle":
+        try:
+            config = load_autopilot_cycle_spec(args.cycle_spec_file)
+            if args.max_jobs is not None:
+                if args.max_jobs < 1:
+                    raise AutopilotCyclePlanError("max_jobs must be positive")
+                config = config.model_copy(update={"max_jobs": args.max_jobs})
+            result = plan_autopilot_research_cycle(
+                config,
+                output_root=args.output_root,
+                job_store_path=args.job_store,
+                enqueue=args.enqueue,
+            )
+        except (AutopilotCyclePlanError, ValidationError) as exc:
+            print(f"autopilot_research_cycle_rejected={exc}")
+            return 1
+        print(f"plan_manifest={result.plan_manifest_path}")
+        print(f"plan_id={result.plan_id}")
+        print(f"status={result.status.value}")
+        print(f"planned_job_count={result.planned_job_count}")
+        print(f"enqueued_job_count={result.enqueued_job_count}")
+        print(f"audit_job_id={result.audit_job_id}")
+        print(f"audit_report_path={result.audit_report_path}")
+        print("accepted_research_ready=false")
+        print("promotion_ready=false")
+        return 0
+    parser.error(f"unsupported autopilot command: {args.autopilot_command}")
     return 2
 
 

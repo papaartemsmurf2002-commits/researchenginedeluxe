@@ -130,10 +130,17 @@ This is the first file to read after `AGENTS.md`.
   `capture_mode=unattended_session` evidence for bounded public WebSocket
   candle, trade, BBO, and L2 capture segments, including session heartbeats and
   JSON capture-session reports under archive manifests, while still keeping
-  accepted historical coverage proof false. Full historical candle coverage
-  beyond the public recent-window limit, long-running scheduler/daemon capture,
-  accepted continuous historical trade/L2 coverage proof, independent audits,
-  and authoritative full-suite proof remain follow-up work.
+  accepted historical coverage proof false. WPR106-451 adds a bounded
+  `redx autopilot research-cycle --mode bounded` plan/enqueue surface that
+  validates an ordered durable loop spec, optionally enqueues declared worker
+  jobs, and appends a generated final `audit_check` job with required
+  successful job-kind, artifact-prefix, and ordering checks. It does not run
+  jobs, call venues, stream WebSockets, certify coverage, or claim
+  autonomous-ready status. Full historical candle coverage beyond the public
+  recent-window limit, long-running scheduler/daemon capture, accepted
+  continuous historical trade/L2 coverage proof, independent audits, executed
+  real-archive loop evidence, and authoritative full-suite proof remain
+  follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
