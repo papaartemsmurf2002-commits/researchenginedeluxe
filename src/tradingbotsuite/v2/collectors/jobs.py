@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
@@ -13,7 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from tradingbotsuite.v2.archive.hashing import canonical_json_hash
+from tradingbotsuite.v2.archive.hashing import canonical_json_hash, file_sha256
 from tradingbotsuite.v2.archive.layout import ArchiveLayout
 from tradingbotsuite.v2.archive.manifest_store import ArchiveManifestStore
 from tradingbotsuite.v2.archive.microstructure import (
@@ -31,6 +32,7 @@ from tradingbotsuite.v2.archive.rebuild import (
     raw_funding_to_bronze,
 )
 from tradingbotsuite.v2.config.time import utc_now
+from tradingbotsuite.v2.security.path_policy import resolve_within_root
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
@@ -39,6 +41,37 @@ from tradingbotsuite.v2.workers.models import (
     WorkerJobRecord,
     WorkerJobStatus,
     WorkerRunResult,
+)
+
+
+_DEFAULT_MAX_RECORDS_FILE_BYTES = 100 * 1024 * 1024
+_RECORDS_FILE_SUFFIXES = frozenset({".json", ".jsonl", ".ndjson"})
+_UNSAFE_RECORDS_FILE_NAMES = frozenset(
+    {
+        ".env",
+        ".env.local",
+        "credentials.json",
+        "credentials.jsonl",
+        "secrets.json",
+        "secrets.jsonl",
+    }
+)
+_UNSAFE_RECORDS_FILE_SUFFIXES = frozenset(
+    {
+        ".db",
+        ".dll",
+        ".dylib",
+        ".env",
+        ".exe",
+        ".gz",
+        ".joblib",
+        ".key",
+        ".pem",
+        ".pickle",
+        ".pkl",
+        ".sqlite",
+        ".zip",
+    }
 )
 
 
@@ -159,26 +192,28 @@ def _run_recent_candle_bootstrap_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
-    if _has_records(spec):
+    if _has_record_source(spec):
         archive_root = _required_str(spec, "archive_root")
         instrument_id = _required_str(spec, "instrument_id")
         timeframe = str(spec.get("timeframe", "1m"))
         start_ts = _parse_datetime(_required_str(spec, "start_ts"))
         end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+        records, source_refs, source_endpoint = _collector_records(
+            spec,
+            default_source_endpoint="fixture/rest/candles",
+        )
         layout = ArchiveLayout(archive_root)
         layout.initialize()
         manifest_store = ArchiveManifestStore(layout)
         raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
-            records=_required_records(spec),
+            records=records,
             venue=str(spec.get("venue", "hyperliquid")),
             datatype="candles",
             date=_required_str(spec, "date"),
             run_id=str(spec.get("run_id", job.job_id)),
             job_id=job.job_id,
             adapter_id=str(spec.get("adapter_id", "fixture_recent_candle_bootstrap_v1")),
-            source_endpoint_or_subscription=str(
-                spec.get("source_endpoint_or_subscription", "fixture/rest/candles")
-            ),
+            source_endpoint_or_subscription=source_endpoint,
             symbols=(instrument_id,),
             start_ts=start_ts,
             end_ts=end_ts,
@@ -209,6 +244,7 @@ def _run_recent_candle_bootstrap_job(
             "collector_mode=fixture_candle_archive_write",
             f"row_count={raw_file.row_count or 0}",
             f"timeframe={timeframe}",
+            *source_refs,
             *archive_refs,
         )
         record = store.succeed_job(
@@ -257,25 +293,27 @@ def _run_funding_backfill_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
-    if _has_records(spec):
+    if _has_record_source(spec):
         archive_root = _required_str(spec, "archive_root")
         instrument_id = _required_str(spec, "instrument_id")
         start_ts = _parse_datetime(_required_str(spec, "start_ts"))
         end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+        records, source_refs, source_endpoint = _collector_records(
+            spec,
+            default_source_endpoint="fixture/rest/funding",
+        )
         layout = ArchiveLayout(archive_root)
         layout.initialize()
         manifest_store = ArchiveManifestStore(layout)
         raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
-            records=_required_records(spec),
+            records=records,
             venue=str(spec.get("venue", "hyperliquid")),
             datatype="funding",
             date=_required_str(spec, "date"),
             run_id=str(spec.get("run_id", job.job_id)),
             job_id=job.job_id,
             adapter_id=str(spec.get("adapter_id", "fixture_funding_backfill_v1")),
-            source_endpoint_or_subscription=str(
-                spec.get("source_endpoint_or_subscription", "fixture/rest/funding")
-            ),
+            source_endpoint_or_subscription=source_endpoint,
             symbols=(instrument_id,),
             start_ts=start_ts,
             end_ts=end_ts,
@@ -300,6 +338,7 @@ def _run_funding_backfill_job(
         output_refs = (
             "collector_mode=fixture_funding_archive_write",
             f"row_count={raw_file.row_count or 0}",
+            *source_refs,
             *archive_refs,
         )
         record = store.succeed_job(
@@ -575,8 +614,113 @@ def _required_records(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def _has_records(spec: dict[str, Any]) -> bool:
-    return "records" in spec and spec.get("records") is not None
+def _has_record_source(spec: dict[str, Any]) -> bool:
+    return ("records" in spec and spec.get("records") is not None) or bool(
+        spec.get("records_file")
+    )
+
+
+def _collector_records(
+    spec: dict[str, Any],
+    *,
+    default_source_endpoint: str,
+) -> tuple[list[dict[str, Any]], tuple[str, ...], str]:
+    has_inline = "records" in spec and spec.get("records") is not None
+    has_file = bool(spec.get("records_file"))
+    if has_inline and has_file:
+        raise ValueError("collector job spec cannot include both records and records_file")
+    if has_inline:
+        records = _required_records(spec)
+        return (
+            records,
+            ("records_source=inline", f"records_inline_row_count={len(records)}"),
+            str(spec.get("source_endpoint_or_subscription", default_source_endpoint)),
+        )
+    if has_file:
+        path = _resolve_records_file(spec)
+        records = _read_records_file(
+            path,
+            records_format=str(spec.get("records_format", "auto")),
+        )
+        source_refs = (
+            "records_source=records_file",
+            f"records_file_sha256={file_sha256(path)}",
+            f"records_file_row_count={len(records)}",
+        )
+        return records, source_refs, str(
+            spec.get("source_endpoint_or_subscription", f"local_records_file:{path.name}")
+        )
+    raise ValueError("collector job spec requires records or records_file")
+
+
+def _resolve_records_file(spec: dict[str, Any]) -> Path:
+    records_file = _required_str(spec, "records_file")
+    trusted_root = _required_str(spec, "trusted_source_root")
+    resolved = resolve_within_root(trusted_root, records_file)
+    _validate_records_file_path(resolved)
+    if not resolved.exists():
+        raise ValueError(f"collector records_file does not exist: {records_file}")
+    if not resolved.is_file():
+        raise ValueError(f"collector records_file is not a file: {records_file}")
+    max_bytes = int(spec.get("max_records_file_bytes", _DEFAULT_MAX_RECORDS_FILE_BYTES))
+    if max_bytes <= 0:
+        raise ValueError("max_records_file_bytes must be positive")
+    size_bytes = resolved.stat().st_size
+    if size_bytes > max_bytes:
+        raise ValueError(
+            f"collector records_file exceeds max_records_file_bytes: {size_bytes}>{max_bytes}"
+        )
+    return resolved
+
+
+def _validate_records_file_path(path: Path) -> None:
+    suffix = path.suffix.lower()
+    suffixes = {part.lower() for part in path.suffixes}
+    if path.name.lower() in _UNSAFE_RECORDS_FILE_NAMES:
+        raise ValueError("collector records_file name is reserved for secrets or local state")
+    if suffixes & _UNSAFE_RECORDS_FILE_SUFFIXES:
+        raise ValueError("collector records_file has an unsafe extension")
+    if suffix not in _RECORDS_FILE_SUFFIXES:
+        raise ValueError("collector records_file must use .json, .jsonl, or .ndjson")
+
+
+def _read_records_file(path: Path, *, records_format: str) -> list[dict[str, Any]]:
+    normalized = records_format.lower()
+    if normalized == "auto":
+        normalized = "json" if path.suffix.lower() == ".json" else "jsonl"
+    if normalized == "json":
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            raise ValueError("collector JSON records_file must contain a list")
+        return _coerce_record_rows(payload)
+    if normalized in {"jsonl", "ndjson"}:
+        rows: list[dict[str, Any]] = []
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                value = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"collector JSONL records_file line {line_number} is invalid JSON") from exc
+            if not isinstance(value, dict):
+                raise ValueError(f"collector JSONL records_file line {line_number} must be an object")
+            rows.append(dict(value))
+        if not rows:
+            raise ValueError("collector JSONL records_file must contain at least one object")
+        return rows
+    raise ValueError("records_format must be auto, json, jsonl, or ndjson")
+
+
+def _coerce_record_rows(value: list[Any]) -> list[dict[str, Any]]:
+    if not value:
+        raise ValueError("collector records_file requires non-empty records")
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"collector records_file[{index}] must be an object")
+        rows.append(dict(item))
+    return rows
 
 
 def _derive_timeframes(spec: dict[str, Any]) -> tuple[str, ...]:

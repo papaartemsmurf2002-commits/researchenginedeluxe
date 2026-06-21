@@ -41,7 +41,10 @@ This is the first file to read after `AGENTS.md`.
   WPR106-425 makes durable recent-candle and funding collector jobs write
   local source records into raw, bronze, and silver archive artifacts, with
   candle coverage/snapshot refs and funding interval evidence, while keeping
-  no-record API-cap diagnostics explicit. Real venue/API collection,
+  no-record API-cap diagnostics explicit. WPR106-426 adds trusted local
+  `records_file` intake for those collector jobs, bounded to a declared source
+  root with JSON/JSONL parsing, unsafe-file rejection, source SHA-256 refs, and
+  fail-before-archive behavior for rejected files. Real venue/API collection,
   independent audits, and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition

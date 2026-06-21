@@ -1,7 +1,7 @@
 # V2 Collector Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-003`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-004`
 
 ## Purpose
 
@@ -35,6 +35,13 @@ request handling and they do not place orders.
   archive files and rebuild bronze funding plus silver funding intervals
   through the archive normalization services. They must return raw, bronze,
   silver, and normalization refs through durable worker outputs.
+- Candle and funding archive-write jobs may read `records_file` inputs only
+  when `trusted_source_root` is supplied and the file stays inside that root.
+  Plain JSON arrays and JSONL/NDJSON objects are supported; unsafe extensions,
+  secret-like names, path traversal, and invalid record shapes must fail before
+  archive writes.
+- File-backed collector jobs must return source SHA-256 and record-count refs
+  through durable job output refs.
 - Recent candle bootstrap and funding backfill jobs without local source
   `records` must keep labeling API-cap or latest-window limitations as
   diagnostic refs. A diagnostic no-record job is not accepted research
@@ -52,6 +59,8 @@ request handling and they do not place orders.
   storage-growth refs through durable job output refs.
 - Candle and funding archive-write jobs must not fetch from venue APIs in the
   current fixture/source-record collector path.
+- Candle and funding archive-write jobs must not read arbitrary local files
+  outside a trusted source root.
 - Reconnect attempts, gap reasons, missing periods, and retry evidence must be
   linked to worker gap records instead of hidden in logs.
 - Storage budget and retention/backup policy records are evidence only; they do
@@ -68,6 +77,8 @@ request handling and they do not place orders.
 - Claiming accepted evidence from fixture/source-record collector outputs
   unless later backtest-data and validation gates explicitly accept a separate
   archive snapshot.
+- Reading `.env`, credential/key-like, pickle-like, SQLite/database, compressed,
+  executable, or archive files as collector record sources.
 - Real venue WebSocket streaming or S3 network downloads in the Phase 17 fixture
   collector path.
 - Treating fixture microstructure captures as live execution proof or

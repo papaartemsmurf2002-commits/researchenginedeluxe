@@ -261,6 +261,205 @@ def test_funding_backfill_worker_writes_archive_layers(tmp_path) -> None:
     assert all(row.research_only and row.observe_only and not row.promotion_ready for row in silver_rows)
 
 
+def test_recent_candle_bootstrap_worker_reads_trusted_jsonl_records_file(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-source"
+    trusted_root.mkdir()
+    records_file = trusted_root / "btc-candles.jsonl"
+    records_file.write_text(
+        "\n".join(json.dumps(_candle_row(index)) for index in range(60)),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / "archive-candles-file"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-candles-file",
+        input_spec={
+            "archive_root": str(archive_root),
+            "trusted_source_root": str(trusted_root),
+            "records_file": records_file.name,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-candles-file",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "derive_timeframes": ["5m"],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-candles-file",
+    )
+    loaded = store.load_job(queued.job_id)
+    manifest_rows = ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "records_source=records_file" in loaded.output_refs
+    assert "records_file_row_count=60" in loaded.output_refs
+    assert any(ref.startswith("records_file_sha256=") for ref in loaded.output_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "candles"),
+        (ArchiveLayer.BRONZE, "candles"),
+        (ArchiveLayer.SILVER, "bars"),
+    }
+
+
+def test_funding_backfill_worker_reads_trusted_json_records_file(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-source"
+    trusted_root.mkdir()
+    records_file = trusted_root / "btc-funding.json"
+    records_file.write_text(
+        json.dumps(
+            [
+                {
+                    "ts": "2026-01-01T00:00:00Z",
+                    "end_ts": "2026-01-01T01:00:00Z",
+                    "instrument_id": INSTRUMENT,
+                    "fundingRate": "0.0001",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / "archive-funding-file"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        job_id="JOB-funding-file",
+        input_spec={
+            "archive_root": str(archive_root),
+            "trusted_source_root": str(trusted_root),
+            "records_file": records_file.name,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "run_id": "run-funding-file",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        worker_id="worker-funding-file",
+    )
+    loaded = store.load_job(queued.job_id)
+    manifest_rows = ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "records_source=records_file" in loaded.output_refs
+    assert "records_file_row_count=1" in loaded.output_refs
+    assert any(ref.startswith("records_file_sha256=") for ref in loaded.output_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "funding"),
+        (ArchiveLayer.BRONZE, "funding"),
+        (ArchiveLayer.SILVER, "funding"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("records_file", "expected_reason"),
+    [
+        ("../escape.jsonl", "path escapes configured root"),
+        (".env", "reserved for secrets"),
+        ("payload.zip", "unsafe extension"),
+    ],
+)
+def test_collector_records_file_rejects_untrusted_or_unsafe_sources(
+    tmp_path,
+    records_file: str,
+    expected_reason: str,
+) -> None:
+    trusted_root = tmp_path / "trusted-source"
+    trusted_root.mkdir()
+    (trusted_root / ".env").write_text("TOKEN=must-not-enter-archive", encoding="utf-8")
+    (trusted_root / "payload.zip").write_bytes(b"not-json")
+    (tmp_path / "escape.jsonl").write_text(json.dumps(_candle_row(0)), encoding="utf-8")
+    archive_root = tmp_path / "archive-reject"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id=f"JOB-reject-{records_file.replace('.', 'dot').replace('/', '-')}",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "trusted_source_root": str(trusted_root),
+            "records_file": records_file,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-reject",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert expected_reason in (loaded.failure_reason or "")
+    assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
+
+
+def test_collector_records_file_rejects_invalid_record_shape_before_archive_write(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-source"
+    trusted_root.mkdir()
+    records_file = trusted_root / "bad-candles.json"
+    records_file.write_text(
+        json.dumps([{"ts": "2026-01-01T00:00:00Z"}, "not-an-object"]),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / "archive-bad-shape"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-bad-record-shape",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "trusted_source_root": str(trusted_root),
+            "records_file": records_file.name,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-bad-shape",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-bad-shape",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "collector records_file[1] must be an object" in (loaded.failure_reason or "")
+    assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
+
+
 def test_websocket_capture_skeleton_records_gap_instead_of_silent_success(tmp_path) -> None:
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
     queued = store.enqueue(
