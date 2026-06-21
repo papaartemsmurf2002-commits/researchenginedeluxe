@@ -787,6 +787,93 @@ def test_coverage_audit_worker_records_low_coverage_blockers_without_job_failure
     assert report.blocker_reasons == ("coverage_below_minimum",)
 
 
+def test_coverage_audit_worker_audits_archive_snapshot_against_universe_snapshot(tmp_path) -> None:
+    archive_root = tmp_path / "archive-universe-coverage"
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    manifest_store = ArchiveManifestStore(layout)
+    start_ts = START
+    end_ts = START + timedelta(hours=1)
+    write_parquet_rows(
+        layout=layout,
+        store=manifest_store,
+        rows=[_candle_row(index) for index in range(60)],
+        layer=ArchiveLayer.SILVER,
+        dataset="bars",
+        venue="hyperliquid",
+        datatype="bars",
+        date=start_ts.date().isoformat(),
+        timeframe="1m",
+        job_id="job-universe-coverage-btc-bars",
+        source_file_ids=("source-universe-coverage-btc",),
+        instrument_id=INSTRUMENT,
+    )
+    universe = refresh_hyperliquid_universe(
+        archive_root=archive_root,
+        payload=_universe_payload(),
+        asof_date=start_ts.date(),
+        mode=UniverseMode.AS_OF,
+    )
+    snapshot = create_archive_snapshot(
+        store=manifest_store,
+        layer=ArchiveLayer.SILVER,
+        venue_scope="hyperliquid",
+        start_ts=start_ts,
+        end_ts=end_ts,
+        coverage_rows=(),
+        quality_rows=(),
+        notes="worker_universe_coverage_fixture",
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-universe-coverage-audit",
+        input_spec={
+            "archive_root": str(archive_root),
+            "archive_snapshot_id": snapshot.archive_snapshot_id,
+            "universe_snapshot_id": universe.snapshot_id,
+            "timeframe": "1m",
+            "start_ts": start_ts.isoformat(),
+            "end_ts": end_ts.isoformat(),
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        worker_id="worker-universe-coverage",
+    )
+    loaded = store.load_job(queued.job_id)
+    reports = CoverageManifestStore(layout).load_coverage_reports()
+    report_by_instrument = {report.instrument_id: report for report in reports}
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "coverage_scope=universe_snapshot" in loaded.output_refs
+    assert f"archive_snapshot_id={snapshot.archive_snapshot_id}" in loaded.output_refs
+    assert f"universe_snapshot_id={universe.snapshot_id}" in loaded.output_refs
+    assert "instrument_count=2" in loaded.output_refs
+    assert "audited_instrument_count=2" in loaded.output_refs
+    assert "missing_file_instrument_count=1" in loaded.output_refs
+    assert "missing_file_instruments=hyperliquid:perp:SOL" in loaded.output_refs
+    assert "min_coverage_ratio=0.000000000000" in loaded.output_refs
+    assert "evidence_eligible_count=1" in loaded.output_refs
+    assert "blocked_instrument_count=1" in loaded.output_refs
+    assert "blocker_reasons=coverage_below_minimum,missing_silver_bars_file" in loaded.output_refs
+    assert any(ref.startswith("coverage_report_ids=") for ref in loaded.archive_manifest_refs)
+    assert set(report_by_instrument) == {INSTRUMENT, "hyperliquid:perp:SOL"}
+    assert report_by_instrument[INSTRUMENT].coverage_ratio == 1.0
+    assert report_by_instrument[INSTRUMENT].evidence_eligible is True
+    sol_report = report_by_instrument["hyperliquid:perp:SOL"]
+    assert sol_report.source_row_count == 0
+    assert sol_report.coverage_ratio == 0.0
+    assert sol_report.evidence_eligible is False
+    assert sol_report.blocker_reasons == ("coverage_below_minimum",)
+
+
 def test_coverage_audit_worker_rejects_non_silver_bars_file_without_report_write(tmp_path) -> None:
     archive_root = tmp_path / "archive-coverage-reject"
     store = WorkerJobStore(tmp_path / "jobs.sqlite")

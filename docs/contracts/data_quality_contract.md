@@ -46,6 +46,11 @@ research evidence.
 - A successful coverage-audit job can report low coverage or quality blockers;
   those blockers are research evidence and must not be hidden as worker-system
   failures.
+- Coverage-audit worker jobs may audit an `archive_snapshot_id` against a
+  `universe_snapshot_id` for a declared timeframe. In that mode the job must
+  read only local archive/universe manifests and silver bars, write one
+  coverage report per in-scope universe instrument, and surface missing silver
+  bar files as blocker evidence instead of silently dropping instruments.
 
 ## Forbidden
 

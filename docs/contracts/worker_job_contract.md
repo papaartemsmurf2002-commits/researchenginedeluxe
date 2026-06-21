@@ -42,6 +42,10 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   coverage/quality manifest refs instead of requiring in-process UI/API calls.
 - Coverage blockers found by a successful audit are output evidence, not hidden
   logs and not worker-system failures.
+- `coverage_audit` jobs may run in universe-snapshot mode with
+  `archive_snapshot_id`, `universe_snapshot_id`, and `timeframe`; this mode
+  must audit all in-scope universe instruments against local silver bars and
+  return missing-file and coverage blocker refs without fetching venue data.
 - `vectorized_backtest` jobs must run through the durable worker runner, load
   panels only through `BacktestDataService`, validate inline declarative
   strategy specs before strategy code sees rows, and return run-manifest,

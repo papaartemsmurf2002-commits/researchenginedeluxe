@@ -82,11 +82,14 @@ This is the first file to read after `AGENTS.md`.
   jobs, writing raw-capture, quality, and storage refs with message/row/time
   caps. WPR106-437 resolves `ISSUE-R106-029` by replacing eager data-quality
   and archive package exports with lazy export shims and proving direct
-  `WorkerJobStore` imports work in a fresh interpreter. Full historical candle
-  backfill, historical trade coverage,
-  long-running continuous trade capture, continuous BBO/L2 capture or
-  historical L2 replay, independent audits, and authoritative full-suite proof
-  remain follow-up work.
+  `WorkerJobStore` imports work in a fresh interpreter. WPR106-438 extends the
+  durable `coverage_audit` worker so a silver archive snapshot can be audited
+  against a universe snapshot, writing one report per eligible instrument and
+  surfacing missing silver bars as blocker evidence. Bounded public candle
+  pagination/recent-window backfill, historical trade coverage, long-running
+  continuous trade capture, continuous BBO/L2 capture or historical L2 replay,
+  independent audits, and authoritative full-suite proof remain follow-up
+  work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
