@@ -30,7 +30,7 @@ from tradingbotsuite.v2.lead_book import LeadBookStore
 from tradingbotsuite.v2.strategy_specs import example_strategy_payloads
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
-from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient
+from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient, HyperliquidWebSocketClient
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobStatus
 from tradingbotsuite.v2.workers.runner import run_one_job
@@ -2563,6 +2563,192 @@ def test_websocket_candle_batch_worker_reads_trusted_records_file(tmp_path) -> N
         (ArchiveLayer.BRONZE, "candles"),
         (ArchiveLayer.SILVER, "bars"),
     }
+
+
+def test_websocket_candle_public_websocket_worker_writes_archive_layers(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-ws-public-candles"
+    sent_messages: list[dict[str, object]] = []
+    seen_connects = []
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {
+                    "channel": "subscriptionResponse",
+                    "data": {"subscription": {"type": "candle", "coin": "BTC", "interval": "1m"}},
+                },
+                {
+                    "channel": "candle",
+                    "data": [_hyperliquid_candle_row(index) for index in range(5)],
+                },
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send(self, raw_message: str) -> None:
+            sent_messages.append(json.loads(raw_message))
+
+        def recv(self, timeout=None) -> str:
+            if not self.messages:
+                raise TimeoutError("no more messages")
+            return json.dumps(self.messages.pop(0))
+
+    def fake_connect(url: str, **kwargs):
+        seen_connects.append((url, kwargs))
+        return FakeWebSocket()
+
+    class FakeHyperliquidWebSocketClient:
+        def __init__(self, ws_url: str, timeout: float) -> None:
+            self._client = HyperliquidWebSocketClient(
+                ws_url=ws_url,
+                timeout=timeout,
+                connect=fake_connect,
+            )
+
+        def fetch_candle_snapshot(self, **kwargs):
+            return self._client.fetch_candle_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidWebSocketClient",
+        FakeHyperliquidWebSocketClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        job_id="JOB-ws-public-candles",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "public_ws_url": "wss://example.test/ws",
+            "public_ws_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "candles",
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-ws-public-candles",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:05:00+00:00",
+            "derive_timeframes": ["5m"],
+            "create_snapshot": True,
+            "max_public_ws_messages": 2,
+            "max_public_ws_rows": 5,
+            "max_public_ws_seconds": 3.0,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        worker_id="worker-ws-public-candles",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_store = ArchiveManifestStore(layout)
+    manifest_rows = manifest_store.load_file_manifest()
+    coverage_reports = CoverageManifestStore(layout).load_coverage_reports()
+    ingestion_runs = manifest_store.load_ingestion_runs()
+    silver_1m = [
+        row
+        for row in manifest_rows
+        if row.layer == ArchiveLayer.SILVER and row.datatype == "bars" and row.timeframe == "1m"
+    ][0]
+    silver_rows = pq.ParquetFile(layout.resolve(silver_1m.path)).read().to_pylist()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert seen_connects == [("wss://example.test/ws", {"open_timeout": 3.0})]
+    assert sent_messages == [
+        {
+            "method": "subscribe",
+            "subscription": {"type": "candle", "coin": "BTC", "interval": "1m"},
+        }
+    ]
+    assert "collector_mode=public_websocket_candle_archive_write" in loaded.output_refs
+    assert "source_mode=public_websocket" in loaded.output_refs
+    assert "continuous_capture=false" in loaded.output_refs
+    assert "accepted_historical_coverage_proof=false" in loaded.output_refs
+    assert (
+        "websocket_candle_snapshot_caveat=bounded_public_stream_snapshot_not_unattended_continuous_capture"
+        in loaded.output_refs
+    )
+    assert "datatype=candles" in loaded.output_refs
+    assert "row_count=5" in loaded.output_refs
+    assert "ws_message_count=2" in loaded.output_refs
+    assert "ws_candle_row_count=5" in loaded.output_refs
+    assert "venue_adapter_id=hyperliquid_public_websocket_v1" in loaded.output_refs
+    assert "source_endpoint_or_subscription=websocket/candle" in loaded.output_refs
+    assert "coin=BTC" in loaded.output_refs
+    assert "interval=1m" in loaded.output_refs
+    assert "max_public_ws_messages=2" in loaded.output_refs
+    assert "max_public_ws_rows=5" in loaded.output_refs
+    assert "max_public_ws_seconds=3.0" in loaded.output_refs
+    assert any(ref.startswith("raw_request_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_response_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_payload_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("archive_snapshot_id=") for ref in loaded.archive_manifest_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "candles"),
+        (ArchiveLayer.BRONZE, "candles"),
+        (ArchiveLayer.SILVER, "bars"),
+    }
+    assert {row["instrument_id"] for row in silver_rows} == {INSTRUMENT}
+    assert {row.timeframe for row in manifest_rows if row.layer == ArchiveLayer.SILVER} == {
+        "1m",
+        "5m",
+    }
+    assert {report.timeframe for report in coverage_reports} == {"1m", "5m"}
+    assert all(report.coverage_ratio == 1.0 for report in coverage_reports)
+    assert ingestion_runs[0].adapter_id == "hyperliquid_public_websocket_v1"
+    assert ingestion_runs[0].source_endpoint_or_subscription == "websocket/candle"
+    assert manifest_store.load_archive_snapshots()
+
+
+def test_websocket_candle_public_websocket_rejects_mixed_local_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-ws-public-candles-mixed"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        job_id="JOB-ws-public-candles-mixed",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "candles",
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-ws-public-candles-mixed",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:05:00+00:00",
+            "records": [_candle_row(index) for index in range(5)],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        worker_id="worker-ws-public-candles-mixed",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "cannot mix source=public_websocket with local records" in (
+        loaded.failure_reason or ""
+    )
+    assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
 
 
 def test_websocket_capture_skeleton_records_gap_instead_of_silent_success(tmp_path) -> None:

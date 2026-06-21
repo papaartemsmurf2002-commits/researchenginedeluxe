@@ -21,6 +21,7 @@ from tradingbotsuite.v2.venues.contracts import (
 )
 
 HYPERLIQUID_PUBLIC_WEBSOCKET_ADAPTER_ID = "hyperliquid_public_websocket_v1"
+HYPERLIQUID_WS_CANDLE_SOURCE = "websocket/candle"
 HYPERLIQUID_WS_TRADES_SOURCE = "websocket/trades"
 
 
@@ -42,6 +43,7 @@ def hyperliquid_public_websocket_capability() -> VenueAdapterCapability:
         venue="hyperliquid",
         market_types=("perp",),
         access_mode="public_unsigned",
+        supports_bars=True,
         supports_trades=True,
         rate_limit_policy="hyperliquid_public_websocket_limits_apply",
         default_primary_venue=True,
@@ -100,6 +102,7 @@ class HyperliquidWebSocketClient:
             max_messages=max_messages,
             max_rows=max_rows,
             timeout_seconds=timeout_seconds,
+            row_counter=_trade_message_row_count,
         )
         raw_response = VenueRawResponse.build(
             request=request,
@@ -119,6 +122,73 @@ class HyperliquidWebSocketClient:
             payload=tuple(messages),
         )
 
+    def fetch_candle_snapshot(
+        self,
+        *,
+        coin: str,
+        interval: str,
+        max_messages: int = 20,
+        max_rows: int = 200,
+        max_seconds: float | None = None,
+    ) -> HyperliquidWebSocketFetchResult:
+        normalized_coin = coin.strip()
+        normalized_interval = interval.strip()
+        if not normalized_coin:
+            raise ValueError("candle coin is required")
+        if not normalized_interval:
+            raise ValueError("candle interval is required")
+        if max_messages <= 0:
+            raise ValueError("max_messages must be positive")
+        if max_rows <= 0:
+            raise ValueError("max_rows must be positive")
+        timeout_seconds = float(max_seconds if max_seconds is not None else self.timeout)
+        if timeout_seconds <= 0:
+            raise ValueError("max_seconds must be positive")
+        capability = hyperliquid_public_websocket_capability()
+        subscription = {
+            "type": "candle",
+            "coin": normalized_coin,
+            "interval": normalized_interval,
+        }
+        request_body = {"method": "subscribe", "subscription": subscription}
+        request = VenueRawRequest.build(
+            adapter_id=capability.adapter_id,
+            venue=capability.venue,
+            source=HYPERLIQUID_WS_CANDLE_SOURCE,
+            params={
+                "ws_url": self.ws_url,
+                "method": "subscribe",
+                "subscription": subscription,
+                "max_messages": max_messages,
+                "max_rows": max_rows,
+                "max_seconds": timeout_seconds,
+            },
+        )
+        messages = self._receive_messages(
+            request_body=request_body,
+            max_messages=max_messages,
+            max_rows=max_rows,
+            timeout_seconds=timeout_seconds,
+            row_counter=_candle_message_row_count,
+        )
+        raw_response = VenueRawResponse.build(
+            request=request,
+            payload=messages,
+            row_count=sum(_candle_message_row_count(message) for message in messages),
+            rate_limit_metadata={
+                "max_messages": max_messages,
+                "max_rows": max_rows,
+                "max_seconds": timeout_seconds,
+            },
+            evidence_scope="public_unsigned_websocket_candle_snapshot",
+        )
+        return HyperliquidWebSocketFetchResult(
+            capability=capability,
+            raw_request=request,
+            raw_response=raw_response,
+            payload=tuple(messages),
+        )
+
     def _receive_messages(
         self,
         *,
@@ -126,6 +196,7 @@ class HyperliquidWebSocketClient:
         max_messages: int,
         max_rows: int,
         timeout_seconds: float,
+        row_counter: Callable[[dict[str, Any]], int],
     ) -> list[dict[str, Any]]:
         deadline = time.monotonic() + timeout_seconds
         messages: list[dict[str, Any]] = []
@@ -139,9 +210,9 @@ class HyperliquidWebSocketClient:
                 raw_message = websocket.recv(timeout=remaining)
                 message = _decode_message(raw_message)
                 messages.append(message)
-                row_count += _trade_message_row_count(message)
+                row_count += row_counter(message)
         if not messages:
-            raise ValueError("public websocket trades returned no messages")
+            raise ValueError("public websocket returned no messages")
         return messages
 
 
@@ -162,4 +233,15 @@ def _trade_message_row_count(message: dict[str, Any]) -> int:
     data = message.get("data")
     if isinstance(data, list):
         return len([row for row in data if isinstance(row, dict)])
+    return 0
+
+
+def _candle_message_row_count(message: dict[str, Any]) -> int:
+    if message.get("channel") != "candle":
+        return 0
+    data = message.get("data")
+    if isinstance(data, list):
+        return len([row for row in data if isinstance(row, dict)])
+    if isinstance(data, dict):
+        return 1
     return 0

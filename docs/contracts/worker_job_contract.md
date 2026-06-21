@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`
 
 ## Purpose
 
@@ -50,6 +50,11 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   records may complete with raw/bronze/silver/coverage/snapshot archive refs
   plus bounded-batch caveats; other generic WebSocket capture jobs must still
   complete only with diagnostic gap evidence.
+- `websocket_capture` jobs with explicit candle datatype and
+  `source=public_websocket` may complete with raw/bronze/silver/coverage/
+  snapshot archive refs plus public WebSocket request/response provenance,
+  message/row/time caps, and bounded snapshot caveats. They must not claim
+  unattended continuous capture or accepted historical coverage proof.
 - `vectorized_backtest` jobs must run through the durable worker runner, load
   panels only through `BacktestDataService`, validate inline declarative
   strategy specs before strategy code sees rows, and return run-manifest,

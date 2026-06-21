@@ -652,6 +652,13 @@ def _run_websocket_capture_skeleton(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    source = str(spec.get("source", "")).strip()
+    if _is_candle_datatype(spec.get("datatype")) and source == "public_websocket":
+        return _run_public_websocket_candle_capture_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+        )
     if _is_candle_datatype(spec.get("datatype")) and _has_record_source(spec):
         return _run_websocket_candle_batch_archive_job(
             job=job,
@@ -684,6 +691,117 @@ def _run_websocket_capture_skeleton(
         archive_manifest_refs=("archive_manifest_ref=gap_record_only",),
         gap_record_ids=(gap.gap_record_id,),
         reason="websocket_capture_gap_recorded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_public_websocket_candle_capture_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    if _has_record_source(spec):
+        raise ValueError("public websocket candle capture cannot mix source=public_websocket with local records")
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    timeframe = str(spec.get("timeframe", "1m"))
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    coin = _hyperliquid_coin_from_spec(spec, instrument_id=instrument_id)
+    max_messages = int(spec.get("max_public_ws_messages", 20))
+    max_rows = int(spec.get("max_public_ws_rows", 200))
+    max_seconds = float(spec.get("max_public_ws_seconds", spec.get("public_ws_timeout", 20.0)))
+    fetch = HyperliquidWebSocketClient(
+        ws_url=str(spec.get("public_ws_url", "wss://api.hyperliquid.xyz/ws")),
+        timeout=float(spec.get("public_ws_timeout", max_seconds)),
+    ).fetch_candle_snapshot(
+        coin=coin,
+        interval=timeframe,
+        max_messages=max_messages,
+        max_rows=max_rows,
+        max_seconds=max_seconds,
+    )
+    records = _public_websocket_candle_records(
+        fetch.payload,
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+        max_rows=max_rows,
+    )
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    manifest_store = ArchiveManifestStore(layout)
+    raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
+        records=records,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype="candles",
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=fetch.capability.adapter_id,
+        source_endpoint_or_subscription=fetch.raw_request.source,
+        symbols=(instrument_id,),
+        start_ts=start_ts,
+        end_ts=end_ts,
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+    )
+    bronze = raw_candles_to_bronze(
+        archive_root=archive_root,
+        raw_file_id=raw_file.file_id,
+        job_id=f"{job.job_id}-bronze-candles",
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+    )
+    silver = bronze_candles_to_silver_bars(
+        archive_root=archive_root,
+        bronze_file_id=bronze.output_files[0].file_id,
+        job_id=f"{job.job_id}-silver-bars",
+        derive_timeframes=_derive_timeframes(spec),
+        write_coverage=not bool(spec.get("skip_coverage", False)),
+        create_snapshot=bool(spec.get("create_snapshot", False)),
+    )
+    archive_refs = _market_data_archive_refs(
+        raw_file_id=raw_file.file_id,
+        bronze=bronze,
+        silver=silver,
+    )
+    output_refs = (
+        "collector_mode=public_websocket_candle_archive_write",
+        "source_mode=public_websocket",
+        "continuous_capture=false",
+        "accepted_historical_coverage_proof=false",
+        "websocket_candle_snapshot_caveat=bounded_public_stream_snapshot_not_unattended_continuous_capture",
+        f"datatype={_candle_datatype_value(spec.get('datatype'))}",
+        f"row_count={raw_file.row_count or 0}",
+        f"ws_message_count={len(fetch.payload)}",
+        f"ws_candle_row_count={fetch.raw_response.row_count}",
+        f"venue_adapter_id={fetch.capability.adapter_id}",
+        f"source_endpoint_or_subscription={fetch.raw_request.source}",
+        f"raw_request_id={fetch.raw_request.request_id}",
+        f"raw_response_id={fetch.raw_response.response_id}",
+        f"raw_payload_sha256={fetch.raw_response.raw_payload_sha256}",
+        f"coin={coin}",
+        f"interval={timeframe}",
+        f"max_public_ws_messages={max_messages}",
+        f"max_public_ws_rows={max_rows}",
+        f"max_public_ws_seconds={max_seconds}",
+        "gap_evidence_recorded=false",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="websocket_candle_public_snapshot_archive_write_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -1674,6 +1792,10 @@ def _is_candle_datatype(value: Any) -> bool:
     return str(value or "").strip().lower() in {"candle", "candles"}
 
 
+def _candle_datatype_value(value: Any) -> str:
+    return "candles" if _is_candle_datatype(value) else str(value or "")
+
+
 def _collector_records(
     spec: dict[str, Any],
     *,
@@ -2285,6 +2407,43 @@ def _public_websocket_trade_records(
             break
     if not rows:
         raise ValueError("public websocket trades returned no trade rows")
+    return rows
+
+
+def _public_websocket_candle_records(
+    payload: Any,
+    *,
+    instrument_id: str,
+    timeframe: str,
+    max_rows: int,
+) -> list[dict[str, Any]]:
+    if max_rows <= 0:
+        raise ValueError("max_rows must be positive")
+    messages = _coerce_public_websocket_messages(payload)
+    rows: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("channel") != "candle":
+            continue
+        data = message.get("data")
+        if isinstance(data, dict):
+            items = [data]
+        elif isinstance(data, list):
+            items = data
+        else:
+            raise ValueError("public websocket candle message data must be an object or list")
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                raise ValueError(f"public websocket candle data[{index}] must be an object")
+            row = dict(item)
+            row.setdefault("instrument_id", instrument_id)
+            row.setdefault("i", timeframe)
+            rows.append(row)
+            if len(rows) >= max_rows:
+                break
+        if len(rows) >= max_rows:
+            break
+    if not rows:
+        raise ValueError("public websocket candle returned no candle rows")
     return rows
 
 

@@ -116,7 +116,12 @@ This is the first file to read after `AGENTS.md`.
   so selected successful loop stages must also form a nondecreasing
   `finished_at` chain when the manager declares `required_job_kind_order`;
   missing timestamps and out-of-order stages remain blocker evidence, not
-  worker-system failures or readiness claims. Full historical candle coverage
+  worker-system failures or readiness claims. WPR106-448 adds bounded public
+  Hyperliquid WebSocket `candle` snapshot intake for durable
+  `websocket_capture` candle jobs, writing raw/bronze/silver/coverage and
+  optional snapshot refs with public WebSocket request/response provenance,
+  while explicitly keeping `continuous_capture=false` and
+  `accepted_historical_coverage_proof=false`. Full historical candle coverage
   beyond the public recent-window limit, unattended continuous candle capture,
   continuous BBO/L2 capture, accepted continuous historical trade/L2 coverage
   proof, independent audits, and authoritative full-suite proof remain

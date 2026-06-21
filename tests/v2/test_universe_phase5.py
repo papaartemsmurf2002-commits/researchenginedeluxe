@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -351,6 +351,82 @@ def test_hyperliquid_websocket_client_records_public_trade_snapshot_provenance()
     assert result.raw_response.order_placement_instruction is False
 
 
+def test_hyperliquid_websocket_client_records_public_candle_snapshot_provenance() -> None:
+    sent_messages: list[dict[str, object]] = []
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {
+                    "channel": "subscriptionResponse",
+                    "data": {"subscription": {"type": "candle", "coin": "BTC", "interval": "1m"}},
+                },
+                {
+                    "channel": "candle",
+                    "data": [
+                        _hyperliquid_candle_row(0),
+                        _hyperliquid_candle_row(1),
+                    ],
+                },
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send(self, raw_message: str) -> None:
+            sent_messages.append(json.loads(raw_message))
+
+        def recv(self, timeout=None) -> str:
+            if not self.messages:
+                raise TimeoutError("no more messages")
+            return json.dumps(self.messages.pop(0))
+
+    seen_connects = []
+
+    def fake_connect(url: str, **kwargs):
+        seen_connects.append((url, kwargs))
+        return FakeWebSocket()
+
+    client = HyperliquidWebSocketClient(
+        ws_url="wss://example.test/ws",
+        timeout=3.0,
+        connect=fake_connect,
+    )
+    result = client.fetch_candle_snapshot(
+        coin="BTC",
+        interval="1m",
+        max_messages=2,
+        max_rows=2,
+        max_seconds=3.0,
+    )
+
+    assert seen_connects == [("wss://example.test/ws", {"open_timeout": 3.0})]
+    assert sent_messages == [
+        {
+            "method": "subscribe",
+            "subscription": {"type": "candle", "coin": "BTC", "interval": "1m"},
+        }
+    ]
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_bars is True
+    assert result.capability.supports_trades is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "websocket/candle"
+    assert result.raw_request.params["subscription"] == {
+        "type": "candle",
+        "coin": "BTC",
+        "interval": "1m",
+    }
+    assert result.raw_request.params["max_messages"] == 2
+    assert result.raw_request.params["max_rows"] == 2
+    assert result.raw_response.evidence_scope == "public_unsigned_websocket_candle_snapshot"
+    assert result.raw_response.row_count == 2
+    assert result.raw_response.order_placement_instruction is False
+
+
 def test_hyperliquid_universe_public_api_source_records_fetch_provenance(tmp_path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_payload(day_sol=12_000_000))
@@ -652,3 +728,20 @@ def _payload(
             }
         )
     return [{"universe": universe}, contexts]
+
+
+def _hyperliquid_candle_row(index: int) -> dict[str, object]:
+    ts = datetime(2026, 1, 1, tzinfo=UTC) + timedelta(minutes=index)
+    open_price = 100 + index
+    return {
+        "t": int(ts.timestamp() * 1000),
+        "T": int((ts + timedelta(minutes=1)).timestamp() * 1000),
+        "s": "BTC",
+        "i": "1m",
+        "o": str(open_price),
+        "h": str(open_price + 2),
+        "l": str(open_price - 2),
+        "c": str(open_price + 1),
+        "v": str(10 + index),
+        "n": index + 1,
+    }

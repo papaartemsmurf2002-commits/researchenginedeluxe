@@ -1,7 +1,7 @@
 # V2 Collector Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-004`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-004`, `V2-AUD-COLLECT-016`
 
 ## Purpose
 
@@ -45,6 +45,18 @@ request handling and they do not place orders.
   bounded-batch caveats and must not claim unattended continuous capture,
   historical coverage proof, accepted research evidence, or venue streaming
   operation.
+- `websocket_capture` jobs with `datatype=candle` or `datatype=candles` may
+  also use explicit public Hyperliquid `source=public_websocket` mode for
+  bounded `candle` subscription snapshots. Public WebSocket candle jobs must
+  return `source_mode`, raw payload hash, venue adapter ID, source endpoint,
+  source coin, interval, raw request ID, raw response ID, WebSocket message
+  count, candle row count, row/message/time caps, raw/bronze/silver refs,
+  coverage refs, and optional archive snapshot refs through durable output
+  refs.
+- Public WebSocket candle jobs must be bounded by configured message count, row
+  count, and elapsed seconds. They are recent streaming intake evidence only
+  and do not prove unattended continuous capture, historical candle coverage,
+  accepted research evidence, or full archive readiness.
 - Recent candle bootstrap jobs may also use the explicit unsigned public
   Hyperliquid `source=public_api` mode for `/info` `candleSnapshot` requests.
   Public candle jobs must split requested time ranges into fixed-width page
@@ -84,9 +96,9 @@ request handling and they do not place orders.
   `records` and without explicit `source=public_api` must also remain
   diagnostic. A diagnostic no-record job is not accepted research evidence.
 - Generic WebSocket capture remains a skeleton unless it is an explicit
-  local-record candle batch. Non-candle and no-record `websocket_capture` jobs
-  must record reconnect or gap evidence instead of reporting silent collection
-  success.
+  local-record candle batch or explicit public WebSocket candle snapshot.
+  Non-candle and no-record `websocket_capture` jobs must record reconnect or
+  gap evidence instead of reporting silent collection success.
 - `websocket_trade_capture` jobs may preserve fixture trade records to the raw
   archive.
 - `websocket_trade_capture` jobs may also use explicit public Hyperliquid
@@ -151,6 +163,9 @@ request handling and they do not place orders.
 - Local fixture/source-record candle and funding jobs must not fetch from venue
   APIs. The current venue fetch exceptions are explicit `source=public_api` for
   Hyperliquid `/info` `candleSnapshot` and `/info` `fundingHistory`.
+- Local fixture/source-record WebSocket candle jobs must not open venue streams.
+  The current WebSocket candle exception is explicit `source=public_websocket`
+  for bounded Hyperliquid `candle` subscription snapshot intake only.
 - Local fixture microstructure jobs must not fetch from venue APIs. The current
   microstructure venue fetch exception is explicit `source=public_api` for
   Hyperliquid `/info` `l2Book` BBO/L2 snapshots only.
@@ -160,6 +175,9 @@ request handling and they do not place orders.
 - Public candle snapshots must not be treated as enough to satisfy six-month
   2024+ research-readiness gates because Hyperliquid documents the endpoint as
   recent-window limited.
+- Public WebSocket candle snapshots must not be treated as enough to satisfy
+  six-month 2024+ research-readiness gates because they are bounded recent
+  stream intake, not unattended continuous capture or full historical backfill.
 - Public funding history is intake evidence only; backtest-data and validation
   gates must still prove archive snapshots, coverage, 2024+ dates, six usable
   months, lockbox exclusion, and as-of universe before accepted evidence.
@@ -176,6 +194,10 @@ request handling and they do not place orders.
   six usable months, lockbox exclusion, and as-of universe before accepted
   evidence.
 - Official node fill/trade replay rows are intake evidence only; backtest-data
+  and validation gates must still prove archive snapshots, coverage, 2024+
+  dates, six usable months, lockbox exclusion, and as-of universe before
+  accepted evidence.
+- Public WebSocket candle snapshot rows are intake evidence only; backtest-data
   and validation gates must still prove archive snapshots, coverage, 2024+
   dates, six usable months, lockbox exclusion, and as-of universe before
   accepted evidence.
@@ -200,6 +222,9 @@ request handling and they do not place orders.
 - Treating bounded local WebSocket candle batches as unattended continuous
   capture, full historical candle backfill, accepted historical coverage proof,
   or venue streaming operation.
+- Treating bounded public WebSocket candle snapshots as unattended continuous
+  capture, full historical candle backfill, or accepted historical coverage
+  proof.
 - Silent public network universe refreshes when the job spec does not declare
   `source=public_api`.
 - Reading `.env`, credential/key-like, pickle-like, SQLite/database, compressed,
