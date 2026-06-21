@@ -30,8 +30,10 @@ from tradingbotsuite.v2.archive.schemas import ArchiveLayer
 from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
 from tradingbotsuite.v2.autonomy import (
     AutopilotCyclePlanError,
+    AutopilotCycleRunnerError,
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
+    run_autopilot_cycle_plan,
     AutonomyDryRunConfig,
     AutonomyLoopError,
     run_autonomy_dry_run,
@@ -389,6 +391,15 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_cycle.add_argument("--job-store", required=True)
     autopilot_cycle.add_argument("--enqueue", action="store_true")
     autopilot_cycle.add_argument("--max-jobs", type=int)
+    autopilot_run_cycle = autopilot_subparsers.add_parser(
+        "run-cycle-plan",
+        help="run one bounded enqueued research-cycle plan through durable workers",
+    )
+    autopilot_run_cycle.add_argument("--plan-manifest", required=True)
+    autopilot_run_cycle.add_argument("--job-store")
+    autopilot_run_cycle.add_argument("--worker-id", default="autopilot-cycle-runner")
+    autopilot_run_cycle.add_argument("--max-jobs", type=int)
+    autopilot_run_cycle.add_argument("--no-audit-on-blocker", action="store_true")
     autonomy = subparsers.add_parser(
         "autonomy",
         help="fixture-backed research-only autonomy dry-run commands",
@@ -1074,6 +1085,31 @@ def _handle_autopilot(args: argparse.Namespace, parser: argparse.ArgumentParser)
         print(f"enqueued_job_count={result.enqueued_job_count}")
         print(f"audit_job_id={result.audit_job_id}")
         print(f"audit_report_path={result.audit_report_path}")
+        print("accepted_research_ready=false")
+        print("promotion_ready=false")
+        return 0
+    if args.autopilot_command == "run-cycle-plan":
+        try:
+            result = run_autopilot_cycle_plan(
+                args.plan_manifest,
+                job_store_path=args.job_store,
+                worker_id=args.worker_id,
+                max_jobs=args.max_jobs,
+                run_audit_on_blocker=not args.no_audit_on_blocker,
+            )
+        except (AutopilotCycleRunnerError, ValidationError) as exc:
+            print(f"autopilot_cycle_run_rejected={exc}")
+            return 1
+        print(f"execution_manifest={result.execution_manifest_path}")
+        print(f"execution_id={result.execution_id}")
+        print(f"status={result.status.value}")
+        print(f"executed_job_count={result.executed_job_count}")
+        print(f"skipped_job_count={result.skipped_job_count}")
+        print(f"audit_attempted={str(result.audit_attempted).lower()}")
+        print(f"audit_report_path={result.audit_report_path}")
+        print(f"blocker_count={len(result.blocker_reasons)}")
+        for blocker in result.blocker_reasons:
+            print(f"blocker={blocker}")
         print("accepted_research_ready=false")
         print("promotion_ready=false")
         return 0

@@ -1,7 +1,7 @@
 # Autonomy Loop Contract
 
-Status: v2 dry-run contract
-Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`
+Status: v2 dry-run and bounded autopilot contract
+Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`
 
 The autonomy loop is a research-only orchestration surface for proving that v2
 components can be wired together without weakening evidence rules. The dry-run
@@ -12,6 +12,12 @@ orchestration surface. It may validate a cycle spec, write a plan manifest, and
 optionally enqueue durable worker jobs plus one generated final `audit_check`
 job. It must not run jobs, call venue APIs, stream WebSockets, certify
 coverage, or mark the repo autonomous-ready.
+
+The bounded autopilot cycle runner is an operator-invoked execution surface for
+an already enqueued plan. It may run planned durable jobs in declared order,
+skip already successful planned jobs, and run the generated final `audit_check`
+job. It is not a daemon, continuous scheduler, venue fetch bypass, or readiness
+certification surface.
 
 ## Schemas
 
@@ -25,6 +31,9 @@ coverage, or mark the repo autonomous-ready.
 - `AutopilotPlannedJob`
 - `AutopilotCyclePlanManifest`
 - `AutopilotCyclePlanResult`
+- `AutopilotCycleJobExecution`
+- `AutopilotCycleExecutionManifest`
+- `AutopilotCycleExecutionResult`
 
 ## Required Loop
 
@@ -65,6 +74,41 @@ The generated audit job must include:
 Plan manifests must preserve the full research-only invariant and set
 `accepted_research_ready=false`.
 
+## Bounded Autopilot Cycle Execution
+
+`redx autopilot run-cycle-plan` may load an `enqueued`
+`autopilot_cycle_plan.json` manifest and run the selected plan through the
+durable worker runner. It must reject plan-only manifests, missing job-store
+paths, job-store path mismatches, and non-positive max-job caps before running
+any worker job.
+
+Because the current worker runner claims by worker kind, the cycle runner must
+verify that a planned queued job is the next queued job for that kind before it
+calls the durable runner. If another queued job would be claimed first, the
+cycle runner must record a blocker instead of running that kind.
+
+The runner may skip planned jobs that are already `succeeded` and treat their
+stored output refs as loop evidence for the final generated audit job. Missing,
+failed, stale, cancelled, claimed, running, retrying, not-next, or max-job-
+blocked planned jobs must become explicit execution blockers.
+
+When a non-audit planned job blocks, the runner may still attempt the generated
+final `audit_check` job when the audit job is queued, next for its kind, and
+inside the max-job cap. That audit report is the blocker report for the cycle;
+it must keep `accepted_research_ready=false` even when it passes without
+blockers.
+
+Execution manifests must preserve the full research-only invariant, set
+`accepted_research_ready=false`, and record:
+
+- plan ID and run ID;
+- plan manifest path and job store path;
+- worker ID and max-job cap;
+- executed and skipped job counts;
+- audit job ID and audit report path;
+- every planned job action and status;
+- execution blockers plus any blockers found in the final audit report.
+
 ## Data Modes
 
 - `archive_fixture` is the default. It creates a local archive root under the
@@ -100,6 +144,9 @@ Plan manifests must preserve the full research-only invariant and set
   real-evidence blockers.
 - Bounded cycle plans are plan/enqueue metadata only and are never accepted
   research evidence by themselves.
+- Bounded cycle execution manifests are operational evidence only and are never
+  accepted research evidence, autonomous-ready proof, candidate-pack evidence,
+  or promotion evidence by themselves.
 
 ## Forbidden
 
@@ -114,6 +161,9 @@ Plan manifests must preserve the full research-only invariant and set
   scheduler proof, job execution proof, coverage proof, accepted research
   evidence, autonomous-ready status, candidate-pack evidence, or promotion
   evidence.
+- Treating a bounded cycle execution manifest or passing generated audit report
+  as autonomous-ready release proof without real archive coverage, independent
+  audits, authoritative validation, and open-blocker closure.
 
 ## Acceptance
 

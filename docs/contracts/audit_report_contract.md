@@ -1,7 +1,7 @@
 # V2 Audit Report Contract
 
 Status: v2 durable audit/blocker report contract
-Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`, `V2-AUD-AUDIT-002`, `V2-AUD-AUDIT-003`, `V2-AUD-AUDIT-004`
+Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`, `V2-AUD-AUDIT-002`, `V2-AUD-AUDIT-003`, `V2-AUD-AUDIT-004`, `V2-AUD-AUDIT-005`
 
 ## Purpose
 
@@ -51,6 +51,10 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
   the declared target job IDs, required successful kinds, required artifact ref
   prefixes, and required job-kind order. A generated audit job remains a queued
   worker job until explicitly run through the durable worker runner.
+- Bounded autopilot cycle execution may run that generated final `audit_check`
+  job after planned jobs have succeeded, been skipped as already successful, or
+  produced explicit blockers. The resulting report remains the cycle blocker
+  report and must not mark autonomous readiness even if it has no blockers.
 
 ## Forbidden
 
@@ -62,3 +66,6 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
 - Producing candidate, paper, live, order, sizing, runtime-mode, or promotion
   claims from audit reports.
 - Treating a planned or queued audit job as an audit result.
+- Treating a generated audit report with no blockers as sufficient release
+  evidence without independent audits, authoritative full-suite validation, real
+  archive coverage evidence, and open-blocker closure.

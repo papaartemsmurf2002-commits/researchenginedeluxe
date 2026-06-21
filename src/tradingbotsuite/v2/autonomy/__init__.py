@@ -11,8 +11,18 @@ from tradingbotsuite.v2.autonomy.cycle_planner import (
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
 )
+from tradingbotsuite.v2.autonomy.cycle_runner import (
+    AutopilotCycleRunnerError,
+    load_autopilot_cycle_plan,
+    run_autopilot_cycle_plan,
+)
 from tradingbotsuite.v2.autonomy.runner import AutonomyLoopError, run_autonomy_dry_run
 from tradingbotsuite.v2.autonomy.schemas import (
+    AutopilotCycleExecutionManifest,
+    AutopilotCycleExecutionResult,
+    AutopilotCycleExecutionStatus,
+    AutopilotCycleJobExecution,
+    AutopilotCycleJobExecutionAction,
     AutopilotCycleJobSpec,
     AutopilotCycleMode,
     AutopilotCyclePlanConfig,
@@ -31,6 +41,11 @@ from tradingbotsuite.v2.autonomy.schemas import (
 )
 
 __all__ = [
+    "AutopilotCycleExecutionManifest",
+    "AutopilotCycleExecutionResult",
+    "AutopilotCycleExecutionStatus",
+    "AutopilotCycleJobExecution",
+    "AutopilotCycleJobExecutionAction",
     "AutopilotCycleJobSpec",
     "AutopilotCycleMode",
     "AutopilotCyclePlanConfig",
@@ -38,6 +53,7 @@ __all__ = [
     "AutopilotCyclePlanManifest",
     "AutopilotCyclePlanResult",
     "AutopilotCyclePlanStatus",
+    "AutopilotCycleRunnerError",
     "AutopilotPlannedJob",
     "AutonomyBlockerReport",
     "AutonomyDataMode",
@@ -48,7 +64,9 @@ __all__ = [
     "AutonomyLoopStatus",
     "AutonomyStepResult",
     "AutonomyStepStatus",
+    "load_autopilot_cycle_plan",
     "load_autopilot_cycle_spec",
     "plan_autopilot_research_cycle",
+    "run_autopilot_cycle_plan",
     "run_autonomy_dry_run",
 ]

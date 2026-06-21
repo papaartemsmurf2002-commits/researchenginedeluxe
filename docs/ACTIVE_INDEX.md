@@ -136,11 +136,18 @@ This is the first file to read after `AGENTS.md`.
   jobs, and appends a generated final `audit_check` job with required
   successful job-kind, artifact-prefix, and ordering checks. It does not run
   jobs, call venues, stream WebSockets, certify coverage, or claim
-  autonomous-ready status. Full historical candle coverage beyond the public
-  recent-window limit, long-running scheduler/daemon capture, accepted
-  continuous historical trade/L2 coverage proof, independent audits, executed
-  real-archive loop evidence, and authoritative full-suite proof remain
-  follow-up work.
+  autonomous-ready status. WPR106-452 adds
+  `redx autopilot run-cycle-plan`, a bounded operator-invoked executor for an
+  already enqueued plan. It skips already successful planned jobs, runs planned
+  queued jobs only when they are next for their worker kind, records execution
+  blockers, and attempts the generated final `audit_check` job so the cycle
+  writes a blocker report. It does not add a daemon scheduler, direct venue
+  calls, direct WebSocket control, coverage certification, accepted evidence,
+  autonomous-ready status, or paper/live/order/sizing/runtime/promotion
+  behavior. Full historical candle coverage beyond the public recent-window
+  limit, long-running scheduler/daemon capture, accepted continuous historical
+  trade/L2 coverage proof, independent audits, real-archive loop acceptance,
+  and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

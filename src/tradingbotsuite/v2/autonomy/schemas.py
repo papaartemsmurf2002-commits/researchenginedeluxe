@@ -268,3 +268,116 @@ class AutopilotCyclePlanResult(BaseModel):
     enqueued_job_count: int = Field(ge=0)
     audit_job_id: str = Field(min_length=1)
     audit_report_path: str = Field(min_length=1)
+
+
+class AutopilotCycleExecutionStatus(str, Enum):
+    COMPLETED = "completed"
+    COMPLETED_WITH_BLOCKERS = "completed_with_blockers"
+
+
+class AutopilotCycleJobExecutionAction(str, Enum):
+    RAN = "ran"
+    SKIPPED_ALREADY_SUCCEEDED = "skipped_already_succeeded"
+    BLOCKED_MISSING = "blocked_missing"
+    BLOCKED_NOT_NEXT_FOR_KIND = "blocked_not_next_for_kind"
+    BLOCKED_STATUS = "blocked_status"
+    NOT_RUN_AFTER_BLOCKER = "not_run_after_blocker"
+    NOT_RUN_MAX_JOBS = "not_run_max_jobs"
+
+
+class AutopilotCycleJobExecution(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    job_id: str = Field(min_length=1)
+    kind: WorkerJobKind
+    dependency_order: int = Field(ge=0)
+    generated_by_planner: bool = False
+    action: AutopilotCycleJobExecutionAction
+    status_before: str | None = None
+    status_after: str | None = None
+    output_refs: tuple[str, ...] = ()
+    archive_manifest_refs: tuple[str, ...] = ()
+    gap_record_ids: tuple[str, ...] = ()
+    failure_reason: str | None = None
+    blocker_reasons: tuple[str, ...] = ()
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_boundary(self) -> "AutopilotCycleJobExecution":
+        require_research_boundary(self, context="autopilot cycle job execution")
+        return self
+
+
+class AutopilotCycleExecutionManifest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = "autopilot_bounded_cycle_execution_v1"
+    execution_id: str = Field(min_length=64, max_length=64)
+    plan_id: str = Field(min_length=64, max_length=64)
+    run_id: str = Field(min_length=1)
+    mode: AutopilotCycleMode = AutopilotCycleMode.BOUNDED
+    status: AutopilotCycleExecutionStatus
+    plan_manifest_path: str = Field(min_length=1)
+    execution_manifest_path: str = Field(min_length=1)
+    job_store_path: str = Field(min_length=1)
+    worker_id: str = Field(min_length=1)
+    max_jobs: int = Field(ge=1)
+    planned_job_count: int = Field(ge=0)
+    executed_job_count: int = Field(ge=0)
+    skipped_job_count: int = Field(ge=0)
+    audit_job_id: str = Field(min_length=1)
+    audit_report_path: str = Field(min_length=1)
+    audit_attempted: bool = False
+    blocker_count: int = Field(ge=0)
+    blocker_reasons: tuple[str, ...] = ()
+    job_executions: tuple[AutopilotCycleJobExecution, ...]
+    accepted_research_ready: bool = False
+    boundary_flags: dict[str, bool] = Field(default_factory=lambda: dict(RESEARCH_BOUNDARY))
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_boundary(self) -> "AutopilotCycleExecutionManifest":
+        if self.accepted_research_ready:
+            raise ValueError("bounded cycle executions cannot mark accepted_research_ready")
+        if self.blocker_count != len(self.blocker_reasons):
+            raise ValueError("blocker_count must match blocker_reasons length")
+        if self.status == AutopilotCycleExecutionStatus.COMPLETED and self.blocker_reasons:
+            raise ValueError("completed cycle executions cannot contain blockers")
+        if (
+            self.status == AutopilotCycleExecutionStatus.COMPLETED_WITH_BLOCKERS
+            and not self.blocker_reasons
+        ):
+            raise ValueError("completed_with_blockers cycle executions require blockers")
+        require_research_boundary(self, context="autopilot cycle execution")
+        return self
+
+
+class AutopilotCycleExecutionResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: AutopilotCycleExecutionStatus
+    execution_manifest_path: str = Field(min_length=1)
+    execution_id: str = Field(min_length=64, max_length=64)
+    audit_report_path: str = Field(min_length=1)
+    executed_job_count: int = Field(ge=0)
+    skipped_job_count: int = Field(ge=0)
+    audit_attempted: bool
+    blocker_reasons: tuple[str, ...] = ()

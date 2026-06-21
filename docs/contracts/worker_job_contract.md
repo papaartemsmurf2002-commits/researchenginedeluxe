@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`
 
 ## Purpose
 
@@ -107,6 +107,15 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Bounded autopilot cycle plans must reject unsupported worker kinds,
   user-supplied `audit_check` jobs, boundary override keys in job specs, and
   cycle sizes above the declared cap before enqueueing any jobs.
+- Bounded autopilot cycle execution may run enqueued planned jobs through the
+  durable worker runner, but only after proving that the planned queued job is
+  the next queued job for its worker kind. If a different queued job would be
+  claimed first, execution must block and report the mismatch instead of
+  running that kind.
+- Bounded autopilot cycle execution may skip planned jobs already in
+  `succeeded` state and use their stored worker refs as audit evidence. It must
+  report blockers for missing, incomplete, failed, cancelled, stale, retrying,
+  or max-job-blocked planned jobs.
 
 ## Forbidden
 
@@ -136,3 +145,6 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Writing audit blocker reports to secret/local-state filenames.
 - Treating queued bounded-cycle jobs as completed loop evidence or treating the
   generated audit job as a substitute for running the declared workers.
+- Treating a bounded cycle execution manifest as autonomous-ready proof,
+  accepted historical coverage proof, candidate-pack evidence, or promotion
+  evidence.
