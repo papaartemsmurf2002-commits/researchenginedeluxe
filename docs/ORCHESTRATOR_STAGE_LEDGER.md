@@ -399,6 +399,17 @@ counts. Missing or failed evidence blocks readiness; this packet does not
 collect data, run long jobs, resolve real-archive evidence gaps, certify
 strategy quality, create accepted evidence, or add candidate-ready,
 paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-456 v2 public diagnostic cycle-spec update: WPR106-456 adds
+`redx autopilot public-candle-cycle-spec`, which writes a bounded cycle spec
+using the existing public Hyperliquid `source=public_api` universe and candle
+worker paths plus coverage, vectorized backtest, ledger, Lead Book, and final
+audit stages. The command writes spec metadata only and performs no venue call
+or job execution. Generated cycles remain sandbox diagnostic and carry blockers
+for current public universe bias, public recent-window caveats, missing
+accepted historical coverage proof, missing independent completion audit, and
+missing authoritative full-suite validation. No accepted evidence,
+autonomous-ready status, candidate-ready status, paper/live/order/sizing/
+runtime, or promotion behavior is added.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

@@ -168,6 +168,12 @@ This is the first file to read after `AGENTS.md`.
   explicit blocker report; the command does not collect data, certify strategy
   quality, create accepted evidence, or add candidate/paper/live/order/sizing/
   runtime/promotion behavior.
+  WPR106-456 adds `redx autopilot public-candle-cycle-spec`, a public API
+  diagnostic bounded-cycle spec writer for current Hyperliquid universe and
+  candle intake through the durable worker loop. The command writes a spec
+  only; it does not run network calls, enqueue jobs, certify historical
+  coverage, or claim readiness, and the generated Lead Book step carries
+  public-current-universe/recent-window/coverage/audit/validation blockers.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

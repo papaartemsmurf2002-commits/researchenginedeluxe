@@ -36,6 +36,7 @@ from tradingbotsuite.v2.autonomy import (
     AutopilotCyclePlanError,
     AutopilotCycleRunnerError,
     AutopilotFixtureCycleConfig,
+    AutopilotPublicCandleCycleConfig,
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
     run_autopilot_cycle_plan,
@@ -43,6 +44,7 @@ from tradingbotsuite.v2.autonomy import (
     AutonomyLoopError,
     run_autonomy_dry_run,
     write_autopilot_fixture_cycle_spec,
+    write_autopilot_public_candle_cycle_spec,
 )
 from tradingbotsuite.v2.backtest_data import (
     BacktestDataError,
@@ -411,6 +413,24 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_fixture_cycle.add_argument("--end-ts", default="2024-08-01T00:00:00+00:00")
     autopilot_fixture_cycle.add_argument("--asof-date", default="2024-01-01")
     autopilot_fixture_cycle.add_argument("--created-by-id", default="codex-manager-agent")
+    autopilot_public_cycle = autopilot_subparsers.add_parser(
+        "public-candle-cycle-spec",
+        help="write a public-API diagnostic bounded-cycle spec without running jobs",
+    )
+    autopilot_public_cycle.add_argument("--output-root", required=True)
+    autopilot_public_cycle.add_argument("--run-id", default="autopilot-public-candle-cycle")
+    autopilot_public_cycle.add_argument("--instrument-id", default="hyperliquid:perp:BTC")
+    autopilot_public_cycle.add_argument("--coin", default="BTC")
+    autopilot_public_cycle.add_argument("--timeframe", default="1d")
+    autopilot_public_cycle.add_argument("--start-ts", default="2024-01-01T00:00:00+00:00")
+    autopilot_public_cycle.add_argument("--end-ts", default="2024-08-01T00:00:00+00:00")
+    autopilot_public_cycle.add_argument("--asof-date")
+    autopilot_public_cycle.add_argument("--created-by-id", default="codex-manager-agent")
+    autopilot_public_cycle.add_argument("--public-info-url", default="https://api.hyperliquid.xyz/info")
+    autopilot_public_cycle.add_argument("--public-info-timeout", type=float, default=20.0)
+    autopilot_public_cycle.add_argument("--max-public-info-pages", type=int, default=50)
+    autopilot_public_cycle.add_argument("--max-candles-per-public-page", type=int, default=5_000)
+    autopilot_public_cycle.add_argument("--coverage-min", type=float, default=DEFAULT_COVERAGE_MIN)
     autopilot_cycle = autopilot_subparsers.add_parser(
         "research-cycle",
         help="plan or enqueue a bounded durable research cycle without running jobs",
@@ -1153,6 +1173,48 @@ def _handle_autopilot(args: argparse.Namespace, parser: argparse.ArgumentParser)
         print(f"declared_binding_count={result.declared_binding_count}")
         for blocker in result.expected_audit_blockers:
             print(f"expected_audit_blocker={blocker}")
+        print("evidence_mode=sandbox_diagnostic")
+        print("accepted_research_ready=false")
+        print("promotion_ready=false")
+        return 0
+    if args.autopilot_command == "public-candle-cycle-spec":
+        try:
+            config_payload = {
+                "output_root": args.output_root,
+                "run_id": args.run_id,
+                "instrument_id": args.instrument_id,
+                "coin": args.coin,
+                "timeframe": args.timeframe,
+                "start_ts": _parse_datetime(args.start_ts),
+                "end_ts": _parse_datetime(args.end_ts),
+                "created_by_id": args.created_by_id,
+                "public_info_url": args.public_info_url,
+                "public_info_timeout": args.public_info_timeout,
+                "max_public_info_pages": args.max_public_info_pages,
+                "max_candles_per_public_page": args.max_candles_per_public_page,
+                "coverage_min": args.coverage_min,
+            }
+            if args.asof_date:
+                config_payload["asof_date"] = date.fromisoformat(args.asof_date)
+            result = write_autopilot_public_candle_cycle_spec(
+                AutopilotPublicCandleCycleConfig(**config_payload)
+            )
+        except (argparse.ArgumentTypeError, ValueError, ValidationError) as exc:
+            print(f"autopilot_public_candle_cycle_spec_rejected={exc}")
+            return 1
+        print(f"cycle_spec={result.cycle_spec_path}")
+        print(f"archive_root={result.archive_root}")
+        print(f"backtest_output_root={result.backtest_output_root}")
+        print(f"ledger_path={result.ledger_path}")
+        print(f"lead_book_path={result.lead_book_path}")
+        print(f"suggested_plan_output_root={result.suggested_plan_output_root}")
+        print(f"suggested_job_store={result.suggested_job_store_path}")
+        print(f"public_info_url={result.public_info_url}")
+        print(f"declared_job_count={result.declared_job_count}")
+        print(f"declared_binding_count={result.declared_binding_count}")
+        for blocker in result.expected_audit_blockers:
+            print(f"expected_audit_blocker={blocker}")
+        print("source_mode=public_api")
         print("evidence_mode=sandbox_diagnostic")
         print("accepted_research_ready=false")
         print("promotion_ready=false")

@@ -16,6 +16,11 @@ from tradingbotsuite.v2.autonomy.cycle_fixture import (
     AutopilotFixtureCycleSpecResult,
     write_autopilot_fixture_cycle_spec,
 )
+from tradingbotsuite.v2.autonomy.cycle_public import (
+    AutopilotPublicCandleCycleConfig,
+    AutopilotPublicCandleCycleSpecResult,
+    write_autopilot_public_candle_cycle_spec,
+)
 from tradingbotsuite.v2.autonomy.cycle_runner import (
     AutopilotCycleRunnerError,
     load_autopilot_cycle_plan,
@@ -62,6 +67,8 @@ __all__ = [
     "AutopilotFixtureCycleConfig",
     "AutopilotFixtureCycleSpecResult",
     "AutopilotPlannedJob",
+    "AutopilotPublicCandleCycleConfig",
+    "AutopilotPublicCandleCycleSpecResult",
     "AutonomyBlockerReport",
     "AutonomyDataMode",
     "AutonomyDryRunConfig",
@@ -77,4 +84,5 @@ __all__ = [
     "run_autopilot_cycle_plan",
     "run_autonomy_dry_run",
     "write_autopilot_fixture_cycle_spec",
+    "write_autopilot_public_candle_cycle_spec",
 ]

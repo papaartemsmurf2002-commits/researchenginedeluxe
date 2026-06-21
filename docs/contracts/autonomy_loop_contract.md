@@ -1,7 +1,7 @@
 # Autonomy Loop Contract
 
 Status: v2 dry-run and bounded autopilot contract
-Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`
+Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`, `V2-AUD-AUTONOMY-009`
 
 The autonomy loop is a research-only orchestration surface for proving that v2
 components can be wired together without weakening evidence rules. The dry-run
@@ -37,6 +37,8 @@ certification surface.
 - `AutopilotCycleExecutionResult`
 - `AutopilotFixtureCycleConfig`
 - `AutopilotFixtureCycleSpecResult`
+- `AutopilotPublicCandleCycleConfig`
+- `AutopilotPublicCandleCycleSpecResult`
 
 ## Required Loop
 
@@ -228,3 +230,23 @@ only when it can be planned, enqueued, executed through durable workers, append
 one sandbox ledger row, upsert one non-promotable Lead Book row, and write the
 final generated audit report with explicit missing-real-evidence blockers. It
 is never accepted as autonomous-ready or strategy performance evidence.
+
+## Public API Diagnostic Cycle Spec
+
+`redx autopilot public-candle-cycle-spec` may write a canonical
+`autopilot_bounded_cycle_spec_v1` that uses public Hyperliquid `/info`
+`metaAndAssetCtxs` and `candleSnapshot` worker inputs, followed by coverage,
+vectorized backtest, ledger append/export, Lead Book upsert, and the
+planner-generated final `audit_check` job.
+
+The command writes only the cycle spec and suggested local paths. It must not
+call venue APIs, enqueue jobs, run workers, certify coverage, or claim
+autonomous readiness. The generated spec is sandbox diagnostic and must carry
+blockers for current public universe bias, public API recent-window caveats,
+missing accepted historical coverage proof, missing independent completion
+audit, and missing authoritative full-suite validation.
+
+Public diagnostic cycle specs must require at least a 180-day requested window
+so any eventual run is shaped like the v2 six-month backtest loop, but a public
+API response can still block because the API may not provide accepted
+historical coverage for that requested period.
