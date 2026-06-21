@@ -38,7 +38,11 @@ This is the first file to read after `AGENTS.md`.
   backtest, while still staying `sandbox_diagnostic`. WPR106-424 adds a
   central v2 research-boundary policy and migrates autonomy, backtest,
   backtest-data, ledger, Lead Book, and strategy/signal artifacts to use it.
-  Independent audits and real data-operation proof remain follow-up work.
+  WPR106-425 makes durable recent-candle and funding collector jobs write
+  local source records into raw, bronze, and silver archive artifacts, with
+  candle coverage/snapshot refs and funding interval evidence, while keeping
+  no-record API-cap diagnostics explicit. Real venue/API collection,
+  independent audits, and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

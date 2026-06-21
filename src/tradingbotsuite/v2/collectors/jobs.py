@@ -14,11 +14,21 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from tradingbotsuite.v2.archive.hashing import canonical_json_hash
+from tradingbotsuite.v2.archive.layout import ArchiveLayout
+from tradingbotsuite.v2.archive.manifest_store import ArchiveManifestStore
 from tradingbotsuite.v2.archive.microstructure import (
     MicrostructureDataType,
     parse_microstructure_datatype,
     preserve_official_s3_backfill_file,
     write_microstructure_raw_capture,
+)
+from tradingbotsuite.v2.archive.raw_writer import RawJsonlZstdWriter
+from tradingbotsuite.v2.archive.rebuild import (
+    RebuildResult,
+    bronze_candles_to_silver_bars,
+    bronze_funding_to_silver,
+    raw_candles_to_bronze,
+    raw_funding_to_bronze,
 )
 from tradingbotsuite.v2.config.time import utc_now
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
@@ -149,6 +159,71 @@ def _run_recent_candle_bootstrap_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    if _has_records(spec):
+        archive_root = _required_str(spec, "archive_root")
+        instrument_id = _required_str(spec, "instrument_id")
+        timeframe = str(spec.get("timeframe", "1m"))
+        start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+        end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+        layout = ArchiveLayout(archive_root)
+        layout.initialize()
+        manifest_store = ArchiveManifestStore(layout)
+        raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
+            records=_required_records(spec),
+            venue=str(spec.get("venue", "hyperliquid")),
+            datatype="candles",
+            date=_required_str(spec, "date"),
+            run_id=str(spec.get("run_id", job.job_id)),
+            job_id=job.job_id,
+            adapter_id=str(spec.get("adapter_id", "fixture_recent_candle_bootstrap_v1")),
+            source_endpoint_or_subscription=str(
+                spec.get("source_endpoint_or_subscription", "fixture/rest/candles")
+            ),
+            symbols=(instrument_id,),
+            start_ts=start_ts,
+            end_ts=end_ts,
+            instrument_id=instrument_id,
+            timeframe=timeframe,
+        )
+        bronze = raw_candles_to_bronze(
+            archive_root=archive_root,
+            raw_file_id=raw_file.file_id,
+            job_id=f"{job.job_id}-bronze-candles",
+            instrument_id=instrument_id,
+            timeframe=timeframe,
+        )
+        silver = bronze_candles_to_silver_bars(
+            archive_root=archive_root,
+            bronze_file_id=bronze.output_files[0].file_id,
+            job_id=f"{job.job_id}-silver-bars",
+            derive_timeframes=_derive_timeframes(spec),
+            write_coverage=not bool(spec.get("skip_coverage", False)),
+            create_snapshot=bool(spec.get("create_snapshot", False)),
+        )
+        archive_refs = _market_data_archive_refs(
+            raw_file_id=raw_file.file_id,
+            bronze=bronze,
+            silver=silver,
+        )
+        output_refs = (
+            "collector_mode=fixture_candle_archive_write",
+            f"row_count={raw_file.row_count or 0}",
+            f"timeframe={timeframe}",
+            *archive_refs,
+        )
+        record = store.succeed_job(
+            job.job_id,
+            worker_id=worker_id,
+            output_refs=output_refs,
+            archive_manifest_refs=archive_refs,
+            reason="recent_candle_bootstrap_archive_write_succeeded",
+        )
+        return WorkerRunResult(
+            job_id=job.job_id,
+            status=record.status,
+            output_refs=record.output_refs,
+            archive_manifest_refs=record.archive_manifest_refs,
+        )
     warning = _api_cap_warning(
         job=job,
         scope="recent_candle_bootstrap",
@@ -182,6 +257,64 @@ def _run_funding_backfill_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    if _has_records(spec):
+        archive_root = _required_str(spec, "archive_root")
+        instrument_id = _required_str(spec, "instrument_id")
+        start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+        end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+        layout = ArchiveLayout(archive_root)
+        layout.initialize()
+        manifest_store = ArchiveManifestStore(layout)
+        raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
+            records=_required_records(spec),
+            venue=str(spec.get("venue", "hyperliquid")),
+            datatype="funding",
+            date=_required_str(spec, "date"),
+            run_id=str(spec.get("run_id", job.job_id)),
+            job_id=job.job_id,
+            adapter_id=str(spec.get("adapter_id", "fixture_funding_backfill_v1")),
+            source_endpoint_or_subscription=str(
+                spec.get("source_endpoint_or_subscription", "fixture/rest/funding")
+            ),
+            symbols=(instrument_id,),
+            start_ts=start_ts,
+            end_ts=end_ts,
+            instrument_id=instrument_id,
+        )
+        bronze = raw_funding_to_bronze(
+            archive_root=archive_root,
+            raw_file_id=raw_file.file_id,
+            job_id=f"{job.job_id}-bronze-funding",
+            instrument_id=instrument_id,
+        )
+        silver = bronze_funding_to_silver(
+            archive_root=archive_root,
+            bronze_file_id=bronze.output_files[0].file_id,
+            job_id=f"{job.job_id}-silver-funding",
+        )
+        archive_refs = _market_data_archive_refs(
+            raw_file_id=raw_file.file_id,
+            bronze=bronze,
+            silver=silver,
+        )
+        output_refs = (
+            "collector_mode=fixture_funding_archive_write",
+            f"row_count={raw_file.row_count or 0}",
+            *archive_refs,
+        )
+        record = store.succeed_job(
+            job.job_id,
+            worker_id=worker_id,
+            output_refs=output_refs,
+            archive_manifest_refs=archive_refs,
+            reason="funding_backfill_archive_write_succeeded",
+        )
+        return WorkerRunResult(
+            job_id=job.job_id,
+            status=record.status,
+            output_refs=record.output_refs,
+            archive_manifest_refs=record.archive_manifest_refs,
+        )
     warning = _api_cap_warning(
         job=job,
         scope="funding_backfill",
@@ -440,6 +573,50 @@ def _required_records(spec: dict[str, Any]) -> list[dict[str, Any]]:
             raise ValueError(f"collector records[{index}] must be an object")
         rows.append(dict(item))
     return rows
+
+
+def _has_records(spec: dict[str, Any]) -> bool:
+    return "records" in spec and spec.get("records") is not None
+
+
+def _derive_timeframes(spec: dict[str, Any]) -> tuple[str, ...]:
+    value = spec.get("derive_timeframes", ("5m", "15m", "1h"))
+    if isinstance(value, str):
+        return tuple(part.strip() for part in value.split(",") if part.strip())
+    if isinstance(value, (list, tuple)):
+        return tuple(str(part).strip() for part in value if str(part).strip())
+    raise ValueError("derive_timeframes must be a comma-delimited string or list")
+
+
+def _market_data_archive_refs(
+    *,
+    raw_file_id: str,
+    bronze: RebuildResult,
+    silver: RebuildResult,
+) -> tuple[str, ...]:
+    refs = [
+        f"raw_file_id={raw_file_id}",
+        f"bronze_file_ids={_csv(row.file_id for row in bronze.output_files)}",
+        f"silver_file_ids={_csv(row.file_id for row in silver.output_files)}",
+        f"normalization_manifest_ids={_csv(_normalization_ids(bronze, silver))}",
+    ]
+    if silver.coverage_report_ids:
+        refs.append(f"coverage_report_ids={','.join(silver.coverage_report_ids)}")
+    if silver.archive_snapshot_id:
+        refs.append(f"archive_snapshot_id={silver.archive_snapshot_id}")
+    return tuple(refs)
+
+
+def _normalization_ids(*results: RebuildResult) -> tuple[str, ...]:
+    return tuple(
+        manifest.normalization_manifest_id
+        for result in results
+        for manifest in result.normalization_manifests
+    )
+
+
+def _csv(values) -> str:
+    return ",".join(str(value) for value in values)
 
 
 def normalize_payload_file(path: str | Path | None) -> str | None:

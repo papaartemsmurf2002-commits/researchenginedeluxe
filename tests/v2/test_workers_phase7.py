@@ -8,14 +8,24 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pyarrow.parquet as pq
 import pytest
 
+from tradingbotsuite.v2.archive import (
+    ArchiveLayer,
+    ArchiveLayout,
+    ArchiveManifestStore,
+    SilverFundingIntervalRow,
+)
+from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobStatus
 from tradingbotsuite.v2.workers.runner import run_one_job
 
 
 ROOT = Path(__file__).resolve().parents[2]
+INSTRUMENT = "hyperliquid:perp:BTC"
+START = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def test_sqlite_wal_job_store_survives_process_restart(tmp_path) -> None:
@@ -130,6 +140,125 @@ def test_universe_refresh_worker_outputs_archive_manifest_refs(tmp_path) -> None
     assert any(ref.startswith("raw_file_id=") for ref in loaded.archive_manifest_refs)
     assert any(ref.startswith("universe_snapshot_id=") for ref in loaded.archive_manifest_refs)
     assert (archive_root / "manifests" / "universe_snapshots.parquet").exists()
+
+
+def test_recent_candle_bootstrap_worker_writes_archive_layers_and_coverage(tmp_path) -> None:
+    archive_root = tmp_path / "archive-candles"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-candles",
+        input_spec={
+            "archive_root": str(archive_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-candles",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "derive_timeframes": ["5m"],
+            "create_snapshot": True,
+            "records": [_candle_row(index) for index in range(60)],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-candles",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    coverage_reports = CoverageManifestStore(layout).load_coverage_reports()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=fixture_candle_archive_write" in loaded.output_refs
+    assert any(ref.startswith("raw_file_id=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("bronze_file_ids=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("silver_file_ids=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("coverage_report_ids=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("archive_snapshot_id=") for ref in loaded.archive_manifest_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "candles"),
+        (ArchiveLayer.BRONZE, "candles"),
+        (ArchiveLayer.SILVER, "bars"),
+    }
+    silver_timeframes = {row.timeframe for row in manifest_rows if row.layer == ArchiveLayer.SILVER}
+    assert silver_timeframes == {"1m", "5m"}
+    assert {report.timeframe for report in coverage_reports} == {"1m", "5m"}
+    assert all(report.coverage_ratio == 1.0 for report in coverage_reports)
+    assert ArchiveManifestStore(layout).load_archive_snapshots()
+
+
+def test_funding_backfill_worker_writes_archive_layers(tmp_path) -> None:
+    archive_root = tmp_path / "archive-funding"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        job_id="JOB-funding",
+        input_spec={
+            "archive_root": str(archive_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "run_id": "run-funding",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T02:00:00+00:00",
+            "records": [
+                {
+                    "ts": "2026-01-01T00:00:00Z",
+                    "end_ts": "2026-01-01T01:00:00Z",
+                    "instrument_id": INSTRUMENT,
+                    "fundingRate": "0.0001",
+                },
+                {
+                    "ts": "2026-01-01T01:00:00Z",
+                    "end_ts": "2026-01-01T02:00:00Z",
+                    "instrument_id": INSTRUMENT,
+                    "fundingRate": "-0.0002",
+                },
+            ],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        worker_id="worker-funding",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    silver_file = [
+        row
+        for row in manifest_rows
+        if row.layer == ArchiveLayer.SILVER and row.datatype == "funding"
+    ][0]
+    silver_rows = [
+        SilverFundingIntervalRow.model_validate(row)
+        for row in pq.ParquetFile(layout.resolve(silver_file.path)).read().to_pylist()
+    ]
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=fixture_funding_archive_write" in loaded.output_refs
+    assert any(ref.startswith("raw_file_id=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("bronze_file_ids=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("silver_file_ids=") for ref in loaded.archive_manifest_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "funding"),
+        (ArchiveLayer.BRONZE, "funding"),
+        (ArchiveLayer.SILVER, "funding"),
+    }
+    assert [row.funding_rate for row in silver_rows] == [0.0001, -0.0002]
+    assert all(row.research_only and row.observe_only and not row.promotion_ready for row in silver_rows)
 
 
 def test_websocket_capture_skeleton_records_gap_instead_of_silent_success(tmp_path) -> None:
@@ -298,3 +427,19 @@ def _universe_payload():
             },
         ],
     ]
+
+
+def _candle_row(index: int) -> dict[str, object]:
+    ts = START + timedelta(minutes=index)
+    return {
+        "ts": ts.isoformat().replace("+00:00", "Z"),
+        "end_ts": (ts + timedelta(minutes=1)).isoformat().replace("+00:00", "Z"),
+        "instrument_id": INSTRUMENT,
+        "timeframe": "1m",
+        "open": 100 + index,
+        "high": 101 + index,
+        "low": 99 + index,
+        "close": 100 + index,
+        "volume": 10 + index,
+        "trade_count": index + 1,
+    }
