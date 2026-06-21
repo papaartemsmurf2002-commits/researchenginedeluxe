@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from tradingbotsuite.v2.venues.hyperliquid.info import (
+    HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE,
     HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE,
     HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID,
     HyperliquidInfoClient,
@@ -15,6 +16,7 @@ from tradingbotsuite.v2.venues.hyperliquid.info import (
 )
 
 __all__ = [
+    "HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE",
     "HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE",
     "HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID",
     "HyperliquidInfoClient",

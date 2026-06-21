@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 import httpx
@@ -74,6 +74,81 @@ def test_hyperliquid_info_client_records_public_unsigned_provenance() -> None:
     assert result.raw_response.evidence_scope == "public_unsigned_universe_metadata"
     assert result.raw_response.row_count == 3
     assert result.raw_response.rate_limit_metadata["x-ratelimit-remaining"] == "42"
+    assert result.raw_response.order_placement_instruction is False
+
+
+def test_hyperliquid_info_client_records_public_candle_snapshot_provenance() -> None:
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 1, 1, 0, 2, tzinfo=UTC)
+    expected_body = {
+        "type": "candleSnapshot",
+        "req": {
+            "coin": "BTC",
+            "interval": "1m",
+            "startTime": int(start.timestamp() * 1000),
+            "endTime": int(end.timestamp() * 1000),
+        },
+    }
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert request.method == "POST"
+        assert json.loads(request.content.decode("utf-8")) == expected_body
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "t": expected_body["req"]["startTime"],
+                    "T": expected_body["req"]["startTime"] + 60_000,
+                    "s": "BTC",
+                    "i": "1m",
+                    "o": "100",
+                    "h": "101",
+                    "l": "99",
+                    "c": "100.5",
+                    "v": "10",
+                    "n": 3,
+                },
+                {
+                    "t": expected_body["req"]["startTime"] + 60_000,
+                    "T": expected_body["req"]["endTime"],
+                    "s": "BTC",
+                    "i": "1m",
+                    "o": "100.5",
+                    "h": "102",
+                    "l": "100",
+                    "c": "101",
+                    "v": "12",
+                    "n": 2,
+                },
+            ],
+            headers={"x-ratelimit-remaining": "17"},
+        )
+
+    client = HyperliquidInfoClient(
+        base_url="https://example.test/info",
+        timeout=3.0,
+        transport=httpx.MockTransport(handler),
+    )
+    result = client.fetch_candle_snapshot(
+        coin="BTC",
+        interval="1m",
+        start_time=start,
+        end_time=end,
+    )
+
+    assert len(seen_requests) == 1
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_bars is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "info/candleSnapshot"
+    assert result.raw_request.params["type"] == "candleSnapshot"
+    assert result.raw_request.params["req"] == expected_body["req"]
+    assert result.raw_request.params["documented_limit"] == "most_recent_5000_candles"
+    assert result.raw_response.evidence_scope == "public_unsigned_recent_candle_snapshot"
+    assert result.raw_response.row_count == 2
+    assert result.raw_response.rate_limit_metadata["x-ratelimit-remaining"] == "17"
     assert result.raw_response.order_placement_instruction is False
 
 

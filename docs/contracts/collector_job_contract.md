@@ -38,6 +38,16 @@ request handling and they do not place orders.
   archive normalization services. They must return raw, bronze, silver,
   normalization, coverage, and optional archive snapshot refs through durable
   worker outputs.
+- Recent candle bootstrap jobs may also use the explicit unsigned public
+  Hyperliquid `source=public_api` mode for `/info` `candleSnapshot` requests.
+  Public candle jobs must return `source_mode=public_api`, raw payload hash,
+  venue adapter ID, source endpoint, raw request ID, raw response ID, source
+  coin, interval, row count, and the documented recent-window cap through
+  durable output refs.
+- Public candle snapshot jobs must still write raw records before archive
+  normalization and must rebuild bronze candles plus silver bars through the
+  archive services. The public snapshot endpoint is a recent-window source, not
+  full historical backfill evidence.
 - Funding backfill jobs with local source `records` must write raw funding
   archive files and rebuild bronze funding plus silver funding intervals
   through the archive normalization services. They must return raw, bronze,
@@ -49,10 +59,11 @@ request handling and they do not place orders.
   archive writes.
 - File-backed collector jobs must return source SHA-256 and record-count refs
   through durable job output refs.
-- Recent candle bootstrap and funding backfill jobs without local source
-  `records` must keep labeling API-cap or latest-window limitations as
-  diagnostic refs. A diagnostic no-record job is not accepted research
-  evidence.
+- Recent candle bootstrap jobs without local source `records` and without
+  explicit `source=public_api` must keep labeling API-cap or latest-window
+  limitations as diagnostic refs. Funding backfill jobs without local source
+  `records` must also remain diagnostic. A diagnostic no-record job is not
+  accepted research evidence.
 - WebSocket capture in Phase 7 is a skeleton only. It must record reconnect or
   gap evidence instead of reporting silent collection success.
 - `websocket_trade_capture` jobs may preserve fixture trade records to the raw
@@ -64,8 +75,12 @@ request handling and they do not place orders.
   row count when known, and storage budget status.
 - Trades, BBO, L2, and official-file jobs must return archive manifest refs and
   storage-growth refs through durable job output refs.
-- Candle and funding archive-write jobs must not fetch from venue APIs in the
-  current fixture/source-record collector path.
+- Funding archive-write jobs and local fixture/source-record candle jobs must
+  not fetch from venue APIs. The only current candle venue fetch exception is
+  explicit `source=public_api` for Hyperliquid `/info` `candleSnapshot`.
+- Public candle snapshots must not be treated as enough to satisfy six-month
+  2024+ research-readiness gates because Hyperliquid documents the endpoint as
+  recent-window limited.
 - Candle and funding archive-write jobs must not read arbitrary local files
   outside a trusted source root.
 - Reconnect attempts, gap reasons, missing periods, and retry evidence must be

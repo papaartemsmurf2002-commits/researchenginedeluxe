@@ -211,6 +211,13 @@ def _run_recent_candle_bootstrap_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    source_mode = _recent_candle_source_mode(spec)
+    if source_mode == "public_api":
+        return _run_public_recent_candle_bootstrap_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+        )
     if _has_record_source(spec):
         archive_root = _required_str(spec, "archive_root")
         instrument_id = _required_str(spec, "instrument_id")
@@ -296,6 +303,97 @@ def _run_recent_candle_bootstrap_job(
         output_refs=output_refs,
         archive_manifest_refs=("archive_manifest_ref=pending_until_phase8_normalization",),
         reason="recent_candle_bootstrap_diagnostic_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+    )
+
+
+def _run_public_recent_candle_bootstrap_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    timeframe = str(spec.get("timeframe", "1m"))
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    coin = _hyperliquid_coin_from_spec(spec, instrument_id=instrument_id)
+    fetch = HyperliquidInfoClient(
+        base_url=str(spec.get("public_info_url", "https://api.hyperliquid.xyz/info")),
+        timeout=float(spec.get("public_info_timeout", 20.0)),
+    ).fetch_candle_snapshot(
+        coin=coin,
+        interval=timeframe,
+        start_time=start_ts,
+        end_time=end_ts,
+    )
+    records = _public_candle_records(fetch.payload)
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    manifest_store = ArchiveManifestStore(layout)
+    raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
+        records=records,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype="candles",
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=fetch.capability.adapter_id,
+        source_endpoint_or_subscription=fetch.raw_request.source,
+        symbols=(instrument_id,),
+        start_ts=start_ts,
+        end_ts=end_ts,
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+    )
+    bronze = raw_candles_to_bronze(
+        archive_root=archive_root,
+        raw_file_id=raw_file.file_id,
+        job_id=f"{job.job_id}-bronze-candles",
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+    )
+    silver = bronze_candles_to_silver_bars(
+        archive_root=archive_root,
+        bronze_file_id=bronze.output_files[0].file_id,
+        job_id=f"{job.job_id}-silver-bars",
+        derive_timeframes=_derive_timeframes(spec),
+        write_coverage=not bool(spec.get("skip_coverage", False)),
+        create_snapshot=bool(spec.get("create_snapshot", False)),
+    )
+    archive_refs = _market_data_archive_refs(
+        raw_file_id=raw_file.file_id,
+        bronze=bronze,
+        silver=silver,
+    )
+    output_refs = (
+        "collector_mode=public_api_candle_archive_write",
+        "source_mode=public_api",
+        f"row_count={raw_file.row_count or 0}",
+        f"api_row_count={fetch.raw_response.row_count}",
+        f"venue_adapter_id={fetch.capability.adapter_id}",
+        f"source_endpoint_or_subscription={fetch.raw_request.source}",
+        f"raw_request_id={fetch.raw_request.request_id}",
+        f"raw_response_id={fetch.raw_response.response_id}",
+        f"raw_payload_sha256={fetch.raw_response.raw_payload_sha256}",
+        f"coin={coin}",
+        f"timeframe={timeframe}",
+        "api_documented_limit=most_recent_5000_candles",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="recent_candle_bootstrap_public_api_archive_write_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -616,6 +714,22 @@ def _universe_source_mode(spec: dict[str, Any]) -> str:
     raise ValueError("universe_refresh job requires payload_file or source=public_api")
 
 
+def _recent_candle_source_mode(spec: dict[str, Any]) -> str:
+    source = str(spec.get("source", "")).strip()
+    has_records = _has_record_source(spec)
+    if not source:
+        return "records" if has_records else "diagnostic"
+    if source == "public_api":
+        if has_records:
+            raise ValueError("recent_candle_bootstrap source=public_api cannot include records")
+        return "public_api"
+    if source not in {"records", "records_file", "inline"}:
+        raise ValueError("recent_candle_bootstrap source must be public_api, records, or records_file")
+    if not has_records:
+        raise ValueError(f"recent_candle_bootstrap source={source} requires records or records_file")
+    return "records"
+
+
 def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
@@ -756,6 +870,32 @@ def _coerce_record_rows(value: list[Any]) -> list[dict[str, Any]]:
             raise ValueError(f"collector records_file[{index}] must be an object")
         rows.append(dict(item))
     return rows
+
+
+def _public_candle_records(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, list):
+        raise ValueError("public candleSnapshot response must be a list")
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise ValueError(f"public candleSnapshot response[{index}] must be an object")
+        rows.append(dict(item))
+    if not rows:
+        raise ValueError("public candleSnapshot response returned no rows")
+    return rows
+
+
+def _hyperliquid_coin_from_spec(spec: dict[str, Any], *, instrument_id: str) -> str:
+    explicit = str(spec.get("coin", "")).strip()
+    if explicit:
+        return explicit
+    perp_prefix = "hyperliquid:perp:"
+    hip3_prefix = "hyperliquid:hip3:"
+    if instrument_id.startswith(perp_prefix):
+        return instrument_id[len(perp_prefix) :]
+    if instrument_id.startswith(hip3_prefix):
+        return instrument_id[len(hip3_prefix) :]
+    return instrument_id
 
 
 def _derive_timeframes(spec: dict[str, Any]) -> tuple[str, ...]:

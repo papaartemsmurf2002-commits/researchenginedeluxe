@@ -478,8 +478,8 @@ def _parse_candle_rows(
                 BronzeCandleRow(
                     venue=raw_row.venue,
                     instrument_id=str(
-                        _first(payload, "instrument_id", "symbol", "coin", "s")
-                        or instrument_id
+                        instrument_id
+                        or _first(payload, "instrument_id", "symbol", "coin", "s")
                         or raw_row.instrument_id
                         or "unknown"
                     ),

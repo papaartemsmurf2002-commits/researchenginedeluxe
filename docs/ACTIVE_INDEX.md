@@ -68,7 +68,13 @@ This is the first file to read after `AGENTS.md`.
   `source=public_api` mode with venue raw-request/raw-response provenance,
   requires durable worker/CLI callers to declare either `payload_file` or
   `public_api`, and records an optional successful live public-info smoke into
-  a temporary archive. Real candle/funding/trade/BBO/L2 venue archive
+  a temporary archive. WPR106-433 adds explicit public Hyperliquid
+  `candleSnapshot` intake for durable `recent_candle_bootstrap` jobs, writing
+  raw, bronze, silver, coverage, and optional snapshot refs with raw
+  request/response provenance while recording the documented recent-window
+  cap; `ISSUE-R106-029` records a P2 direct worker-store import-order risk
+  found during optional smoke scripting while the CLI worker path still works.
+  Full historical candle backfill, funding/trade/BBO/L2 venue archive
   collection, independent audits, and authoritative full-suite proof remain
   follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning

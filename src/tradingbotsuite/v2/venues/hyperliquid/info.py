@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, ConfigDict
 
+from tradingbotsuite.v2.config.time import ensure_utc
 from tradingbotsuite.v2.venues.contracts import (
     VenueAdapterCapability,
     VenueRawRequest,
@@ -19,6 +21,7 @@ from tradingbotsuite.v2.venues.contracts import (
 
 HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID = "hyperliquid_public_info_v1"
 HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE = "info/metaAndAssetCtxs"
+HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE = "info/candleSnapshot"
 
 
 class HyperliquidInfoFetchResult(BaseModel):
@@ -39,6 +42,7 @@ def hyperliquid_public_info_capability() -> VenueAdapterCapability:
         venue="hyperliquid",
         market_types=("perp",),
         access_mode="public_unsigned",
+        supports_bars=True,
         supports_universe_metadata=True,
         rate_limit_policy="hyperliquid_public_info_limits_apply",
         default_primary_venue=True,
@@ -77,16 +81,7 @@ class HyperliquidInfoClient:
                 "type": "metaAndAssetCtxs",
             },
         )
-        client_kwargs: dict[str, Any] = {"timeout": self.timeout}
-        if self.transport is not None:
-            client_kwargs["transport"] = self.transport
-        with httpx.Client(**client_kwargs) as client:
-            response = client.post(
-                self.base_url,
-                json={"type": "metaAndAssetCtxs"},
-            )
-        response.raise_for_status()
-        payload = response.json()
+        response, payload = self._post_info({"type": "metaAndAssetCtxs"})
         raw_response = VenueRawResponse.build(
             request=request,
             payload=payload,
@@ -101,6 +96,70 @@ class HyperliquidInfoClient:
             payload=payload,
         )
 
+    def fetch_candle_snapshot(
+        self,
+        *,
+        coin: str,
+        interval: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> HyperliquidInfoFetchResult:
+        normalized_coin = coin.strip()
+        normalized_interval = interval.strip()
+        if not normalized_coin:
+            raise ValueError("candleSnapshot coin is required")
+        if not normalized_interval:
+            raise ValueError("candleSnapshot interval is required")
+        start_ms = _epoch_millis(start_time)
+        end_ms = _epoch_millis(end_time)
+        if end_ms <= start_ms:
+            raise ValueError("candleSnapshot end_time must be after start_time")
+        capability = hyperliquid_public_info_capability()
+        request_body = {
+            "type": "candleSnapshot",
+            "req": {
+                "coin": normalized_coin,
+                "interval": normalized_interval,
+                "startTime": start_ms,
+                "endTime": end_ms,
+            },
+        }
+        request = VenueRawRequest.build(
+            adapter_id=capability.adapter_id,
+            venue=capability.venue,
+            source=HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE,
+            params={
+                "http_method": "POST",
+                "base_url": self.base_url,
+                "type": "candleSnapshot",
+                "req": request_body["req"],
+                "documented_limit": "most_recent_5000_candles",
+            },
+        )
+        response, payload = self._post_info(request_body)
+        raw_response = VenueRawResponse.build(
+            request=request,
+            payload=payload,
+            row_count=_payload_row_count(payload),
+            rate_limit_metadata=_rate_limit_metadata(response),
+            evidence_scope="public_unsigned_recent_candle_snapshot",
+        )
+        return HyperliquidInfoFetchResult(
+            capability=capability,
+            raw_request=request,
+            raw_response=raw_response,
+            payload=payload,
+        )
+
+    def _post_info(self, request_body: dict[str, Any]) -> tuple[httpx.Response, Any]:
+        client_kwargs: dict[str, Any] = {"timeout": self.timeout}
+        if self.transport is not None:
+            client_kwargs["transport"] = self.transport
+        with httpx.Client(**client_kwargs) as client:
+            response = client.post(self.base_url, json=request_body)
+        response.raise_for_status()
+        return response, response.json()
+
 
 def _payload_instrument_count(payload: Any) -> int:
     if isinstance(payload, list) and payload and isinstance(payload[0], dict):
@@ -113,6 +172,14 @@ def _payload_instrument_count(payload: Any) -> int:
         universe = payload.get("universe", [])
         return len(universe) if isinstance(universe, list) else 0
     return 0
+
+
+def _payload_row_count(payload: Any) -> int:
+    return len(payload) if isinstance(payload, list) else 0
+
+
+def _epoch_millis(value: datetime) -> int:
+    return int(ensure_utc(value).timestamp() * 1000)
 
 
 def _rate_limit_metadata(response: httpx.Response) -> dict[str, Any]:

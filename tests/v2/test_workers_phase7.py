@@ -294,6 +294,147 @@ def test_recent_candle_bootstrap_worker_writes_archive_layers_and_coverage(tmp_p
     assert ArchiveManifestStore(layout).load_archive_snapshots()
 
 
+def test_recent_candle_bootstrap_worker_public_api_writes_archive_layers(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-public-candles"
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = start + timedelta(minutes=5)
+    expected_body = {
+        "type": "candleSnapshot",
+        "req": {
+            "coin": "BTC",
+            "interval": "1m",
+            "startTime": int(start.timestamp() * 1000),
+            "endTime": int(end.timestamp() * 1000),
+        },
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert json.loads(request.content.decode("utf-8")) == expected_body
+        return httpx.Response(
+            200,
+            json=[_hyperliquid_candle_row(index) for index in range(5)],
+            headers={"x-ratelimit-remaining": "9"},
+        )
+
+    class FakeHyperliquidInfoClient:
+        def __init__(self, base_url: str, timeout: float) -> None:
+            self._client = HyperliquidInfoClient(
+                base_url=base_url,
+                timeout=timeout,
+                transport=httpx.MockTransport(handler),
+            )
+
+        def fetch_candle_snapshot(self, **kwargs):
+            return self._client.fetch_candle_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidInfoClient",
+        FakeHyperliquidInfoClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-public-candles",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "public_info_url": "https://example.test/info",
+            "public_info_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-public-candles",
+            "start_ts": start.isoformat(),
+            "end_ts": end.isoformat(),
+            "derive_timeframes": ["5m"],
+            "create_snapshot": True,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-public-candles",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_store = ArchiveManifestStore(layout)
+    manifest_rows = manifest_store.load_file_manifest()
+    coverage_reports = CoverageManifestStore(layout).load_coverage_reports()
+    ingestion_runs = manifest_store.load_ingestion_runs()
+    silver_1m = [
+        row
+        for row in manifest_rows
+        if row.layer == ArchiveLayer.SILVER and row.datatype == "bars" and row.timeframe == "1m"
+    ][0]
+    silver_rows = pq.ParquetFile(layout.resolve(silver_1m.path)).read().to_pylist()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=public_api_candle_archive_write" in loaded.output_refs
+    assert "source_mode=public_api" in loaded.output_refs
+    assert "api_row_count=5" in loaded.output_refs
+    assert "venue_adapter_id=hyperliquid_public_info_v1" in loaded.output_refs
+    assert "source_endpoint_or_subscription=info/candleSnapshot" in loaded.output_refs
+    assert "coin=BTC" in loaded.output_refs
+    assert "api_documented_limit=most_recent_5000_candles" in loaded.output_refs
+    assert any(ref.startswith("raw_request_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_response_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_payload_sha256=") for ref in loaded.output_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "candles"),
+        (ArchiveLayer.BRONZE, "candles"),
+        (ArchiveLayer.SILVER, "bars"),
+    }
+    assert {row["instrument_id"] for row in silver_rows} == {INSTRUMENT}
+    assert {row.timeframe for row in manifest_rows if row.layer == ArchiveLayer.SILVER} == {"1m", "5m"}
+    assert {report.timeframe for report in coverage_reports} == {"1m", "5m"}
+    assert all(report.coverage_ratio == 1.0 for report in coverage_reports)
+    assert ingestion_runs[0].adapter_id == "hyperliquid_public_info_v1"
+    assert ingestion_runs[0].source_endpoint_or_subscription == "info/candleSnapshot"
+    assert manifest_store.load_archive_snapshots()
+
+
+def test_recent_candle_bootstrap_worker_rejects_public_api_with_local_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-public-candle-reject"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-public-candle-records-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "records": [_candle_row(0)],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-public-candle-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=public_api cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
 def test_funding_backfill_worker_writes_archive_layers(tmp_path) -> None:
     archive_root = tmp_path / "archive-funding"
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
@@ -1556,6 +1697,23 @@ def _candle_row(index: int) -> dict[str, object]:
         "close": 100 + index,
         "volume": 10 + index,
         "trade_count": index + 1,
+    }
+
+
+def _hyperliquid_candle_row(index: int) -> dict[str, object]:
+    ts = START + timedelta(minutes=index)
+    open_price = 100 + index
+    return {
+        "t": int(ts.timestamp() * 1000),
+        "T": int((ts + timedelta(minutes=1)).timestamp() * 1000),
+        "s": "BTC",
+        "i": "1m",
+        "o": str(open_price),
+        "h": str(open_price + 2),
+        "l": str(open_price - 2),
+        "c": str(open_price + 1),
+        "v": str(10 + index),
+        "n": index + 1,
     }
 
 

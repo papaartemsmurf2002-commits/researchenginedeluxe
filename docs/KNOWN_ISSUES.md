@@ -23,8 +23,57 @@ Stage advancement stop rule:
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
 | P1 | 0 | 0 | 25 | 0 |
-| P2 | 1 | 0 | 6 | 0 |
+| P2 | 2 | 0 | 6 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
+
+## ISSUE-R106-029: Direct v2 worker-store import can hit data-quality circular import
+
+Severity: P2
+Stage discovered: WPR106-433 - V2 public Hyperliquid candle collector
+Owner: Codex Manager Development Agent
+Status: open
+Paths affected: `src/tradingbotsuite/v2/data_quality/__init__.py`, `src/tradingbotsuite/v2/workers/job_store.py`
+
+### Problem
+
+A fresh interpreter import of `WorkerJobStore` can fail when
+`tradingbotsuite.v2.workers.job_store` imports archive helpers, archive rebuild
+loads `tradingbotsuite.v2.data_quality.coverage`, and the `data_quality`
+package eagerly imports `data_quality.jobs`, which imports `WorkerJobStore`
+again while the module is only partially initialized.
+
+The CLI worker entrypoint and the existing test import order still work, so this
+is not a current stage stopper. It is a programmatic import-order risk for
+standalone worker scripts and optional smoke utilities.
+
+### Evidence
+
+During WPR106-433 optional smoke work on 2026-06-21, this failed:
+
+```powershell
+$env:PYTHONPATH='src'
+python -c "from tradingbotsuite.v2.workers.job_store import WorkerJobStore; print('worker-store-direct-import-ok')"
+```
+
+The command raised `ImportError: cannot import name 'WorkerJobStore' from
+partially initialized module 'tradingbotsuite.v2.workers.job_store'`. The normal
+CLI path still passed:
+
+```powershell
+$env:PYTHONPATH='src'
+python -m tradingbotsuite.v2.cli.main worker --help
+```
+
+An optional public-candle smoke also succeeded after importing the archive
+package before worker modules.
+
+### Required resolution
+
+Use a scoped test-infrastructure or package-boundary packet to remove the eager
+`run_data_quality_job` import from `tradingbotsuite.v2.data_quality.__init__`
+or make it lazy, then add a fresh-interpreter regression for direct
+`WorkerJobStore` import. Preserve existing package exports for callers that use
+`from tradingbotsuite.v2.data_quality import run_data_quality_job`.
 
 ## ISSUE-R106-026: Windows socket exhaustion blocks pytest-asyncio contract setup
 

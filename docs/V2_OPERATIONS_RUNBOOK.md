@@ -78,6 +78,37 @@ IDs. They prove public universe metadata intake only; they do not prove market
 data coverage, accepted backtest evidence, autonomous-ready status, or any
 paper/live/order/sizing/runtime/promotion capability.
 
+Recent public candle snapshot intake uses the durable worker path and must
+declare `source=public_api`:
+
+```json
+{
+  "archive_root": "data/archive",
+  "source": "public_api",
+  "public_info_url": "https://api.hyperliquid.xyz/info",
+  "public_info_timeout": 20,
+  "venue": "hyperliquid",
+  "instrument_id": "hyperliquid:perp:BTC",
+  "coin": "BTC",
+  "timeframe": "1m",
+  "date": "2026-06-21",
+  "run_id": "run-public-candles-btc-20260621",
+  "start_ts": "2026-06-21T00:00:00+00:00",
+  "end_ts": "2026-06-21T01:00:00+00:00",
+  "derive_timeframes": ["5m", "15m", "1h"],
+  "create_snapshot": true
+}
+```
+
+This mode calls only unsigned `/info` `candleSnapshot`, writes the returned rows
+to raw archive first, and then rebuilds bronze candles, silver bars, coverage,
+and optional archive snapshots. Worker refs include raw request/response IDs,
+raw payload hash, venue adapter ID, `source_endpoint_or_subscription`,
+`api_row_count`, `coin`, `timeframe`, and
+`api_documented_limit=most_recent_5000_candles`. This endpoint is recent-window
+limited and is not a substitute for full 2024+ six-month historical archive
+coverage.
+
 Use `--forbid-asgi` in service integration tests to prove worker code is not
 being executed inside the operator process.
 
