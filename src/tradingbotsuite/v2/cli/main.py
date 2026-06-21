@@ -37,12 +37,14 @@ from tradingbotsuite.v2.autonomy import (
     AutopilotCycleRunnerError,
     AutopilotFixtureCycleConfig,
     AutopilotPublicCandleCycleConfig,
+    StrategyQueueScanConfig,
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
     run_autopilot_cycle_plan,
     AutonomyDryRunConfig,
     AutonomyLoopError,
     run_autonomy_dry_run,
+    scan_strategy_queue,
     write_autopilot_fixture_cycle_spec,
     write_autopilot_public_candle_cycle_spec,
 )
@@ -431,6 +433,14 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_public_cycle.add_argument("--max-public-info-pages", type=int, default=50)
     autopilot_public_cycle.add_argument("--max-candles-per-public-page", type=int, default=5_000)
     autopilot_public_cycle.add_argument("--coverage-min", type=float, default=DEFAULT_COVERAGE_MIN)
+    autopilot_strategy_queue = autopilot_subparsers.add_parser(
+        "strategy-queue-scan",
+        help="scan local declarative strategy specs and write an input-hygiene manifest",
+    )
+    autopilot_strategy_queue.add_argument("--strategy-root", required=True)
+    autopilot_strategy_queue.add_argument("--output-root", required=True)
+    autopilot_strategy_queue.add_argument("--run-id", default="strategy-queue-scan")
+    autopilot_strategy_queue.add_argument("--max-files", type=int, default=500)
     autopilot_cycle = autopilot_subparsers.add_parser(
         "research-cycle",
         help="plan or enqueue a bounded durable research cycle without running jobs",
@@ -1216,6 +1226,32 @@ def _handle_autopilot(args: argparse.Namespace, parser: argparse.ArgumentParser)
             print(f"expected_audit_blocker={blocker}")
         print("source_mode=public_api")
         print("evidence_mode=sandbox_diagnostic")
+        print("accepted_research_ready=false")
+        print("promotion_ready=false")
+        return 0
+    if args.autopilot_command == "strategy-queue-scan":
+        try:
+            result = scan_strategy_queue(
+                StrategyQueueScanConfig(
+                    strategy_root=args.strategy_root,
+                    output_root=args.output_root,
+                    run_id=args.run_id,
+                    max_files=args.max_files,
+                )
+            )
+        except (ValueError, ValidationError) as exc:
+            print(f"autopilot_strategy_queue_scan_rejected={exc}")
+            return 1
+        print(f"strategy_queue_manifest={result.manifest_path}")
+        print(f"manifest_id={result.manifest_id}")
+        print(f"run_id={result.run_id}")
+        print(f"item_count={result.item_count}")
+        print(f"accepted_count={result.accepted_count}")
+        print(f"rejected_count={result.rejected_count}")
+        print(f"blocker_count={len(result.blocker_reasons)}")
+        for blocker in result.blocker_reasons:
+            print(f"blocker={blocker}")
+        print(f"evidence_mode={result.evidence_mode}")
         print("accepted_research_ready=false")
         print("promotion_ready=false")
         return 0

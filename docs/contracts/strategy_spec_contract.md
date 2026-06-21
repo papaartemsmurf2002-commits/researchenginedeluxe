@@ -1,7 +1,7 @@
 # V2 Strategy Spec Contract
 
 Status: v2 Phase 10 declarative spec contract
-Audit ID: `V2-AUD-STRAT-001`
+Audit IDs: `V2-AUD-STRAT-001`, `V2-AUD-STRAT-006`
 
 ## Purpose
 
@@ -48,6 +48,14 @@ Declarative strategy specs are the first-class v2 strategy interface.
 - Built-in examples must validate for at least cross-sectional momentum, mean
   reversion, and funding/carry; Phase 10 also includes volatility breakout and
   liquidity-filtered momentum examples.
+- Strategy queue scans may discover only local JSON/YAML declarative specs,
+  must validate every supported file through this contract's validator, and
+  must write rejected-file blockers rather than executing, importing, or
+  silently skipping arbitrary strategy files.
+- Strategy queue scans may write normalized copies of valid specs under the
+  requested output root for downstream bounded jobs. Those normalized copies
+  do not certify strategy performance, backtest validity, validation status,
+  or autonomous readiness.
 
 ## Forbidden
 
@@ -59,3 +67,7 @@ Declarative strategy specs are the first-class v2 strategy interface.
   access, or hidden side-effect fields inside declarative specs.
 - Unknown schema keys or unsupported indicator/expression names.
 - Missing cost or slippage declarations.
+- Queue scanners executing Python strategy files, importing strategy modules,
+  reading secret-like filenames, or treating a valid spec as accepted
+  performance evidence before the archive, backtest, validation, ledger, Lead
+  Book, and audit steps pass.

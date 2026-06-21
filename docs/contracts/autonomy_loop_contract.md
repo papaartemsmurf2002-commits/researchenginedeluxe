@@ -1,7 +1,7 @@
 # Autonomy Loop Contract
 
 Status: v2 dry-run and bounded autopilot contract
-Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`, `V2-AUD-AUTONOMY-009`
+Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`, `V2-AUD-AUTONOMY-009`, `V2-AUD-AUTONOMY-010`
 
 The autonomy loop is a research-only orchestration surface for proving that v2
 components can be wired together without weakening evidence rules. The dry-run
@@ -18,6 +18,14 @@ an already enqueued plan. It may run planned durable jobs in declared order,
 skip already successful planned jobs, and run the generated final `audit_check`
 job. It is not a daemon, continuous scheduler, venue fetch bypass, or readiness
 certification surface.
+
+The strategy queue scanner is an input-hygiene surface for the autonomous loop.
+It may scan a bounded local directory for declarative JSON/YAML strategy specs,
+validate each spec through the v2 strategy-spec validator, copy valid specs
+into normalized JSON under the requested output root, and write a queue
+manifest with accepted and rejected items. It must not enqueue jobs, run
+backtests, collect venue data, certify coverage, or mark the repo
+autonomous-ready.
 
 ## Schemas
 
@@ -39,6 +47,10 @@ certification surface.
 - `AutopilotFixtureCycleSpecResult`
 - `AutopilotPublicCandleCycleConfig`
 - `AutopilotPublicCandleCycleSpecResult`
+- `StrategyQueueScanConfig`
+- `StrategyQueueItem`
+- `StrategyQueueManifest`
+- `StrategyQueueScanResult`
 
 ## Required Loop
 
@@ -197,6 +209,10 @@ operation and independent completion audit evidence exist.
   sandbox-diagnostic operability evidence only and are never accepted research
   evidence, autonomous-ready proof, candidate-pack evidence, or promotion
   evidence by themselves.
+- Strategy queue scan manifests are input-hygiene and blocker evidence only.
+  They are never accepted research evidence, backtest proof, validation proof,
+  autonomous-ready proof, candidate-pack evidence, or promotion evidence by
+  themselves.
 
 ## Forbidden
 
@@ -217,6 +233,9 @@ operation and independent completion audit evidence exist.
 - Treating the executable fixture cycle as real Hyperliquid archive operation,
   accepted strategy evidence, autonomous-ready certification, or a replacement
   for independent completion audit.
+- Treating a strategy queue scan manifest as job execution evidence, backtest
+  evidence, validation evidence, accepted research evidence, autonomous-ready
+  certification, or a replacement for ledger/Lead Book blocker reports.
 
 ## Acceptance
 
@@ -230,6 +249,12 @@ only when it can be planned, enqueued, executed through durable workers, append
 one sandbox ledger row, upsert one non-promotable Lead Book row, and write the
 final generated audit report with explicit missing-real-evidence blockers. It
 is never accepted as autonomous-ready or strategy performance evidence.
+
+A strategy queue scan is accepted as input-hygiene evidence only when it writes
+`strategy_queue_manifest.json` under the requested output root, validates local
+declarative specs through the strategy-spec validator, records rejected items
+with blockers, and preserves the full research-only invariant. It is never
+accepted as job execution, strategy performance, or readiness evidence.
 
 ## Public API Diagnostic Cycle Spec
 

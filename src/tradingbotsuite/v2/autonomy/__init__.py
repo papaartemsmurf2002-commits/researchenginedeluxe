@@ -49,6 +49,13 @@ from tradingbotsuite.v2.autonomy.schemas import (
     AutonomyStepResult,
     AutonomyStepStatus,
 )
+from tradingbotsuite.v2.autonomy.strategy_queue import (
+    StrategyQueueItem,
+    StrategyQueueManifest,
+    StrategyQueueScanConfig,
+    StrategyQueueScanResult,
+    scan_strategy_queue,
+)
 
 __all__ = [
     "AutopilotCycleExecutionManifest",
@@ -78,11 +85,16 @@ __all__ = [
     "AutonomyLoopStatus",
     "AutonomyStepResult",
     "AutonomyStepStatus",
+    "StrategyQueueItem",
+    "StrategyQueueManifest",
+    "StrategyQueueScanConfig",
+    "StrategyQueueScanResult",
     "load_autopilot_cycle_plan",
     "load_autopilot_cycle_spec",
     "plan_autopilot_research_cycle",
     "run_autopilot_cycle_plan",
     "run_autonomy_dry_run",
+    "scan_strategy_queue",
     "write_autopilot_fixture_cycle_spec",
     "write_autopilot_public_candle_cycle_spec",
 ]

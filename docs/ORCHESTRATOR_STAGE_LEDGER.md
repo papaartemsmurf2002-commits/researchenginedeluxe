@@ -410,6 +410,15 @@ accepted historical coverage proof, missing independent completion audit, and
 missing authoritative full-suite validation. No accepted evidence,
 autonomous-ready status, candidate-ready status, paper/live/order/sizing/
 runtime, or promotion behavior is added.
+Current WPR106-457 v2 strategy queue-scan update: WPR106-457 adds
+`redx autopilot strategy-queue-scan`, which scans a bounded local directory for
+JSON/YAML declarative strategy specs, validates them through the existing
+strategy-spec validator, writes normalized accepted specs under the requested
+output root, and records invalid, unsupported, or secret-like files as blockers
+in `strategy_queue_manifest.json`. The manifest is input hygiene only and does
+not enqueue jobs, run backtests, collect data, certify validation, create
+accepted research evidence, or add autonomous-ready, candidate-ready,
+paper/live/order/sizing/runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

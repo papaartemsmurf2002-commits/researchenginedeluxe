@@ -174,6 +174,12 @@ This is the first file to read after `AGENTS.md`.
   only; it does not run network calls, enqueue jobs, certify historical
   coverage, or claim readiness, and the generated Lead Book step carries
   public-current-universe/recent-window/coverage/audit/validation blockers.
+  WPR106-457 adds `redx autopilot strategy-queue-scan`, a bounded local
+  declarative-spec scanner that validates JSON/YAML strategy specs, writes
+  normalized accepted copies, and records invalid/unsupported/secret-like
+  blockers in a queue manifest. The manifest is input hygiene only and is not
+  job execution, strategy performance, accepted research evidence, or
+  autonomous-ready proof.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
