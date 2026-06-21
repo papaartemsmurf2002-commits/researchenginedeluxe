@@ -23,6 +23,20 @@ concerns, and adds fresh `ISSUE-R106-026` validation-environment evidence.
 The packet does not change source behavior, generated research evidence,
 candidate packs, paper/live/order/sizing/runtime behavior, promotion status, or
 the current stage gate.
+Current WPR106-418/WPR106-419 v2 baseline stabilization update: WPR106-418
+classifies and commits the v2 foundation baseline at
+`9bea1b87025fb8b17df54362101b6d3ffb0213d6` after WPR106-419 resolves two P1
+boundary findings found during independent baseline review. Official-file
+backfill now requires a trusted source root and rejects secret/local-state or
+traversal sources before archive writes; signal rows/frames and vectorized
+backtest trades/positions now carry the full false canonical boundary
+invariant. Validation evidence includes Python 3.11 compile, focused security
+hygiene, focused v2 P1 regressions, full v2 tests, default-Python contracts,
+and cached diff hygiene. The packet does not claim autonomous-ready,
+candidate-ready, paper/live, order/sizing/runtime, or promotion-ready status;
+Python 3.11 pytest setup, full-suite authoritative validation, independent
+audits, operational archive proof, `ISSUE-R106-026`, and `ISSUE-R106-020`
+remain follow-up work.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`
@@ -6978,6 +6992,8 @@ WPR105-107 implementation note:
 
 | Packet | Owner | Status | Paths | Exit evidence |
 | --- | --- | --- | --- | --- |
+| WPR106-419-v2-boundary-p1-fixes | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-419-v2-boundary-p1-fixes.md`, `docs/KNOWN_ISSUES.md`, `docs/audit/V2_AUDIT_INDEX.md`, `src/tradingbotsuite/v2/archive/microstructure.py`, `src/tradingbotsuite/v2/collectors/jobs.py`, `src/tradingbotsuite/v2/strategy_specs/schemas.py`, `src/tradingbotsuite/v2/backtest_engine/engine.py`, `tests/v2/test_microstructure_collection_phase17.py`, `tests/v2/test_strategy_specs_phase10.py`, `tests/v2/test_backtest_engine_phase11.py` | Resolves `ISSUE-R106-027` and `ISSUE-R106-028`: official-file backfill requires a trusted source root and rejects secret/local-state/traversal sources before archive writes; signal rows/frames and vectorized trades/positions carry the full canonical false boundary invariant. Validation passed with 28 focused tests, 173 v2 tests, Python 3.11 compile, 462 default-Python contracts, and cached diff hygiene. No live/runtime/order/sizing/promotion/candidate-pack path was touched. |
+| WPR106-418-v2-foundation-baseline-stabilization | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-418-v2-foundation-baseline-stabilization.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, v2 foundation paths | Classifies and commits the v2 foundation baseline at `9bea1b87025fb8b17df54362101b6d3ffb0213d6` after WPR106-419 fixed two P1 boundary findings. Validation evidence includes Python 3.11 compile, focused security hygiene, focused P1 regressions, full v2 tests, default-Python contracts, and cached diff hygiene. Python 3.11 pytest setup and final full-suite authoritative validation remain follow-up work; no autonomous-ready or paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-416-v2-read-only-visibility-ui | Codex Research Agent | closed | `docs/contracts/ui_visibility_contract.md`, `docs/V2_FUTURE_UI_DEFERRAL.md`, `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/v2/ui/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_ui_visibility_phase22.py`, `tests/v2/test_contract_docs.py`, `docs/work_packets/WPR106-416-v2-read-only-visibility-ui.md` | Implements Phase 22 as a read-only static visibility UI from a supplied `V2VisibilitySnapshot`, with escaped HTML rendering and a root-contained `redx ui render` command. Validation passed with 13 focused UI tests, 169 v2 tests, v2/full compileall, 462 contract tests, diff hygiene, and Playwright local HTTP smoke verifying title/sections with zero forbidden interactive markup. No legacy GUI path, job-running UI process, generated research evidence, candidate pack, paper/live artifact, order/sizing/runtime behavior, live-config write, or promotion claim exists. |
 | WPR106-415-v2-control-doc-sync-and-completion-audit | Codex Research Agent | closed | `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/work_packets/WPR106-415-v2-control-doc-sync-and-completion-audit.md` | Syncs top-level control docs after WPR106-412 through WPR106-414 so the Active Index and stage ledger reflect the current v2 roadmap status. Validation passed with diff hygiene, full package compileall, and 462 contract tests. No source, tests, generated evidence, candidate pack, paper/live artifact, order/sizing/runtime behavior, live-config write, or promotion claim exists. |
 | WPR106-414-v2-roadmap-milestone-status-closeout | Codex Research Agent | closed | `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/work_packets/WPR106-414-v2-roadmap-milestone-status-closeout.md` | Records v2 roadmap implementation status after Phase 21 and the then-current Phase 22 deferral: Phases 0 through 21 self-checked, M0 through M5 mapped to packet evidence, and acceptance-test coverage listed. The Phase 22 deferral status is superseded by WPR106-416. Validation passed with diff hygiene, full package compileall, and 462 contract tests; no source, generated evidence, candidate pack, paper/live artifact, order/sizing/runtime behavior, live-config write, or promotion claim exists. |

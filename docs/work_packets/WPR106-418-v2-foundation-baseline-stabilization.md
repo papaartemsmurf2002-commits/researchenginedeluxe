@@ -1,6 +1,6 @@
 # WPR106-418 V2 Foundation Baseline Stabilization
 
-Status: planned
+Status: closed
 Owner: Codex Manager Development Agent
 Created: 2026-06-21
 
@@ -158,4 +158,66 @@ the next scoped packet to repair validation environment pinning.
 
 ## Completion Notes
 
-Pending.
+Closed on 2026-06-21.
+
+Baseline commit:
+
+- `9bea1b87025fb8b17df54362101b6d3ffb0213d6`
+
+Classification:
+
+- Modified top-level control docs, v2 source docs, v2 package code, and v2
+  tests were classified as intentional WPR106-388 through WPR106-417 v2
+  foundation work plus WPR106-418/WPR106-419 stabilization evidence.
+- No generated research evidence, credential files, local SQLite operator DBs,
+  private caches, legacy GUI paths, live/runtime/order/sizing/promotion paths,
+  `src/tradingbot/**`, or candidate-pack truth-layer paths were staged.
+- The staged file set contained docs, `src/tradingbotsuite/v2/**`, and
+  `tests/v2/**`.
+
+Decisions made:
+
+- Baseline commit was delayed until independent boundary review completed.
+- Two P1 findings were fixed before baseline commit rather than merely logged:
+  - `ISSUE-R106-027`: official S3 backfill accepted arbitrary local source
+    files;
+  - `ISSUE-R106-028`: signal-bearing v2 artifacts omitted the full boundary
+    invariant.
+- Fake provider-shaped secret fixtures were replaced with neutral redaction
+  fixtures before push so repository history does not resemble real
+  credentials.
+- Python 3.11 compile evidence is authoritative for syntax, but Python 3.11
+  test evidence is still blocked until the 3.11 environment has pytest/dev
+  dependencies installed.
+
+Validation:
+
+```powershell
+py -3.11 -m compileall -q src\tradingbotsuite
+$env:PYTHONPATH='src'; py -3.11 -m pytest tests\v2 -q
+$env:PYTHONPATH='src'; python -m pytest tests\v2\test_security_hygiene_phase21.py -q
+$env:PYTHONPATH='src'; python -m pytest tests\v2\test_microstructure_collection_phase17.py tests\v2\test_strategy_specs_phase10.py tests\v2\test_backtest_engine_phase11.py -q
+$env:PYTHONPATH='src'; python -m pytest tests\v2 -q
+$env:PYTHONPATH='src'; python -m pytest tests\contracts -q
+git diff --cached --check
+```
+
+Result:
+
+- Python 3.11 compile passed.
+- Python 3.11 pytest command could not run because the local Python 3.11
+  interpreter has no `pytest` module installed.
+- Focused security hygiene test passed: 14 passed.
+- Focused WPR106-419 tests passed: 28 passed.
+- Full v2 tests passed after P1 fixes and whitespace cleanup: 173 passed.
+- Contract tests passed in the default local Python environment: 462 passed.
+- Cached diff hygiene passed after mechanical whitespace cleanup.
+
+Open blockers:
+
+- `ISSUE-R106-026` remains open as a P2 local Windows/async validation
+  environment risk.
+- `ISSUE-R106-020` remains open as P2 strategy/exit semantics debt and as a
+  pre-autonomy blocker under the execution brief.
+- Final autonomous-ready status is not claimed; this packet only stabilizes the
+  v2 foundation baseline.

@@ -17,6 +17,13 @@ This is the first file to read after `AGENTS.md`.
   a legacy GUI rewrite or job-running UI process. WPR106-417 records the
   follow-up completion-audit issues, holes, validation limitations, and
   concerns; it does not change the research-only boundary or stage-gate status.
+  WPR106-418 stabilizes the v2 foundation baseline at
+  `9bea1b87025fb8b17df54362101b6d3ffb0213d6` after WPR106-419 closes two P1
+  boundary findings in official-file source handling and signal-bearing
+  artifact invariants. The foundation is committed but is not autonomous-ready:
+  Python 3.11 pytest environment setup, full-suite authoritative validation,
+  independent audits, real data-operation proof, `ISSUE-R106-026`, and
+  `ISSUE-R106-020` remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
