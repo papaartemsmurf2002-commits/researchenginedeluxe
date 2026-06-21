@@ -27,11 +27,15 @@ execution behavior to v2 research modules.
   snapshots.
 - The Hyperliquid public-info adapter may call only the unsigned `/info`
   `metaAndAssetCtxs` endpoint for universe metadata and the unsigned `/info`
-  `candleSnapshot` endpoint for recent candle snapshots. It must preserve
-  `public_unsigned` access mode plus raw request/response provenance.
+  `candleSnapshot` endpoint for recent candle snapshots, plus the unsigned
+  `/info` `fundingHistory` endpoint for historical funding rates. It must
+  preserve `public_unsigned` access mode plus raw request/response provenance.
 - Public candle snapshot provenance must record coin, interval, start/end epoch
   milliseconds, raw payload hash, row count, rate-limit metadata when present,
   and the documented recent-window/5000-candle limitation.
+- Public funding history provenance must record coin, start/end epoch
+  milliseconds, raw payload hash, row count, rate-limit metadata when present,
+  and the documented time-range pagination limitation.
 - Cross-venue rows preserve venue provenance and must not dilute the
   Hyperliquid-first default.
 - Venue capabilities must fail closed if they declare secret access, signed
@@ -52,7 +56,7 @@ execution behavior to v2 research modules.
 - Order, account, leverage, margin, or position mutation.
 - Real CCXT or venue network downloads in the Phase 19 fixture adapter path.
 - Extending the Hyperliquid public-info adapter beyond unsigned universe
-  metadata and recent candle snapshots without a new scoped packet and boundary
-  audit.
+  metadata, recent candle snapshots, and historical funding rates without a new
+  scoped packet and boundary audit.
 - Treating cross-venue fixture rows as live execution proof, paper/live signal,
   sizing instruction, candidate-pack eligibility, or promotion evidence.

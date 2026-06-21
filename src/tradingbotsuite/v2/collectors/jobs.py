@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -74,6 +74,7 @@ _UNSAFE_RECORDS_FILE_SUFFIXES = frozenset(
         ".zip",
     }
 )
+_PUBLIC_INFO_TIME_RANGE_PAGE_LIMIT = 500
 
 
 class CollectorJobStatus(str, Enum):
@@ -410,6 +411,9 @@ def _run_funding_backfill_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    source_mode = _funding_source_mode(spec)
+    if source_mode == "public_api":
+        return _run_public_funding_backfill_job(job=job, store=store, worker_id=worker_id)
     if _has_record_source(spec):
         archive_root = _required_str(spec, "archive_root")
         instrument_id = _required_str(spec, "instrument_id")
@@ -488,6 +492,99 @@ def _run_funding_backfill_job(
         output_refs=output_refs,
         archive_manifest_refs=("archive_manifest_ref=pending_until_phase8_normalization",),
         reason="funding_backfill_diagnostic_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+    )
+
+
+def _run_public_funding_backfill_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    coin = _hyperliquid_coin_from_spec(spec, instrument_id=instrument_id)
+    client = HyperliquidInfoClient(
+        base_url=str(spec.get("public_info_url", "https://api.hyperliquid.xyz/info")),
+        timeout=float(spec.get("public_info_timeout", 20.0)),
+    )
+    fetches = _fetch_public_funding_history_pages(
+        client=client,
+        coin=coin,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        max_pages=int(spec.get("max_public_info_pages", 50)),
+    )
+    records = [
+        row
+        for fetch in fetches
+        for row in _public_funding_records(fetch.payload)
+    ]
+    if not records:
+        raise ValueError("public fundingHistory response returned no rows")
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    manifest_store = ArchiveManifestStore(layout)
+    raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
+        records=records,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype="funding",
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=fetches[0].capability.adapter_id,
+        source_endpoint_or_subscription=fetches[0].raw_request.source,
+        symbols=(instrument_id,),
+        start_ts=start_ts,
+        end_ts=end_ts,
+        instrument_id=instrument_id,
+    )
+    bronze = raw_funding_to_bronze(
+        archive_root=archive_root,
+        raw_file_id=raw_file.file_id,
+        job_id=f"{job.job_id}-bronze-funding",
+        instrument_id=instrument_id,
+    )
+    silver = bronze_funding_to_silver(
+        archive_root=archive_root,
+        bronze_file_id=bronze.output_files[0].file_id,
+        job_id=f"{job.job_id}-silver-funding",
+    )
+    archive_refs = _market_data_archive_refs(
+        raw_file_id=raw_file.file_id,
+        bronze=bronze,
+        silver=silver,
+    )
+    output_refs = (
+        "collector_mode=public_api_funding_archive_write",
+        "source_mode=public_api",
+        f"row_count={raw_file.row_count or 0}",
+        f"api_row_count={sum(fetch.raw_response.row_count for fetch in fetches)}",
+        f"api_page_count={len(fetches)}",
+        f"venue_adapter_id={fetches[0].capability.adapter_id}",
+        f"source_endpoint_or_subscription={fetches[0].raw_request.source}",
+        f"raw_request_ids={_csv(fetch.raw_request.request_id for fetch in fetches)}",
+        f"raw_response_ids={_csv(fetch.raw_response.response_id for fetch in fetches)}",
+        f"raw_payload_sha256s={_csv(fetch.raw_response.raw_payload_sha256 for fetch in fetches)}",
+        f"coin={coin}",
+        "api_documented_limit=time_range_responses_return_500_elements_or_blocks",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="funding_backfill_public_api_archive_write_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -730,6 +827,22 @@ def _recent_candle_source_mode(spec: dict[str, Any]) -> str:
     return "records"
 
 
+def _funding_source_mode(spec: dict[str, Any]) -> str:
+    source = str(spec.get("source", "")).strip()
+    has_records = _has_record_source(spec)
+    if not source:
+        return "records" if has_records else "diagnostic"
+    if source == "public_api":
+        if has_records:
+            raise ValueError("funding_backfill source=public_api cannot include records")
+        return "public_api"
+    if source not in {"records", "records_file", "inline"}:
+        raise ValueError("funding_backfill source must be public_api, records, or records_file")
+    if not has_records:
+        raise ValueError(f"funding_backfill source={source} requires records or records_file")
+    return "records"
+
+
 def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
@@ -883,6 +996,81 @@ def _public_candle_records(payload: Any) -> list[dict[str, Any]]:
     if not rows:
         raise ValueError("public candleSnapshot response returned no rows")
     return rows
+
+
+def _fetch_public_funding_history_pages(
+    *,
+    client: HyperliquidInfoClient,
+    coin: str,
+    start_ts: datetime,
+    end_ts: datetime,
+    max_pages: int,
+):
+    if max_pages <= 0:
+        raise ValueError("max_public_info_pages must be positive")
+    pages = []
+    cursor = start_ts
+    end_ms = _timestamp_millis(end_ts)
+    last_seen_ms: int | None = None
+    for _page_index in range(max_pages):
+        fetch = client.fetch_funding_history(
+            coin=coin,
+            start_time=cursor,
+            end_time=end_ts,
+        )
+        rows = _public_funding_records(fetch.payload)
+        if not rows:
+            break
+        page_max_ms = max(_funding_row_time_millis(row) for row in rows)
+        if last_seen_ms is not None and page_max_ms <= last_seen_ms:
+            raise ValueError("public fundingHistory pagination did not advance")
+        pages.append(fetch)
+        last_seen_ms = page_max_ms
+        if page_max_ms >= end_ms or len(rows) < _PUBLIC_INFO_TIME_RANGE_PAGE_LIMIT:
+            break
+        cursor = datetime.fromtimestamp((page_max_ms + 1) / 1000, tz=UTC)
+    else:
+        raise ValueError("public fundingHistory pagination exceeded max_public_info_pages")
+    if not pages:
+        raise ValueError("public fundingHistory response returned no rows")
+    return tuple(pages)
+
+
+def _public_funding_records(payload: Any) -> list[dict[str, Any]]:
+    if not isinstance(payload, list):
+        raise ValueError("public fundingHistory response must be a list")
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise ValueError(f"public fundingHistory response[{index}] must be an object")
+        rows.append(dict(item))
+    return rows
+
+
+def _funding_row_time_millis(row: dict[str, Any]) -> int:
+    value = row.get("time")
+    if value is None:
+        value = row.get("ts")
+    if value is None:
+        value = row.get("funding_time")
+    if value is None:
+        raise ValueError("public fundingHistory row is missing time")
+    return _timestamp_millis(value)
+
+
+def _timestamp_millis(value: Any) -> int:
+    if isinstance(value, datetime):
+        return int(value.timestamp() * 1000)
+    if isinstance(value, int | float):
+        numeric = float(value)
+        if numeric > 10_000_000_000:
+            return int(numeric)
+        return int(numeric * 1000)
+    if isinstance(value, str):
+        if value.isdigit():
+            return _timestamp_millis(int(value))
+        return int(_parse_datetime(value).timestamp() * 1000)
+    raise ValueError(f"unsupported timestamp value: {value!r}")
 
 
 def _hyperliquid_coin_from_spec(spec: dict[str, Any], *, instrument_id: str) -> str:

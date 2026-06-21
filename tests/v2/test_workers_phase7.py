@@ -501,6 +501,166 @@ def test_funding_backfill_worker_writes_archive_layers(tmp_path) -> None:
     assert all(row.research_only and row.observe_only and not row.promotion_ready for row in silver_rows)
 
 
+def test_funding_backfill_worker_public_api_paginates_and_writes_archive_layers(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-public-funding"
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = start + timedelta(hours=3)
+    first_start_ms = int(start.timestamp() * 1000)
+    second_start_ms = first_start_ms + 3_600_000 + 1
+    end_ms = int(end.timestamp() * 1000)
+    seen_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        seen_bodies.append(body)
+        assert request.method == "POST"
+        assert body["type"] == "fundingHistory"
+        assert body["coin"] == "BTC"
+        assert body["endTime"] == end_ms
+        if body["startTime"] == first_start_ms:
+            return httpx.Response(
+                200,
+                json=[
+                    _hyperliquid_funding_row(0, "0.0001"),
+                    _hyperliquid_funding_row(1, "-0.0002"),
+                ],
+                headers={"x-ratelimit-remaining": "8"},
+            )
+        assert body["startTime"] == second_start_ms
+        return httpx.Response(
+            200,
+            json=[_hyperliquid_funding_row(2, "0.0003")],
+            headers={"x-ratelimit-remaining": "7"},
+        )
+
+    class FakeHyperliquidInfoClient:
+        def __init__(self, base_url: str, timeout: float) -> None:
+            self._client = HyperliquidInfoClient(
+                base_url=base_url,
+                timeout=timeout,
+                transport=httpx.MockTransport(handler),
+            )
+
+        def fetch_funding_history(self, **kwargs):
+            return self._client.fetch_funding_history(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidInfoClient",
+        FakeHyperliquidInfoClient,
+    )
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs._PUBLIC_INFO_TIME_RANGE_PAGE_LIMIT",
+        2,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        job_id="JOB-public-funding",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "public_info_url": "https://example.test/info",
+            "public_info_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "run_id": "run-public-funding",
+            "start_ts": start.isoformat(),
+            "end_ts": end.isoformat(),
+            "max_public_info_pages": 3,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        worker_id="worker-public-funding",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_store = ArchiveManifestStore(layout)
+    manifest_rows = manifest_store.load_file_manifest()
+    ingestion_runs = manifest_store.load_ingestion_runs()
+    silver_file = [
+        row
+        for row in manifest_rows
+        if row.layer == ArchiveLayer.SILVER and row.datatype == "funding"
+    ][0]
+    silver_rows = [
+        SilverFundingIntervalRow.model_validate(row)
+        for row in pq.ParquetFile(layout.resolve(silver_file.path)).read().to_pylist()
+    ]
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert len(seen_bodies) == 2
+    assert seen_bodies[1]["startTime"] == second_start_ms
+    assert "collector_mode=public_api_funding_archive_write" in loaded.output_refs
+    assert "source_mode=public_api" in loaded.output_refs
+    assert "api_row_count=3" in loaded.output_refs
+    assert "api_page_count=2" in loaded.output_refs
+    assert "venue_adapter_id=hyperliquid_public_info_v1" in loaded.output_refs
+    assert "source_endpoint_or_subscription=info/fundingHistory" in loaded.output_refs
+    assert "coin=BTC" in loaded.output_refs
+    assert "api_documented_limit=time_range_responses_return_500_elements_or_blocks" in loaded.output_refs
+    assert any(ref.startswith("raw_request_ids=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_response_ids=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_payload_sha256s=") for ref in loaded.output_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "funding"),
+        (ArchiveLayer.BRONZE, "funding"),
+        (ArchiveLayer.SILVER, "funding"),
+    }
+    assert [row.funding_rate for row in silver_rows] == [0.0001, -0.0002, 0.0003]
+    assert {row.instrument_id for row in silver_rows} == {INSTRUMENT}
+    assert ingestion_runs[0].adapter_id == "hyperliquid_public_info_v1"
+    assert ingestion_runs[0].source_endpoint_or_subscription == "info/fundingHistory"
+    assert all(row.research_only and row.observe_only and not row.promotion_ready for row in silver_rows)
+
+
+def test_funding_backfill_worker_rejects_public_api_with_local_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-public-funding-reject"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        job_id="JOB-public-funding-records-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "records": [
+                {
+                    "ts": "2026-01-01T00:00:00Z",
+                    "instrument_id": INSTRUMENT,
+                    "fundingRate": "0.0001",
+                }
+            ],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.FUNDING_BACKFILL,
+        worker_id="worker-public-funding-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=public_api cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
 def test_coverage_audit_worker_writes_reports_from_silver_archive_file(tmp_path) -> None:
     archive_root = tmp_path / "archive-coverage"
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
@@ -1714,6 +1874,16 @@ def _hyperliquid_candle_row(index: int) -> dict[str, object]:
         "c": str(open_price + 1),
         "v": str(10 + index),
         "n": index + 1,
+    }
+
+
+def _hyperliquid_funding_row(index: int, funding_rate: str) -> dict[str, object]:
+    ts = START + timedelta(hours=index)
+    return {
+        "coin": "BTC",
+        "fundingRate": funding_rate,
+        "premium": "0.0",
+        "time": int(ts.timestamp() * 1000),
     }
 
 

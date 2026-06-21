@@ -109,6 +109,36 @@ raw payload hash, venue adapter ID, `source_endpoint_or_subscription`,
 limited and is not a substitute for full 2024+ six-month historical archive
 coverage.
 
+Public funding-history intake also uses the durable worker path and must
+declare `source=public_api`:
+
+```json
+{
+  "archive_root": "data/archive",
+  "source": "public_api",
+  "public_info_url": "https://api.hyperliquid.xyz/info",
+  "public_info_timeout": 20,
+  "venue": "hyperliquid",
+  "instrument_id": "hyperliquid:perp:BTC",
+  "coin": "BTC",
+  "date": "2026-06-21",
+  "run_id": "run-public-funding-btc-20260621",
+  "start_ts": "2026-01-01T00:00:00+00:00",
+  "end_ts": "2026-06-21T00:00:00+00:00",
+  "max_public_info_pages": 50
+}
+```
+
+This mode calls only unsigned `/info` `fundingHistory`, pages through
+time-range responses with an advancing timestamp cursor, writes the returned
+rows to raw archive first, and then rebuilds bronze and silver funding tables.
+Worker refs include raw request/response IDs, raw payload hashes, venue adapter
+ID, `source_endpoint_or_subscription`, `api_page_count`, `api_row_count`, and
+`api_documented_limit=time_range_responses_return_500_elements_or_blocks`.
+Public funding data is required for net perpetual-return research, but it still
+does not prove coverage, accepted backtest evidence, autonomous-ready status,
+or any paper/live/order/sizing/runtime/promotion capability by itself.
+
 Use `--forbid-asgi` in service integration tests to prove worker code is not
 being executed inside the operator process.
 

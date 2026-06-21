@@ -74,9 +74,11 @@ This is the first file to read after `AGENTS.md`.
   request/response provenance while recording the documented recent-window
   cap; `ISSUE-R106-029` records a P2 direct worker-store import-order risk
   found during optional smoke scripting while the CLI worker path still works.
-  Full historical candle backfill, funding/trade/BBO/L2 venue archive
-  collection, independent audits, and authoritative full-suite proof remain
-  follow-up work.
+  WPR106-434 adds paginated public Hyperliquid `fundingHistory` intake for
+  durable `funding_backfill` jobs, writing raw, bronze, and silver funding refs
+  with per-page request/response provenance. Full historical candle backfill,
+  trade/BBO/L2 venue archive collection, independent audits, and authoritative
+  full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

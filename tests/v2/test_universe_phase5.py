@@ -152,6 +152,67 @@ def test_hyperliquid_info_client_records_public_candle_snapshot_provenance() -> 
     assert result.raw_response.order_placement_instruction is False
 
 
+def test_hyperliquid_info_client_records_public_funding_history_provenance() -> None:
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 1, 1, 2, tzinfo=UTC)
+    expected_body = {
+        "type": "fundingHistory",
+        "coin": "BTC",
+        "startTime": int(start.timestamp() * 1000),
+        "endTime": int(end.timestamp() * 1000),
+    }
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert request.method == "POST"
+        assert json.loads(request.content.decode("utf-8")) == expected_body
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "coin": "BTC",
+                    "fundingRate": "0.0001",
+                    "premium": "0.0",
+                    "time": expected_body["startTime"],
+                },
+                {
+                    "coin": "BTC",
+                    "fundingRate": "-0.0002",
+                    "premium": "0.0",
+                    "time": expected_body["startTime"] + 3_600_000,
+                },
+            ],
+            headers={"x-ratelimit-remaining": "11"},
+        )
+
+    client = HyperliquidInfoClient(
+        base_url="https://example.test/info",
+        timeout=3.0,
+        transport=httpx.MockTransport(handler),
+    )
+    result = client.fetch_funding_history(
+        coin="BTC",
+        start_time=start,
+        end_time=end,
+    )
+
+    assert len(seen_requests) == 1
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_funding is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "info/fundingHistory"
+    assert result.raw_request.params["type"] == "fundingHistory"
+    assert result.raw_request.params["coin"] == "BTC"
+    assert result.raw_request.params["startTime"] == expected_body["startTime"]
+    assert result.raw_request.params["endTime"] == expected_body["endTime"]
+    assert result.raw_request.params["documented_limit"] == "time_range_responses_return_500_elements_or_blocks"
+    assert result.raw_response.evidence_scope == "public_unsigned_historical_funding_rates"
+    assert result.raw_response.row_count == 2
+    assert result.raw_response.rate_limit_metadata["x-ratelimit-remaining"] == "11"
+    assert result.raw_response.order_placement_instruction is False
+
+
 def test_hyperliquid_universe_public_api_source_records_fetch_provenance(tmp_path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_payload(day_sol=12_000_000))

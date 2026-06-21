@@ -22,6 +22,7 @@ from tradingbotsuite.v2.venues.contracts import (
 HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID = "hyperliquid_public_info_v1"
 HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE = "info/metaAndAssetCtxs"
 HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE = "info/candleSnapshot"
+HYPERLIQUID_FUNDING_HISTORY_SOURCE = "info/fundingHistory"
 
 
 class HyperliquidInfoFetchResult(BaseModel):
@@ -43,6 +44,7 @@ def hyperliquid_public_info_capability() -> VenueAdapterCapability:
         market_types=("perp",),
         access_mode="public_unsigned",
         supports_bars=True,
+        supports_funding=True,
         supports_universe_metadata=True,
         rate_limit_policy="hyperliquid_public_info_limits_apply",
         default_primary_venue=True,
@@ -143,6 +145,56 @@ class HyperliquidInfoClient:
             row_count=_payload_row_count(payload),
             rate_limit_metadata=_rate_limit_metadata(response),
             evidence_scope="public_unsigned_recent_candle_snapshot",
+        )
+        return HyperliquidInfoFetchResult(
+            capability=capability,
+            raw_request=request,
+            raw_response=raw_response,
+            payload=payload,
+        )
+
+    def fetch_funding_history(
+        self,
+        *,
+        coin: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> HyperliquidInfoFetchResult:
+        normalized_coin = coin.strip()
+        if not normalized_coin:
+            raise ValueError("fundingHistory coin is required")
+        start_ms = _epoch_millis(start_time)
+        end_ms = _epoch_millis(end_time)
+        if end_ms <= start_ms:
+            raise ValueError("fundingHistory end_time must be after start_time")
+        capability = hyperliquid_public_info_capability()
+        request_body = {
+            "type": "fundingHistory",
+            "coin": normalized_coin,
+            "startTime": start_ms,
+            "endTime": end_ms,
+        }
+        request = VenueRawRequest.build(
+            adapter_id=capability.adapter_id,
+            venue=capability.venue,
+            source=HYPERLIQUID_FUNDING_HISTORY_SOURCE,
+            params={
+                "http_method": "POST",
+                "base_url": self.base_url,
+                "type": "fundingHistory",
+                "coin": normalized_coin,
+                "startTime": start_ms,
+                "endTime": end_ms,
+                "documented_limit": "time_range_responses_return_500_elements_or_blocks",
+            },
+        )
+        response, payload = self._post_info(request_body)
+        raw_response = VenueRawResponse.build(
+            request=request,
+            payload=payload,
+            row_count=_payload_row_count(payload),
+            rate_limit_metadata=_rate_limit_metadata(response),
+            evidence_scope="public_unsigned_historical_funding_rates",
         )
         return HyperliquidInfoFetchResult(
             capability=capability,
