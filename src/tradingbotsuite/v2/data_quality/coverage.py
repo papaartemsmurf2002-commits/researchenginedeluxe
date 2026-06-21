@@ -203,6 +203,141 @@ def coverage_report_for_bars(
     )
 
 
+def coverage_report_for_timestamped_rows(
+    rows: Iterable[Mapping[str, Any]],
+    *,
+    venue: str,
+    instrument_id: str,
+    family: str,
+    timeframe: str,
+    start_ts: datetime,
+    end_ts: datetime,
+    ts_field: str = "ts",
+    sequence_field: str | None = "sequence",
+    coverage_min: float = DEFAULT_COVERAGE_MIN,
+    evidence_mode: EvidenceMode | str = EvidenceMode.ACCEPTED_RESEARCH,
+    force_non_evidence_reason: str | None = None,
+    source_caveats: tuple[str, ...] = (),
+) -> CoverageReport:
+    """Measure timestamped non-bar rows by nonempty expected time buckets.
+
+    This is a coverage measurement for event/context archive presence. It does
+    not prove event-stream completeness, trade volume completeness, or queue
+    realism.
+    """
+
+    start = ensure_utc(start_ts)
+    end = ensure_utc(end_ts)
+    mode = EvidenceMode(evidence_mode)
+    materialized = list(rows)
+    expected = list(iter_expected_bar_timestamps(start, end, timeframe))
+    expected_set = set(expected)
+    step = timeframe_to_timedelta(timeframe)
+    observed_buckets: list[datetime] = []
+    event_keys: list[tuple[Any, ...]] = []
+    parse_failures = 0
+    for row in materialized:
+        try:
+            ts = parse_timestamp(row[ts_field])
+        except (KeyError, TypeError, ValueError):
+            parse_failures += 1
+            continue
+        if not (start <= ts < end):
+            continue
+        bucket = _timestamp_bucket(ts, start=start, step=step)
+        if bucket in expected_set:
+            observed_buckets.append(bucket)
+        if sequence_field and sequence_field in row:
+            event_keys.append((ts, row.get(sequence_field)))
+        else:
+            event_keys.append((ts,))
+    bucket_counts = Counter(observed_buckets)
+    observed_set = set(bucket_counts) & expected_set
+    missing = sorted(expected_set - observed_set)
+    missing_days = tuple(sorted({ts.date().isoformat() for ts in missing}))
+    expected_rows = len(expected)
+    observed_rows = len(observed_set)
+    coverage_ratio = observed_rows / expected_rows if expected_rows else 0.0
+    duplicate_event_key_count = sum(count - 1 for count in Counter(event_keys).values() if count > 1)
+    blocker_reasons = _timestamped_blocker_reasons(
+        coverage_ratio=coverage_ratio,
+        coverage_min=coverage_min,
+        mode=mode,
+        duplicate_event_key_count=duplicate_event_key_count,
+        parse_failure_count=parse_failures,
+        force_non_evidence_reason=force_non_evidence_reason,
+    )
+    quality_status = (
+        QualityStatus.NON_EVIDENCE
+        if mode == EvidenceMode.SANDBOX_DIAGNOSTIC or force_non_evidence_reason
+        else QualityStatus.FAIL
+        if blocker_reasons
+        else QualityStatus.PASS
+    )
+    evidence_eligible = quality_status == QualityStatus.PASS
+    caveats = tuple(
+        dict.fromkeys(
+            (
+                *source_caveats,
+                "timestamp_bucket_coverage_not_event_completeness",
+                *((force_non_evidence_reason,) if force_non_evidence_reason else ()),
+                *(("sandbox_diagnostic_non_evidence",) if mode == EvidenceMode.SANDBOX_DIAGNOSTIC else ()),
+            )
+        )
+    )
+    identity = {
+        "venue": venue,
+        "instrument_id": instrument_id,
+        "family": family,
+        "timeframe": timeframe,
+        "start_ts": utc_isoformat(start),
+        "end_ts": utc_isoformat(end),
+        "expected_rows": expected_rows,
+        "observed_rows": observed_rows,
+        "coverage_ratio": round(coverage_ratio, 12),
+        "missing_timestamp_count": len(missing),
+        "missing_days": missing_days,
+        "duplicate_event_key_count": duplicate_event_key_count,
+        "parse_failure_count": parse_failures,
+        "evidence_mode": mode.value,
+        "coverage_min": coverage_min,
+        "force_non_evidence_reason": force_non_evidence_reason,
+        "source_caveats": caveats,
+        "ts_field": ts_field,
+        "sequence_field": sequence_field,
+    }
+    return CoverageReport(
+        coverage_report_id=canonical_json_hash(identity),
+        venue=venue,
+        instrument_id=instrument_id,
+        family=family,
+        timeframe=timeframe,
+        start_ts=start,
+        end_ts=end,
+        expected_rows=expected_rows,
+        observed_rows=observed_rows,
+        source_row_count=len(materialized),
+        coverage_ratio=coverage_ratio,
+        coverage_min=coverage_min,
+        missing_timestamp_count=len(missing),
+        missing_timestamps_sample=tuple(utc_isoformat(ts) for ts in missing[:100]),
+        missing_days=missing_days,
+        duplicate_timestamp_count=duplicate_event_key_count,
+        stale_segment_count=0,
+        zero_volume_count=0,
+        return_outlier_count=0,
+        spread_outlier_count=0,
+        funding_outlier_count=0,
+        outlier_count=0,
+        parse_failure_count=parse_failures,
+        source_caveats=caveats,
+        evidence_mode=mode,
+        quality_status=quality_status,
+        evidence_eligible=evidence_eligible,
+        blocker_reasons=blocker_reasons,
+    )
+
+
 def _blocker_reasons(
     *,
     coverage_ratio: float,
@@ -230,3 +365,32 @@ def _blocker_reasons(
     if parse_failure_count:
         reasons.append("parse_failures")
     return tuple(reasons)
+
+
+def _timestamped_blocker_reasons(
+    *,
+    coverage_ratio: float,
+    coverage_min: float,
+    mode: EvidenceMode,
+    duplicate_event_key_count: int,
+    parse_failure_count: int,
+    force_non_evidence_reason: str | None,
+) -> tuple[str, ...]:
+    if mode == EvidenceMode.SANDBOX_DIAGNOSTIC:
+        return ("sandbox_diagnostic_non_evidence",)
+    reasons: list[str] = []
+    if coverage_ratio < coverage_min:
+        reasons.append("coverage_below_minimum")
+    if duplicate_event_key_count:
+        reasons.append("duplicate_event_keys")
+    if parse_failure_count:
+        reasons.append("parse_failures")
+    if force_non_evidence_reason:
+        reasons.append(force_non_evidence_reason)
+    return tuple(reasons)
+
+
+def _timestamp_bucket(ts: datetime, *, start: datetime, step: timedelta) -> datetime:
+    elapsed = ensure_utc(ts) - start
+    bucket_index = int(elapsed.total_seconds() // step.total_seconds())
+    return start + (step * bucket_index)

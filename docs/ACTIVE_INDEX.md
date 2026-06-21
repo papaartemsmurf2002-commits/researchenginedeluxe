@@ -100,10 +100,14 @@ This is the first file to read after `AGENTS.md`.
   trusted local decompressed official `node_fills_by_block`, `node_fills`, and
   legacy `node_trades` JSON/JSONL replay into raw trade microstructure rows,
   with instrument filtering, source hash, dataset scope, quality/storage refs,
-  and coverage-certification caveats. Full historical candle coverage beyond
-  the public recent-window limit, continuous BBO/L2 capture, accepted
-  historical trade/L2/context coverage proof, independent audits, and
-  authoritative full-suite proof remain follow-up work.
+  and coverage-certification caveats. WPR106-444 adds timestamp-bucket
+  coverage audits for raw `trades`, raw `bbo`, raw `l2`, and silver
+  `asset_contexts` files, including archive-snapshot plus universe-snapshot
+  missing-file blocker evidence, while keeping raw microstructure coverage
+  non-evidence by default. Full historical candle coverage beyond the public
+  recent-window limit, continuous BBO/L2 capture, accepted continuous
+  historical trade/L2 coverage proof, independent audits, and authoritative
+  full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

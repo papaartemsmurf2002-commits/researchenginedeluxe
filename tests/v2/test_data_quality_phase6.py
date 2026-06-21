@@ -16,6 +16,7 @@ from tradingbotsuite.v2.backtest_data.coverage_gate import (
     require_coverage_for_evidence,
 )
 from tradingbotsuite.v2.data_quality.coverage import (
+    coverage_report_for_timestamped_rows,
     coverage_report_for_bars,
     expected_bar_count,
     iter_expected_bar_timestamps,
@@ -83,6 +84,66 @@ def test_coverage_below_098_fails_accepted_evidence_gate() -> None:
     assert "coverage_below_minimum" in report.blocker_reasons
     with pytest.raises(CoverageGateError, match="coverage_below_minimum"):
         require_coverage_for_evidence(report)
+
+
+def test_timestamped_event_coverage_uses_nonempty_buckets_not_event_count() -> None:
+    rows = [
+        {"ts": "2026-01-01T00:00:00Z", "sequence": 0, "price": 100.0},
+        {"ts": "2026-01-01T00:00:00Z", "sequence": 0, "price": 100.0},
+        {"ts": "2026-01-01T00:02:00Z", "sequence": 2, "price": 101.0},
+        {"sequence": 3, "price": 102.0},
+    ]
+
+    report = coverage_report_for_timestamped_rows(
+        rows,
+        venue="hyperliquid",
+        instrument_id="hyperliquid:perp:BTC",
+        family="trades",
+        timeframe="1m",
+        start_ts=START,
+        end_ts=START + timedelta(minutes=3),
+        force_non_evidence_reason="raw_microstructure_not_accepted_coverage_evidence",
+    )
+
+    assert report.expected_rows == 3
+    assert report.observed_rows == 2
+    assert report.source_row_count == 4
+    assert report.coverage_ratio == pytest.approx(2 / 3)
+    assert report.missing_timestamps_sample == ("2026-01-01T00:01:00Z",)
+    assert report.duplicate_timestamp_count == 1
+    assert report.parse_failure_count == 1
+    assert report.quality_status == QualityStatus.NON_EVIDENCE
+    assert report.evidence_eligible is False
+    assert set(report.blocker_reasons) == {
+        "coverage_below_minimum",
+        "duplicate_event_keys",
+        "parse_failures",
+        "raw_microstructure_not_accepted_coverage_evidence",
+    }
+
+
+def test_timestamped_context_coverage_can_pass_when_buckets_are_present() -> None:
+    rows = [
+        {"ts": "2026-01-01T00:00:00Z", "mark_price": 100.0},
+        {"ts": "2026-01-02T00:00:00Z", "mark_price": 101.0},
+    ]
+
+    report = coverage_report_for_timestamped_rows(
+        rows,
+        venue="hyperliquid",
+        instrument_id="hyperliquid:perp:BTC",
+        family="asset_contexts",
+        timeframe="1d",
+        start_ts=START,
+        end_ts=START + timedelta(days=2),
+    )
+
+    assert report.expected_rows == 2
+    assert report.observed_rows == 2
+    assert report.coverage_ratio == 1.0
+    assert report.quality_status == QualityStatus.PASS
+    assert report.evidence_eligible is True
+    assert report.blocker_reasons == ()
 
 
 def test_sandbox_diagnostic_low_coverage_is_labeled_non_evidence() -> None:

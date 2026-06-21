@@ -19,6 +19,7 @@ from tradingbotsuite.v2.archive import (
     SilverFundingIntervalRow,
 )
 from tradingbotsuite.v2.archive.hashing import file_sha256
+from tradingbotsuite.v2.archive.microstructure import write_microstructure_raw_capture
 from tradingbotsuite.v2.archive.parquet_writer import write_parquet_rows
 from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
 from tradingbotsuite.v2.data_quality.coverage import coverage_report_for_bars
@@ -1042,6 +1043,172 @@ def test_coverage_audit_worker_records_low_coverage_blockers_without_job_failure
     assert report.blocker_reasons == ("coverage_below_minimum",)
 
 
+def test_coverage_audit_worker_writes_timestamped_report_from_raw_trades_file(tmp_path) -> None:
+    archive_root = tmp_path / "archive-raw-trade-coverage"
+    capture = write_microstructure_raw_capture(
+        archive_root=archive_root,
+        records=[
+            {
+                "ts": "2026-01-01T00:00:00Z",
+                "instrument_id": INSTRUMENT,
+                "event_type": "trade",
+                "sequence": 0,
+                "price": 100.0,
+                "size": 1.0,
+            },
+            {
+                "ts": "2026-01-01T00:02:00Z",
+                "instrument_id": INSTRUMENT,
+                "event_type": "trade",
+                "sequence": 2,
+                "price": 101.0,
+                "size": 1.5,
+            },
+        ],
+        venue="hyperliquid",
+        datatype="trades",
+        date="2026-01-01",
+        run_id="run-raw-trade-coverage",
+        job_id="JOB-raw-trade-source",
+        adapter_id="fixture_microstructure_v1",
+        source_endpoint_or_subscription="fixture/trades",
+        instrument_id=INSTRUMENT,
+        start_ts=START,
+        end_ts=START + timedelta(minutes=3),
+        storage_budget_bytes=1_000_000,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-raw-trade-coverage-audit",
+        input_spec={
+            "archive_root": str(archive_root),
+            "file_id": capture.raw_file.file_id,
+            "family": "trades",
+            "timeframe": "1m",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:03:00+00:00",
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        worker_id="worker-raw-trade-coverage",
+    )
+    loaded = store.load_job(queued.job_id)
+    report = CoverageManifestStore(ArchiveLayout(archive_root)).load_coverage_reports()[0]
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "coverage_scope=timestamped_file" in loaded.output_refs
+    assert "coverage_method=nonempty_time_buckets" in loaded.output_refs
+    assert "source_layer=raw" in loaded.output_refs
+    assert "source_datatype=trades" in loaded.output_refs
+    assert "coverage_ratio=0.666666666667" in loaded.output_refs
+    assert "quality_status=non_evidence" in loaded.output_refs
+    assert "evidence_eligible=false" in loaded.output_refs
+    assert (
+        "blocker_reasons=coverage_below_minimum,raw_microstructure_not_accepted_coverage_evidence"
+        in loaded.output_refs
+    )
+    assert report.family == "trades"
+    assert report.expected_rows == 3
+    assert report.observed_rows == 2
+    assert report.evidence_eligible is False
+
+
+def test_coverage_audit_worker_writes_timestamped_report_from_silver_asset_contexts(tmp_path) -> None:
+    archive_root = tmp_path / "archive-asset-context-coverage"
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    manifest_store = ArchiveManifestStore(layout)
+    output = write_parquet_rows(
+        layout=layout,
+        store=manifest_store,
+        rows=[
+            {
+                "venue": "hyperliquid",
+                "instrument_id": INSTRUMENT,
+                "ts": "2026-01-01T00:00:00Z",
+                "mark_price": 100.0,
+                "oracle_price": 100.0,
+                "open_interest": 1_000_000.0,
+                "day_notional_volume_usd": 10_000_000.0,
+                "funding_rate": 0.0001,
+                "source_file_id": "a" * 64,
+                "source_layer": "bronze",
+                "missing_fields": (),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            },
+            {
+                "venue": "hyperliquid",
+                "instrument_id": INSTRUMENT,
+                "ts": "2026-01-02T00:00:00Z",
+                "mark_price": 101.0,
+                "oracle_price": 101.0,
+                "open_interest": 1_100_000.0,
+                "day_notional_volume_usd": 11_000_000.0,
+                "funding_rate": 0.0002,
+                "source_file_id": "a" * 64,
+                "source_layer": "bronze",
+                "missing_fields": (),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            },
+        ],
+        layer=ArchiveLayer.SILVER,
+        dataset="asset_contexts",
+        venue="hyperliquid",
+        datatype="asset_contexts",
+        date="2026-01-01",
+        job_id="job-silver-context-coverage",
+        source_file_ids=("a" * 64,),
+        instrument_id=INSTRUMENT,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-context-coverage-audit",
+        input_spec={
+            "archive_root": str(archive_root),
+            "file_id": output.file_id,
+            "family": "asset_contexts",
+            "timeframe": "1d",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-03T00:00:00+00:00",
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        worker_id="worker-context-coverage",
+    )
+    loaded = store.load_job(queued.job_id)
+    report = CoverageManifestStore(layout).load_coverage_reports()[0]
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "coverage_scope=timestamped_file" in loaded.output_refs
+    assert "source_layer=silver" in loaded.output_refs
+    assert "source_datatype=asset_contexts" in loaded.output_refs
+    assert "coverage_ratio=1.000000000000" in loaded.output_refs
+    assert "quality_status=pass" in loaded.output_refs
+    assert "evidence_eligible=true" in loaded.output_refs
+    assert "blocker_reasons=" in loaded.output_refs
+    assert report.family == "asset_contexts"
+    assert report.evidence_eligible is True
+    assert report.blocker_reasons == ()
+
+
 def test_coverage_audit_worker_audits_archive_snapshot_against_universe_snapshot(tmp_path) -> None:
     archive_root = tmp_path / "archive-universe-coverage"
     layout = ArchiveLayout(archive_root)
@@ -1127,6 +1294,114 @@ def test_coverage_audit_worker_audits_archive_snapshot_against_universe_snapshot
     assert sol_report.coverage_ratio == 0.0
     assert sol_report.evidence_eligible is False
     assert sol_report.blocker_reasons == ("coverage_below_minimum",)
+
+
+def test_coverage_audit_worker_audits_raw_trade_snapshot_against_universe_snapshot(tmp_path) -> None:
+    archive_root = tmp_path / "archive-universe-trade-coverage"
+    layout = ArchiveLayout(archive_root)
+    capture = write_microstructure_raw_capture(
+        archive_root=archive_root,
+        records=[
+            {
+                "ts": "2026-01-01T00:00:00Z",
+                "instrument_id": INSTRUMENT,
+                "event_type": "trade",
+                "sequence": 0,
+                "price": 100.0,
+                "size": 1.0,
+            },
+            {
+                "ts": "2026-01-01T00:01:00Z",
+                "instrument_id": INSTRUMENT,
+                "event_type": "trade",
+                "sequence": 1,
+                "price": 101.0,
+                "size": 1.0,
+            },
+        ],
+        venue="hyperliquid",
+        datatype="trades",
+        date="2026-01-01",
+        run_id="run-universe-trade-coverage",
+        job_id="JOB-universe-trade-source",
+        adapter_id="fixture_microstructure_v1",
+        source_endpoint_or_subscription="fixture/trades",
+        instrument_id=INSTRUMENT,
+        start_ts=START,
+        end_ts=START + timedelta(minutes=2),
+        storage_budget_bytes=1_000_000,
+    )
+    manifest_store = ArchiveManifestStore(layout)
+    universe = refresh_hyperliquid_universe(
+        archive_root=archive_root,
+        payload=_universe_payload(),
+        asof_date=START.date(),
+        mode=UniverseMode.AS_OF,
+    )
+    snapshot = create_archive_snapshot(
+        store=manifest_store,
+        layer=ArchiveLayer.RAW,
+        venue_scope="hyperliquid",
+        start_ts=START,
+        end_ts=START + timedelta(minutes=2),
+        coverage_rows=(),
+        quality_rows=(),
+        notes="worker_universe_trade_coverage_fixture",
+    )
+    assert capture.raw_file.file_id in snapshot.included_file_ids
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-universe-trade-coverage-audit",
+        input_spec={
+            "archive_root": str(archive_root),
+            "archive_snapshot_id": snapshot.archive_snapshot_id,
+            "universe_snapshot_id": universe.snapshot_id,
+            "family": "trades",
+            "timeframe": "1m",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:02:00+00:00",
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        worker_id="worker-universe-trade-coverage",
+    )
+    loaded = store.load_job(queued.job_id)
+    reports = CoverageManifestStore(layout).load_coverage_reports()
+    report_by_instrument = {report.instrument_id: report for report in reports}
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "coverage_scope=universe_snapshot" in loaded.output_refs
+    assert "coverage_method=nonempty_time_buckets" in loaded.output_refs
+    assert "source_layer=raw" in loaded.output_refs
+    assert "source_datatype=trades" in loaded.output_refs
+    assert "missing_file_instrument_count=1" in loaded.output_refs
+    assert "missing_file_instruments=hyperliquid:perp:SOL" in loaded.output_refs
+    assert "evidence_eligible_count=0" in loaded.output_refs
+    assert "blocked_instrument_count=2" in loaded.output_refs
+    assert (
+        "blocker_reasons=coverage_below_minimum,missing_raw_trades_file,"
+        "raw_microstructure_not_accepted_coverage_evidence"
+    ) in loaded.output_refs
+    assert set(report_by_instrument) == {INSTRUMENT, "hyperliquid:perp:SOL"}
+    btc_report = report_by_instrument[INSTRUMENT]
+    assert btc_report.coverage_ratio == 1.0
+    assert btc_report.evidence_eligible is False
+    assert btc_report.blocker_reasons == ("raw_microstructure_not_accepted_coverage_evidence",)
+    sol_report = report_by_instrument["hyperliquid:perp:SOL"]
+    assert sol_report.source_row_count == 0
+    assert sol_report.coverage_ratio == 0.0
+    assert sol_report.evidence_eligible is False
+    assert set(sol_report.blocker_reasons) == {
+        "coverage_below_minimum",
+        "raw_microstructure_not_accepted_coverage_evidence",
+    }
 
 
 def test_coverage_audit_worker_rejects_non_silver_bars_file_without_report_write(tmp_path) -> None:

@@ -23,6 +23,9 @@ research evidence.
 - Coverage is scoped by venue, instrument, family, timeframe, and time range.
 - Bar coverage uses deterministic expected-row calculators by timeframe and a
   `[start_ts, end_ts)` window.
+- Timestamped non-bar coverage for raw `trades`, raw `bbo`, raw `l2`, and
+  silver `asset_contexts` uses a declared bucket timeframe and counts unique
+  nonempty `[start_ts, end_ts)` buckets rather than event rows.
 - Coverage ratio uses unique observed timestamps so duplicates cannot inflate
   coverage.
 - Missing days must be reported explicitly in `missing_days`.
@@ -51,6 +54,13 @@ research evidence.
   read only local archive/universe manifests and silver bars, write one
   coverage report per in-scope universe instrument, and surface missing silver
   bar files as blocker evidence instead of silently dropping instruments.
+- Coverage-audit worker jobs may also audit timestamped raw microstructure
+  (`trades`, `bbo`, `l2`) or silver `asset_contexts` files directly or by
+  archive snapshot plus universe snapshot. Missing per-instrument files must be
+  blocker evidence.
+- Raw microstructure bucket coverage is measurement evidence only and must
+  remain non-evidence by default with an explicit caveat until a later packet
+  proves continuous source coverage and any required queue/fill realism.
 
 ## Forbidden
 
@@ -60,5 +70,8 @@ research evidence.
 - Silently repairing gaps, stale rows, zero-volume rows, or outliers without
   provenance.
 - Building derived timeframe coverage while omitting incomplete-window evidence.
-- Running coverage-audit worker jobs on non-silver-bars files or direct venue
-  fetches.
+- Running coverage-audit worker jobs on unsupported file families or direct
+  venue fetches.
+- Treating raw trades/BBO/L2 bucket coverage as proof of event completeness,
+  volume completeness, queue/fill realism, accepted evidence, live execution,
+  paper trading, order readiness, or promotion readiness.

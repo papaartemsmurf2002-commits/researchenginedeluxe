@@ -85,6 +85,11 @@ snapshots through the backtest data service, not direct venue APIs.
   `trades` microstructure rows, but those rows remain raw replay intake
   evidence and do not by themselves prove historical trade coverage, queue/fill
   realism, accepted evidence, or promotion readiness.
+- Raw `trades`, `bbo`, and `l2` files may receive timestamp-bucket coverage
+  reports through data-quality audit jobs, but those reports measure nonempty
+  archive buckets only and do not by themselves prove event completeness,
+  volume completeness, queue/fill realism, accepted evidence, or promotion
+  readiness.
 - Microstructure quality reports must expose row counts, event windows, gaps,
   reconnect evidence, and warning status for trades, BBO, and L2 captures.
 - Storage budget reports must make archive growth visible by total bytes, layer
