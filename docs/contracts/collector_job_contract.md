@@ -133,6 +133,19 @@ request handling and they do not place orders.
   per venue response. They are snapshot intake evidence only and do not prove
   continuous WebSocket capture, historical L2 replay, queue-model realism, or
   accepted research evidence.
+- `websocket_l2_bbo_capture` jobs may also use explicit public Hyperliquid
+  `source=public_websocket` mode for bounded `bbo` or `l2Book` WebSocket
+  subscription snapshots when `datatype` is `bbo` or `l2`. Public WebSocket
+  BBO/L2 jobs must return `source_mode`, raw payload hash, venue adapter ID,
+  source endpoint, source coin, raw request ID, raw response ID, WebSocket
+  message count, stream row/level count, row/message/time caps, storage refs,
+  quality refs, and explicit non-continuous caveats through durable output
+  refs.
+- Public WebSocket BBO/L2 jobs must be bounded by configured message count, row
+  count, and elapsed seconds. They are recent streaming snapshot intake
+  evidence only and do not prove unattended continuous capture, historical
+  BBO/L2 coverage, accepted research evidence, queue/fill realism, or full
+  archive readiness.
 - `websocket_l2_bbo_capture` jobs may use explicit
   `source=official_s3_l2_replay` mode to normalize trusted local JSON/JSONL
   files containing decompressed Hyperliquid official `l2Book` payloads into BBO
@@ -172,6 +185,9 @@ request handling and they do not place orders.
 - Local fixture trade jobs must not open venue streams unless the job declares
   `source=public_websocket`; the current public WebSocket exception is
   Hyperliquid `trades` subscription snapshot intake only.
+- Local fixture BBO/L2 jobs must not open venue streams unless the job declares
+  `source=public_websocket`; the current public WebSocket exception is
+  Hyperliquid `bbo` and `l2Book` subscription snapshot intake only.
 - Public candle snapshots must not be treated as enough to satisfy six-month
   2024+ research-readiness gates because Hyperliquid documents the endpoint as
   recent-window limited.
@@ -198,6 +214,10 @@ request handling and they do not place orders.
   dates, six usable months, lockbox exclusion, and as-of universe before
   accepted evidence.
 - Public WebSocket candle snapshot rows are intake evidence only; backtest-data
+  and validation gates must still prove archive snapshots, coverage, 2024+
+  dates, six usable months, lockbox exclusion, and as-of universe before
+  accepted evidence.
+- Public WebSocket BBO/L2 snapshot rows are intake evidence only; backtest-data
   and validation gates must still prove archive snapshots, coverage, 2024+
   dates, six usable months, lockbox exclusion, and as-of universe before
   accepted evidence.
@@ -235,5 +255,8 @@ request handling and they do not place orders.
   coverage or as continuous production stream operation.
 - Treating one-shot public `l2Book` snapshots as continuous BBO/L2 archive
   coverage or as historical microstructure replay.
+- Treating bounded public WebSocket BBO/L2 snapshots as historical BBO/L2
+  coverage, unattended continuous capture, queue/fill realism, or accepted
+  historical coverage proof.
 - Treating fixture microstructure captures as live execution proof or
   promotion-ready evidence.

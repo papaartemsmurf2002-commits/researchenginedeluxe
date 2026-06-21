@@ -427,6 +427,173 @@ def test_hyperliquid_websocket_client_records_public_candle_snapshot_provenance(
     assert result.raw_response.order_placement_instruction is False
 
 
+def test_hyperliquid_websocket_client_records_public_bbo_snapshot_provenance() -> None:
+    sent_messages: list[dict[str, object]] = []
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {
+                    "channel": "subscriptionResponse",
+                    "data": {"subscription": {"type": "bbo", "coin": "BTC"}},
+                },
+                {
+                    "channel": "bbo",
+                    "data": {
+                        "coin": "BTC",
+                        "time": 1_767_225_600_000,
+                        "bbo": [
+                            {"px": "100.0", "sz": "1.25", "n": 2},
+                            {"px": "100.5", "sz": "1.50", "n": 3},
+                        ],
+                    },
+                },
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send(self, raw_message: str) -> None:
+            sent_messages.append(json.loads(raw_message))
+
+        def recv(self, timeout=None) -> str:
+            if not self.messages:
+                raise TimeoutError("no more messages")
+            return json.dumps(self.messages.pop(0))
+
+    seen_connects = []
+
+    def fake_connect(url: str, **kwargs):
+        seen_connects.append((url, kwargs))
+        return FakeWebSocket()
+
+    client = HyperliquidWebSocketClient(
+        ws_url="wss://example.test/ws",
+        timeout=3.0,
+        connect=fake_connect,
+    )
+    result = client.fetch_bbo_snapshot(
+        coin="BTC",
+        max_messages=2,
+        max_rows=2,
+        max_seconds=3.0,
+    )
+
+    assert seen_connects == [("wss://example.test/ws", {"open_timeout": 3.0})]
+    assert sent_messages == [
+        {"method": "subscribe", "subscription": {"type": "bbo", "coin": "BTC"}}
+    ]
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_bbo is True
+    assert result.capability.supports_l2 is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "websocket/bbo"
+    assert result.raw_request.params["subscription"] == {"type": "bbo", "coin": "BTC"}
+    assert result.raw_request.params["max_messages"] == 2
+    assert result.raw_request.params["max_rows"] == 2
+    assert result.raw_response.evidence_scope == "public_unsigned_websocket_bbo_snapshot"
+    assert result.raw_response.row_count == 1
+    assert result.raw_response.order_placement_instruction is False
+
+
+def test_hyperliquid_websocket_client_records_public_l2_book_snapshot_provenance() -> None:
+    sent_messages: list[dict[str, object]] = []
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {
+                    "channel": "subscriptionResponse",
+                    "data": {
+                        "subscription": {
+                            "type": "l2Book",
+                            "coin": "BTC",
+                            "nSigFigs": 5,
+                            "mantissa": 2,
+                        }
+                    },
+                },
+                {
+                    "channel": "l2Book",
+                    "data": {
+                        "coin": "BTC",
+                        "time": 1_767_225_600_000,
+                        "levels": [
+                            [
+                                {"px": "100.0", "sz": "1.25", "n": 2},
+                                {"px": "99.5", "sz": "2.00", "n": 1},
+                            ],
+                            [
+                                {"px": "100.5", "sz": "1.50", "n": 3},
+                                {"px": "101.0", "sz": "3.25", "n": 1},
+                            ],
+                        ],
+                    },
+                },
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send(self, raw_message: str) -> None:
+            sent_messages.append(json.loads(raw_message))
+
+        def recv(self, timeout=None) -> str:
+            if not self.messages:
+                raise TimeoutError("no more messages")
+            return json.dumps(self.messages.pop(0))
+
+    seen_connects = []
+
+    def fake_connect(url: str, **kwargs):
+        seen_connects.append((url, kwargs))
+        return FakeWebSocket()
+
+    client = HyperliquidWebSocketClient(
+        ws_url="wss://example.test/ws",
+        timeout=3.0,
+        connect=fake_connect,
+    )
+    result = client.fetch_l2_book_snapshot(
+        coin="BTC",
+        n_sig_figs=5,
+        mantissa=2,
+        max_messages=2,
+        max_rows=4,
+        max_seconds=3.0,
+    )
+
+    assert seen_connects == [("wss://example.test/ws", {"open_timeout": 3.0})]
+    assert sent_messages == [
+        {
+            "method": "subscribe",
+            "subscription": {"type": "l2Book", "coin": "BTC", "nSigFigs": 5, "mantissa": 2},
+        }
+    ]
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_bbo is True
+    assert result.capability.supports_l2 is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "websocket/l2Book"
+    assert result.raw_request.params["subscription"] == {
+        "type": "l2Book",
+        "coin": "BTC",
+        "nSigFigs": 5,
+        "mantissa": 2,
+    }
+    assert result.raw_request.params["max_messages"] == 2
+    assert result.raw_request.params["max_rows"] == 4
+    assert result.raw_response.evidence_scope == "public_unsigned_websocket_l2_book_snapshot"
+    assert result.raw_response.row_count == 4
+    assert result.raw_response.order_placement_instruction is False
+
+
 def test_hyperliquid_universe_public_api_source_records_fetch_provenance(tmp_path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_payload(day_sol=12_000_000))

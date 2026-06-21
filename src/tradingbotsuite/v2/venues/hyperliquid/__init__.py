@@ -18,7 +18,9 @@ from tradingbotsuite.v2.venues.hyperliquid.info import (
 )
 from tradingbotsuite.v2.venues.hyperliquid.websocket import (
     HYPERLIQUID_PUBLIC_WEBSOCKET_ADAPTER_ID,
+    HYPERLIQUID_WS_BBO_SOURCE,
     HYPERLIQUID_WS_CANDLE_SOURCE,
+    HYPERLIQUID_WS_L2_BOOK_SOURCE,
     HYPERLIQUID_WS_TRADES_SOURCE,
     HyperliquidWebSocketClient,
     HyperliquidWebSocketFetchResult,
@@ -32,7 +34,9 @@ __all__ = [
     "HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE",
     "HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID",
     "HYPERLIQUID_PUBLIC_WEBSOCKET_ADAPTER_ID",
+    "HYPERLIQUID_WS_BBO_SOURCE",
     "HYPERLIQUID_WS_CANDLE_SOURCE",
+    "HYPERLIQUID_WS_L2_BOOK_SOURCE",
     "HYPERLIQUID_WS_TRADES_SOURCE",
     "HyperliquidInfoClient",
     "HyperliquidInfoFetchResult",

@@ -21,7 +21,9 @@ from tradingbotsuite.v2.venues.contracts import (
 )
 
 HYPERLIQUID_PUBLIC_WEBSOCKET_ADAPTER_ID = "hyperliquid_public_websocket_v1"
+HYPERLIQUID_WS_BBO_SOURCE = "websocket/bbo"
 HYPERLIQUID_WS_CANDLE_SOURCE = "websocket/candle"
+HYPERLIQUID_WS_L2_BOOK_SOURCE = "websocket/l2Book"
 HYPERLIQUID_WS_TRADES_SOURCE = "websocket/trades"
 
 
@@ -45,6 +47,8 @@ def hyperliquid_public_websocket_capability() -> VenueAdapterCapability:
         access_mode="public_unsigned",
         supports_bars=True,
         supports_trades=True,
+        supports_bbo=True,
+        supports_l2=True,
         rate_limit_policy="hyperliquid_public_websocket_limits_apply",
         default_primary_venue=True,
     )
@@ -122,6 +126,65 @@ class HyperliquidWebSocketClient:
             payload=tuple(messages),
         )
 
+    def fetch_bbo_snapshot(
+        self,
+        *,
+        coin: str,
+        max_messages: int = 20,
+        max_rows: int = 200,
+        max_seconds: float | None = None,
+    ) -> HyperliquidWebSocketFetchResult:
+        normalized_coin = coin.strip()
+        if not normalized_coin:
+            raise ValueError("bbo coin is required")
+        if max_messages <= 0:
+            raise ValueError("max_messages must be positive")
+        if max_rows <= 0:
+            raise ValueError("max_rows must be positive")
+        timeout_seconds = float(max_seconds if max_seconds is not None else self.timeout)
+        if timeout_seconds <= 0:
+            raise ValueError("max_seconds must be positive")
+        capability = hyperliquid_public_websocket_capability()
+        subscription = {"type": "bbo", "coin": normalized_coin}
+        request_body = {"method": "subscribe", "subscription": subscription}
+        request = VenueRawRequest.build(
+            adapter_id=capability.adapter_id,
+            venue=capability.venue,
+            source=HYPERLIQUID_WS_BBO_SOURCE,
+            params={
+                "ws_url": self.ws_url,
+                "method": "subscribe",
+                "subscription": subscription,
+                "max_messages": max_messages,
+                "max_rows": max_rows,
+                "max_seconds": timeout_seconds,
+            },
+        )
+        messages = self._receive_messages(
+            request_body=request_body,
+            max_messages=max_messages,
+            max_rows=max_rows,
+            timeout_seconds=timeout_seconds,
+            row_counter=_bbo_message_row_count,
+        )
+        raw_response = VenueRawResponse.build(
+            request=request,
+            payload=messages,
+            row_count=sum(_bbo_message_row_count(message) for message in messages),
+            rate_limit_metadata={
+                "max_messages": max_messages,
+                "max_rows": max_rows,
+                "max_seconds": timeout_seconds,
+            },
+            evidence_scope="public_unsigned_websocket_bbo_snapshot",
+        )
+        return HyperliquidWebSocketFetchResult(
+            capability=capability,
+            raw_request=request,
+            raw_response=raw_response,
+            payload=tuple(messages),
+        )
+
     def fetch_candle_snapshot(
         self,
         *,
@@ -189,6 +252,78 @@ class HyperliquidWebSocketClient:
             payload=tuple(messages),
         )
 
+    def fetch_l2_book_snapshot(
+        self,
+        *,
+        coin: str,
+        n_sig_figs: int | None = None,
+        mantissa: int | None = None,
+        max_messages: int = 20,
+        max_rows: int = 200,
+        max_seconds: float | None = None,
+    ) -> HyperliquidWebSocketFetchResult:
+        normalized_coin = coin.strip()
+        if not normalized_coin:
+            raise ValueError("l2Book coin is required")
+        if n_sig_figs is not None and n_sig_figs not in {2, 3, 4, 5}:
+            raise ValueError("l2Book nSigFigs must be 2, 3, 4, 5, or omitted")
+        if mantissa is not None:
+            if n_sig_figs != 5:
+                raise ValueError("l2Book mantissa is only allowed when nSigFigs is 5")
+            if mantissa not in {1, 2, 5}:
+                raise ValueError("l2Book mantissa must be 1, 2, or 5")
+        if max_messages <= 0:
+            raise ValueError("max_messages must be positive")
+        if max_rows <= 0:
+            raise ValueError("max_rows must be positive")
+        timeout_seconds = float(max_seconds if max_seconds is not None else self.timeout)
+        if timeout_seconds <= 0:
+            raise ValueError("max_seconds must be positive")
+        capability = hyperliquid_public_websocket_capability()
+        subscription: dict[str, Any] = {"type": "l2Book", "coin": normalized_coin}
+        if n_sig_figs is not None:
+            subscription["nSigFigs"] = n_sig_figs
+        if mantissa is not None:
+            subscription["mantissa"] = mantissa
+        request_body = {"method": "subscribe", "subscription": subscription}
+        request = VenueRawRequest.build(
+            adapter_id=capability.adapter_id,
+            venue=capability.venue,
+            source=HYPERLIQUID_WS_L2_BOOK_SOURCE,
+            params={
+                "ws_url": self.ws_url,
+                "method": "subscribe",
+                "subscription": subscription,
+                "max_messages": max_messages,
+                "max_rows": max_rows,
+                "max_seconds": timeout_seconds,
+            },
+        )
+        messages = self._receive_messages(
+            request_body=request_body,
+            max_messages=max_messages,
+            max_rows=max_rows,
+            timeout_seconds=timeout_seconds,
+            row_counter=_l2_book_message_row_count,
+        )
+        raw_response = VenueRawResponse.build(
+            request=request,
+            payload=messages,
+            row_count=sum(_l2_book_message_row_count(message) for message in messages),
+            rate_limit_metadata={
+                "max_messages": max_messages,
+                "max_rows": max_rows,
+                "max_seconds": timeout_seconds,
+            },
+            evidence_scope="public_unsigned_websocket_l2_book_snapshot",
+        )
+        return HyperliquidWebSocketFetchResult(
+            capability=capability,
+            raw_request=request,
+            raw_response=raw_response,
+            payload=tuple(messages),
+        )
+
     def _receive_messages(
         self,
         *,
@@ -236,6 +371,15 @@ def _trade_message_row_count(message: dict[str, Any]) -> int:
     return 0
 
 
+def _bbo_message_row_count(message: dict[str, Any]) -> int:
+    if message.get("channel") != "bbo":
+        return 0
+    data = message.get("data")
+    if isinstance(data, dict):
+        return 1
+    return 0
+
+
 def _candle_message_row_count(message: dict[str, Any]) -> int:
     if message.get("channel") != "candle":
         return 0
@@ -245,3 +389,19 @@ def _candle_message_row_count(message: dict[str, Any]) -> int:
     if isinstance(data, dict):
         return 1
     return 0
+
+
+def _l2_book_message_row_count(message: dict[str, Any]) -> int:
+    if message.get("channel") != "l2Book":
+        return 0
+    data = message.get("data")
+    if not isinstance(data, dict):
+        return 0
+    levels = data.get("levels")
+    if not isinstance(levels, list):
+        return 0
+    count = 0
+    for side_levels in levels[:2]:
+        if isinstance(side_levels, list):
+            count += len([row for row in side_levels if isinstance(row, dict)])
+    return count

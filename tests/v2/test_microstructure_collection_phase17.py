@@ -229,6 +229,130 @@ def test_public_l2_book_worker_capture_writes_snapshot_microstructure(
         assert stored_rows[0]["book_levels"] == 4
 
 
+@pytest.mark.parametrize("datatype", ["bbo", "l2"])
+def test_public_websocket_l2_bbo_worker_capture_writes_snapshot_microstructure(
+    tmp_path,
+    monkeypatch,
+    datatype: str,
+) -> None:
+    archive_root = tmp_path / f"archive-public-ws-{datatype}"
+
+    class FakeHyperliquidWebSocketClient:
+        def __init__(self, ws_url: str, timeout: float) -> None:
+            self.ws_url = ws_url
+            self.timeout = timeout
+
+        def fetch_bbo_snapshot(self, **kwargs):
+            from tradingbotsuite.v2.venues.hyperliquid import HyperliquidWebSocketClient as RealClient
+
+            client = RealClient(
+                ws_url=self.ws_url,
+                timeout=self.timeout,
+                connect=_fake_bbo_websocket_connect,
+            )
+            return client.fetch_bbo_snapshot(**kwargs)
+
+        def fetch_l2_book_snapshot(self, **kwargs):
+            from tradingbotsuite.v2.venues.hyperliquid import HyperliquidWebSocketClient as RealClient
+
+            client = RealClient(
+                ws_url=self.ws_url,
+                timeout=self.timeout,
+                connect=_fake_l2_book_websocket_connect,
+            )
+            return client.fetch_l2_book_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidWebSocketClient",
+        FakeHyperliquidWebSocketClient,
+    )
+    input_spec = {
+        "archive_root": str(archive_root),
+        "source": "public_websocket",
+        "public_ws_url": "wss://example.test/ws",
+        "public_ws_timeout": 3.0,
+        "venue": "hyperliquid",
+        "instrument_id": INSTRUMENT,
+        "coin": "BTC",
+        "datatype": datatype,
+        "date": "2026-01-01",
+        "run_id": f"run-public-ws-{datatype}",
+        "start_ts": "2026-01-01T00:00:00+00:00",
+        "end_ts": "2026-01-01T00:01:00+00:00",
+        "max_public_ws_messages": 2,
+        "max_public_ws_rows": 4 if datatype == "l2" else 2,
+        "max_public_ws_seconds": 3.0,
+        "storage_budget_bytes": 1_000_000,
+    }
+    if datatype == "l2":
+        input_spec["n_sig_figs"] = 5
+        input_spec["mantissa"] = 2
+    store = WorkerJobStore(tmp_path / f"jobs-public-ws-{datatype}.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id=f"JOB-public-ws-{datatype}",
+        input_spec=input_spec,
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id=f"worker-public-ws-{datatype}",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    stored_rows = read_jsonl_zstd(
+        layout.resolve(manifest_rows[0].path),
+        uncompressed_size=manifest_rows[0].uncompressed_size_bytes or 0,
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=public_websocket_l2_bbo_snapshot_capture" in loaded.output_refs
+    assert "source_mode=public_websocket" in loaded.output_refs
+    assert "continuous_capture=false" in loaded.output_refs
+    assert "accepted_historical_coverage_proof=false" in loaded.output_refs
+    assert (
+        "public_websocket_l2_bbo_snapshot_caveat=bounded_public_stream_snapshot_not_unattended_continuous_capture"
+        in loaded.output_refs
+    )
+    assert f"datatype={datatype}" in loaded.output_refs
+    assert "row_count=1" in loaded.output_refs
+    assert "ws_message_count=2" in loaded.output_refs
+    assert "venue_adapter_id=hyperliquid_public_websocket_v1" in loaded.output_refs
+    assert "coin=BTC" in loaded.output_refs
+    assert "max_public_ws_messages=2" in loaded.output_refs
+    assert "max_public_ws_seconds=3.0" in loaded.output_refs
+    assert "gap_evidence_recorded=false" in loaded.output_refs
+    assert any(ref.startswith("raw_request_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_response_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_payload_sha256=") for ref in loaded.output_refs)
+    assert [row.datatype for row in manifest_rows] == [datatype]
+    assert manifest_rows[0].row_count == 1
+    assert stored_rows[0]["event_type"] == datatype
+    assert stored_rows[0]["instrument_id"] == INSTRUMENT
+    if datatype == "bbo":
+        assert "source_endpoint_or_subscription=websocket/bbo" in loaded.output_refs
+        assert "ws_bbo_row_count=1" in loaded.output_refs
+        assert stored_rows[0]["source"] == "public_websocket/bbo"
+        assert stored_rows[0]["bid"] == 100.0
+        assert stored_rows[0]["ask"] == 100.5
+        assert stored_rows[0]["bid_size"] == 1.25
+        assert stored_rows[0]["ask_size"] == 1.5
+    else:
+        assert "source_endpoint_or_subscription=websocket/l2Book" in loaded.output_refs
+        assert "ws_l2_book_row_count=4" in loaded.output_refs
+        assert "nSigFigs=5" in loaded.output_refs
+        assert "mantissa=2" in loaded.output_refs
+        assert stored_rows[0]["source"] == "public_websocket/l2Book"
+        assert stored_rows[0]["bid_depth"] == pytest.approx(3.25)
+        assert stored_rows[0]["ask_depth"] == pytest.approx(4.75)
+        assert stored_rows[0]["book_levels"] == 4
+
+
 def test_public_l2_book_worker_rejects_public_api_with_local_records(tmp_path) -> None:
     archive_root = tmp_path / "archive-public-l2-reject"
     store = WorkerJobStore(tmp_path / "jobs-public-l2-reject.sqlite")
@@ -267,6 +391,47 @@ def test_public_l2_book_worker_rejects_public_api_with_local_records(tmp_path) -
     assert result.status == WorkerJobStatus.FAILED
     assert loaded is not None
     assert "source=public_api cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
+def test_public_websocket_l2_bbo_worker_rejects_public_websocket_with_local_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-public-ws-l2-reject"
+    store = WorkerJobStore(tmp_path / "jobs-public-ws-l2-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id="JOB-public-ws-l2-records-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "instrument_id": INSTRUMENT,
+            "datatype": "l2",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "records": [
+                {
+                    "ts": "2026-01-01T00:00:00Z",
+                    "instrument_id": INSTRUMENT,
+                    "event_type": "l2",
+                    "bid_depth": 10_000.0,
+                    "ask_depth": 12_000.0,
+                }
+            ],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id="worker-public-ws-l2-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=public_websocket cannot include records" in (loaded.failure_reason or "")
     assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
@@ -1368,6 +1533,18 @@ def _fake_trade_websocket_connect(url: str, **kwargs):
     return _FakeTradeWebSocket()
 
 
+def _fake_bbo_websocket_connect(url: str, **kwargs):
+    assert url == "wss://example.test/ws"
+    assert kwargs == {"open_timeout": 3.0}
+    return _FakeBboWebSocket()
+
+
+def _fake_l2_book_websocket_connect(url: str, **kwargs):
+    assert url == "wss://example.test/ws"
+    assert kwargs == {"open_timeout": 3.0}
+    return _FakeL2BookWebSocket()
+
+
 class _FakeTradeWebSocket:
     def __init__(self) -> None:
         self.messages = [
@@ -1385,6 +1562,76 @@ class _FakeTradeWebSocket:
         assert json.loads(raw_message) == {
             "method": "subscribe",
             "subscription": {"type": "trades", "coin": "BTC"},
+        }
+
+    def recv(self, timeout=None) -> str:
+        if not self.messages:
+            raise TimeoutError("no more messages")
+        return json.dumps(self.messages.pop(0))
+
+
+class _FakeBboWebSocket:
+    def __init__(self) -> None:
+        self.messages = [
+            {"channel": "subscriptionResponse", "data": {"subscription": {"type": "bbo", "coin": "BTC"}}},
+            {
+                "channel": "bbo",
+                "data": {
+                    "coin": "BTC",
+                    "time": 1_767_225_600_000,
+                    "bbo": [
+                        {"px": "100.0", "sz": "1.25", "n": 2},
+                        {"px": "100.5", "sz": "1.50", "n": 3},
+                    ],
+                },
+            },
+        ]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def send(self, raw_message: str) -> None:
+        assert json.loads(raw_message) == {
+            "method": "subscribe",
+            "subscription": {"type": "bbo", "coin": "BTC"},
+        }
+
+    def recv(self, timeout=None) -> str:
+        if not self.messages:
+            raise TimeoutError("no more messages")
+        return json.dumps(self.messages.pop(0))
+
+
+class _FakeL2BookWebSocket:
+    def __init__(self) -> None:
+        self.messages = [
+            {
+                "channel": "subscriptionResponse",
+                "data": {
+                    "subscription": {
+                        "type": "l2Book",
+                        "coin": "BTC",
+                        "nSigFigs": 5,
+                        "mantissa": 2,
+                    }
+                },
+            },
+            {"channel": "l2Book", "data": _l2_book_payload()},
+        ]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def send(self, raw_message: str) -> None:
+        assert json.loads(raw_message) == {
+            "method": "subscribe",
+            "subscription": {"type": "l2Book", "coin": "BTC", "nSigFigs": 5, "mantissa": 2},
         }
 
     def recv(self, timeout=None) -> str:

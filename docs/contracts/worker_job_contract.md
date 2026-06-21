@@ -55,6 +55,12 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   snapshot archive refs plus public WebSocket request/response provenance,
   message/row/time caps, and bounded snapshot caveats. They must not claim
   unattended continuous capture or accepted historical coverage proof.
+- `websocket_l2_bbo_capture` jobs with `datatype=bbo` or `datatype=l2` and
+  `source=public_websocket` may complete with raw microstructure, quality, and
+  storage refs plus public WebSocket request/response provenance,
+  message/row/time caps, stream row/level counts, and bounded snapshot caveats.
+  They must not claim unattended continuous capture, historical BBO/L2 coverage
+  proof, queue/fill realism, or accepted historical coverage proof.
 - `vectorized_backtest` jobs must run through the durable worker runner, load
   panels only through `BacktestDataService`, validate inline declarative
   strategy specs before strategy code sees rows, and return run-manifest,
@@ -99,6 +105,8 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   the worker path.
 - Running universe refresh jobs from public network sources without explicit
   `source=public_api` and unsigned public-info provenance refs.
+- Running public WebSocket BBO/L2 capture without explicit
+  `source=public_websocket` and public WebSocket provenance refs.
 - Running durable backtests against direct venue/API reads, unvalidated
   strategy specs, or arbitrary strategy-spec files without a trusted-file
   intake packet.

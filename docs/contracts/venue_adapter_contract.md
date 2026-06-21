@@ -71,7 +71,8 @@ execution behavior to v2 research modules.
 - The Hyperliquid public-WebSocket adapter may subscribe only to public market
   data streams explicitly scoped by packet. The current implemented streams
   are `trades` for bounded recent trade snapshots and `candle` for bounded
-  recent candle snapshots. It must preserve
+  recent candle snapshots, plus `bbo` and `l2Book` for bounded recent BBO/L2
+  snapshots. It must preserve
   `public_unsigned` access mode plus raw request/response provenance.
 - Public trade WebSocket provenance must record coin, subscription request,
   WebSocket URL, row/message/time caps, raw payload hash, message count, trade
@@ -79,6 +80,10 @@ execution behavior to v2 research modules.
 - Public candle WebSocket provenance must record coin, interval, subscription
   request, WebSocket URL, row/message/time caps, raw payload hash, message
   count, candle row count, and bounded snapshot evidence scope.
+- Public BBO/L2 WebSocket provenance must record coin, subscription request,
+  optional L2 aggregation parameters, WebSocket URL, row/message/time caps, raw
+  payload hash, message count, BBO row count or L2 level count, and bounded
+  snapshot evidence scope.
 - Cross-venue rows preserve venue provenance and must not dilute the
   Hyperliquid-first default.
 - Venue capabilities must fail closed if they declare secret access, signed
@@ -102,7 +107,7 @@ execution behavior to v2 research modules.
   metadata, recent candle snapshots, historical funding rates, and L2 book
   snapshots without a new scoped packet and boundary audit.
 - Extending the Hyperliquid public-WebSocket adapter beyond bounded public
-  `trades` and `candle` snapshots without a new scoped packet and boundary
-  audit.
+  `trades`, `candle`, `bbo`, and `l2Book` snapshots without a new scoped
+  packet and boundary audit.
 - Treating cross-venue fixture rows as live execution proof, paper/live signal,
   sizing instruction, candidate-pack eligibility, or promotion evidence.
