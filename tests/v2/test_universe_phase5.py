@@ -213,6 +213,62 @@ def test_hyperliquid_info_client_records_public_funding_history_provenance() -> 
     assert result.raw_response.order_placement_instruction is False
 
 
+def test_hyperliquid_info_client_records_public_l2_book_provenance() -> None:
+    expected_body = {
+        "type": "l2Book",
+        "coin": "BTC",
+        "nSigFigs": 5,
+        "mantissa": 2,
+    }
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert request.method == "POST"
+        assert json.loads(request.content.decode("utf-8")) == expected_body
+        return httpx.Response(
+            200,
+            json={
+                "coin": "BTC",
+                "time": 1_767_225_600_000,
+                "levels": [
+                    [
+                        {"px": "100.0", "sz": "1.25", "n": 2},
+                        {"px": "99.5", "sz": "2.00", "n": 1},
+                    ],
+                    [
+                        {"px": "100.5", "sz": "1.50", "n": 3},
+                        {"px": "101.0", "sz": "3.25", "n": 1},
+                    ],
+                ],
+            },
+            headers={"x-ratelimit-remaining": "9"},
+        )
+
+    client = HyperliquidInfoClient(
+        base_url="https://example.test/info",
+        timeout=3.0,
+        transport=httpx.MockTransport(handler),
+    )
+    result = client.fetch_l2_book(coin="BTC", n_sig_figs=5, mantissa=2)
+
+    assert len(seen_requests) == 1
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_bbo is True
+    assert result.capability.supports_l2 is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "info/l2Book"
+    assert result.raw_request.params["type"] == "l2Book"
+    assert result.raw_request.params["coin"] == "BTC"
+    assert result.raw_request.params["nSigFigs"] == 5
+    assert result.raw_request.params["mantissa"] == 2
+    assert result.raw_request.params["documented_limit"] == "max_20_levels_per_side"
+    assert result.raw_response.evidence_scope == "public_unsigned_l2_book_snapshot"
+    assert result.raw_response.row_count == 4
+    assert result.raw_response.rate_limit_metadata["x-ratelimit-remaining"] == "9"
+    assert result.raw_response.order_placement_instruction is False
+
+
 def test_hyperliquid_universe_public_api_source_records_fetch_provenance(tmp_path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=_payload(day_sol=12_000_000))

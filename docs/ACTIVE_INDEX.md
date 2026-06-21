@@ -76,9 +76,12 @@ This is the first file to read after `AGENTS.md`.
   found during optional smoke scripting while the CLI worker path still works.
   WPR106-434 adds paginated public Hyperliquid `fundingHistory` intake for
   durable `funding_backfill` jobs, writing raw, bronze, and silver funding refs
-  with per-page request/response provenance. Full historical candle backfill,
-  trade/BBO/L2 venue archive collection, independent audits, and authoritative
-  full-suite proof remain follow-up work.
+  with per-page request/response provenance. WPR106-435 adds public Hyperliquid
+  `l2Book` snapshot intake for durable BBO/L2 microstructure capture jobs,
+  writing raw-capture, quality, and storage refs while labeling the path as
+  one-shot snapshot intake only. Full historical candle backfill, trade venue
+  archive collection, continuous BBO/L2 capture or historical L2 replay,
+  independent audits, and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

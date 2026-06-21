@@ -23,6 +23,7 @@ HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID = "hyperliquid_public_info_v1"
 HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE = "info/metaAndAssetCtxs"
 HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE = "info/candleSnapshot"
 HYPERLIQUID_FUNDING_HISTORY_SOURCE = "info/fundingHistory"
+HYPERLIQUID_L2_BOOK_SOURCE = "info/l2Book"
 
 
 class HyperliquidInfoFetchResult(BaseModel):
@@ -45,6 +46,8 @@ def hyperliquid_public_info_capability() -> VenueAdapterCapability:
         access_mode="public_unsigned",
         supports_bars=True,
         supports_funding=True,
+        supports_bbo=True,
+        supports_l2=True,
         supports_universe_metadata=True,
         rate_limit_policy="hyperliquid_public_info_limits_apply",
         default_primary_venue=True,
@@ -153,6 +156,61 @@ class HyperliquidInfoClient:
             payload=payload,
         )
 
+    def fetch_l2_book(
+        self,
+        *,
+        coin: str,
+        n_sig_figs: int | None = None,
+        mantissa: int | None = None,
+    ) -> HyperliquidInfoFetchResult:
+        normalized_coin = coin.strip()
+        if not normalized_coin:
+            raise ValueError("l2Book coin is required")
+        if n_sig_figs is not None and n_sig_figs not in {2, 3, 4, 5}:
+            raise ValueError("l2Book nSigFigs must be 2, 3, 4, 5, or omitted")
+        if mantissa is not None:
+            if n_sig_figs != 5:
+                raise ValueError("l2Book mantissa is only allowed when nSigFigs is 5")
+            if mantissa not in {1, 2, 5}:
+                raise ValueError("l2Book mantissa must be 1, 2, or 5")
+        capability = hyperliquid_public_info_capability()
+        request_body: dict[str, Any] = {
+            "type": "l2Book",
+            "coin": normalized_coin,
+        }
+        if n_sig_figs is not None:
+            request_body["nSigFigs"] = n_sig_figs
+        if mantissa is not None:
+            request_body["mantissa"] = mantissa
+        request = VenueRawRequest.build(
+            adapter_id=capability.adapter_id,
+            venue=capability.venue,
+            source=HYPERLIQUID_L2_BOOK_SOURCE,
+            params={
+                "http_method": "POST",
+                "base_url": self.base_url,
+                "type": "l2Book",
+                "coin": normalized_coin,
+                "nSigFigs": n_sig_figs,
+                "mantissa": mantissa,
+                "documented_limit": "max_20_levels_per_side",
+            },
+        )
+        response, payload = self._post_info(request_body)
+        raw_response = VenueRawResponse.build(
+            request=request,
+            payload=payload,
+            row_count=_payload_l2_level_count(payload),
+            rate_limit_metadata=_rate_limit_metadata(response),
+            evidence_scope="public_unsigned_l2_book_snapshot",
+        )
+        return HyperliquidInfoFetchResult(
+            capability=capability,
+            raw_request=request,
+            raw_response=raw_response,
+            payload=payload,
+        )
+
     def fetch_funding_history(
         self,
         *,
@@ -228,6 +286,15 @@ def _payload_instrument_count(payload: Any) -> int:
 
 def _payload_row_count(payload: Any) -> int:
     return len(payload) if isinstance(payload, list) else 0
+
+
+def _payload_l2_level_count(payload: Any) -> int:
+    if not isinstance(payload, dict):
+        return 0
+    levels = payload.get("levels")
+    if not isinstance(levels, list):
+        return 0
+    return sum(len(side) for side in levels if isinstance(side, list))
 
 
 def _epoch_millis(value: datetime) -> int:

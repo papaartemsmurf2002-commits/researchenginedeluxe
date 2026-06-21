@@ -647,6 +647,14 @@ def _run_microstructure_capture_job(
     if datatype not in {MicrostructureDataType.TRADES, MicrostructureDataType.BBO, MicrostructureDataType.L2}:
         raise ValueError("microstructure capture job requires datatype trades, bbo, or l2")
     spec = job.input_spec
+    source_mode = _microstructure_source_mode(spec, datatype=datatype)
+    if source_mode == "public_api":
+        return _run_public_l2_bbo_capture_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+            datatype=datatype,
+        )
     start_ts = _parse_datetime(_required_str(spec, "start_ts"))
     end_ts = _parse_datetime(_required_str(spec, "end_ts"))
     reconnect_attempts = int(spec.get("reconnect_attempts", 0))
@@ -706,6 +714,86 @@ def _run_microstructure_capture_job(
         archive_manifest_refs=archive_refs,
         gap_record_ids=gap_record_ids,
         reason=f"{datatype.value}_microstructure_capture_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_public_l2_bbo_capture_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+    datatype: MicrostructureDataType,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    coin = _hyperliquid_coin_from_spec(spec, instrument_id=instrument_id)
+    fetch = HyperliquidInfoClient(
+        base_url=str(spec.get("public_info_url", "https://api.hyperliquid.xyz/info")),
+        timeout=float(spec.get("public_info_timeout", 20.0)),
+    ).fetch_l2_book(
+        coin=coin,
+        n_sig_figs=_optional_int(spec.get("n_sig_figs")),
+        mantissa=_optional_int(spec.get("mantissa")),
+    )
+    records = _public_l2_book_microstructure_records(
+        fetch.payload,
+        datatype=datatype,
+        instrument_id=instrument_id,
+    )
+    capture = write_microstructure_raw_capture(
+        archive_root=archive_root,
+        records=records,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype=datatype,
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=fetch.capability.adapter_id,
+        source_endpoint_or_subscription=fetch.raw_request.source,
+        instrument_id=instrument_id,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        storage_budget_bytes=int(spec.get("storage_budget_bytes", 1_000_000_000)),
+    )
+    archive_refs = (
+        f"raw_file_id={capture.raw_file.file_id}",
+        f"quality_report_id={capture.quality_report.quality_report_id}",
+        f"storage_report_id={capture.storage_report.storage_report_id}",
+    )
+    output_refs = (
+        "collector_mode=public_api_l2_bbo_snapshot_capture",
+        "source_mode=public_api",
+        f"datatype={datatype.value}",
+        f"row_count={capture.raw_file.row_count or 0}",
+        f"api_row_count={fetch.raw_response.row_count}",
+        f"venue_adapter_id={fetch.capability.adapter_id}",
+        f"source_endpoint_or_subscription={fetch.raw_request.source}",
+        f"raw_request_id={fetch.raw_request.request_id}",
+        f"raw_response_id={fetch.raw_response.response_id}",
+        f"raw_payload_sha256={fetch.raw_response.raw_payload_sha256}",
+        f"coin={coin}",
+        "api_documented_limit=max_20_levels_per_side",
+        f"storage_total_bytes={capture.storage_report.total_bytes}",
+        f"storage_within_budget={str(capture.storage_report.within_budget).lower()}",
+        "gap_evidence_recorded=false",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason=f"{datatype.value}_public_l2_book_snapshot_capture_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -843,6 +931,28 @@ def _funding_source_mode(spec: dict[str, Any]) -> str:
     return "records"
 
 
+def _microstructure_source_mode(
+    spec: dict[str, Any],
+    *,
+    datatype: MicrostructureDataType,
+) -> str:
+    source = str(spec.get("source", "")).strip()
+    has_records = _has_record_source(spec)
+    if not source:
+        return "records"
+    if source == "public_api":
+        if datatype not in {MicrostructureDataType.BBO, MicrostructureDataType.L2}:
+            raise ValueError("microstructure source=public_api only supports datatype bbo or l2")
+        if has_records:
+            raise ValueError("websocket_l2_bbo_capture source=public_api cannot include records")
+        return "public_api"
+    if source not in {"records", "inline"}:
+        raise ValueError("websocket_l2_bbo_capture source must be public_api or records")
+    if not has_records:
+        raise ValueError(f"websocket_l2_bbo_capture source={source} requires records")
+    return "records"
+
+
 def _parse_date(value: str) -> date:
     return date.fromisoformat(value)
 
@@ -862,6 +972,12 @@ def _optional_datetime(value: Any) -> datetime | None:
     if isinstance(value, str):
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     raise ValueError(f"unsupported datetime value: {value!r}")
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(value)
 
 
 def _required_records(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1047,6 +1163,112 @@ def _public_funding_records(payload: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def _public_l2_book_microstructure_records(
+    payload: Any,
+    *,
+    datatype: MicrostructureDataType,
+    instrument_id: str,
+) -> list[dict[str, Any]]:
+    snapshot_ts = _public_l2_book_time(payload)
+    bid_levels, ask_levels = _public_l2_book_levels(payload)
+    source = "public_api/info/l2Book"
+    if datatype == MicrostructureDataType.BBO:
+        best_bid = bid_levels[0]
+        best_ask = ask_levels[0]
+        return [
+            {
+                "ts": snapshot_ts.isoformat(),
+                "instrument_id": instrument_id,
+                "event_type": "bbo",
+                "sequence": 0,
+                "bid": _l2_level_price(best_bid, side="bid", index=0),
+                "ask": _l2_level_price(best_ask, side="ask", index=0),
+                "bid_size": _l2_level_size(best_bid, side="bid", index=0),
+                "ask_size": _l2_level_size(best_ask, side="ask", index=0),
+                "source": source,
+            }
+        ]
+    if datatype == MicrostructureDataType.L2:
+        return [
+            {
+                "ts": snapshot_ts.isoformat(),
+                "instrument_id": instrument_id,
+                "event_type": "l2",
+                "sequence": 0,
+                "bid_depth": sum(
+                    _l2_level_size(level, side="bid", index=index)
+                    for index, level in enumerate(bid_levels)
+                ),
+                "ask_depth": sum(
+                    _l2_level_size(level, side="ask", index=index)
+                    for index, level in enumerate(ask_levels)
+                ),
+                "book_levels": len(bid_levels) + len(ask_levels),
+                "source": source,
+            }
+        ]
+    raise ValueError("public l2Book capture only supports datatype bbo or l2")
+
+
+def _public_l2_book_time(payload: Any) -> datetime:
+    if not isinstance(payload, dict):
+        raise ValueError("public l2Book response must be an object")
+    value = payload.get("time")
+    if value is None:
+        value = payload.get("ts")
+    if value is None:
+        raise ValueError("public l2Book response is missing time")
+    return _timestamp_datetime(value)
+
+
+def _public_l2_book_levels(payload: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not isinstance(payload, dict):
+        raise ValueError("public l2Book response must be an object")
+    levels = payload.get("levels")
+    if not isinstance(levels, list) or len(levels) < 2:
+        raise ValueError("public l2Book response must contain bid and ask levels")
+    bids = _coerce_l2_levels(levels[0], side="bid")
+    asks = _coerce_l2_levels(levels[1], side="ask")
+    if not bids or not asks:
+        raise ValueError("public l2Book response returned no top-of-book levels")
+    return bids, asks
+
+
+def _coerce_l2_levels(value: Any, *, side: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        raise ValueError(f"public l2Book {side} levels must be a list")
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"public l2Book {side} levels[{index}] must be an object")
+        rows.append(dict(item))
+    return rows
+
+
+def _l2_level_price(level: dict[str, Any], *, side: str, index: int) -> float:
+    value = level.get("px")
+    if value is None:
+        value = level.get("price")
+    if value is None:
+        raise ValueError(f"public l2Book {side} levels[{index}] missing px")
+    price = float(value)
+    if price <= 0:
+        raise ValueError(f"public l2Book {side} levels[{index}] price must be positive")
+    return price
+
+
+def _l2_level_size(level: dict[str, Any], *, side: str, index: int) -> float:
+    value = level.get("sz")
+    if value is None:
+        value = level.get("size")
+    if value is None:
+        raise ValueError(f"public l2Book {side} levels[{index}] missing sz")
+    size = float(value)
+    if size < 0:
+        raise ValueError(f"public l2Book {side} levels[{index}] size must be non-negative")
+    return size
+
+
 def _funding_row_time_millis(row: dict[str, Any]) -> int:
     value = row.get("time")
     if value is None:
@@ -1071,6 +1293,10 @@ def _timestamp_millis(value: Any) -> int:
             return _timestamp_millis(int(value))
         return int(_parse_datetime(value).timestamp() * 1000)
     raise ValueError(f"unsupported timestamp value: {value!r}")
+
+
+def _timestamp_datetime(value: Any) -> datetime:
+    return datetime.fromtimestamp(_timestamp_millis(value) / 1000, tz=UTC)
 
 
 def _hyperliquid_coin_from_spec(spec: dict[str, Any], *, instrument_id: str) -> str:

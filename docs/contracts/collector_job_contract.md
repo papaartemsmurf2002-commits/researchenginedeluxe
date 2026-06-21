@@ -79,6 +79,16 @@ request handling and they do not place orders.
   archive, but they must not open venue network streams in this phase.
 - `websocket_l2_bbo_capture` jobs may preserve fixture BBO or L2 records to the
   raw archive, but they must not claim queue-model or fill realism.
+- `websocket_l2_bbo_capture` jobs may also use explicit unsigned public
+  Hyperliquid `source=public_api` mode for `/info` `l2Book` one-shot snapshots
+  when `datatype` is `bbo` or `l2`. Public snapshot jobs must return
+  `source_mode=public_api`, raw payload hash, venue adapter ID, source endpoint,
+  source coin, row count, raw request ID, raw response ID, storage refs, quality
+  refs, and the documented 20-levels-per-side cap through durable output refs.
+- Public `l2Book` jobs must write one normalized microstructure raw-capture row
+  per venue response. They are snapshot intake evidence only and do not prove
+  continuous WebSocket capture, historical L2 replay, queue-model realism, or
+  accepted research evidence.
 - `official_s3_backfill` jobs may preserve local official-file fixtures in the
   raw archive and must record native file SHA-256, byte count, source endpoint,
   row count when known, and storage budget status.
@@ -87,12 +97,19 @@ request handling and they do not place orders.
 - Local fixture/source-record candle and funding jobs must not fetch from venue
   APIs. The current venue fetch exceptions are explicit `source=public_api` for
   Hyperliquid `/info` `candleSnapshot` and `/info` `fundingHistory`.
+- Local fixture microstructure jobs must not fetch from venue APIs. The current
+  microstructure venue fetch exception is explicit `source=public_api` for
+  Hyperliquid `/info` `l2Book` BBO/L2 snapshots only.
 - Public candle snapshots must not be treated as enough to satisfy six-month
   2024+ research-readiness gates because Hyperliquid documents the endpoint as
   recent-window limited.
 - Public funding history is intake evidence only; backtest-data and validation
   gates must still prove archive snapshots, coverage, 2024+ dates, six usable
   months, lockbox exclusion, and as-of universe before accepted evidence.
+- Public L2/BBO snapshots are intake evidence only; backtest-data and
+  validation gates must still prove archive snapshots, coverage, 2024+ dates,
+  six usable months, lockbox exclusion, and as-of universe before accepted
+  evidence.
 - Candle and funding archive-write jobs must not read arbitrary local files
   outside a trusted source root.
 - Reconnect attempts, gap reasons, missing periods, and retry evidence must be
@@ -117,5 +134,7 @@ request handling and they do not place orders.
   executable, or archive files as collector record sources.
 - Real venue WebSocket streaming or S3 network downloads in the Phase 17 fixture
   collector path.
+- Treating one-shot public `l2Book` snapshots as continuous BBO/L2 archive
+  coverage or as historical microstructure replay.
 - Treating fixture microstructure captures as live execution proof or
   promotion-ready evidence.

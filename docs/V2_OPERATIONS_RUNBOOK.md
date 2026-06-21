@@ -139,6 +139,37 @@ Public funding data is required for net perpetual-return research, but it still
 does not prove coverage, accepted backtest evidence, autonomous-ready status,
 or any paper/live/order/sizing/runtime/promotion capability by itself.
 
+Public L2/BBO snapshot intake uses the durable worker path and must declare
+`source=public_api` on `websocket_l2_bbo_capture` jobs:
+
+```json
+{
+  "archive_root": "data/archive",
+  "source": "public_api",
+  "public_info_url": "https://api.hyperliquid.xyz/info",
+  "public_info_timeout": 20,
+  "venue": "hyperliquid",
+  "instrument_id": "hyperliquid:perp:BTC",
+  "coin": "BTC",
+  "datatype": "bbo",
+  "date": "2026-06-21",
+  "run_id": "run-public-l2-book-btc-20260621",
+  "start_ts": "2026-06-21T00:00:00+00:00",
+  "end_ts": "2026-06-21T00:01:00+00:00",
+  "storage_budget_bytes": 1000000000
+}
+```
+
+Set `datatype` to `bbo` to archive the best bid/offer or `l2` to archive a
+single summarized depth snapshot from the same unsigned `/info` `l2Book`
+response. Worker refs include raw request/response IDs, raw payload hash, venue
+adapter ID, `source_endpoint_or_subscription=info/l2Book`, `api_row_count`,
+`coin`, quality and storage report IDs, and
+`api_documented_limit=max_20_levels_per_side`. This mode is snapshot intake
+only; it does not prove continuous WebSocket capture, historical L2 replay,
+queue-model realism, accepted backtest evidence, autonomous-ready status, or
+any paper/live/order/sizing/runtime/promotion capability.
+
 Use `--forbid-asgi` in service integration tests to prove worker code is not
 being executed inside the operator process.
 

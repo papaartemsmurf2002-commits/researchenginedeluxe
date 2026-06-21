@@ -4,6 +4,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pytest
 
 from tradingbotsuite.v2.archive import (
@@ -122,6 +123,148 @@ def test_bbo_and_l2_worker_capture_are_raw_preserved(tmp_path, datatype: str, re
         assert len(gaps) == 1
         assert gaps[0].reason == "fixture_reconnect_gap"
         assert gaps[0].reconnect_attempts == 2
+
+
+@pytest.mark.parametrize("datatype", ["bbo", "l2"])
+def test_public_l2_book_worker_capture_writes_snapshot_microstructure(
+    tmp_path,
+    monkeypatch,
+    datatype: str,
+) -> None:
+    archive_root = tmp_path / f"archive-public-{datatype}"
+    seen_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        seen_bodies.append(body)
+        assert request.method == "POST"
+        assert body == {"type": "l2Book", "coin": "BTC"}
+        return httpx.Response(200, json=_l2_book_payload())
+
+    class FakeHyperliquidInfoClient:
+        def __init__(self, base_url: str, timeout: float) -> None:
+            self._client = _real_hyperliquid_client(
+                base_url=base_url,
+                timeout=timeout,
+                transport=httpx.MockTransport(handler),
+            )
+
+        def fetch_l2_book(self, **kwargs):
+            return self._client.fetch_l2_book(**kwargs)
+
+    from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient as _real_hyperliquid_client
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidInfoClient",
+        FakeHyperliquidInfoClient,
+    )
+    store = WorkerJobStore(tmp_path / f"jobs-public-{datatype}.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id=f"JOB-public-l2-book-{datatype}",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "public_info_url": "https://example.test/info",
+            "public_info_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "coin": "BTC",
+            "datatype": datatype,
+            "date": "2026-01-01",
+            "run_id": f"run-public-l2-book-{datatype}",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "storage_budget_bytes": 1_000_000,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id=f"worker-public-{datatype}",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    stored_rows = read_jsonl_zstd(
+        layout.resolve(manifest_rows[0].path),
+        uncompressed_size=manifest_rows[0].uncompressed_size_bytes or 0,
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert seen_bodies == [{"type": "l2Book", "coin": "BTC"}]
+    assert "collector_mode=public_api_l2_bbo_snapshot_capture" in loaded.output_refs
+    assert "source_mode=public_api" in loaded.output_refs
+    assert f"datatype={datatype}" in loaded.output_refs
+    assert "row_count=1" in loaded.output_refs
+    assert "api_row_count=4" in loaded.output_refs
+    assert "venue_adapter_id=hyperliquid_public_info_v1" in loaded.output_refs
+    assert "source_endpoint_or_subscription=info/l2Book" in loaded.output_refs
+    assert "coin=BTC" in loaded.output_refs
+    assert "api_documented_limit=max_20_levels_per_side" in loaded.output_refs
+    assert "gap_evidence_recorded=false" in loaded.output_refs
+    assert any(ref.startswith("raw_request_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_response_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_payload_sha256=") for ref in loaded.output_refs)
+    assert [row.datatype for row in manifest_rows] == [datatype]
+    assert manifest_rows[0].row_count == 1
+    assert stored_rows[0]["event_type"] == datatype
+    assert stored_rows[0]["instrument_id"] == INSTRUMENT
+    assert stored_rows[0]["source"] == "public_api/info/l2Book"
+    if datatype == "bbo":
+        assert stored_rows[0]["bid"] == 100.0
+        assert stored_rows[0]["ask"] == 100.5
+        assert stored_rows[0]["bid_size"] == 1.25
+        assert stored_rows[0]["ask_size"] == 1.5
+    else:
+        assert stored_rows[0]["bid_depth"] == pytest.approx(3.25)
+        assert stored_rows[0]["ask_depth"] == pytest.approx(4.75)
+        assert stored_rows[0]["book_levels"] == 4
+
+
+def test_public_l2_book_worker_rejects_public_api_with_local_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-public-l2-reject"
+    store = WorkerJobStore(tmp_path / "jobs-public-l2-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id="JOB-public-l2-records-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "instrument_id": INSTRUMENT,
+            "datatype": "l2",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "records": [
+                {
+                    "ts": "2026-01-01T00:00:00Z",
+                    "instrument_id": INSTRUMENT,
+                    "event_type": "l2",
+                    "bid_depth": 10_000.0,
+                    "ask_depth": 12_000.0,
+                }
+            ],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id="worker-public-l2-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=public_api cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
 def test_official_s3_backfill_preserves_native_file_and_manifest(tmp_path) -> None:
@@ -333,6 +476,23 @@ def _bbo_rows() -> list[dict[str, object]]:
             "ask_size": 13.0,
         },
     ]
+
+
+def _l2_book_payload() -> dict[str, object]:
+    return {
+        "coin": "BTC",
+        "time": int(START.timestamp() * 1000),
+        "levels": [
+            [
+                {"px": "100.0", "sz": "1.25", "n": 2},
+                {"px": "99.5", "sz": "2.00", "n": 1},
+            ],
+            [
+                {"px": "100.5", "sz": "1.50", "n": 3},
+                {"px": "101.0", "sz": "3.25", "n": 1},
+            ],
+        ],
+    }
 
 
 def _config(output_root: Path, *, run_id: str) -> BacktestRunConfig:
