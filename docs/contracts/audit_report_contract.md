@@ -1,7 +1,7 @@
 # V2 Audit Report Contract
 
 Status: v2 durable audit/blocker report contract
-Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`
+Audit IDs: `V2-AUD-AUDIT-001`, `V2-AUD-WORKER-009`, `V2-AUD-AUDIT-002`, `V2-AUD-AUDIT-003`
 
 ## Purpose
 
@@ -23,7 +23,9 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
 - Reports must include report ID, run ID, worker job-store path, audited job
   IDs, job status counts, blocker reasons, required next actions, optional
   required successful job-kind criteria, optional required artifact-ref-prefix
-  criteria, and artifact refs.
+  criteria, optional required job-kind order criteria, and artifact refs.
+- Job summaries must include enough terminal evidence to audit loop ordering,
+  including `finished_at` where present.
 - `audit_check` worker jobs must write reports outside ASGI/operator request
   paths through the durable worker runner.
 - Report blockers must include failed/stale/cancelled jobs, incomplete targeted
@@ -34,6 +36,12 @@ sizing instructions, runtime-mode changes, or promotion artifacts.
   against the selected audited jobs and missing items must be reported as
   `missing_evidence:successful_job_kind:<kind>` or
   `missing_evidence:artifact_ref_prefix:<prefix>` blockers.
+- `audit_check` job specs may declare `required_job_kind_order`. This
+  requirement is evaluated only against successful selected jobs with
+  `finished_at` timestamps. Missing ordered kinds must be reported as
+  `missing_evidence:loop_order_job_kind:<kind>`, missing timestamps as
+  `missing_evidence:loop_order_finished_at:<kind>`, and ordering failures as
+  `loop_order_violation:<previous_kind>_after_<kind>` blockers.
 - Unknown required job kinds must fail closed before report writes.
 - Finding blockers is a successful audit output, not a worker-system failure.
 - Generated report files are JSON artifacts and must be hash-addressed in

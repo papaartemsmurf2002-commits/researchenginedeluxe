@@ -31,6 +31,7 @@ class AuditJobSummary(BaseModel):
     status: str = Field(min_length=1)
     terminal_state: bool
     attempts: int = Field(ge=0)
+    finished_at: datetime | None = None
     failure_reason: str | None = None
     blocker_reasons: tuple[str, ...] = ()
     output_refs: tuple[str, ...] = ()
@@ -54,6 +55,7 @@ class AuditBlockerReport(BaseModel):
     required_next_actions: tuple[str, ...] = ()
     required_successful_job_kinds: tuple[str, ...] = ()
     required_artifact_ref_prefixes: tuple[str, ...] = ()
+    required_job_kind_order: tuple[str, ...] = ()
     artifact_refs: tuple[str, ...] = ()
     job_summaries: tuple[AuditJobSummary, ...] = ()
     boundary_flags: dict[str, bool] = Field(default_factory=lambda: dict(RESEARCH_BOUNDARY))

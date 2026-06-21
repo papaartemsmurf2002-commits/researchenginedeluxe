@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`
 
 ## Purpose
 
@@ -79,6 +79,10 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Audit worker jobs may require successful job kinds and artifact-ref prefixes
   for a selected research loop; missing required evidence must be surfaced as
   blocker refs rather than a passing report with absent evidence.
+- Audit worker jobs may require successful job kinds to appear in a declared
+  loop order across selected audited jobs; missing timestamps, missing ordered
+  kinds, or out-of-order completion must be surfaced as blocker refs rather
+  than a passing report with coincidental evidence.
 
 ## Forbidden
 

@@ -54,6 +54,7 @@ def build_audit_blocker_report(
     artifact_refs: tuple[str, ...] = (),
     required_successful_job_kinds: tuple[WorkerJobKind, ...] = (),
     required_artifact_ref_prefixes: tuple[str, ...] = (),
+    required_job_kind_order: tuple[WorkerJobKind, ...] = (),
 ) -> AuditBlockerReport:
     summaries = tuple(_summarize_job(record) for record in jobs)
     required_evidence_blockers = _required_evidence_blockers(
@@ -61,10 +62,15 @@ def build_audit_blocker_report(
         required_successful_job_kinds=required_successful_job_kinds,
         required_artifact_ref_prefixes=required_artifact_ref_prefixes,
     )
+    required_order_blockers = _required_loop_order_blockers(
+        jobs=jobs,
+        required_job_kind_order=required_job_kind_order,
+    )
     blocker_reasons = _unique(
         (
             *extra_blocker_reasons,
             *required_evidence_blockers,
+            *required_order_blockers,
             *(reason for summary in summaries for reason in summary.blocker_reasons),
         )
     )
@@ -92,6 +98,7 @@ def build_audit_blocker_report(
         "required_next_actions": next_actions,
         "required_successful_job_kinds": [kind.value for kind in required_successful_job_kinds],
         "required_artifact_ref_prefixes": list(required_artifact_ref_prefixes),
+        "required_job_kind_order": [kind.value for kind in required_job_kind_order],
         "artifact_refs": refs,
         "job_summaries": [summary.model_dump(mode="json") for summary in summaries],
     }
@@ -108,6 +115,7 @@ def build_audit_blocker_report(
         required_next_actions=next_actions,
         required_successful_job_kinds=tuple(identity["required_successful_job_kinds"]),
         required_artifact_ref_prefixes=tuple(identity["required_artifact_ref_prefixes"]),
+        required_job_kind_order=tuple(identity["required_job_kind_order"]),
         artifact_refs=refs,
         job_summaries=summaries,
     )
@@ -132,10 +140,16 @@ def _run_audit_check_job(
     required_successful_job_kinds = _optional_worker_job_kind_tuple(
         spec.get("required_successful_job_kinds"),
         default=(),
+        field_name="required_successful_job_kinds",
     )
     required_artifact_ref_prefixes = _optional_string_tuple(
         spec.get("required_artifact_ref_prefixes"),
         default=(),
+    )
+    required_job_kind_order = _optional_worker_job_kind_tuple(
+        spec.get("required_job_kind_order"),
+        default=(),
+        field_name="required_job_kind_order",
     )
     report = build_audit_blocker_report(
         run_id=str(spec.get("run_id") or job.job_id),
@@ -146,6 +160,7 @@ def _run_audit_check_job(
         artifact_refs=_optional_string_tuple(spec.get("artifact_refs"), default=()),
         required_successful_job_kinds=required_successful_job_kinds,
         required_artifact_ref_prefixes=required_artifact_ref_prefixes,
+        required_job_kind_order=required_job_kind_order,
     )
     _write_report(report_path, report)
     output_refs = [
@@ -164,6 +179,10 @@ def _run_audit_check_job(
     if required_artifact_ref_prefixes:
         output_refs.append(
             f"required_artifact_ref_prefixes={_csv(required_artifact_ref_prefixes)}"
+        )
+    if required_job_kind_order:
+        output_refs.append(
+            f"required_job_kind_order={_csv(kind.value for kind in required_job_kind_order)}"
         )
     domain_refs = (
         f"report_path={report_path}",
@@ -197,6 +216,7 @@ def _summarize_job(record: WorkerJobRecord) -> AuditJobSummary:
         status=record.status.value,
         terminal_state=record.terminal_state,
         attempts=record.attempts,
+        finished_at=record.finished_at,
         failure_reason=record.failure_reason,
         blocker_reasons=_unique(blockers),
         output_refs=record.output_refs,
@@ -252,6 +272,53 @@ def _required_evidence_blockers(
     for prefix in required_artifact_ref_prefixes:
         if not any(ref.startswith(prefix) for ref in refs):
             blockers.append(f"missing_evidence:artifact_ref_prefix:{prefix}")
+    return _unique(blockers)
+
+
+def _required_loop_order_blockers(
+    *,
+    jobs: tuple[WorkerJobRecord, ...],
+    required_job_kind_order: tuple[WorkerJobKind, ...],
+) -> tuple[str, ...]:
+    if not required_job_kind_order:
+        return ()
+    successful_with_finished: dict[str, list[WorkerJobRecord]] = {}
+    successful_without_finished: set[str] = set()
+    for record in jobs:
+        if record.status != WorkerJobStatus.SUCCEEDED:
+            continue
+        if record.finished_at is None:
+            successful_without_finished.add(record.kind.value)
+            continue
+        successful_with_finished.setdefault(record.kind.value, []).append(record)
+    for records in successful_with_finished.values():
+        records.sort(key=lambda candidate: (candidate.finished_at, candidate.job_id))
+
+    blockers: list[str] = []
+    used_job_ids: set[str] = set()
+    previous_kind: str | None = None
+    previous_finished_at = None
+    for kind in required_job_kind_order:
+        candidates = [
+            candidate
+            for candidate in successful_with_finished.get(kind.value, ())
+            if candidate.job_id not in used_job_ids
+            and (previous_finished_at is None or candidate.finished_at >= previous_finished_at)
+        ]
+        if candidates:
+            chosen = candidates[0]
+            used_job_ids.add(chosen.job_id)
+            previous_kind = kind.value
+            previous_finished_at = chosen.finished_at
+            continue
+        if successful_with_finished.get(kind.value):
+            anchor = previous_kind or "previous_required_stage"
+            blockers.append(f"loop_order_violation:{anchor}_after_{kind.value}")
+            continue
+        if kind.value in successful_without_finished:
+            blockers.append(f"missing_evidence:loop_order_finished_at:{kind.value}")
+            continue
+        blockers.append(f"missing_evidence:loop_order_job_kind:{kind.value}")
     return _unique(blockers)
 
 
@@ -312,6 +379,7 @@ def _optional_worker_job_kind_tuple(
     value: Any,
     *,
     default: tuple[WorkerJobKind, ...] | None = None,
+    field_name: str,
 ) -> tuple[WorkerJobKind, ...] | None:
     values = _optional_string_tuple(value, default=None)
     if values is None:
@@ -321,7 +389,7 @@ def _optional_worker_job_kind_tuple(
         try:
             kinds.append(WorkerJobKind(item))
         except ValueError as exc:
-            raise ValueError(f"unsupported required_successful_job_kinds value: {item}") from exc
+            raise ValueError(f"unsupported {field_name} value: {item}") from exc
     return tuple(kinds)
 
 

@@ -112,10 +112,15 @@ This is the first file to read after `AGENTS.md`.
   `audit_check` blocker reports with required successful job-kind and required
   artifact-ref-prefix checks, so absent universe/archive/coverage/backtest/
   ledger/Lead Book evidence becomes explicit `missing_evidence:*` blocker
-  output. Full historical candle coverage beyond the public recent-window
-  limit, unattended continuous candle capture, continuous BBO/L2 capture,
-  accepted continuous historical trade/L2 coverage proof, independent audits,
-  and authoritative full-suite proof remain follow-up work.
+  output. WPR106-447 adds optional required job-kind ordering to those reports,
+  so selected successful loop stages must also form a nondecreasing
+  `finished_at` chain when the manager declares `required_job_kind_order`;
+  missing timestamps and out-of-order stages remain blocker evidence, not
+  worker-system failures or readiness claims. Full historical candle coverage
+  beyond the public recent-window limit, unattended continuous candle capture,
+  continuous BBO/L2 capture, accepted continuous historical trade/L2 coverage
+  proof, independent audits, and authoritative full-suite proof remain
+  follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
