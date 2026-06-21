@@ -1,7 +1,7 @@
 # V2 Backtest Engine Contract
 
 Status: v2 Phase 16 vectorized and event-driven engine contract
-Audit IDs: `V2-AUD-BTENG-001`, `V2-AUD-BTENG-002`, `V2-AUD-COST-001`
+Audit IDs: `V2-AUD-BTENG-001`, `V2-AUD-BTENG-002`, `V2-AUD-COST-001`, `V2-AUD-BTENG-006`
 
 ## Purpose
 
@@ -30,6 +30,9 @@ research-only run artifacts.
 - Run outputs are research-only and non-promotable.
 - The initial Phase 11 vectorized engine runs validated declarative strategy
   specs over caller-supplied local/in-memory panels.
+- Durable `vectorized_backtest` worker jobs must use `BacktestDataService` as
+  the archive-backed panel source and must not bypass 2024+, six-month,
+  coverage, as-of universe, or lockbox preflight gates.
 - `StrategyContext` records archive snapshot, universe snapshot, data
   manifest, validation policy, cost model, timeframe, universe mode, venue
   scope, backtest window, lockbox policy, and coverage floor.

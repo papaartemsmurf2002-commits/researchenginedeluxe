@@ -5,7 +5,7 @@ import os
 import sqlite3
 import subprocess
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -17,7 +17,14 @@ from tradingbotsuite.v2.archive import (
     ArchiveManifestStore,
     SilverFundingIntervalRow,
 )
+from tradingbotsuite.v2.archive.parquet_writer import write_parquet_rows
+from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
+from tradingbotsuite.v2.data_quality.coverage import coverage_report_for_bars
 from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore
+from tradingbotsuite.v2.data_quality.schemas import EvidenceMode
+from tradingbotsuite.v2.strategy_specs import example_strategy_payloads
+from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
+from tradingbotsuite.v2.universe.models import UniverseMode
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobStatus
 from tradingbotsuite.v2.workers.runner import run_one_job
@@ -442,6 +449,99 @@ def test_coverage_audit_worker_rejects_non_silver_bars_file_without_report_write
     assert coverage_store.load_quality_checks() == []
 
 
+def test_vectorized_backtest_worker_loads_archive_panel_and_writes_run_artifacts(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        job_id="JOB-vectorized-backtest",
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "output_root": str(tmp_path / "runs"),
+            "run_id": "worker-vectorized-run",
+            "experiment_id": "phase7-worker-backtest",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-07-01T00:00:00+00:00",
+            "asof_date": "2026-06-21",
+            "evidence_mode": "accepted_research",
+            "strategy_spec": _worker_backtest_strategy_spec(),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        worker_id="worker-backtest",
+    )
+    loaded = store.load_job(queued.job_id)
+    run_dir = tmp_path / "runs" / "worker-vectorized-run"
+    run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    cost_stress = pq.read_table(run_dir / "cost_stress.parquet").to_pylist()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "job_kind=vectorized_backtest" in loaded.output_refs
+    assert "engine_lane=vectorized" in loaded.output_refs
+    assert "run_status=succeeded" in loaded.output_refs
+    assert "run_id=worker-vectorized-run" in loaded.output_refs
+    assert any(ref.startswith("run_manifest_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("data_manifest_id=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("coverage_report_id=") for ref in loaded.archive_manifest_refs)
+    assert run_manifest["status"] == "succeeded"
+    assert run_manifest["archive_snapshot_id"] == fixture.archive_snapshot_id
+    assert run_manifest["universe_snapshot_id"] == fixture.universe_snapshot_id
+    assert run_manifest["research_only"] is True
+    assert run_manifest["promotion_ready"] is False
+    assert {row["scenario_id"] for row in cost_stress} == {"base", "stress_2x", "stress_3x"}
+
+
+def test_vectorized_backtest_worker_rejects_invalid_strategy_spec_before_run(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    bad_spec = _worker_backtest_strategy_spec()
+    bad_spec["live_signal"] = True
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        job_id="JOB-vectorized-backtest-bad-spec",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "output_root": str(tmp_path / "runs"),
+            "run_id": "worker-vectorized-bad-spec",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-07-01T00:00:00+00:00",
+            "asof_date": "2026-06-21",
+            "evidence_mode": "accepted_research",
+            "strategy_spec": bad_spec,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        worker_id="worker-backtest-bad-spec",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "strategy_spec_validation_failed" in (loaded.failure_reason or "")
+    assert not (tmp_path / "runs" / "worker-vectorized-bad-spec" / "run_manifest.json").exists()
+
+
 def test_recent_candle_bootstrap_worker_reads_trusted_jsonl_records_file(tmp_path) -> None:
     trusted_root = tmp_path / "trusted-source"
     trusted_root.mkdir()
@@ -769,6 +869,127 @@ def test_worker_cli_enqueue_run_status_retry_and_cancel(tmp_path) -> None:
     assert queued_cancel.returncode == 0
     assert "JOB-cli-cancel\tfunding_backfill\tcancelled" in cancel.stdout
     assert "JOB-cli-cancel\tfunding_backfill\tqueued" in retry.stdout
+
+
+class _BacktestFixture:
+    def __init__(
+        self,
+        *,
+        archive_root: Path,
+        archive_snapshot_id: str,
+        universe_snapshot_id: str,
+    ) -> None:
+        self.archive_root = archive_root
+        self.archive_snapshot_id = archive_snapshot_id
+        self.universe_snapshot_id = universe_snapshot_id
+
+
+def _backtest_archive_fixture(tmp_path: Path) -> _BacktestFixture:
+    archive_root = tmp_path / "archive-backtest"
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    store = ArchiveManifestStore(layout)
+    start_ts = datetime(2024, 1, 1, tzinfo=UTC)
+    end_ts = datetime(2024, 7, 1, tzinfo=UTC)
+    rows = _backtest_daily_rows(start_ts, end_ts)
+    write_parquet_rows(
+        layout=layout,
+        store=store,
+        rows=rows,
+        layer=ArchiveLayer.SILVER,
+        dataset="bars",
+        venue="hyperliquid",
+        datatype="bars",
+        date=start_ts.date().isoformat(),
+        timeframe="1d",
+        job_id="job-worker-backtest-silver",
+        source_file_ids=("source-worker-backtest",),
+        instrument_id=INSTRUMENT,
+    )
+    report = coverage_report_for_bars(
+        rows,
+        venue="hyperliquid",
+        instrument_id=INSTRUMENT,
+        timeframe="1d",
+        start_ts=start_ts,
+        end_ts=end_ts,
+        evidence_mode=EvidenceMode.ACCEPTED_RESEARCH,
+    )
+    CoverageManifestStore(layout).append_coverage_report(report)
+    snapshot = create_archive_snapshot(
+        store=store,
+        layer=ArchiveLayer.SILVER,
+        venue_scope="hyperliquid",
+        start_ts=start_ts,
+        end_ts=end_ts,
+        coverage_rows=[report.model_dump(mode="json")],
+        quality_rows=(),
+        lockbox_policy_id="dynamic_full_calendar_months_v1",
+        notes="worker_vectorized_backtest_fixture",
+    )
+    universe = refresh_hyperliquid_universe(
+        archive_root=archive_root,
+        payload=_universe_payload(),
+        asof_date=date(2024, 1, 1),
+        mode=UniverseMode.AS_OF,
+    )
+    return _BacktestFixture(
+        archive_root=archive_root,
+        archive_snapshot_id=snapshot.archive_snapshot_id,
+        universe_snapshot_id=universe.snapshot_id,
+    )
+
+
+def _backtest_daily_rows(start_ts: datetime, end_ts: datetime) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    current = start_ts
+    index = 0
+    while current < end_ts:
+        close = 100.0 + (index * 0.2) + ((index % 7) * 0.1)
+        rows.append(
+            {
+                "venue": "hyperliquid",
+                "instrument_id": INSTRUMENT,
+                "timeframe": "1d",
+                "ts": current.isoformat().replace("+00:00", "Z"),
+                "end_ts": (current + timedelta(days=1)).isoformat().replace("+00:00", "Z"),
+                "open": close - 0.15,
+                "high": close + 0.5,
+                "low": close - 0.5,
+                "close": close,
+                "volume": 100_000.0 + index,
+                "trade_count": index + 1,
+                "funding": 0.00001 if index % 2 == 0 else -0.00001,
+                "funding_rate": 0.00001 if index % 2 == 0 else -0.00001,
+                "open_interest": 5_000_000.0 + index,
+                "mark_price": close,
+                "oracle_price": close,
+                "spread": 0.001,
+                "coverage_ratio": 1.0,
+                "source_timeframe": "1d",
+                "source_file_id": "f" * 64,
+                "source_layer": "bronze",
+                "normalization_warnings": (),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        )
+        current += timedelta(days=1)
+        index += 1
+    return rows
+
+
+def _worker_backtest_strategy_spec() -> dict[str, object]:
+    payload = json.loads(json.dumps(example_strategy_payloads()["hl_mean_reversion_v1"]))
+    payload["inputs"]["timeframe"] = "1d"
+    payload["inputs"]["fields"] = ["close", "volume", "coverage_ratio"]
+    payload["logic"]["lookback_bars"] = 2
+    payload["logic"]["lookback_hours"] = None
+    payload["logic"]["entry_threshold"] = 0.1
+    payload["risk"]["rebalance"] = "1d"
+    payload["validation"]["min_backtest_months"] = 6
+    return payload
 
 
 def _run_cli(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:

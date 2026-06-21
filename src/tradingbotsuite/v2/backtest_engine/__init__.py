@@ -25,6 +25,7 @@ from tradingbotsuite.v2.backtest_engine.engine import (
     run_event_driven_placeholder,
     run_vectorized_backtest,
 )
+from tradingbotsuite.v2.backtest_engine.jobs import run_backtest_job
 
 __all__ = [
     "BacktestEngineError",
@@ -39,6 +40,7 @@ __all__ = [
     "StrategyContext",
     "ValidationStatus",
     "recompute_metrics_from_run_manifest",
+    "run_backtest_job",
     "run_event_driven_backtest",
     "run_event_driven_placeholder",
     "run_vectorized_backtest",

@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from tradingbotsuite.v2.backtest_engine.jobs import run_backtest_job
 from tradingbotsuite.v2.collectors.jobs import run_collector_job
 from tradingbotsuite.v2.data_quality.jobs import run_data_quality_job
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
@@ -23,6 +24,11 @@ COLLECTOR_KINDS = {
 
 DATA_QUALITY_KINDS = {
     WorkerJobKind.COVERAGE_AUDIT,
+}
+
+BACKTEST_KINDS = {
+    WorkerJobKind.BACKTEST,
+    WorkerJobKind.VECTORIZED_BACKTEST,
 }
 
 
@@ -46,6 +52,8 @@ def run_one_job(
             return run_collector_job(job=running, store=store, worker_id=worker_id)
         if job_kind in DATA_QUALITY_KINDS:
             return run_data_quality_job(job=running, store=store, worker_id=worker_id)
+        if job_kind in BACKTEST_KINDS:
+            return run_backtest_job(job=running, store=store, worker_id=worker_id)
         raise ValueError(f"worker kind is not implemented in Phase 7: {job_kind.value}")
     except Exception as exc:
         failed = store.fail_job(

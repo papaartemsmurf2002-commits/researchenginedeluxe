@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`
 
 ## Purpose
 
@@ -39,6 +39,14 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   coverage/quality manifest refs instead of requiring in-process UI/API calls.
 - Coverage blockers found by a successful audit are output evidence, not hidden
   logs and not worker-system failures.
+- `vectorized_backtest` jobs must run through the durable worker runner, load
+  panels only through `BacktestDataService`, validate inline declarative
+  strategy specs before strategy code sees rows, and return run-manifest,
+  data-manifest, coverage, archive-snapshot, and universe-snapshot refs.
+- Engine-level failed run manifests are research artifacts and may complete the
+  worker job successfully when the worker produced the required failure
+  artifacts. Data-service or strategy-spec preflight failures remain worker
+  failures.
 
 ## Forbidden
 
@@ -48,3 +56,6 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Terminal state changes without a transition record.
 - Running data-quality audits against venue APIs or non-archive local files in
   the worker path.
+- Running durable backtests against direct venue/API reads, unvalidated
+  strategy specs, or arbitrary strategy-spec files without a trusted-file
+  intake packet.

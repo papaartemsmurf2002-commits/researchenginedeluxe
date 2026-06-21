@@ -47,8 +47,13 @@ This is the first file to read after `AGENTS.md`.
   fail-before-archive behavior for rejected files. WPR106-427 wires the
   existing `coverage_audit` worker kind to durable archive-backed coverage and
   quality manifest writes for silver bars, with blocker evidence surfaced
-  through worker output refs. Real venue/API collection, independent audits,
-  and authoritative full-suite proof remain follow-up work.
+  through worker output refs. WPR106-428 wires durable
+  `vectorized_backtest` jobs through the worker runner using inline
+  declarative strategy specs and archive-backed `BacktestDataService` panels,
+  returning run-manifest, data-manifest, coverage, archive-snapshot, and
+  universe-snapshot refs without adding paper/live/order/sizing/runtime or
+  promotion behavior. Real venue/API collection, independent audits, and
+  authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
