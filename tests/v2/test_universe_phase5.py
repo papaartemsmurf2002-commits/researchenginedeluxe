@@ -18,7 +18,7 @@ from tradingbotsuite.v2.universe.hyperliquid import (
     select_asof_universe,
 )
 from tradingbotsuite.v2.universe.models import UniverseMode
-from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient
+from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient, HyperliquidWebSocketClient
 from tradingbotsuite.v2.universe.rules import (
     CURRENT_UNIVERSE_SANDBOX_ONLY,
     MISSING_HIP3_METADATA,
@@ -266,6 +266,88 @@ def test_hyperliquid_info_client_records_public_l2_book_provenance() -> None:
     assert result.raw_response.evidence_scope == "public_unsigned_l2_book_snapshot"
     assert result.raw_response.row_count == 4
     assert result.raw_response.rate_limit_metadata["x-ratelimit-remaining"] == "9"
+    assert result.raw_response.order_placement_instruction is False
+
+
+def test_hyperliquid_websocket_client_records_public_trade_snapshot_provenance() -> None:
+    sent_messages: list[dict[str, object]] = []
+
+    class FakeWebSocket:
+        def __init__(self) -> None:
+            self.messages = [
+                {"channel": "subscriptionResponse", "data": {"subscription": {"type": "trades", "coin": "BTC"}}},
+                {
+                    "channel": "trades",
+                    "data": [
+                        {
+                            "coin": "BTC",
+                            "side": "A",
+                            "px": "100.0",
+                            "sz": "1.25",
+                            "hash": "0xabc",
+                            "time": 1_767_225_600_000,
+                            "tid": 123,
+                            "users": ["0x1", "0x2"],
+                        },
+                        {
+                            "coin": "BTC",
+                            "side": "B",
+                            "px": "100.5",
+                            "sz": "2.00",
+                            "hash": "0xdef",
+                            "time": 1_767_225_600_500,
+                            "tid": 124,
+                            "users": ["0x3", "0x4"],
+                        },
+                    ],
+                },
+            ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> None:
+            return None
+
+        def send(self, raw_message: str) -> None:
+            sent_messages.append(json.loads(raw_message))
+
+        def recv(self, timeout=None) -> str:
+            if not self.messages:
+                raise TimeoutError("no more messages")
+            return json.dumps(self.messages.pop(0))
+
+    seen_connects = []
+
+    def fake_connect(url: str, **kwargs):
+        seen_connects.append((url, kwargs))
+        return FakeWebSocket()
+
+    client = HyperliquidWebSocketClient(
+        ws_url="wss://example.test/ws",
+        timeout=3.0,
+        connect=fake_connect,
+    )
+    result = client.fetch_trade_snapshot(
+        coin="BTC",
+        max_messages=2,
+        max_rows=2,
+        max_seconds=3.0,
+    )
+
+    assert seen_connects == [("wss://example.test/ws", {"open_timeout": 3.0})]
+    assert sent_messages == [
+        {"method": "subscribe", "subscription": {"type": "trades", "coin": "BTC"}}
+    ]
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_trades is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "websocket/trades"
+    assert result.raw_request.params["subscription"] == {"type": "trades", "coin": "BTC"}
+    assert result.raw_request.params["max_messages"] == 2
+    assert result.raw_request.params["max_rows"] == 2
+    assert result.raw_response.evidence_scope == "public_unsigned_websocket_trade_snapshot"
+    assert result.raw_response.row_count == 2
     assert result.raw_response.order_placement_instruction is False
 
 

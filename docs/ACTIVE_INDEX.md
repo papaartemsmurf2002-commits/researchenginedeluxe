@@ -79,9 +79,13 @@ This is the first file to read after `AGENTS.md`.
   with per-page request/response provenance. WPR106-435 adds public Hyperliquid
   `l2Book` snapshot intake for durable BBO/L2 microstructure capture jobs,
   writing raw-capture, quality, and storage refs while labeling the path as
-  one-shot snapshot intake only. Full historical candle backfill, trade venue
-  archive collection, continuous BBO/L2 capture or historical L2 replay,
-  independent audits, and authoritative full-suite proof remain follow-up work.
+  one-shot snapshot intake only. WPR106-436 adds bounded public Hyperliquid
+  WebSocket `trades` snapshot intake for durable trade microstructure capture
+  jobs, writing raw-capture, quality, and storage refs with message/row/time
+  caps. Full historical candle backfill, historical trade coverage,
+  long-running continuous trade capture, continuous BBO/L2 capture or
+  historical L2 replay, independent audits, and authoritative full-suite proof
+  remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

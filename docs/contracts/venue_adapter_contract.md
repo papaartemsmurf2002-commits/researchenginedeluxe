@@ -15,6 +15,7 @@ execution behavior to v2 research modules.
 - `VenueRawRequest`
 - `VenueRawResponse`
 - `HyperliquidInfoClient`
+- `HyperliquidWebSocketClient`
 - `BinanceFixtureArchiveResult`
 
 ## Required Rules
@@ -40,6 +41,13 @@ execution behavior to v2 research modules.
 - Public L2 book provenance must record coin, optional aggregation parameters,
   raw payload hash, level count, rate-limit metadata when present, and the
   documented 20-levels-per-side limitation.
+- The Hyperliquid public-WebSocket adapter may subscribe only to public market
+  data streams explicitly scoped by packet. The current implemented stream is
+  `trades` for bounded recent trade snapshots. It must preserve
+  `public_unsigned` access mode plus raw request/response provenance.
+- Public trade WebSocket provenance must record coin, subscription request,
+  WebSocket URL, row/message/time caps, raw payload hash, message count, trade
+  row count, and bounded snapshot evidence scope.
 - Cross-venue rows preserve venue provenance and must not dilute the
   Hyperliquid-first default.
 - Venue capabilities must fail closed if they declare secret access, signed
@@ -62,5 +70,7 @@ execution behavior to v2 research modules.
 - Extending the Hyperliquid public-info adapter beyond unsigned universe
   metadata, recent candle snapshots, historical funding rates, and L2 book
   snapshots without a new scoped packet and boundary audit.
+- Extending the Hyperliquid public-WebSocket adapter beyond bounded public
+  `trades` snapshots without a new scoped packet and boundary audit.
 - Treating cross-venue fixture rows as live execution proof, paper/live signal,
   sizing instruction, candidate-pack eligibility, or promotion evidence.

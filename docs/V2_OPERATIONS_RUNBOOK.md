@@ -139,6 +139,39 @@ Public funding data is required for net perpetual-return research, but it still
 does not prove coverage, accepted backtest evidence, autonomous-ready status,
 or any paper/live/order/sizing/runtime/promotion capability by itself.
 
+Public trade snapshot intake uses the durable worker path and must declare
+`source=public_websocket` on `websocket_trade_capture` jobs:
+
+```json
+{
+  "archive_root": "data/archive",
+  "source": "public_websocket",
+  "public_ws_url": "wss://api.hyperliquid.xyz/ws",
+  "public_ws_timeout": 20,
+  "venue": "hyperliquid",
+  "instrument_id": "hyperliquid:perp:BTC",
+  "coin": "BTC",
+  "date": "2026-06-21",
+  "run_id": "run-public-ws-trades-btc-20260621",
+  "start_ts": "2026-06-21T00:00:00+00:00",
+  "end_ts": "2026-06-21T00:01:00+00:00",
+  "max_public_ws_messages": 20,
+  "max_public_ws_rows": 200,
+  "max_public_ws_seconds": 20,
+  "storage_budget_bytes": 1000000000
+}
+```
+
+This mode subscribes only to the public `trades` stream for the declared coin
+and stops after the configured message, row, or elapsed-time cap. Worker refs
+include raw request/response IDs, raw payload hash, venue adapter ID,
+`source_endpoint_or_subscription=websocket/trades`, `ws_message_count`,
+`ws_trade_row_count`, `coin`, quality and storage report IDs, and the configured
+caps. This is recent streaming intake only; it does not prove historical trade
+coverage, long-running continuous collection, accepted backtest evidence,
+autonomous-ready status, or any paper/live/order/sizing/runtime/promotion
+capability.
+
 Public L2/BBO snapshot intake uses the durable worker path and must declare
 `source=public_api` on `websocket_l2_bbo_capture` jobs:
 

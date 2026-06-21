@@ -233,7 +233,7 @@ def normalize_microstructure_rows(
     return tuple(
         sorted(
             materialized,
-            key=lambda item: (item["ts"], item["instrument_id"], int(item.get("sequence", 0))),
+            key=lambda item: (_parse_datetime(item["ts"]), item["instrument_id"], int(item.get("sequence", 0))),
         )
     )
 

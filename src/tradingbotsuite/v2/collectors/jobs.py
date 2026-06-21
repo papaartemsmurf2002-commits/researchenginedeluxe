@@ -35,7 +35,7 @@ from tradingbotsuite.v2.config.time import utc_now
 from tradingbotsuite.v2.security.path_policy import resolve_within_root
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
-from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient
+from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient, HyperliquidWebSocketClient
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import (
     WorkerJobKind,
@@ -655,6 +655,13 @@ def _run_microstructure_capture_job(
             worker_id=worker_id,
             datatype=datatype,
         )
+    if source_mode == "public_websocket":
+        return _run_public_websocket_trade_capture_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+            datatype=datatype,
+        )
     start_ts = _parse_datetime(_required_str(spec, "start_ts"))
     end_ts = _parse_datetime(_required_str(spec, "end_ts"))
     reconnect_attempts = int(spec.get("reconnect_attempts", 0))
@@ -714,6 +721,95 @@ def _run_microstructure_capture_job(
         archive_manifest_refs=archive_refs,
         gap_record_ids=gap_record_ids,
         reason=f"{datatype.value}_microstructure_capture_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_public_websocket_trade_capture_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+    datatype: MicrostructureDataType,
+) -> WorkerRunResult:
+    if datatype != MicrostructureDataType.TRADES:
+        raise ValueError("public websocket capture only supports datatype trades")
+    spec = job.input_spec
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    coin = _hyperliquid_coin_from_spec(spec, instrument_id=instrument_id)
+    max_messages = int(spec.get("max_public_ws_messages", 20))
+    max_rows = int(spec.get("max_public_ws_rows", 200))
+    max_seconds = float(spec.get("max_public_ws_seconds", spec.get("public_ws_timeout", 20.0)))
+    fetch = HyperliquidWebSocketClient(
+        ws_url=str(spec.get("public_ws_url", "wss://api.hyperliquid.xyz/ws")),
+        timeout=float(spec.get("public_ws_timeout", max_seconds)),
+    ).fetch_trade_snapshot(
+        coin=coin,
+        max_messages=max_messages,
+        max_rows=max_rows,
+        max_seconds=max_seconds,
+    )
+    records = _public_websocket_trade_records(
+        fetch.payload,
+        instrument_id=instrument_id,
+        max_rows=max_rows,
+    )
+    capture = write_microstructure_raw_capture(
+        archive_root=archive_root,
+        records=records,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype=datatype,
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=fetch.capability.adapter_id,
+        source_endpoint_or_subscription=fetch.raw_request.source,
+        instrument_id=instrument_id,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        storage_budget_bytes=int(spec.get("storage_budget_bytes", 1_000_000_000)),
+    )
+    archive_refs = (
+        f"raw_file_id={capture.raw_file.file_id}",
+        f"quality_report_id={capture.quality_report.quality_report_id}",
+        f"storage_report_id={capture.storage_report.storage_report_id}",
+    )
+    output_refs = (
+        "collector_mode=public_websocket_trade_snapshot_capture",
+        "source_mode=public_websocket",
+        f"datatype={datatype.value}",
+        f"row_count={capture.raw_file.row_count or 0}",
+        f"ws_message_count={len(fetch.payload)}",
+        f"ws_trade_row_count={fetch.raw_response.row_count}",
+        f"venue_adapter_id={fetch.capability.adapter_id}",
+        f"source_endpoint_or_subscription={fetch.raw_request.source}",
+        f"raw_request_id={fetch.raw_request.request_id}",
+        f"raw_response_id={fetch.raw_response.response_id}",
+        f"raw_payload_sha256={fetch.raw_response.raw_payload_sha256}",
+        f"coin={coin}",
+        f"max_public_ws_messages={max_messages}",
+        f"max_public_ws_rows={max_rows}",
+        f"max_public_ws_seconds={max_seconds}",
+        f"storage_total_bytes={capture.storage_report.total_bytes}",
+        f"storage_within_budget={str(capture.storage_report.within_budget).lower()}",
+        "gap_evidence_recorded=false",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="trades_public_websocket_snapshot_capture_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -940,6 +1036,12 @@ def _microstructure_source_mode(
     has_records = _has_record_source(spec)
     if not source:
         return "records"
+    if source == "public_websocket":
+        if datatype != MicrostructureDataType.TRADES:
+            raise ValueError("microstructure source=public_websocket only supports datatype trades")
+        if has_records:
+            raise ValueError("websocket_trade_capture source=public_websocket cannot include records")
+        return "public_websocket"
     if source == "public_api":
         if datatype not in {MicrostructureDataType.BBO, MicrostructureDataType.L2}:
             raise ValueError("microstructure source=public_api only supports datatype bbo or l2")
@@ -947,9 +1049,9 @@ def _microstructure_source_mode(
             raise ValueError("websocket_l2_bbo_capture source=public_api cannot include records")
         return "public_api"
     if source not in {"records", "inline"}:
-        raise ValueError("websocket_l2_bbo_capture source must be public_api or records")
+        raise ValueError("microstructure capture source must be public_api, public_websocket, or records")
     if not has_records:
-        raise ValueError(f"websocket_l2_bbo_capture source={source} requires records")
+        raise ValueError(f"microstructure capture source={source} requires records")
     return "records"
 
 
@@ -1208,6 +1310,95 @@ def _public_l2_book_microstructure_records(
             }
         ]
     raise ValueError("public l2Book capture only supports datatype bbo or l2")
+
+
+def _public_websocket_trade_records(
+    payload: Any,
+    *,
+    instrument_id: str,
+    max_rows: int,
+) -> list[dict[str, Any]]:
+    if max_rows <= 0:
+        raise ValueError("max_rows must be positive")
+    messages = _coerce_public_websocket_messages(payload)
+    rows: list[dict[str, Any]] = []
+    sequence = 0
+    for message in messages:
+        if message.get("channel") != "trades":
+            continue
+        data = message.get("data")
+        if not isinstance(data, list):
+            raise ValueError("public websocket trades message data must be a list")
+        for index, item in enumerate(data):
+            if not isinstance(item, dict):
+                raise ValueError(f"public websocket trades data[{index}] must be an object")
+            rows.append(
+                _public_websocket_trade_row(
+                    dict(item),
+                    instrument_id=instrument_id,
+                    sequence=sequence,
+                )
+            )
+            sequence += 1
+            if len(rows) >= max_rows:
+                break
+        if len(rows) >= max_rows:
+            break
+    if not rows:
+        raise ValueError("public websocket trades returned no trade rows")
+    return rows
+
+
+def _coerce_public_websocket_messages(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, tuple):
+        payload = list(payload)
+    if not isinstance(payload, list):
+        raise ValueError("public websocket payload must be a message list")
+    messages: list[dict[str, Any]] = []
+    for index, item in enumerate(payload):
+        if not isinstance(item, dict):
+            raise ValueError(f"public websocket message[{index}] must be an object")
+        messages.append(dict(item))
+    return messages
+
+
+def _public_websocket_trade_row(
+    item: dict[str, Any],
+    *,
+    instrument_id: str,
+    sequence: int,
+) -> dict[str, Any]:
+    ts = _timestamp_datetime(_required_trade_value(item, "time"))
+    price = _positive_float(_required_trade_value(item, "px"), field="px")
+    size = _positive_float(_required_trade_value(item, "sz"), field="sz")
+    coin = str(item.get("coin", "")).strip()
+    tid = item.get("tid")
+    trade_id = f"{coin or instrument_id}:{_timestamp_millis(item['time'])}:{tid}" if tid is not None else item.get("hash")
+    return {
+        "ts": ts.isoformat(timespec="milliseconds"),
+        "instrument_id": instrument_id,
+        "event_type": "trade",
+        "sequence": sequence,
+        "price": price,
+        "size": size,
+        "side": str(item.get("side")) if item.get("side") is not None else None,
+        "trade_id": str(trade_id) if trade_id is not None else None,
+        "source": "public_websocket/trades",
+    }
+
+
+def _required_trade_value(item: dict[str, Any], field: str) -> Any:
+    value = item.get(field)
+    if value is None:
+        raise ValueError(f"public websocket trade is missing {field}")
+    return value
+
+
+def _positive_float(value: Any, *, field: str) -> float:
+    parsed = float(value)
+    if parsed <= 0:
+        raise ValueError(f"public websocket trade {field} must be positive")
+    return parsed
 
 
 def _public_l2_book_time(payload: Any) -> datetime:

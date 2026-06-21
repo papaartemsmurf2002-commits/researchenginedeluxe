@@ -267,6 +267,130 @@ def test_public_l2_book_worker_rejects_public_api_with_local_records(tmp_path) -
     assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
+def test_public_websocket_trade_worker_capture_writes_snapshot_microstructure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    archive_root = tmp_path / "archive-public-ws-trades"
+
+    class FakeHyperliquidWebSocketClient:
+        def __init__(self, ws_url: str, timeout: float) -> None:
+            self.ws_url = ws_url
+            self.timeout = timeout
+
+        def fetch_trade_snapshot(self, **kwargs):
+            from tradingbotsuite.v2.venues.hyperliquid import HyperliquidWebSocketClient as RealClient
+
+            client = RealClient(
+                ws_url=self.ws_url,
+                timeout=self.timeout,
+                connect=_fake_trade_websocket_connect,
+            )
+            return client.fetch_trade_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidWebSocketClient",
+        FakeHyperliquidWebSocketClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs-public-ws-trades.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-public-ws-trades",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "public_ws_url": "wss://example.test/ws",
+            "public_ws_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "coin": "BTC",
+            "date": "2026-01-01",
+            "run_id": "run-public-ws-trades",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "max_public_ws_messages": 2,
+            "max_public_ws_rows": 2,
+            "max_public_ws_seconds": 3.0,
+            "storage_budget_bytes": 1_000_000,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-public-ws-trades",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    stored_rows = read_jsonl_zstd(
+        layout.resolve(manifest_rows[0].path),
+        uncompressed_size=manifest_rows[0].uncompressed_size_bytes or 0,
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=public_websocket_trade_snapshot_capture" in loaded.output_refs
+    assert "source_mode=public_websocket" in loaded.output_refs
+    assert "datatype=trades" in loaded.output_refs
+    assert "row_count=2" in loaded.output_refs
+    assert "ws_message_count=2" in loaded.output_refs
+    assert "ws_trade_row_count=3" in loaded.output_refs
+    assert "venue_adapter_id=hyperliquid_public_websocket_v1" in loaded.output_refs
+    assert "source_endpoint_or_subscription=websocket/trades" in loaded.output_refs
+    assert "coin=BTC" in loaded.output_refs
+    assert "max_public_ws_messages=2" in loaded.output_refs
+    assert "max_public_ws_rows=2" in loaded.output_refs
+    assert "gap_evidence_recorded=false" in loaded.output_refs
+    assert any(ref.startswith("raw_request_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_response_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_payload_sha256=") for ref in loaded.output_refs)
+    assert [row.datatype for row in manifest_rows] == ["trades"]
+    assert manifest_rows[0].row_count == 2
+    assert [row["event_type"] for row in stored_rows] == ["trade", "trade"]
+    assert [row["price"] for row in stored_rows] == [100.0, 100.5]
+    assert [row["size"] for row in stored_rows] == [1.25, 2.0]
+    assert [row["trade_id"] for row in stored_rows] == [
+        "BTC:1767225600000:123",
+        "BTC:1767225600500:124",
+    ]
+    assert all(row["source"] == "public_websocket/trades" for row in stored_rows)
+
+
+def test_public_websocket_trade_worker_rejects_public_websocket_with_local_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-public-ws-trades-reject"
+    store = WorkerJobStore(tmp_path / "jobs-public-ws-trades-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-public-ws-trades-records-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_websocket",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "records": _trade_rows(),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-public-ws-trades-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=public_websocket cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
 def test_official_s3_backfill_preserves_native_file_and_manifest(tmp_path) -> None:
     trusted_root = tmp_path / "trusted-s3"
     trusted_root.mkdir()
@@ -493,6 +617,72 @@ def _l2_book_payload() -> dict[str, object]:
             ],
         ],
     }
+
+
+def _fake_trade_websocket_connect(url: str, **kwargs):
+    assert url == "wss://example.test/ws"
+    assert kwargs == {"open_timeout": 3.0}
+    return _FakeTradeWebSocket()
+
+
+class _FakeTradeWebSocket:
+    def __init__(self) -> None:
+        self.messages = [
+            {"channel": "subscriptionResponse", "data": {"subscription": {"type": "trades", "coin": "BTC"}}},
+            {"channel": "trades", "data": _ws_trade_rows()},
+        ]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    def send(self, raw_message: str) -> None:
+        assert json.loads(raw_message) == {
+            "method": "subscribe",
+            "subscription": {"type": "trades", "coin": "BTC"},
+        }
+
+    def recv(self, timeout=None) -> str:
+        if not self.messages:
+            raise TimeoutError("no more messages")
+        return json.dumps(self.messages.pop(0))
+
+
+def _ws_trade_rows() -> list[dict[str, object]]:
+    return [
+        {
+            "coin": "BTC",
+            "side": "A",
+            "px": "100.0",
+            "sz": "1.25",
+            "hash": "0xabc",
+            "time": 1_767_225_600_000,
+            "tid": 123,
+            "users": ["0x1", "0x2"],
+        },
+        {
+            "coin": "BTC",
+            "side": "B",
+            "px": "100.5",
+            "sz": "2.00",
+            "hash": "0xdef",
+            "time": 1_767_225_600_500,
+            "tid": 124,
+            "users": ["0x3", "0x4"],
+        },
+        {
+            "coin": "BTC",
+            "side": "A",
+            "px": "101.0",
+            "sz": "3.00",
+            "hash": "0xghi",
+            "time": 1_767_225_601_000,
+            "tid": 125,
+            "users": ["0x5", "0x6"],
+        },
+    ]
 
 
 def _config(output_root: Path, *, run_id: str) -> BacktestRunConfig:

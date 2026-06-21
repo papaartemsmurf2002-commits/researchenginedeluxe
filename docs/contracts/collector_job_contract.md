@@ -76,7 +76,18 @@ request handling and they do not place orders.
 - WebSocket capture in Phase 7 is a skeleton only. It must record reconnect or
   gap evidence instead of reporting silent collection success.
 - `websocket_trade_capture` jobs may preserve fixture trade records to the raw
-  archive, but they must not open venue network streams in this phase.
+  archive.
+- `websocket_trade_capture` jobs may also use explicit public Hyperliquid
+  `source=public_websocket` mode for bounded `trades` WebSocket subscription
+  snapshots. Public trade WebSocket jobs must return `source_mode`,
+  raw payload hash, venue adapter ID, source endpoint, source coin, raw
+  request ID, raw response ID, WebSocket message count, trade row count,
+  row/message/time caps, storage refs, and quality refs through durable output
+  refs.
+- Public trade WebSocket jobs must be bounded by configured message count, row
+  count, and elapsed seconds. They are recent streaming intake evidence only
+  and do not prove historical trade coverage, long-running continuous capture,
+  accepted research evidence, or queue/fill realism.
 - `websocket_l2_bbo_capture` jobs may preserve fixture BBO or L2 records to the
   raw archive, but they must not claim queue-model or fill realism.
 - `websocket_l2_bbo_capture` jobs may also use explicit unsigned public
@@ -100,6 +111,9 @@ request handling and they do not place orders.
 - Local fixture microstructure jobs must not fetch from venue APIs. The current
   microstructure venue fetch exception is explicit `source=public_api` for
   Hyperliquid `/info` `l2Book` BBO/L2 snapshots only.
+- Local fixture trade jobs must not open venue streams unless the job declares
+  `source=public_websocket`; the current public WebSocket exception is
+  Hyperliquid `trades` subscription snapshot intake only.
 - Public candle snapshots must not be treated as enough to satisfy six-month
   2024+ research-readiness gates because Hyperliquid documents the endpoint as
   recent-window limited.
@@ -107,6 +121,10 @@ request handling and they do not place orders.
   gates must still prove archive snapshots, coverage, 2024+ dates, six usable
   months, lockbox exclusion, and as-of universe before accepted evidence.
 - Public L2/BBO snapshots are intake evidence only; backtest-data and
+  validation gates must still prove archive snapshots, coverage, 2024+ dates,
+  six usable months, lockbox exclusion, and as-of universe before accepted
+  evidence.
+- Public trade WebSocket snapshots are intake evidence only; backtest-data and
   validation gates must still prove archive snapshots, coverage, 2024+ dates,
   six usable months, lockbox exclusion, and as-of universe before accepted
   evidence.
@@ -132,8 +150,10 @@ request handling and they do not place orders.
   `source=public_api`.
 - Reading `.env`, credential/key-like, pickle-like, SQLite/database, compressed,
   executable, or archive files as collector record sources.
-- Real venue WebSocket streaming or S3 network downloads in the Phase 17 fixture
-  collector path.
+- Unbounded venue WebSocket streaming or S3 network downloads in the Phase 17
+  fixture collector path.
+- Treating bounded public trade WebSocket snapshots as historical trade
+  coverage or as continuous production stream operation.
 - Treating one-shot public `l2Book` snapshots as continuous BBO/L2 archive
   coverage or as historical microstructure replay.
 - Treating fixture microstructure captures as live execution proof or
