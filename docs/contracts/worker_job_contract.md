@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`
 
 ## Purpose
 
@@ -33,8 +33,8 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   and cancellation.
 - Worker execution must fail before claiming work when invoked from an
   ASGI/operator-process path.
-- Job outputs must include archive manifest refs or explicit diagnostic gap
-  records.
+- Job outputs must include archive manifest refs, durable domain artifact refs,
+  or explicit diagnostic gap records.
 - `coverage_audit` jobs must run through the durable worker runner and write
   coverage/quality manifest refs instead of requiring in-process UI/API calls.
 - Coverage blockers found by a successful audit are output evidence, not hidden
@@ -52,6 +52,13 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   generated CSV/XLSX exports from the canonical Parquet ledger.
 - Ledger worker jobs must reject secret-like or unsupported output path names
   before appending or exporting.
+- `lead_book_upsert` jobs must run through the durable worker runner, create or
+  replace one non-promotable Lead Book row through the canonical Lead Book
+  service, and optionally produce a generated CSV view from the canonical
+  Parquet Lead Book.
+- Lead Book worker jobs must reject secret-like or unsupported output/source
+  path names before writing rows or exports, and must reject job specs that try
+  to override research-boundary flags.
 
 ## Forbidden
 
@@ -66,3 +73,7 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   intake packet.
 - Treating CSV/XLSX ledger exports as canonical job state.
 - Writing ledger or export files to secret/local-state filenames.
+- Treating generated Lead Book CSV exports as canonical job state.
+- Writing Lead Book or export files to secret/local-state filenames.
+- Allowing Lead Book worker job specs to set paper/live/order/sizing/runtime,
+  candidate, or promotion boundary fields.

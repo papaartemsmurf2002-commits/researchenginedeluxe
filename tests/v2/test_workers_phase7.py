@@ -17,12 +17,14 @@ from tradingbotsuite.v2.archive import (
     ArchiveManifestStore,
     SilverFundingIntervalRow,
 )
+from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.archive.parquet_writer import write_parquet_rows
 from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
 from tradingbotsuite.v2.data_quality.coverage import coverage_report_for_bars
 from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore
 from tradingbotsuite.v2.data_quality.schemas import EvidenceMode
 from tradingbotsuite.v2.ledger import read_ledger
+from tradingbotsuite.v2.lead_book import LeadBookStore
 from tradingbotsuite.v2.strategy_specs import example_strategy_payloads
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
@@ -628,6 +630,186 @@ def test_ledger_append_export_worker_rejects_secret_like_ledger_path_before_writ
     assert loaded is not None
     assert "reserved for secrets or local state" in (loaded.failure_reason or "")
     assert not (tmp_path / ".env").exists()
+
+
+def test_lead_book_upsert_worker_records_ledger_backed_non_promotable_lead(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    run_manifest_path = _worker_backtest_run_manifest(
+        tmp_path,
+        store=store,
+        job_id="JOB-backtest-for-lead-book",
+        run_id="worker-lead-book-source-run",
+    )
+    ledger_path = tmp_path / "ledger" / "experiment_ledger.parquet"
+    store.enqueue(
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        job_id="JOB-ledger-for-lead-book",
+        input_spec={
+            "run_manifest_path": str(run_manifest_path),
+            "ledger_path": str(ledger_path),
+            "evidence_mode": "accepted_research",
+            "notes": "source row for durable Lead Book worker smoke",
+        },
+    )
+    ledger_result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        worker_id="worker-ledger-for-lead-book",
+    )
+    assert ledger_result is not None
+    assert ledger_result.status == WorkerJobStatus.SUCCEEDED
+    ledger_row = read_ledger(ledger_path)[0]
+    lead_book_path = tmp_path / "lead-book" / "lead_book.parquet"
+    lead_csv_path = tmp_path / "lead-book" / "lead_book.csv"
+    queued = store.enqueue(
+        kind=WorkerJobKind.LEAD_BOOK_UPSERT,
+        job_id="JOB-lead-book-upsert",
+        input_spec={
+            "lead_book_path": str(lead_book_path),
+            "source_artifact_path": str(ledger_path),
+            "source_type": "ledger_row",
+            "strategy_family": ledger_row.strategy_id,
+            "economic_thesis": "ledger-backed mean reversion row merits human inspection",
+            "created_by_id": "worker-agent",
+            "instrument_scope": [INSTRUMENT],
+            "data_window_start": "2024-01-01T00:00:00Z",
+            "data_window_end": "2024-08-01T00:00:00Z",
+            "roi_observed": ledger_row.roi_observed,
+            "roi_projected": 0.0,
+            "roi_projection_assumptions": "projection is a placeholder for triage, not a claim",
+            "roi_projection_confidence": "low",
+            "why_interesting": "accepted-research ledger row has complete source provenance for follow-up triage",
+            "trade_count_summary": {"avg_trades_per_month": 6.0, "total_trades": 42},
+            "monthly_stability_summary": {
+                "usable_months": 7,
+                "losing_months_12m": 2,
+                "positive_months_12m": 5,
+            },
+            "pnl_concentration_summary": {
+                "top_2_trades_profit_share": 0.2,
+                "best_month_profit_share": 0.2,
+            },
+            "known_blockers": ["human_inspection_required_before_deep_validation"],
+            "missing_evidence": ["independent_agent_audit_required"],
+            "required_next_validation": ["human_inspection", "deep_validation"],
+            "export_csv_path": str(lead_csv_path),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEAD_BOOK_UPSERT,
+        worker_id="worker-lead-book",
+    )
+    loaded = store.load_job(queued.job_id)
+    leads = LeadBookStore(lead_book_path).read()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "job_kind=lead_book_upsert" in loaded.output_refs
+    assert any(ref.startswith("lead_id=") for ref in loaded.output_refs)
+    assert "lead_state=idea_only" in loaded.output_refs
+    assert "promotion_ready=false" in loaded.output_refs
+    assert "candidate_evidence=false" in loaded.output_refs
+    assert any(ref.startswith("lead_book_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("export_csv_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("source_artifact_sha256=") for ref in loaded.archive_manifest_refs)
+    assert len(leads) == 1
+    assert leads[0].source_artifact_path == str(ledger_path.resolve())
+    assert leads[0].source_artifact_sha256 == file_sha256(ledger_path)
+    assert leads[0].promotion_ready is False
+    assert leads[0].candidate_evidence is False
+    assert leads[0].human_inspection_status.value == "not_requested"
+    assert "lead_not_candidate" in leads[0].non_promotable_flags
+    assert lead_csv_path.exists()
+
+
+def test_lead_book_upsert_worker_rejects_secret_like_output_before_write(tmp_path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text('{"source":"lead"}\n', encoding="utf-8")
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.LEAD_BOOK_UPSERT,
+        job_id="JOB-lead-book-secret-reject",
+        max_attempts=1,
+        input_spec={
+            "lead_book_path": str(tmp_path / ".env"),
+            "source_artifact_path": str(source),
+            "source_type": "ledger_row",
+            "strategy_family": "mean_reversion",
+            "economic_thesis": "secret path rejection smoke",
+            "created_by_id": "worker-agent",
+            "roi_observed": 0.1,
+            "roi_projected": 0.0,
+            "roi_projection_assumptions": "not a claim",
+            "why_interesting": "path guard regression",
+            "trade_count_summary": {"avg_trades_per_month": 6.0, "total_trades": 36},
+            "monthly_stability_summary": {"usable_months": 6, "losing_months_12m": 1},
+            "pnl_concentration_summary": {
+                "top_2_trades_profit_share": 0.2,
+                "best_month_profit_share": 0.2,
+            },
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEAD_BOOK_UPSERT,
+        worker_id="worker-lead-book-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "reserved for secrets or local state" in (loaded.failure_reason or "")
+    assert not (tmp_path / ".env").exists()
+
+
+def test_lead_book_upsert_worker_rejects_boundary_override_before_write(tmp_path) -> None:
+    source = tmp_path / "source.json"
+    source.write_text('{"source":"lead"}\n', encoding="utf-8")
+    lead_book_path = tmp_path / "lead-book" / "lead_book.parquet"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.LEAD_BOOK_UPSERT,
+        job_id="JOB-lead-book-boundary-reject",
+        max_attempts=1,
+        input_spec={
+            "lead_book_path": str(lead_book_path),
+            "source_artifact_path": str(source),
+            "source_type": "ledger_row",
+            "strategy_family": "mean_reversion",
+            "economic_thesis": "boundary override rejection smoke",
+            "created_by_id": "worker-agent",
+            "roi_observed": 0.1,
+            "roi_projected": 0.0,
+            "roi_projection_assumptions": "not a claim",
+            "why_interesting": "boundary guard regression",
+            "trade_count_summary": {"avg_trades_per_month": 6.0, "total_trades": 36},
+            "monthly_stability_summary": {"usable_months": 6, "losing_months_12m": 1},
+            "pnl_concentration_summary": {
+                "top_2_trades_profit_share": 0.2,
+                "best_month_profit_share": 0.2,
+            },
+            "promotion_ready": False,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEAD_BOOK_UPSERT,
+        worker_id="worker-lead-book-boundary-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "must not override boundary fields" in (loaded.failure_reason or "")
+    assert not lead_book_path.exists()
 
 
 def test_recent_candle_bootstrap_worker_reads_trusted_jsonl_records_file(tmp_path) -> None:

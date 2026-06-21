@@ -28,6 +28,7 @@ from tradingbotsuite.v2.lead_book.service import (
     request_deep_validation,
     request_human_inspection,
 )
+from tradingbotsuite.v2.lead_book.jobs import run_lead_book_job
 
 __all__ = [
     "AgentApprovalStatus",
@@ -48,4 +49,5 @@ __all__ = [
     "evaluate_lead_gates",
     "request_deep_validation",
     "request_human_inspection",
+    "run_lead_book_job",
 ]

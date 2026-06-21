@@ -40,6 +40,7 @@ class WorkerJobKind(str, Enum):
     VECTORIZED_BACKTEST = "vectorized_backtest"
     EVENT_DRIVEN_SIMULATION = "event_driven_simulation"
     LEDGER_APPEND_EXPORT = "ledger_append_export"
+    LEAD_BOOK_UPSERT = "lead_book_upsert"
     AUDIT_CHECK = "audit_check"
 
 

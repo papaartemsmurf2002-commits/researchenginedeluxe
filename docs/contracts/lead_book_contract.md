@@ -1,7 +1,7 @@
 # V2 Lead Book Contract
 
 Status: v2 Phase 15 Lead Book workflow contract with Phase 20 final-governance links
-Audit IDs: `V2-AUD-LEAD-001`, `V2-AUD-FINAL-001`
+Audit IDs: `V2-AUD-LEAD-001`, `V2-AUD-FINAL-001`, `V2-AUD-LEAD-004`
 
 ## Purpose
 
@@ -30,6 +30,9 @@ deep validation.
 - Lead rows require observed ROI, projected ROI, projection assumptions, and
   `roi_projection_is_not_claim: true`.
 - Lead rows are stored canonically as Parquet; CSV is a generated view.
+- Durable `lead_book_upsert` worker jobs may create or replace Lead Book rows
+  only through the canonical Lead Book service and may emit CSV generated views
+  only from the canonical Parquet Lead Book.
 - Deep validation requests require completed human inspection and explicit
   agent approval after that inspection.
 - Gate checks fail six losing months in a year, fewer than five average trades
@@ -52,3 +55,5 @@ deep validation.
 - Treating projected ROI as proof.
 - Starting deep validation without human inspection and agent approval.
 - Treating final hard-test survivor state as paper/live/trade readiness.
+- Treating worker-generated Lead Book rows or CSV exports as candidate,
+  paper/live/order/sizing/runtime, or promotion artifacts.

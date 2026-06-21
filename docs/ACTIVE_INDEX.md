@@ -55,9 +55,14 @@ This is the first file to read after `AGENTS.md`.
   promotion behavior. WPR106-429 wires durable `ledger_append_export` jobs
   through the worker runner so backtest run manifests append through the
   canonical Parquet ledger and optionally produce generated CSV/XLSX views,
-  with secret-like output paths rejected before writes. Real venue/API
-  collection, Lead Book worker updates, independent audits, and authoritative
-  full-suite proof remain follow-up work.
+  with secret-like output paths rejected before writes. WPR106-430 wires
+  durable `lead_book_upsert` jobs through the worker runner so ledger-backed
+  source artifacts can create or replace non-promotable Lead Book rows through
+  the canonical Lead Book service, optionally emitting generated CSV views,
+  with secret-like output paths and boundary override attempts rejected before
+  writes. Real venue/API collection, blocker-report worker updates,
+  independent audits, and authoritative full-suite proof remain follow-up
+  work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
