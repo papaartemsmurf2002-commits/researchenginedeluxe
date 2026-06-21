@@ -78,6 +78,7 @@ from tradingbotsuite.v2.universe.hyperliquid import (
     select_asof_universe,
 )
 from tradingbotsuite.v2.universe.models import UniverseMode
+from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobStatus
 from tradingbotsuite.v2.workers.runner import run_one_job
@@ -179,7 +180,14 @@ def build_parser() -> argparse.ArgumentParser:
     universe_refresh.add_argument("--archive-root", required=True)
     universe_refresh.add_argument("--venue", default="hyperliquid", choices=["hyperliquid"])
     universe_refresh.add_argument("--min-day-notional-usd", type=int, default=5_000_000)
+    universe_refresh.add_argument(
+        "--source",
+        choices=["payload_file", "public_api"],
+        help="refresh source; omit only when --payload-file is supplied",
+    )
     universe_refresh.add_argument("--payload-file")
+    universe_refresh.add_argument("--public-info-url", default="https://api.hyperliquid.xyz/info")
+    universe_refresh.add_argument("--public-info-timeout", type=float, default=20.0)
     universe_refresh.add_argument("--asof-date", required=True)
     universe_refresh.add_argument(
         "--mode",
@@ -603,16 +611,34 @@ def _handle_universe(args: argparse.Namespace, parser: argparse.ArgumentParser) 
         parser.parse_args(["universe", "--help"])
         return 0
     if args.universe_command == "refresh":
+        source = _universe_refresh_source(args, parser)
+        client = (
+            HyperliquidInfoClient(
+                base_url=args.public_info_url,
+                timeout=args.public_info_timeout,
+            )
+            if source == "public_api"
+            else None
+        )
         result = refresh_hyperliquid_universe(
             archive_root=args.archive_root,
-            payload_file=args.payload_file,
+            payload_file=args.payload_file if source == "payload_file" else None,
             asof_date=_parse_date(args.asof_date),
             min_day_notional_usd=args.min_day_notional_usd,
             mode=UniverseMode(args.mode),
             include_hip3_dexs=args.include_hip3_dexs,
+            client=client,
         )
         print(f"universe_snapshot_id={result.snapshot_id}")
         print(f"raw_file_id={result.raw_file_id}")
+        print(f"source_mode={result.payload_source}")
+        print(f"raw_payload_sha256={result.raw_payload_sha256}")
+        print(f"venue_adapter_id={result.venue_adapter_id}")
+        print(f"source_endpoint_or_subscription={result.source_endpoint_or_subscription}")
+        if result.raw_request_id:
+            print(f"raw_request_id={result.raw_request_id}")
+        if result.raw_response_id:
+            print(f"raw_response_id={result.raw_response_id}")
         print(f"instrument_count={result.instrument_count}")
         print(f"eligible_count={result.eligible_count}")
         print(f"universe_mode={result.universe_mode.value}")
@@ -664,6 +690,21 @@ def _handle_universe(args: argparse.Namespace, parser: argparse.ArgumentParser) 
 
 def _parse_date(value: str):
     return datetime.fromisoformat(value).date()
+
+
+def _universe_refresh_source(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
+    if args.source == "public_api":
+        if args.payload_file:
+            parser.error("universe refresh --source public_api cannot include --payload-file")
+        return "public_api"
+    if args.source == "payload_file":
+        if not args.payload_file:
+            parser.error("universe refresh --source payload_file requires --payload-file")
+        return "payload_file"
+    if args.payload_file:
+        return "payload_file"
+    parser.error("universe refresh requires --payload-file or --source public_api")
+    return "payload_file"
 
 
 def _add_data_quality_common_args(parser: argparse.ArgumentParser) -> None:

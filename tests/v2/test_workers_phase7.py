@@ -8,6 +8,7 @@ import sys
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pyarrow.parquet as pq
 import pytest
 
@@ -28,6 +29,7 @@ from tradingbotsuite.v2.lead_book import LeadBookStore
 from tradingbotsuite.v2.strategy_specs import example_strategy_payloads
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
+from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobStatus
 from tradingbotsuite.v2.workers.runner import run_one_job
@@ -147,9 +149,96 @@ def test_universe_refresh_worker_outputs_archive_manifest_refs(tmp_path) -> None
     assert result is not None
     assert result.status == WorkerJobStatus.SUCCEEDED
     assert loaded is not None
+    assert "source_mode=payload_file" in loaded.output_refs
     assert any(ref.startswith("raw_file_id=") for ref in loaded.archive_manifest_refs)
     assert any(ref.startswith("universe_snapshot_id=") for ref in loaded.archive_manifest_refs)
     assert (archive_root / "manifests" / "universe_snapshots.parquet").exists()
+
+
+def test_universe_refresh_worker_public_api_source_outputs_provenance(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-public-universe"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert json.loads(request.content.decode("utf-8")) == {"type": "metaAndAssetCtxs"}
+        return httpx.Response(200, json=_universe_payload())
+
+    class FakeHyperliquidInfoClient:
+        def __init__(self, base_url: str, timeout: float) -> None:
+            self._client = HyperliquidInfoClient(
+                base_url=base_url,
+                timeout=timeout,
+                transport=httpx.MockTransport(handler),
+            )
+
+        def fetch_meta_and_asset_contexts(self):
+            return self._client.fetch_meta_and_asset_contexts()
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidInfoClient",
+        FakeHyperliquidInfoClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "public_info_url": "https://example.test/info",
+            "public_info_timeout": 3.0,
+            "asof_date": "2026-06-01",
+            "min_day_notional_usd": 5_000_000,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        worker_id="worker-public-universe",
+    )
+    loaded = store.load_job(queued.job_id)
+    ingestion_runs = ArchiveManifestStore(ArchiveLayout(archive_root)).load_ingestion_runs()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "source_mode=public_api" in loaded.output_refs
+    assert "venue_adapter_id=hyperliquid_public_info_v1" in loaded.output_refs
+    assert "source_endpoint_or_subscription=info/metaAndAssetCtxs" in loaded.output_refs
+    assert any(ref.startswith("raw_payload_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_request_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("raw_response_id=") for ref in loaded.output_refs)
+    assert ingestion_runs[0].adapter_id == "hyperliquid_public_info_v1"
+    assert ingestion_runs[0].source_endpoint_or_subscription == "info/metaAndAssetCtxs"
+
+
+def test_universe_refresh_worker_requires_payload_file_or_public_api_source(tmp_path) -> None:
+    archive_root = tmp_path / "archive-missing-universe-source"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "asof_date": "2026-06-01",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        worker_id="worker-universe-source-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "requires payload_file or source=public_api" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
 def test_recent_candle_bootstrap_worker_writes_archive_layers_and_coverage(tmp_path) -> None:

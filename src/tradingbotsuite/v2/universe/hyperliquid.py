@@ -27,7 +27,12 @@ from tradingbotsuite.v2.universe.models import (
     UniverseSnapshotRow,
 )
 from tradingbotsuite.v2.universe.rules import eligibility_reason, evidence_scope_for_mode, hip3_metadata_complete
-from tradingbotsuite.v2.venues.hyperliquid.info import HyperliquidInfoClient
+from tradingbotsuite.v2.venues.hyperliquid.info import (
+    HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE,
+    HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID,
+    HyperliquidInfoClient,
+    HyperliquidInfoFetchResult,
+)
 
 UNIVERSE_RULE_ID = "hl_perps_day_ntl_vlm_gte_5m_v1"
 
@@ -51,8 +56,23 @@ def refresh_hyperliquid_universe(
     min_usable_months: int = 6,
     client: HyperliquidInfoClient | None = None,
 ) -> UniverseRefreshResult:
+    payload_source = "inline_payload"
+    venue_adapter_id = HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID
+    source_endpoint = HYPERLIQUID_META_AND_ASSET_CTXS_SOURCE
+    raw_request_id: str | None = None
+    raw_response_id: str | None = None
     if payload is None:
-        payload = load_payload_file(payload_file) if payload_file is not None else (client or HyperliquidInfoClient()).meta_and_asset_contexts()
+        if payload_file is not None:
+            payload = load_payload_file(payload_file)
+            payload_source = "payload_file"
+        else:
+            fetch = _fetch_public_meta_and_asset_contexts(client)
+            payload = fetch.payload
+            payload_source = "public_api"
+            venue_adapter_id = fetch.capability.adapter_id
+            source_endpoint = fetch.raw_request.source
+            raw_request_id = fetch.raw_request.request_id
+            raw_response_id = fetch.raw_response.response_id
     layout = ArchiveLayout(archive_root)
     layout.initialize()
     store = ArchiveManifestStore(layout)
@@ -67,8 +87,8 @@ def refresh_hyperliquid_universe(
         date=asof_date.isoformat(),
         run_id=run_id,
         job_id=run_id,
-        adapter_id="hyperliquid_public_info_v1",
-        source_endpoint_or_subscription="info/metaAndAssetCtxs",
+        adapter_id=venue_adapter_id,
+        source_endpoint_or_subscription=source_endpoint,
         symbols=(),
         start_ts=start,
         end_ts=end,
@@ -105,7 +125,21 @@ def refresh_hyperliquid_universe(
         eligible_count=sum(1 for row in rows if row.eligible),
         asof_date=asof_date,
         universe_mode=mode,
+        payload_source=payload_source,
+        venue_adapter_id=venue_adapter_id,
+        source_endpoint_or_subscription=source_endpoint,
+        raw_request_id=raw_request_id,
+        raw_response_id=raw_response_id,
     )
+
+
+def _fetch_public_meta_and_asset_contexts(
+    client: HyperliquidInfoClient | None,
+) -> HyperliquidInfoFetchResult:
+    active_client = client or HyperliquidInfoClient()
+    if hasattr(active_client, "fetch_meta_and_asset_contexts"):
+        return active_client.fetch_meta_and_asset_contexts()
+    raise TypeError("Hyperliquid universe public_api client must return fetch provenance")
 
 
 def parse_meta_and_asset_contexts(

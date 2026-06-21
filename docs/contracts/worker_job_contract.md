@@ -35,6 +35,9 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   ASGI/operator-process path.
 - Job outputs must include archive manifest refs, durable domain artifact refs,
   or explicit diagnostic gap records.
+- `universe_refresh` jobs must run through the durable collector worker path
+  with either `payload_file` or explicit `source=public_api`; public API runs
+  must surface venue raw-request/raw-response provenance refs.
 - `coverage_audit` jobs must run through the durable worker runner and write
   coverage/quality manifest refs instead of requiring in-process UI/API calls.
 - Coverage blockers found by a successful audit are output evidence, not hidden
@@ -74,6 +77,8 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Terminal state changes without a transition record.
 - Running data-quality audits against venue APIs or non-archive local files in
   the worker path.
+- Running universe refresh jobs from public network sources without explicit
+  `source=public_api` and unsigned public-info provenance refs.
 - Running durable backtests against direct venue/API reads, unvalidated
   strategy specs, or arbitrary strategy-spec files without a trusted-file
   intake packet.

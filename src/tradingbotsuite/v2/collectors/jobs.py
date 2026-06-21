@@ -35,6 +35,7 @@ from tradingbotsuite.v2.config.time import utc_now
 from tradingbotsuite.v2.security.path_policy import resolve_within_root
 from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
+from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import (
     WorkerJobKind,
@@ -152,19 +153,37 @@ def _run_universe_refresh_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    source_mode = _universe_source_mode(spec)
+    client = (
+        HyperliquidInfoClient(
+            base_url=str(spec.get("public_info_url", "https://api.hyperliquid.xyz/info")),
+            timeout=float(spec.get("public_info_timeout", 20.0)),
+        )
+        if source_mode == "public_api"
+        else None
+    )
     result = refresh_hyperliquid_universe(
         archive_root=_required_str(spec, "archive_root"),
-        payload_file=spec.get("payload_file"),
+        payload_file=spec.get("payload_file") if source_mode == "payload_file" else None,
         asof_date=_parse_date(_required_str(spec, "asof_date")),
         min_day_notional_usd=int(spec.get("min_day_notional_usd", 5_000_000)),
         mode=UniverseMode(str(spec.get("mode", UniverseMode.AS_OF.value))),
         include_hip3_dexs=bool(spec.get("include_hip3_dexs", False)),
+        client=client,
     )
-    output_refs = (
+    output_refs = [
+        f"source_mode={result.payload_source}",
         f"universe_snapshot_id={result.snapshot_id}",
         f"eligible_count={result.eligible_count}",
         f"instrument_count={result.instrument_count}",
-    )
+        f"raw_payload_sha256={result.raw_payload_sha256}",
+        f"venue_adapter_id={result.venue_adapter_id}",
+        f"source_endpoint_or_subscription={result.source_endpoint_or_subscription}",
+    ]
+    if result.raw_request_id:
+        output_refs.append(f"raw_request_id={result.raw_request_id}")
+    if result.raw_response_id:
+        output_refs.append(f"raw_response_id={result.raw_response_id}")
     archive_refs = (
         f"raw_file_id={result.raw_file_id}",
         f"universe_snapshot_id={result.snapshot_id}",
@@ -172,7 +191,7 @@ def _run_universe_refresh_job(
     record = store.succeed_job(
         job.job_id,
         worker_id=worker_id,
-        output_refs=output_refs,
+        output_refs=tuple(output_refs),
         archive_manifest_refs=archive_refs,
         reason="universe_refresh_job_succeeded",
     )
@@ -579,6 +598,22 @@ def _required_str(spec: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"collector job spec requires {key}")
     return value
+
+
+def _universe_source_mode(spec: dict[str, Any]) -> str:
+    source = str(spec.get("source", "")).strip()
+    has_payload_file = bool(spec.get("payload_file"))
+    if source:
+        if source not in {"payload_file", "public_api"}:
+            raise ValueError("universe_refresh source must be payload_file or public_api")
+        if source == "payload_file" and not has_payload_file:
+            raise ValueError("universe_refresh source=payload_file requires payload_file")
+        if source == "public_api" and has_payload_file:
+            raise ValueError("universe_refresh source=public_api cannot include payload_file")
+        return source
+    if has_payload_file:
+        return "payload_file"
+    raise ValueError("universe_refresh job requires payload_file or source=public_api")
 
 
 def _parse_date(value: str) -> date:

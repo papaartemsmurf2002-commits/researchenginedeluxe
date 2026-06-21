@@ -16,12 +16,20 @@ from tradingbotsuite.v2.venues.contracts import (
     VenueRawRequest,
     VenueRawResponse,
 )
+from tradingbotsuite.v2.venues.hyperliquid import (
+    HyperliquidInfoClient,
+    HyperliquidInfoFetchResult,
+    hyperliquid_public_info_capability,
+)
 
 __all__ = [
     "BinanceFixtureArchiveResult",
+    "HyperliquidInfoClient",
+    "HyperliquidInfoFetchResult",
     "VenueAdapterCapability",
     "VenueRawRequest",
     "VenueRawResponse",
     "binance_usdm_fixture_capability",
+    "hyperliquid_public_info_capability",
     "write_binance_usdm_fixture_archive",
 ]

@@ -7,15 +7,18 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import httpx
 import pyarrow.parquet as pq
 
 from tradingbotsuite.v2.archive.layout import ArchiveLayout
+from tradingbotsuite.v2.archive.manifest_store import ArchiveManifestStore
 from tradingbotsuite.v2.universe.hyperliquid import (
     diff_snapshots,
     refresh_hyperliquid_universe,
     select_asof_universe,
 )
 from tradingbotsuite.v2.universe.models import UniverseMode
+from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient
 from tradingbotsuite.v2.universe.rules import (
     CURRENT_UNIVERSE_SANDBOX_ONLY,
     MISSING_HIP3_METADATA,
@@ -40,6 +43,72 @@ def test_hyperliquid_universe_includes_non_btc_eth_above_5m(tmp_path) -> None:
 
     assert result.eligible_count >= 2
     assert "hyperliquid:perp:SOL" in {row.instrument_id for row in rows}
+
+
+def test_hyperliquid_info_client_records_public_unsigned_provenance() -> None:
+    seen_requests = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_requests.append(request)
+        assert request.method == "POST"
+        assert json.loads(request.content.decode("utf-8")) == {"type": "metaAndAssetCtxs"}
+        return httpx.Response(
+            200,
+            json=_payload(day_sol=12_000_000),
+            headers={"x-ratelimit-remaining": "42"},
+        )
+
+    client = HyperliquidInfoClient(
+        base_url="https://example.test/info",
+        timeout=3.0,
+        transport=httpx.MockTransport(handler),
+    )
+    result = client.fetch_meta_and_asset_contexts()
+
+    assert len(seen_requests) == 1
+    assert result.capability.access_mode == "public_unsigned"
+    assert result.capability.supports_universe_metadata is True
+    assert result.capability.order_placement_allowed is False
+    assert result.raw_request.source == "info/metaAndAssetCtxs"
+    assert result.raw_request.params["type"] == "metaAndAssetCtxs"
+    assert result.raw_response.evidence_scope == "public_unsigned_universe_metadata"
+    assert result.raw_response.row_count == 3
+    assert result.raw_response.rate_limit_metadata["x-ratelimit-remaining"] == "42"
+    assert result.raw_response.order_placement_instruction is False
+
+
+def test_hyperliquid_universe_public_api_source_records_fetch_provenance(tmp_path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_payload(day_sol=12_000_000))
+
+    archive_root = tmp_path / "archive"
+    client = HyperliquidInfoClient(
+        base_url="https://example.test/info",
+        transport=httpx.MockTransport(handler),
+    )
+    result = refresh_hyperliquid_universe(
+        archive_root=archive_root,
+        client=client,
+        asof_date=date(2026, 6, 1),
+    )
+    layout = ArchiveLayout(archive_root)
+    ingestion_runs = ArchiveManifestStore(layout).load_ingestion_runs()
+
+    assert result.payload_source == "public_api"
+    assert result.raw_request_id is not None
+    assert result.raw_response_id is not None
+    assert result.venue_adapter_id == "hyperliquid_public_info_v1"
+    assert result.source_endpoint_or_subscription == "info/metaAndAssetCtxs"
+    assert ingestion_runs[0].adapter_id == "hyperliquid_public_info_v1"
+    assert ingestion_runs[0].source_endpoint_or_subscription == "info/metaAndAssetCtxs"
+    assert "hyperliquid:perp:SOL" in {
+        row.instrument_id
+        for row in select_asof_universe(
+            archive_root=archive_root,
+            asof_date=date(2026, 6, 1),
+            eligible_only=True,
+        )
+    }
 
 
 def test_hyperliquid_universe_excludes_below_5m_day_ntl_volume(tmp_path) -> None:

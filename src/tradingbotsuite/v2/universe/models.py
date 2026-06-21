@@ -130,3 +130,8 @@ class UniverseRefreshResult(BaseModel):
     eligible_count: int = Field(ge=0)
     asof_date: date
     universe_mode: UniverseMode
+    payload_source: str = Field(default="inline_payload", min_length=1)
+    venue_adapter_id: str = "hyperliquid_public_info_v1"
+    source_endpoint_or_subscription: str = "info/metaAndAssetCtxs"
+    raw_request_id: str | None = None
+    raw_response_id: str | None = None

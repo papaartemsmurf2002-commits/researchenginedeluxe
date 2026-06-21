@@ -140,6 +140,16 @@ missing-evidence reasons, and rejects secret-like report paths before writes.
 The report keeps `accepted_research_ready=false`; the packet performs no
 venue/API fetch and adds no autonomous-ready, candidate-ready,
 paper/live/order/sizing/runtime/promotion behavior.
+Current WPR106-432 v2 public Hyperliquid universe refresh update: WPR106-432
+makes Hyperliquid universe refresh support explicit `payload_file` and unsigned
+public `source=public_api` modes, records venue raw-request/raw-response
+provenance for `/info` `metaAndAssetCtxs`, requires durable worker/CLI callers
+to declare the source mode, and validates the public path with injected HTTP
+transport plus an optional live public-info smoke into a temporary archive. The
+packet proves public universe metadata intake only; real candle/funding/trade
+BBO/L2 archive collection, independent audits, authoritative full-suite proof,
+and autonomous-ready status remain follow-up work. It adds no candidate-ready,
+paper/live/order/sizing/runtime/promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

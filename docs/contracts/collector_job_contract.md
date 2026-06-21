@@ -24,8 +24,15 @@ request handling and they do not place orders.
 - Status transitions are explicit.
 - Reconnect gaps, missing periods, parse failures, and retry exhaustion are
   evidence and must be recorded.
-- `universe_refresh` collector jobs may run from a fixture payload and must tie
-  outputs to raw file and universe snapshot manifest refs.
+- `universe_refresh` collector jobs may run from a local fixture payload
+  (`payload_file`) or from the explicit unsigned public Hyperliquid
+  `public_api` source mode. Both modes must tie outputs to raw file and
+  universe snapshot manifest refs.
+- Public API universe refresh jobs must return `source_mode=public_api`,
+  `raw_payload_sha256`, `venue_adapter_id`, source endpoint, raw request ID,
+  and raw response ID through durable output refs.
+- Durable universe refresh jobs must fail closed when neither `payload_file`
+  nor `source=public_api` is declared.
 - Recent candle bootstrap jobs with local source `records` must write raw
   candle archive files and rebuild bronze candles plus silver bars through the
   archive normalization services. They must return raw, bronze, silver,
@@ -77,6 +84,8 @@ request handling and they do not place orders.
 - Claiming accepted evidence from fixture/source-record collector outputs
   unless later backtest-data and validation gates explicitly accept a separate
   archive snapshot.
+- Silent public network universe refreshes when the job spec does not declare
+  `source=public_api`.
 - Reading `.env`, credential/key-like, pickle-like, SQLite/database, compressed,
   executable, or archive files as collector record sources.
 - Real venue WebSocket streaming or S3 network downloads in the Phase 17 fixture

@@ -32,6 +32,8 @@ only; market data and research artifacts remain in archive or artifact paths.
 Queue jobs first, then run workers from a process outside the ASGI/operator
 request path.
 
+Repeatable local payload-file refresh:
+
 ```powershell
 python -m tradingbotsuite.v2.cli.main worker enqueue `
   --job-store data/jobs/redx_jobs.sqlite `
@@ -43,6 +45,38 @@ python -m tradingbotsuite.v2.cli.main worker run `
   --kind universe_refresh `
   --worker-id local-universe-worker-1
 ```
+
+The `universe_refresh` input spec must declare either:
+
+```json
+{
+  "archive_root": "data/archive",
+  "source": "payload_file",
+  "payload_file": "specs/fixtures/hyperliquid_meta_and_asset_ctxs.json",
+  "asof_date": "2026-06-21",
+  "min_day_notional_usd": 5000000
+}
+```
+
+or the explicit unsigned public metadata mode:
+
+```json
+{
+  "archive_root": "data/archive",
+  "source": "public_api",
+  "public_info_url": "https://api.hyperliquid.xyz/info",
+  "public_info_timeout": 20,
+  "asof_date": "2026-06-21",
+  "min_day_notional_usd": 5000000
+}
+```
+
+Public API universe refreshes call only the unsigned Hyperliquid `/info`
+`metaAndAssetCtxs` endpoint. The resulting worker refs include `source_mode`,
+raw payload hash, venue adapter ID, source endpoint, and raw request/response
+IDs. They prove public universe metadata intake only; they do not prove market
+data coverage, accepted backtest evidence, autonomous-ready status, or any
+paper/live/order/sizing/runtime/promotion capability.
 
 Use `--forbid-asgi` in service integration tests to prove worker code is not
 being executed inside the operator process.

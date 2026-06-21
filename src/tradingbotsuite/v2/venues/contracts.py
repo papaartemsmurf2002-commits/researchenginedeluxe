@@ -30,6 +30,7 @@ class VenueAdapterCapability(BaseModel):
     supports_bbo: bool = False
     supports_l2: bool = False
     supports_official_s3: bool = False
+    supports_universe_metadata: bool = False
     rate_limit_policy: str = "not_applicable_fixture"
     provenance_required: bool = True
     default_primary_venue: bool = False

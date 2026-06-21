@@ -63,7 +63,12 @@ This is the first file to read after `AGENTS.md`.
   writes. WPR106-431 wires the existing durable `audit_check` worker kind so
   job-store evidence can produce research-only JSON blocker reports with failed,
   incomplete, gap, blocker, known-blocker, and missing-evidence refs surfaced
-  explicitly while keeping `accepted_research_ready=false`. Real venue/API
+  explicitly while keeping `accepted_research_ready=false`. WPR106-432 makes
+  Hyperliquid universe refresh support an explicit unsigned public
+  `source=public_api` mode with venue raw-request/raw-response provenance,
+  requires durable worker/CLI callers to declare either `payload_file` or
+  `public_api`, and records an optional successful live public-info smoke into
+  a temporary archive. Real candle/funding/trade/BBO/L2 venue archive
   collection, independent audits, and authoritative full-suite proof remain
   follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
