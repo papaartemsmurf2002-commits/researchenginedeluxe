@@ -5,12 +5,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+import pyarrow.parquet as pq
 import pytest
 
 from tradingbotsuite.v2.archive import (
+    ArchiveLayer,
     ArchiveLayout,
     ArchiveManifestStore,
     MicrostructureDataType,
+    SilverAssetContextRow,
     build_retention_backup_policy,
     build_storage_budget_report,
     record_retention_backup_policy,
@@ -784,6 +787,186 @@ def test_official_s3_backfill_rejects_untrusted_or_secret_sources(
     assert expected_reason in (loaded.failure_reason or "")
     assert not list((archive_root / "raw").glob("**/*")) if (archive_root / "raw").exists() else True
     assert ArchiveManifestStore(layout).load_file_manifest() == []
+
+
+def test_official_s3_asset_ctxs_replay_records_file_writes_context_layers(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-official-asset-ctxs"
+    trusted_root.mkdir()
+    records_file = trusted_root / "asset-ctxs.json"
+    records_file.write_text(
+        json.dumps(
+            [
+                {
+                    "universe": [
+                        {"name": "BTC"},
+                        {"name": "SOL"},
+                    ]
+                },
+                [
+                    {
+                        "ts": "2026-01-01T00:00:00Z",
+                        "markPx": "60000",
+                        "oraclePx": "60001",
+                        "openInterest": "10",
+                        "dayNtlVlm": "100000000",
+                        "funding": "0.0001",
+                    },
+                    {
+                        "ts": "2026-01-01T00:00:00Z",
+                        "markPx": "150",
+                        "oraclePx": "151",
+                        "openInterest": "20",
+                        "dayNtlVlm": "12000000",
+                        "funding": "0.0002",
+                    },
+                ],
+            ]
+        ),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / "archive-official-asset-ctxs"
+    store = WorkerJobStore(tmp_path / "jobs-official-asset-ctxs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        job_id="JOB-official-asset-ctxs",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_asset_ctxs_replay",
+            "records_file": records_file.name,
+            "trusted_source_root": str(trusted_root),
+            "records_format": "json",
+            "venue": "hyperliquid",
+            "date": "2026-01-01",
+            "run_id": "run-official-asset-ctxs",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "asset_ctxs",
+            "source_endpoint_or_subscription": "s3://hyperliquid-archive/asset_ctxs/20260101.lz4",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        worker_id="worker-official-asset-ctxs",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    silver_file = [
+        row
+        for row in manifest_rows
+        if row.layer == ArchiveLayer.SILVER and row.datatype == "asset_contexts"
+    ][0]
+    silver_rows = [
+        SilverAssetContextRow.model_validate(row)
+        for row in pq.ParquetFile(layout.resolve(silver_file.path)).read().to_pylist()
+    ]
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=official_s3_asset_ctxs_replay_archive_write" in loaded.output_refs
+    assert "source_mode=official_s3_asset_ctxs_replay" in loaded.output_refs
+    assert "row_count=2" in loaded.output_refs
+    assert "raw_record_count=1" in loaded.output_refs
+    assert "context_row_count=2" in loaded.output_refs
+    assert "official_dataset=asset_ctxs" in loaded.output_refs
+    assert "official_dataset_scope=official_hyperliquid_asset_contexts" in loaded.output_refs
+    assert "records_file_row_count=1" in loaded.output_refs
+    assert "official_s3_network_download=false" in loaded.output_refs
+    assert (
+        "official_s3_asset_ctxs_replay_caveat=trusted_decompressed_payloads_not_continuous_coverage"
+        in loaded.output_refs
+    )
+    assert any(ref.startswith("records_file_sha256=") for ref in loaded.output_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "asset_contexts"),
+        (ArchiveLayer.BRONZE, "asset_contexts"),
+        (ArchiveLayer.SILVER, "asset_contexts"),
+    }
+    assert {row.instrument_id for row in silver_rows} == {"BTC", "SOL"}
+    btc = [row for row in silver_rows if row.instrument_id == "BTC"][0]
+    assert btc.mark_price == 60000
+    assert btc.oracle_price == 60001
+    assert btc.open_interest == 10
+    assert btc.day_notional_volume_usd == 100000000
+    assert btc.funding_rate == 0.0001
+    assert btc.research_only is True
+    assert btc.observe_only is True
+    assert btc.promotion_ready is False
+
+
+def test_official_s3_asset_ctxs_replay_rejects_inline_records(tmp_path) -> None:
+    archive_root = tmp_path / "archive-official-asset-ctxs-inline-reject"
+    store = WorkerJobStore(tmp_path / "jobs-official-asset-ctxs-inline-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        job_id="JOB-official-asset-ctxs-inline-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_asset_ctxs_replay",
+            "venue": "hyperliquid",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "asset_ctxs",
+            "records": [{"contexts": []}],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        worker_id="worker-official-asset-ctxs-inline-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "source=official_s3_asset_ctxs_replay cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
+def test_official_s3_asset_ctxs_replay_rejects_wrong_official_dataset(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-official-asset-ctxs-wrong-dataset"
+    trusted_root.mkdir()
+    records_file = trusted_root / "asset-ctxs.json"
+    records_file.write_text(json.dumps([{"contexts": []}]), encoding="utf-8")
+    archive_root = tmp_path / "archive-official-asset-ctxs-dataset-reject"
+    store = WorkerJobStore(tmp_path / "jobs-official-asset-ctxs-dataset-reject.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        job_id="JOB-official-asset-ctxs-dataset-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "official_s3_asset_ctxs_replay",
+            "records_file": records_file.name,
+            "trusted_source_root": str(trusted_root),
+            "venue": "hyperliquid",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:01:00+00:00",
+            "official_dataset": "market_data_l2_book",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        worker_id="worker-official-asset-ctxs-dataset-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "requires official_dataset=asset_ctxs" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
 def test_storage_budget_and_retention_policy_are_record_only(tmp_path) -> None:

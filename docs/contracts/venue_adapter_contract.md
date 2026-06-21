@@ -55,6 +55,12 @@ execution behavior to v2 research modules.
   official replay source label, and remain separate from network download,
   LZ4 decompression, continuous capture, queue/fill realism, and accepted
   coverage evidence.
+- Hyperliquid official `asset_ctxs` replay may normalize trusted local
+  decompressed JSON/JSONL asset-context payload records into raw, bronze, and
+  silver archive context rows. It must retain source-file hash and dataset
+  scope, use an explicit official replay source label, and remain separate
+  from network download, LZ4 decompression, continuous context coverage, and
+  accepted research evidence.
 - The Hyperliquid public-WebSocket adapter may subscribe only to public market
   data streams explicitly scoped by packet. The current implemented stream is
   `trades` for bounded recent trade snapshots. It must preserve

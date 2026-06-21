@@ -93,9 +93,12 @@ This is the first file to read after `AGENTS.md`.
   reject unsupported official candle/OHLCV claims before archive writes.
   WPR106-441 adds trusted local decompressed official `l2Book` JSON/JSONL
   replay into BBO/L2 microstructure archive rows, with source hash, dataset
-  scope, and non-continuous-coverage caveats. Full historical candle coverage
-  beyond the public recent-window limit, normalized historical trade coverage,
-  asset-context replay, continuous BBO/L2 capture, accepted historical L2
+  scope, and non-continuous-coverage caveats. WPR106-442 adds trusted local
+  decompressed official `asset_ctxs` JSON/JSONL replay into raw, bronze, and
+  silver `asset_contexts` archive rows, with source hash, dataset scope,
+  normalization refs, and non-continuous-coverage caveats. Full historical
+  candle coverage beyond the public recent-window limit, normalized historical
+  trade coverage, continuous BBO/L2 capture, accepted historical L2/context
   coverage proof, independent audits, and authoritative full-suite proof remain
   follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning

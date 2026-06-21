@@ -26,8 +26,10 @@ from tradingbotsuite.v2.archive.microstructure import (
 from tradingbotsuite.v2.archive.raw_writer import RawJsonlZstdWriter
 from tradingbotsuite.v2.archive.rebuild import (
     RebuildResult,
+    bronze_asset_contexts_to_silver,
     bronze_candles_to_silver_bars,
     bronze_funding_to_silver,
+    raw_asset_contexts_to_bronze,
     raw_candles_to_bronze,
     raw_funding_to_bronze,
 )
@@ -1056,6 +1058,12 @@ def _run_official_s3_backfill_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    if str(spec.get("source", "")).strip() == "official_s3_asset_ctxs_replay":
+        return _run_official_s3_asset_ctxs_replay_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+        )
     venue = str(spec.get("venue", "hyperliquid"))
     adapter_id = str(spec.get("adapter_id", "official_s3_backfill_fixture_v1"))
     source_endpoint = str(
@@ -1105,6 +1113,108 @@ def _run_official_s3_backfill_job(
         output_refs=output_refs,
         archive_manifest_refs=archive_refs,
         reason="official_s3_backfill_preserved",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_official_s3_asset_ctxs_replay_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    venue = str(spec.get("venue", "hyperliquid"))
+    if venue.lower() != "hyperliquid":
+        raise ValueError("official_s3_asset_ctxs_replay only supports venue=hyperliquid")
+    if "records" in spec and spec.get("records") is not None:
+        raise ValueError("official_s3_backfill source=official_s3_asset_ctxs_replay cannot include records")
+    if not spec.get("records_file"):
+        raise ValueError("official_s3_backfill source=official_s3_asset_ctxs_replay requires records_file")
+    explicit_dataset = str(spec.get("official_dataset", "")).strip()
+    if not explicit_dataset:
+        raise ValueError("official_s3_asset_ctxs_replay requires official_dataset=asset_ctxs")
+    official_dataset = _canonical_hyperliquid_official_dataset(explicit_dataset)
+    if official_dataset != "asset_ctxs":
+        raise ValueError("official_s3_asset_ctxs_replay requires official_dataset=asset_ctxs")
+    archive_root = _required_str(spec, "archive_root")
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    records_path = _resolve_records_file(spec)
+    records = _read_asset_context_records_file(
+        records_path,
+        records_format=str(spec.get("records_format", "auto")),
+    )
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    manifest_store = ArchiveManifestStore(layout)
+    adapter_id = str(spec.get("adapter_id", "hyperliquid_official_s3_asset_ctxs_replay_v1"))
+    source_endpoint = str(
+        spec.get("source_endpoint_or_subscription", "official_s3/asset_ctxs")
+    )
+    instrument_id = spec.get("instrument_id")
+    if instrument_id is not None:
+        instrument_id = str(instrument_id)
+    raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
+        records=records,
+        venue=venue,
+        datatype="asset_contexts",
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=adapter_id,
+        source_endpoint_or_subscription=source_endpoint,
+        symbols=_asset_context_symbols(spec, records),
+        start_ts=start_ts,
+        end_ts=end_ts,
+        instrument_id=instrument_id,
+        filename=str(spec.get("filename", "asset-contexts")),
+    )
+    bronze = raw_asset_contexts_to_bronze(
+        archive_root=archive_root,
+        raw_file_id=raw_file.file_id,
+        job_id=f"{job.job_id}-bronze-asset-contexts",
+        instrument_id=instrument_id,
+    )
+    silver = bronze_asset_contexts_to_silver(
+        archive_root=archive_root,
+        bronze_file_id=bronze.output_files[0].file_id,
+        job_id=f"{job.job_id}-silver-asset-contexts",
+    )
+    context_row_count = sum(row.row_count or 0 for row in silver.output_files)
+    archive_refs = _market_data_archive_refs(
+        raw_file_id=raw_file.file_id,
+        bronze=bronze,
+        silver=silver,
+    )
+    output_refs = (
+        "collector_mode=official_s3_asset_ctxs_replay_archive_write",
+        "source_mode=official_s3_asset_ctxs_replay",
+        f"row_count={context_row_count}",
+        f"raw_record_count={raw_file.row_count or 0}",
+        f"context_row_count={context_row_count}",
+        f"venue_adapter_id={adapter_id}",
+        f"source_endpoint_or_subscription={source_endpoint}",
+        f"official_dataset={official_dataset}",
+        f"official_dataset_scope={_HYPERLIQUID_OFFICIAL_DATASET_SCOPES[official_dataset]}",
+        f"records_file_sha256={file_sha256(records_path)}",
+        f"records_file_row_count={len(records)}",
+        "official_s3_network_download=false",
+        "official_s3_asset_ctxs_replay_caveat=trusted_decompressed_payloads_not_continuous_coverage",
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="official_s3_asset_ctxs_replay_archive_write_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -1430,6 +1540,136 @@ def _read_records_file(path: Path, *, records_format: str) -> list[dict[str, Any
             raise ValueError("collector JSONL records_file must contain at least one object")
         return rows
     raise ValueError("records_format must be auto, json, jsonl, or ndjson")
+
+
+def _read_asset_context_records_file(path: Path, *, records_format: str) -> list[dict[str, Any]]:
+    normalized = records_format.lower()
+    if normalized == "auto":
+        normalized = "json" if path.suffix.lower() == ".json" else "jsonl"
+    if normalized == "json":
+        return _asset_context_records_from_payload(json.loads(path.read_text(encoding="utf-8")))
+    if normalized in {"jsonl", "ndjson"}:
+        records: list[dict[str, Any]] = []
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"collector JSONL asset_ctxs line {line_number} is invalid JSON") from exc
+            records.extend(_asset_context_records_from_payload(payload))
+        if not records:
+            raise ValueError("collector JSONL asset_ctxs records_file must contain at least one payload")
+        return records
+    raise ValueError("records_format must be auto, json, jsonl, or ndjson")
+
+
+def _asset_context_records_from_payload(payload: Any) -> list[dict[str, Any]]:
+    meta_context_record = _asset_context_meta_record(payload)
+    if meta_context_record is not None:
+        return [meta_context_record]
+    if isinstance(payload, dict):
+        return [dict(payload)]
+    if isinstance(payload, list):
+        if not payload:
+            raise ValueError("asset_ctxs payload list must not be empty")
+        return _coerce_record_rows(payload)
+    raise ValueError("asset_ctxs payload must be an object, list of objects, or meta/context pair")
+
+
+def _asset_context_meta_record(payload: Any) -> dict[str, Any] | None:
+    if isinstance(payload, list) and len(payload) >= 2 and isinstance(payload[0], dict) and isinstance(payload[1], list):
+        return _asset_context_record_from_meta(payload[0], payload[1])
+    if isinstance(payload, dict) and "meta" in payload and "assetCtxs" in payload:
+        return _asset_context_record_from_meta(payload["meta"], payload["assetCtxs"])
+    if isinstance(payload, dict) and "universe" in payload and "asset_contexts" in payload:
+        return _asset_context_record_from_meta(payload, payload["asset_contexts"])
+    return None
+
+
+def _asset_context_record_from_meta(meta: Any, contexts: Any) -> dict[str, Any]:
+    if not isinstance(meta, dict):
+        raise ValueError("asset_ctxs meta payload must be an object")
+    if not isinstance(contexts, list):
+        raise ValueError("asset_ctxs contexts payload must be a list")
+    universe = meta.get("universe")
+    universe_rows = universe if isinstance(universe, list) else []
+    rows: list[dict[str, Any]] = []
+    for index, context in enumerate(contexts):
+        if not isinstance(context, dict):
+            raise ValueError(f"asset_ctxs context[{index}] must be an object")
+        row = dict(context)
+        if index < len(universe_rows) and isinstance(universe_rows[index], dict):
+            name = (
+                universe_rows[index].get("name")
+                or universe_rows[index].get("coin")
+                or universe_rows[index].get("symbol")
+                or universe_rows[index].get("s")
+            )
+            if name is not None and "name" not in row:
+                row["name"] = str(name)
+        rows.append(row)
+    if not rows:
+        raise ValueError("asset_ctxs contexts payload must contain at least one object")
+    return {"contexts": rows}
+
+
+def _asset_context_symbols(spec: dict[str, Any], records: list[dict[str, Any]]) -> tuple[str, ...]:
+    explicit = spec.get("symbols")
+    if explicit is not None:
+        return _symbol_tuple(explicit)
+    inferred = sorted(
+        {
+            str(symbol)
+            for row in _iter_asset_context_rows(records)
+            for symbol in (_asset_context_symbol(row),)
+            if symbol is not None and str(symbol).strip()
+        }
+    )
+    if inferred:
+        return tuple(inferred)
+    instrument_id = spec.get("instrument_id")
+    if instrument_id is not None and str(instrument_id).strip():
+        return (str(instrument_id),)
+    return ("asset_ctxs",)
+
+
+def _iter_asset_context_rows(records: list[dict[str, Any]]):
+    for record in records:
+        contexts = record.get("contexts")
+        if isinstance(contexts, list):
+            for item in contexts:
+                if isinstance(item, dict):
+                    yield item
+            continue
+        asset_contexts = record.get("asset_contexts")
+        if isinstance(asset_contexts, list):
+            for item in asset_contexts:
+                if isinstance(item, dict):
+                    yield item
+            continue
+        yield record
+
+
+def _asset_context_symbol(row: dict[str, Any]) -> Any:
+    for key in ("instrument_id", "symbol", "coin", "name", "s"):
+        value = row.get(key)
+        if value is not None:
+            return value
+    return None
+
+
+def _symbol_tuple(value: Any) -> tuple[str, ...]:
+    if isinstance(value, str):
+        symbols = tuple(part.strip() for part in value.split(",") if part.strip())
+        if symbols:
+            return symbols
+    if isinstance(value, (list, tuple)):
+        symbols = tuple(str(part).strip() for part in value if str(part).strip())
+        if symbols:
+            return symbols
+    raise ValueError("symbols must be a non-empty string or list when provided")
 
 
 def _coerce_record_rows(value: list[Any]) -> list[dict[str, Any]]:

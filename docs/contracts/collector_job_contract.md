@@ -111,6 +111,15 @@ request handling and they do not place orders.
   rejects inline `records`, performs no S3 download or LZ4 decompression, and
   must return source hash, payload count, dataset scope, quality/storage refs,
   and a non-continuous-coverage caveat.
+- `official_s3_backfill` jobs may use explicit
+  `source=official_s3_asset_ctxs_replay` mode to normalize trusted local
+  JSON/JSONL files containing decompressed Hyperliquid official `asset_ctxs`
+  payloads into raw, bronze, and silver `asset_contexts` archive layers. This
+  mode requires `records_file` plus `trusted_source_root`, supports only
+  `official_dataset=asset_ctxs`, rejects inline `records`, performs no S3
+  download or LZ4 decompression, and must return source hash, payload count,
+  context row count, dataset scope, raw/bronze/silver refs, normalization refs,
+  and a non-continuous-coverage caveat.
 - `official_s3_backfill` jobs may preserve local official-file fixtures in the
   raw archive and must record native file SHA-256, byte count, source endpoint,
   row count when known, and storage budget status. Hyperliquid official-file
@@ -140,6 +149,10 @@ request handling and they do not place orders.
   validation gates must still prove archive snapshots, coverage, 2024+ dates,
   six usable months, lockbox exclusion, and as-of universe before accepted
   evidence.
+- Official asset-context replay rows are intake evidence only; backtest-data
+  and validation gates must still prove archive snapshots, coverage, 2024+
+  dates, six usable months, lockbox exclusion, and as-of universe before
+  accepted evidence.
 - Public trade WebSocket snapshots are intake evidence only; backtest-data and
   validation gates must still prove archive snapshots, coverage, 2024+ dates,
   six usable months, lockbox exclusion, and as-of universe before accepted
