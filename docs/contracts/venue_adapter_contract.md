@@ -32,9 +32,11 @@ execution behavior to v2 research modules.
   `fundingHistory` endpoint for historical funding rates, and the unsigned
   `/info` `l2Book` endpoint for BBO/L2 snapshots. It must preserve
   `public_unsigned` access mode plus raw request/response provenance.
-- Public candle snapshot provenance must record coin, interval, start/end epoch
-  milliseconds, raw payload hash, row count, rate-limit metadata when present,
-  and the documented recent-window/5000-candle limitation.
+- Public candle snapshot provenance must record coin, interval, per-page
+  start/end epoch milliseconds, raw payload hash, row count, rate-limit
+  metadata when present, and the documented recent-window/5000-candle
+  limitation. Multi-page collector jobs must preserve each raw request and
+  response ID instead of collapsing provenance to one aggregate request.
 - Public funding history provenance must record coin, start/end epoch
   milliseconds, raw payload hash, row count, rate-limit metadata when present,
   and the documented time-range pagination limitation.

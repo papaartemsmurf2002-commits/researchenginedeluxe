@@ -362,6 +362,11 @@ def test_recent_candle_bootstrap_worker_public_api_writes_archive_layers(
         worker_id="worker-public-candles",
     )
     loaded = store.load_job(queued.job_id)
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+
     layout = ArchiveLayout(archive_root)
     manifest_store = ArchiveManifestStore(layout)
     manifest_rows = manifest_store.load_file_manifest()
@@ -400,6 +405,256 @@ def test_recent_candle_bootstrap_worker_public_api_writes_archive_layers(
     assert ingestion_runs[0].adapter_id == "hyperliquid_public_info_v1"
     assert ingestion_runs[0].source_endpoint_or_subscription == "info/candleSnapshot"
     assert manifest_store.load_archive_snapshots()
+
+
+def test_recent_candle_bootstrap_worker_public_api_pages_candle_snapshots(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-public-candles-paged"
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = start + timedelta(minutes=5)
+    start_ms = int(start.timestamp() * 1000)
+    seen_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        body = json.loads(request.content.decode("utf-8"))
+        seen_bodies.append(body)
+        req = body["req"]
+        assert isinstance(req, dict)
+        page_start = int(req["startTime"])
+        page_end = int(req["endTime"])
+        first_index = (page_start - start_ms) // 60_000
+        end_index = (page_end - start_ms) // 60_000
+        return httpx.Response(
+            200,
+            json=[_hyperliquid_candle_row(index) for index in range(first_index, end_index)],
+            headers={"x-ratelimit-remaining": "9"},
+        )
+
+    class FakeHyperliquidInfoClient:
+        def __init__(self, base_url: str, timeout: float) -> None:
+            self._client = HyperliquidInfoClient(
+                base_url=base_url,
+                timeout=timeout,
+                transport=httpx.MockTransport(handler),
+            )
+
+        def fetch_candle_snapshot(self, **kwargs):
+            return self._client.fetch_candle_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidInfoClient",
+        FakeHyperliquidInfoClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-public-candles-paged",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "public_info_url": "https://example.test/info",
+            "public_info_timeout": 3.0,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-public-candles-paged",
+            "start_ts": start.isoformat(),
+            "end_ts": end.isoformat(),
+            "max_candles_per_public_page": 2,
+            "max_public_info_pages": 5,
+            "derive_timeframes": ["5m"],
+            "create_snapshot": True,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-public-candles-paged",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_store = ArchiveManifestStore(layout)
+    manifest_rows = manifest_store.load_file_manifest()
+    coverage_reports = CoverageManifestStore(layout).load_coverage_reports()
+    silver_1m = [
+        row
+        for row in manifest_rows
+        if row.layer == ArchiveLayer.SILVER and row.datatype == "bars" and row.timeframe == "1m"
+    ][0]
+    silver_rows = pq.ParquetFile(layout.resolve(silver_1m.path)).read().to_pylist()
+    raw_request_ids = [
+        ref.removeprefix("raw_request_ids=")
+        for ref in loaded.output_refs
+        if ref.startswith("raw_request_ids=")
+    ][0].split(",")
+    raw_response_ids = [
+        ref.removeprefix("raw_response_ids=")
+        for ref in loaded.output_refs
+        if ref.startswith("raw_response_ids=")
+    ][0].split(",")
+    raw_payload_hashes = [
+        ref.removeprefix("raw_payload_sha256s=")
+        for ref in loaded.output_refs
+        if ref.startswith("raw_payload_sha256s=")
+    ][0].split(",")
+
+    assert seen_bodies == [
+        {
+            "type": "candleSnapshot",
+            "req": {
+                "coin": "BTC",
+                "interval": "1m",
+                "startTime": start_ms,
+                "endTime": start_ms + 2 * 60_000,
+            },
+        },
+        {
+            "type": "candleSnapshot",
+            "req": {
+                "coin": "BTC",
+                "interval": "1m",
+                "startTime": start_ms + 2 * 60_000,
+                "endTime": start_ms + 4 * 60_000,
+            },
+        },
+        {
+            "type": "candleSnapshot",
+            "req": {
+                "coin": "BTC",
+                "interval": "1m",
+                "startTime": start_ms + 4 * 60_000,
+                "endTime": start_ms + 5 * 60_000,
+            },
+        },
+    ]
+    assert "api_row_count=5" in loaded.output_refs
+    assert "api_page_count=3" in loaded.output_refs
+    assert "api_page_span_limit_candles=2" in loaded.output_refs
+    assert "api_recent_window_caveat=not_full_historical_evidence" in loaded.output_refs
+    assert len(raw_request_ids) == 3
+    assert len(raw_response_ids) == 3
+    assert len(raw_payload_hashes) == 3
+    assert {row["instrument_id"] for row in silver_rows} == {INSTRUMENT}
+    assert len(silver_rows) == 5
+    assert {report.timeframe for report in coverage_reports} == {"1m", "5m"}
+    assert all(report.coverage_ratio == 1.0 for report in coverage_reports)
+    assert manifest_store.load_archive_snapshots()
+
+
+def test_recent_candle_bootstrap_worker_public_api_fails_when_page_cap_exhausted(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    archive_root = tmp_path / "archive-public-candles-page-cap"
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = start + timedelta(minutes=5)
+    start_ms = int(start.timestamp() * 1000)
+    seen_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content.decode("utf-8"))
+        seen_bodies.append(body)
+        req = body["req"]
+        assert isinstance(req, dict)
+        page_start = int(req["startTime"])
+        page_end = int(req["endTime"])
+        first_index = (page_start - start_ms) // 60_000
+        end_index = (page_end - start_ms) // 60_000
+        return httpx.Response(
+            200,
+            json=[_hyperliquid_candle_row(index) for index in range(first_index, end_index)],
+        )
+
+    class FakeHyperliquidInfoClient:
+        def __init__(self, base_url: str, timeout: float) -> None:
+            self._client = HyperliquidInfoClient(
+                base_url=base_url,
+                timeout=timeout,
+                transport=httpx.MockTransport(handler),
+            )
+
+        def fetch_candle_snapshot(self, **kwargs):
+            return self._client.fetch_candle_snapshot(**kwargs)
+
+    monkeypatch.setattr(
+        "tradingbotsuite.v2.collectors.jobs.HyperliquidInfoClient",
+        FakeHyperliquidInfoClient,
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-public-candles-page-cap",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "public_info_url": "https://example.test/info",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "start_ts": start.isoformat(),
+            "end_ts": end.isoformat(),
+            "max_candles_per_public_page": 2,
+            "max_public_info_pages": 2,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-public-candles-page-cap",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "public candleSnapshot pagination exceeded max_public_info_pages" in (
+        loaded.failure_reason or ""
+    )
+    assert len(seen_bodies) == 2
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
+def test_recent_candle_bootstrap_worker_public_api_rejects_oversized_candle_page(
+    tmp_path,
+) -> None:
+    archive_root = tmp_path / "archive-public-candles-oversized-page"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-public-candles-oversized-page",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source": "public_api",
+            "public_info_url": "https://example.test/info",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:10:00+00:00",
+            "max_candles_per_public_page": 5001,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-public-candles-oversized-page",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "cannot exceed documented 5000-candle limit" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
 def test_recent_candle_bootstrap_worker_rejects_public_api_with_local_records(tmp_path) -> None:

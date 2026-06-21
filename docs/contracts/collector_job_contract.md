@@ -40,10 +40,13 @@ request handling and they do not place orders.
   worker outputs.
 - Recent candle bootstrap jobs may also use the explicit unsigned public
   Hyperliquid `source=public_api` mode for `/info` `candleSnapshot` requests.
-  Public candle jobs must return `source_mode=public_api`, raw payload hash,
-  venue adapter ID, source endpoint, raw request ID, raw response ID, source
-  coin, interval, row count, and the documented recent-window cap through
-  durable output refs.
+  Public candle jobs must split requested time ranges into fixed-width page
+  windows no larger than configured `max_candles_per_public_page` and must fail
+  closed if the configured page size exceeds the documented 5000-candle cap or
+  when `max_public_info_pages` is exhausted. They must return
+  `source_mode=public_api`, page count, row count, raw payload hashes, venue
+  adapter ID, source endpoint, raw request IDs, raw response IDs, source coin,
+  interval, and the documented recent-window cap through durable output refs.
 - Public candle snapshot jobs must still write raw records before archive
   normalization and must rebuild bronze candles plus silver bars through the
   archive services. The public snapshot endpoint is a recent-window source, not

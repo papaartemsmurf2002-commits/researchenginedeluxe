@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -75,6 +75,7 @@ _UNSAFE_RECORDS_FILE_SUFFIXES = frozenset(
     }
 )
 _PUBLIC_INFO_TIME_RANGE_PAGE_LIMIT = 500
+_PUBLIC_CANDLE_SNAPSHOT_ROW_LIMIT = 5000
 
 
 class CollectorJobStatus(str, Enum):
@@ -326,16 +327,30 @@ def _run_public_recent_candle_bootstrap_job(
     start_ts = _parse_datetime(_required_str(spec, "start_ts"))
     end_ts = _parse_datetime(_required_str(spec, "end_ts"))
     coin = _hyperliquid_coin_from_spec(spec, instrument_id=instrument_id)
-    fetch = HyperliquidInfoClient(
+    page_limit = _public_candle_page_limit(
+        spec.get("max_candles_per_public_page", _PUBLIC_CANDLE_SNAPSHOT_ROW_LIMIT)
+    )
+    client = HyperliquidInfoClient(
         base_url=str(spec.get("public_info_url", "https://api.hyperliquid.xyz/info")),
         timeout=float(spec.get("public_info_timeout", 20.0)),
-    ).fetch_candle_snapshot(
-        coin=coin,
-        interval=timeframe,
-        start_time=start_ts,
-        end_time=end_ts,
     )
-    records = _public_candle_records(fetch.payload)
+    fetches = _fetch_public_candle_snapshot_pages(
+        client=client,
+        coin=coin,
+        timeframe=timeframe,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        max_pages=int(spec.get("max_public_info_pages", 50)),
+        page_limit=page_limit,
+    )
+    records = [
+        row
+        for fetch in fetches
+        for row in _public_candle_records(fetch.payload)
+    ]
+    if not records:
+        raise ValueError("public candleSnapshot response returned no rows")
+    first_fetch = fetches[0]
     layout = ArchiveLayout(archive_root)
     layout.initialize()
     manifest_store = ArchiveManifestStore(layout)
@@ -346,8 +361,8 @@ def _run_public_recent_candle_bootstrap_job(
         date=_required_str(spec, "date"),
         run_id=str(spec.get("run_id", job.job_id)),
         job_id=job.job_id,
-        adapter_id=fetch.capability.adapter_id,
-        source_endpoint_or_subscription=fetch.raw_request.source,
+        adapter_id=first_fetch.capability.adapter_id,
+        source_endpoint_or_subscription=first_fetch.raw_request.source,
         symbols=(instrument_id,),
         start_ts=start_ts,
         end_ts=end_ts,
@@ -378,15 +393,21 @@ def _run_public_recent_candle_bootstrap_job(
         "collector_mode=public_api_candle_archive_write",
         "source_mode=public_api",
         f"row_count={raw_file.row_count or 0}",
-        f"api_row_count={fetch.raw_response.row_count}",
-        f"venue_adapter_id={fetch.capability.adapter_id}",
-        f"source_endpoint_or_subscription={fetch.raw_request.source}",
-        f"raw_request_id={fetch.raw_request.request_id}",
-        f"raw_response_id={fetch.raw_response.response_id}",
-        f"raw_payload_sha256={fetch.raw_response.raw_payload_sha256}",
+        f"api_row_count={sum(fetch.raw_response.row_count for fetch in fetches)}",
+        f"api_page_count={len(fetches)}",
+        f"venue_adapter_id={first_fetch.capability.adapter_id}",
+        f"source_endpoint_or_subscription={first_fetch.raw_request.source}",
+        f"raw_request_id={first_fetch.raw_request.request_id}",
+        f"raw_response_id={first_fetch.raw_response.response_id}",
+        f"raw_payload_sha256={first_fetch.raw_response.raw_payload_sha256}",
+        f"raw_request_ids={_csv(fetch.raw_request.request_id for fetch in fetches)}",
+        f"raw_response_ids={_csv(fetch.raw_response.response_id for fetch in fetches)}",
+        f"raw_payload_sha256s={_csv(fetch.raw_response.raw_payload_sha256 for fetch in fetches)}",
         f"coin={coin}",
         f"timeframe={timeframe}",
         "api_documented_limit=most_recent_5000_candles",
+        f"api_page_span_limit_candles={page_limit}",
+        "api_recent_window_caveat=not_full_historical_evidence",
         *archive_refs,
     )
     record = store.succeed_job(
@@ -1214,6 +1235,95 @@ def _public_candle_records(payload: Any) -> list[dict[str, Any]]:
     if not rows:
         raise ValueError("public candleSnapshot response returned no rows")
     return rows
+
+
+def _fetch_public_candle_snapshot_pages(
+    *,
+    client: HyperliquidInfoClient,
+    coin: str,
+    timeframe: str,
+    start_ts: datetime,
+    end_ts: datetime,
+    max_pages: int,
+    page_limit: int,
+):
+    if max_pages <= 0:
+        raise ValueError("max_public_info_pages must be positive")
+    if page_limit <= 0:
+        raise ValueError("max_candles_per_public_page must be positive")
+    pages = []
+    for page_index, (page_start, page_end) in enumerate(
+        _public_candle_snapshot_windows(
+            start_ts=start_ts,
+            end_ts=end_ts,
+            timeframe=timeframe,
+            page_limit=page_limit,
+        )
+    ):
+        if page_index >= max_pages:
+            raise ValueError("public candleSnapshot pagination exceeded max_public_info_pages")
+        fetch = client.fetch_candle_snapshot(
+            coin=coin,
+            interval=timeframe,
+            start_time=page_start,
+            end_time=page_end,
+        )
+        _public_candle_records(fetch.payload)
+        pages.append(fetch)
+    if not pages:
+        raise ValueError("public candleSnapshot response returned no rows")
+    return tuple(pages)
+
+
+def _public_candle_page_limit(value: Any) -> int:
+    page_limit = int(value)
+    if page_limit <= 0:
+        raise ValueError("max_candles_per_public_page must be positive")
+    if page_limit > _PUBLIC_CANDLE_SNAPSHOT_ROW_LIMIT:
+        raise ValueError("max_candles_per_public_page cannot exceed documented 5000-candle limit")
+    return page_limit
+
+
+def _public_candle_snapshot_windows(
+    *,
+    start_ts: datetime,
+    end_ts: datetime,
+    timeframe: str,
+    page_limit: int,
+):
+    if end_ts <= start_ts:
+        raise ValueError("public candleSnapshot end_ts must be after start_ts")
+    interval = _public_candle_interval_delta(timeframe)
+    page_span = interval * page_limit
+    cursor = start_ts
+    while cursor < end_ts:
+        page_end = min(cursor + page_span, end_ts)
+        if page_end <= cursor:
+            raise ValueError("public candleSnapshot pagination did not advance")
+        yield cursor, page_end
+        cursor = page_end
+
+
+def _public_candle_interval_delta(timeframe: str) -> timedelta:
+    text = timeframe.strip()
+    if len(text) < 2:
+        raise ValueError("public candleSnapshot timeframe must include amount and unit")
+    amount_text = text[:-1]
+    unit = text[-1]
+    if not amount_text.isdigit():
+        raise ValueError("public candleSnapshot timeframe amount must be a positive integer")
+    amount = int(amount_text)
+    if amount <= 0:
+        raise ValueError("public candleSnapshot timeframe amount must be positive")
+    if unit == "m":
+        return timedelta(minutes=amount)
+    if unit == "h":
+        return timedelta(hours=amount)
+    if unit == "d":
+        return timedelta(days=amount)
+    if unit == "w":
+        return timedelta(weeks=amount)
+    raise ValueError("public candleSnapshot pagination supports fixed-width m, h, d, or w intervals")
 
 
 def _fetch_public_funding_history_pages(
