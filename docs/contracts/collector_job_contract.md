@@ -105,7 +105,12 @@ request handling and they do not place orders.
   accepted research evidence.
 - `official_s3_backfill` jobs may preserve local official-file fixtures in the
   raw archive and must record native file SHA-256, byte count, source endpoint,
-  row count when known, and storage budget status.
+  row count when known, and storage budget status. Hyperliquid official-file
+  jobs must classify the official dataset as `market_data_l2_book`,
+  `asset_ctxs`, `node_fills_by_block`, `node_fills`, or `node_trades`; reject
+  unsupported official candle/OHLCV/spot-asset claims before archive writes;
+  and label outputs as trusted local raw-native preservation rather than
+  normalized coverage evidence.
 - Trades, BBO, L2, and official-file jobs must return archive manifest refs and
   storage-growth refs through durable job output refs.
 - Local fixture/source-record candle and funding jobs must not fetch from venue

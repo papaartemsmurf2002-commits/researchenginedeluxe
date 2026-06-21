@@ -435,6 +435,143 @@ def test_official_s3_backfill_preserves_native_file_and_manifest(tmp_path) -> No
     assert raw_file.read_bytes() == b"official-s3-fixture"
 
 
+def test_hyperliquid_official_s3_backfill_records_dataset_scope(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-hyperliquid-s3"
+    trusted_root.mkdir()
+    source = trusted_root / "BTC.lz4"
+    source.write_bytes(b"official-hyperliquid-l2-fixture")
+    archive_root = tmp_path / "archive-hyperliquid-l2"
+    store = WorkerJobStore(tmp_path / "jobs-hyperliquid-l2.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        job_id="JOB-hyperliquid-s3-l2",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source_file": str(source),
+            "trusted_source_root": str(trusted_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "run_id": "run-hyperliquid-s3-l2",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:59:59+00:00",
+            "row_count": 12,
+            "official_dataset": "market_data_l2_book",
+            "storage_budget_bytes": 1_000_000,
+            "source_endpoint_or_subscription": (
+                "s3://hyperliquid-archive/market_data/20260101/0/l2Book/BTC.lz4"
+            ),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        worker_id="worker-hyperliquid-s3-l2",
+    )
+    loaded = store.load_job(queued.job_id)
+    manifest_rows = ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "source_mode=trusted_local_official_file" in loaded.output_refs
+    assert "official_dataset=market_data_l2_book" in loaded.output_refs
+    assert "official_dataset_scope=official_hyperliquid_l2_book_snapshots" in loaded.output_refs
+    assert "official_s3_network_download=false" in loaded.output_refs
+    assert (
+        "official_s3_research_caveat=raw_native_file_preserved_not_normalized_coverage_evidence"
+        in loaded.output_refs
+    )
+    assert any(ref.startswith("raw_file_sha256=") for ref in loaded.output_refs)
+    assert manifest_rows[0].datatype == "official_s3"
+    assert manifest_rows[0].venue == "hyperliquid"
+    assert manifest_rows[0].row_count == 12
+
+
+def test_hyperliquid_official_s3_backfill_infers_node_fills_dataset(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-hyperliquid-node"
+    trusted_root.mkdir()
+    source = trusted_root / "00000001.lz4"
+    source.write_bytes(b"official-hyperliquid-node-fills-fixture")
+    archive_root = tmp_path / "archive-hyperliquid-node"
+    store = WorkerJobStore(tmp_path / "jobs-hyperliquid-node.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        job_id="JOB-hyperliquid-node-fills",
+        input_spec={
+            "archive_root": str(archive_root),
+            "source_file": str(source),
+            "trusted_source_root": str(trusted_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "run_id": "run-hyperliquid-node-fills",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:59:59+00:00",
+            "row_count": 3,
+            "source_endpoint_or_subscription": (
+                "s3://hl-mainnet-node-data/node_fills_by_block/00000001.lz4"
+            ),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        worker_id="worker-hyperliquid-node-fills",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "official_dataset=node_fills_by_block" in loaded.output_refs
+    assert "official_dataset_scope=official_hyperliquid_node_fills_by_block" in loaded.output_refs
+
+
+def test_hyperliquid_official_s3_backfill_rejects_unsupported_candle_dataset(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-hyperliquid-candles"
+    trusted_root.mkdir()
+    source = trusted_root / "BTC-candles.lz4"
+    source.write_bytes(b"unsupported-candles")
+    archive_root = tmp_path / "archive-hyperliquid-candles"
+    store = WorkerJobStore(tmp_path / "jobs-hyperliquid-candles.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        job_id="JOB-hyperliquid-candles-reject",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(archive_root),
+            "source_file": str(source),
+            "trusted_source_root": str(trusted_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "date": "2026-01-01",
+            "run_id": "run-hyperliquid-candles-reject",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T00:59:59+00:00",
+            "row_count": 1,
+            "official_dataset": "candles",
+            "source_endpoint_or_subscription": "s3://hyperliquid-archive/candles/BTC.lz4",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.OFFICIAL_S3_BACKFILL,
+        worker_id="worker-hyperliquid-candles-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "not supported for v2 official_s3_backfill" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
 @pytest.mark.parametrize(
     ("source_name", "expected_reason"),
     [

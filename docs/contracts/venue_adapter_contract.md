@@ -43,6 +43,12 @@ execution behavior to v2 research modules.
 - Public L2 book provenance must record coin, optional aggregation parameters,
   raw payload hash, level count, rate-limit metadata when present, and the
   documented 20-levels-per-side limitation.
+- Hyperliquid official historical-file intake may preserve only trusted local
+  raw copies of documented official datasets scoped by packet:
+  `market_data_l2_book`, `asset_ctxs`, `node_fills_by_block`, `node_fills`, and
+  `node_trades`. These records must expose source endpoint, dataset scope,
+  file hash, and a raw-native/non-normalized caveat; they must not imply
+  official historical candle/OHLCV coverage or normalized trade coverage.
 - The Hyperliquid public-WebSocket adapter may subscribe only to public market
   data streams explicitly scoped by packet. The current implemented stream is
   `trades` for bounded recent trade snapshots. It must preserve

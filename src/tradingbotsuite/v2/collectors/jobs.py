@@ -76,6 +76,34 @@ _UNSAFE_RECORDS_FILE_SUFFIXES = frozenset(
 )
 _PUBLIC_INFO_TIME_RANGE_PAGE_LIMIT = 500
 _PUBLIC_CANDLE_SNAPSHOT_ROW_LIMIT = 5000
+_HYPERLIQUID_OFFICIAL_DATASET_SCOPES = {
+    "market_data_l2_book": "official_hyperliquid_l2_book_snapshots",
+    "asset_ctxs": "official_hyperliquid_asset_contexts",
+    "node_fills_by_block": "official_hyperliquid_node_fills_by_block",
+    "node_fills": "official_hyperliquid_node_fills_legacy",
+    "node_trades": "official_hyperliquid_node_trades_legacy",
+}
+_HYPERLIQUID_OFFICIAL_DATASET_ALIASES = {
+    "market_data": "market_data_l2_book",
+    "l2book": "market_data_l2_book",
+    "l2_book": "market_data_l2_book",
+    "l2_books": "market_data_l2_book",
+    "asset_ctx": "asset_ctxs",
+    "asset_contexts": "asset_ctxs",
+    "node_fill_by_block": "node_fills_by_block",
+    "node_fills_by_block": "node_fills_by_block",
+    "node_fills": "node_fills",
+    "node_trades": "node_trades",
+}
+_HYPERLIQUID_UNSUPPORTED_OFFICIAL_DATASET_HINTS = (
+    "candle",
+    "candles",
+    "ohlcv",
+    "kline",
+    "klines",
+    "spot_asset",
+    "spot_assets",
+)
 
 
 class CollectorJobStatus(str, Enum):
@@ -928,18 +956,27 @@ def _run_official_s3_backfill_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    venue = str(spec.get("venue", "hyperliquid"))
+    adapter_id = str(spec.get("adapter_id", "official_s3_backfill_fixture_v1"))
+    source_endpoint = str(
+        spec.get("source_endpoint_or_subscription", "official_s3_backfill_fixture")
+    )
+    official_refs = _official_s3_scope_refs(
+        spec,
+        venue=venue,
+        source_endpoint_or_subscription=source_endpoint,
+        source_file=_required_str(spec, "source_file"),
+    )
     raw_file, storage_report = preserve_official_s3_backfill_file(
         archive_root=_required_str(spec, "archive_root"),
         source_file=_required_str(spec, "source_file"),
         trusted_source_root=_required_str(spec, "trusted_source_root"),
-        venue=str(spec.get("venue", "hyperliquid")),
+        venue=venue,
         date=_required_str(spec, "date"),
         run_id=str(spec.get("run_id", job.job_id)),
         job_id=job.job_id,
-        adapter_id=str(spec.get("adapter_id", "official_s3_backfill_fixture_v1")),
-        source_endpoint_or_subscription=str(
-            spec.get("source_endpoint_or_subscription", "official_s3_backfill_fixture")
-        ),
+        adapter_id=adapter_id,
+        source_endpoint_or_subscription=source_endpoint,
         instrument_id=spec.get("instrument_id"),
         start_ts=_parse_datetime(_required_str(spec, "start_ts")),
         end_ts=_parse_datetime(_required_str(spec, "end_ts")),
@@ -954,6 +991,10 @@ def _run_official_s3_backfill_job(
     output_refs = (
         "collector_mode=official_s3_backfill_preserve_local_file",
         f"row_count={raw_file.row_count or 0}",
+        f"venue_adapter_id={adapter_id}",
+        f"source_endpoint_or_subscription={source_endpoint}",
+        f"raw_file_sha256={raw_file.sha256}",
+        *official_refs,
         f"storage_total_bytes={storage_report.total_bytes}",
         f"storage_within_budget={str(storage_report.within_budget).lower()}",
         *archive_refs,
@@ -972,6 +1013,73 @@ def _run_official_s3_backfill_job(
         archive_manifest_refs=record.archive_manifest_refs,
         gap_record_ids=record.gap_record_ids,
     )
+
+
+def _official_s3_scope_refs(
+    spec: dict[str, Any],
+    *,
+    venue: str,
+    source_endpoint_or_subscription: str,
+    source_file: str,
+) -> tuple[str, ...]:
+    explicit_dataset = str(spec.get("official_dataset", "")).strip()
+    if venue.lower() != "hyperliquid":
+        if explicit_dataset:
+            return (f"official_dataset={explicit_dataset}",)
+        return ()
+    dataset = _hyperliquid_official_dataset(
+        explicit_dataset=explicit_dataset,
+        source_endpoint_or_subscription=source_endpoint_or_subscription,
+        source_file=source_file,
+    )
+    return (
+        "source_mode=trusted_local_official_file",
+        f"official_dataset={dataset}",
+        f"official_dataset_scope={_HYPERLIQUID_OFFICIAL_DATASET_SCOPES[dataset]}",
+        "official_s3_network_download=false",
+        "official_s3_research_caveat=raw_native_file_preserved_not_normalized_coverage_evidence",
+    )
+
+
+def _hyperliquid_official_dataset(
+    *,
+    explicit_dataset: str,
+    source_endpoint_or_subscription: str,
+    source_file: str,
+) -> str:
+    if explicit_dataset:
+        return _canonical_hyperliquid_official_dataset(explicit_dataset)
+    haystack = f"{source_endpoint_or_subscription} {source_file}".replace("\\", "/").lower()
+    if "hyperliquid-archive/market_data" in haystack and "l2book" in haystack:
+        return "market_data_l2_book"
+    if "hyperliquid-archive/asset_ctxs" in haystack or "/asset_ctxs/" in haystack:
+        return "asset_ctxs"
+    if "hl-mainnet-node-data/node_fills_by_block" in haystack:
+        return "node_fills_by_block"
+    if "hl-mainnet-node-data/node_fills" in haystack:
+        return "node_fills"
+    if "hl-mainnet-node-data/node_trades" in haystack:
+        return "node_trades"
+    if any(hint in haystack for hint in _HYPERLIQUID_UNSUPPORTED_OFFICIAL_DATASET_HINTS):
+        raise ValueError(
+            "Hyperliquid official S3 dataset is not supported for v2 official_s3_backfill"
+        )
+    raise ValueError(
+        "Hyperliquid official_s3_backfill requires official_dataset or an inferable official source path"
+    )
+
+
+def _canonical_hyperliquid_official_dataset(value: str) -> str:
+    normalized = value.strip().lower().replace("-", "_").replace("/", "_")
+    canonical = _HYPERLIQUID_OFFICIAL_DATASET_ALIASES.get(normalized, normalized)
+    if canonical in _HYPERLIQUID_OFFICIAL_DATASET_SCOPES:
+        return canonical
+    if any(hint in canonical for hint in _HYPERLIQUID_UNSUPPORTED_OFFICIAL_DATASET_HINTS):
+        raise ValueError(
+            "Hyperliquid official S3 dataset is not supported for v2 official_s3_backfill"
+        )
+    allowed = ", ".join(sorted(_HYPERLIQUID_OFFICIAL_DATASET_SCOPES))
+    raise ValueError(f"unsupported Hyperliquid official_dataset: {value}; expected one of {allowed}")
 
 
 def _api_cap_warning(

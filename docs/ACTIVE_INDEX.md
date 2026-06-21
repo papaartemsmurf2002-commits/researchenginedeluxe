@@ -87,11 +87,14 @@ This is the first file to read after `AGENTS.md`.
   against a universe snapshot, writing one report per eligible instrument and
   surfacing missing silver bars as blocker evidence. WPR106-439 adds bounded
   public `candleSnapshot` pagination for recent-window candle archive intake
-  with page-cap failure and per-page provenance. Full historical candle
-  coverage beyond the public recent-window limit, historical trade coverage,
-  long-running continuous trade capture, continuous BBO/L2 capture or
-  historical L2 replay, independent audits, and authoritative full-suite proof
-  remain follow-up work.
+  with page-cap failure and per-page provenance. WPR106-440 makes
+  Hyperliquid `official_s3_backfill` jobs classify trusted local official
+  historical files, allow documented raw L2/asset-context/node-fill scopes, and
+  reject unsupported official candle/OHLCV claims before archive writes. Full
+  historical candle coverage beyond the public recent-window limit, normalized
+  historical trade coverage, normalized L2/asset-context replay, long-running
+  continuous trade capture, continuous BBO/L2 capture or historical L2 replay,
+  independent audits, and authoritative full-suite proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
