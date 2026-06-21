@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 REQUIRED_DOCS_WITH_SCHEMA_NAMES = {
     "docs/contracts/archive_contract.md": ("ArchiveConfig", "ArchiveLayer"),
+    "docs/contracts/audit_report_contract.md": ("AuditBlockerReport", "AuditJobSummary", "AuditReportStatus"),
     "docs/contracts/universe_contract.md": ("UniverseConfig", "UniverseMode"),
     "docs/contracts/venue_adapter_contract.md": ("VenueAdapterCapability",),
     "docs/contracts/collector_job_contract.md": ("CollectorJobRecord",),

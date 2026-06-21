@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from tradingbotsuite.v2.audit.jobs import run_audit_job
 from tradingbotsuite.v2.backtest_engine.jobs import run_backtest_job
 from tradingbotsuite.v2.collectors.jobs import run_collector_job
 from tradingbotsuite.v2.data_quality.jobs import run_data_quality_job
@@ -41,6 +42,10 @@ LEAD_BOOK_KINDS = {
     WorkerJobKind.LEAD_BOOK_UPSERT,
 }
 
+AUDIT_KINDS = {
+    WorkerJobKind.AUDIT_CHECK,
+}
+
 
 def run_one_job(
     *,
@@ -68,6 +73,8 @@ def run_one_job(
             return run_ledger_job(job=running, store=store, worker_id=worker_id)
         if job_kind in LEAD_BOOK_KINDS:
             return run_lead_book_job(job=running, store=store, worker_id=worker_id)
+        if job_kind in AUDIT_KINDS:
+            return run_audit_job(job=running, store=store, worker_id=worker_id)
         raise ValueError(f"worker kind is not implemented in Phase 7: {job_kind.value}")
     except Exception as exc:
         failed = store.fail_job(

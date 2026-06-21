@@ -812,6 +812,119 @@ def test_lead_book_upsert_worker_rejects_boundary_override_before_write(tmp_path
     assert not lead_book_path.exists()
 
 
+def test_audit_check_worker_writes_blocker_report_from_job_store(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    failed_source = store.enqueue(
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        job_id="JOB-audit-source-failed-ledger",
+        max_attempts=1,
+        input_spec={
+            "run_manifest_path": str(tmp_path / "missing" / "run_manifest.json"),
+            "ledger_path": str(tmp_path / "ledger" / "experiment_ledger.parquet"),
+            "evidence_mode": "accepted_research",
+        },
+    )
+    failed_result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        worker_id="worker-audit-source-failed-ledger",
+    )
+    assert failed_result is not None
+    assert failed_result.status == WorkerJobStatus.FAILED
+    blocker_ref_source = store.enqueue(
+        kind=WorkerJobKind.COVERAGE_AUDIT,
+        job_id="JOB-audit-source-blocker-refs",
+        input_spec={"purpose": "manual blocker-ref audit source"},
+    )
+    claimed = store.claim_next(kind=WorkerJobKind.COVERAGE_AUDIT, worker_id="worker-audit-source-blocker-refs")
+    assert claimed is not None
+    running = store.start_job(claimed.job_id, worker_id="worker-audit-source-blocker-refs")
+    store.succeed_job(
+        running.job_id,
+        worker_id="worker-audit-source-blocker-refs",
+        output_refs=(
+            "blocker_reasons=coverage_below_minimum",
+            "known_blockers=human_inspection_required_before_deep_validation",
+            "missing_evidence=accepted_research_coverage_manifest",
+        ),
+        reason="manual_blocker_ref_source_succeeded",
+    )
+    report_path = tmp_path / "audit" / "blocker_report.json"
+    queued = store.enqueue(
+        kind=WorkerJobKind.AUDIT_CHECK,
+        job_id="JOB-audit-check",
+        input_spec={
+            "run_id": "worker-audit-check-smoke",
+            "report_path": str(report_path),
+            "target_job_ids": [failed_source.job_id, blocker_ref_source.job_id, "JOB-missing-target"],
+            "extra_blocker_reasons": ["real_hyperliquid_archive_operation_required"],
+            "required_next_actions": ["fix_failed_ledger_job", "rerun_audit_check"],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.AUDIT_CHECK,
+        worker_id="worker-audit-check",
+    )
+    loaded = store.load_job(queued.job_id)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "job_kind=audit_check" in loaded.output_refs
+    assert "report_status=completed_with_blockers" in loaded.output_refs
+    assert "accepted_research_ready=false" in loaded.output_refs
+    assert any(ref.startswith("report_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("audited_job_count=2") for ref in loaded.archive_manifest_refs)
+    assert report["schema_version"] == "audit_blocker_report_v1"
+    assert report["status"] == "completed_with_blockers"
+    assert report["accepted_research_ready"] is False
+    assert report["research_only"] is True
+    assert report["promotion_ready"] is False
+    assert report["audited_job_ids"] == [failed_source.job_id, blocker_ref_source.job_id]
+    assert report["job_status_counts"] == {"failed": 1, "succeeded": 1}
+    assert "real_hyperliquid_archive_operation_required" in report["blocker_reasons"]
+    assert "target_job_missing:JOB-missing-target" in report["blocker_reasons"]
+    assert "coverage_below_minimum" in report["blocker_reasons"]
+    assert "human_inspection_required_before_deep_validation" in report["blocker_reasons"]
+    assert "missing_evidence:accepted_research_coverage_manifest" in report["blocker_reasons"]
+    assert any(
+        reason.startswith("job_failed:JOB-audit-source-failed-ledger:")
+        for reason in report["blocker_reasons"]
+    )
+    assert report["required_next_actions"] == ["fix_failed_ledger_job", "rerun_audit_check"]
+    assert report["job_summaries"][0]["job_id"] == failed_source.job_id
+    assert report["job_summaries"][0]["status"] == "failed"
+
+
+def test_audit_check_worker_rejects_secret_like_report_path_before_write(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.AUDIT_CHECK,
+        job_id="JOB-audit-check-secret-reject",
+        max_attempts=1,
+        input_spec={
+            "report_path": str(tmp_path / ".env"),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.AUDIT_CHECK,
+        worker_id="worker-audit-check-secret-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "reserved for secrets or local state" in (loaded.failure_reason or "")
+    assert not (tmp_path / ".env").exists()
+
+
 def test_recent_candle_bootstrap_worker_reads_trusted_jsonl_records_file(tmp_path) -> None:
     trusted_root = tmp_path / "trusted-source"
     trusted_root.mkdir()

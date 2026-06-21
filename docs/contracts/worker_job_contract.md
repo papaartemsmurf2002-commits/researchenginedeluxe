@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`
 
 ## Purpose
 
@@ -59,6 +59,12 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Lead Book worker jobs must reject secret-like or unsupported output/source
   path names before writing rows or exports, and must reject job specs that try
   to override research-boundary flags.
+- `audit_check` jobs must run through the durable worker runner, read durable
+  job-store evidence, and write research-only JSON blocker reports.
+- Audit blocker reports must treat found blockers as successful report output,
+  not worker-system failure.
+- Audit worker jobs must reject secret-like or unsupported report output paths
+  before writing.
 
 ## Forbidden
 
@@ -77,3 +83,6 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Writing Lead Book or export files to secret/local-state filenames.
 - Allowing Lead Book worker job specs to set paper/live/order/sizing/runtime,
   candidate, or promotion boundary fields.
+- Treating audit blocker reports as accepted-research proof or autonomous-ready
+  certification.
+- Writing audit blocker reports to secret/local-state filenames.

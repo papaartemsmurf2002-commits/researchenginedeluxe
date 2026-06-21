@@ -60,9 +60,12 @@ This is the first file to read after `AGENTS.md`.
   source artifacts can create or replace non-promotable Lead Book rows through
   the canonical Lead Book service, optionally emitting generated CSV views,
   with secret-like output paths and boundary override attempts rejected before
-  writes. Real venue/API collection, blocker-report worker updates,
-  independent audits, and authoritative full-suite proof remain follow-up
-  work.
+  writes. WPR106-431 wires the existing durable `audit_check` worker kind so
+  job-store evidence can produce research-only JSON blocker reports with failed,
+  incomplete, gap, blocker, known-blocker, and missing-evidence refs surfaced
+  explicitly while keeping `accepted_research_ready=false`. Real venue/API
+  collection, independent audits, and authoritative full-suite proof remain
+  follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

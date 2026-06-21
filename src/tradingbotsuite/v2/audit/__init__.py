@@ -6,6 +6,17 @@
 
 from __future__ import annotations
 
+from tradingbotsuite.v2.audit.schemas import (
+    AuditBlockerReport,
+    AuditJobSummary,
+    AuditReportStatus,
+)
 from tradingbotsuite.v2.audit.markers import V2ModuleMarker, module_marker
 
-__all__ = ["V2ModuleMarker", "module_marker"]
+__all__ = [
+    "AuditBlockerReport",
+    "AuditJobSummary",
+    "AuditReportStatus",
+    "V2ModuleMarker",
+    "module_marker",
+]
