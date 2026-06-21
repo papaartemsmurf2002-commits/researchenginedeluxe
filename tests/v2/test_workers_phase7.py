@@ -2131,6 +2131,123 @@ def test_collector_records_file_rejects_invalid_record_shape_before_archive_writ
     assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
 
 
+def test_websocket_candle_batch_worker_writes_archive_layers_and_coverage(tmp_path) -> None:
+    archive_root = tmp_path / "archive-ws-candles"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        job_id="JOB-ws-candles",
+        input_spec={
+            "archive_root": str(archive_root),
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "candles",
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-ws-candles",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "derive_timeframes": ["5m"],
+            "create_snapshot": True,
+            "source_endpoint_or_subscription": "fixture/websocket/candles",
+            "records": [_candle_row(index) for index in range(60)],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        worker_id="worker-ws-candles",
+    )
+    loaded = store.load_job(queued.job_id)
+    layout = ArchiveLayout(archive_root)
+    manifest_rows = ArchiveManifestStore(layout).load_file_manifest()
+    coverage_reports = CoverageManifestStore(layout).load_coverage_reports()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "collector_mode=websocket_candle_batch_archive_write" in loaded.output_refs
+    assert "source_mode=local_records" in loaded.output_refs
+    assert "continuous_capture=false" in loaded.output_refs
+    assert "accepted_historical_coverage_proof=false" in loaded.output_refs
+    assert (
+        "websocket_candle_batch_caveat=bounded_batch_not_unattended_continuous_capture"
+        in loaded.output_refs
+    )
+    assert "source_endpoint_or_subscription=fixture/websocket/candles" in loaded.output_refs
+    assert "records_source=inline" in loaded.output_refs
+    assert "records_inline_row_count=60" in loaded.output_refs
+    assert any(ref.startswith("raw_file_id=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("bronze_file_ids=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("silver_file_ids=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("coverage_report_ids=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("archive_snapshot_id=") for ref in loaded.archive_manifest_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "candles"),
+        (ArchiveLayer.BRONZE, "candles"),
+        (ArchiveLayer.SILVER, "bars"),
+    }
+    assert {row.timeframe for row in manifest_rows if row.layer == ArchiveLayer.SILVER} == {
+        "1m",
+        "5m",
+    }
+    assert {report.timeframe for report in coverage_reports} == {"1m", "5m"}
+    assert all(report.coverage_ratio == 1.0 for report in coverage_reports)
+
+
+def test_websocket_candle_batch_worker_reads_trusted_records_file(tmp_path) -> None:
+    trusted_root = tmp_path / "trusted-source"
+    trusted_root.mkdir()
+    records_file = trusted_root / "ws-candles.jsonl"
+    records_file.write_text(
+        "\n".join(json.dumps(_candle_row(index)) for index in range(60)),
+        encoding="utf-8",
+    )
+    archive_root = tmp_path / "archive-ws-candles-file"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        job_id="JOB-ws-candles-file",
+        input_spec={
+            "archive_root": str(archive_root),
+            "trusted_source_root": str(trusted_root),
+            "records_file": records_file.name,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "datatype": "candle",
+            "timeframe": "1m",
+            "date": "2026-01-01",
+            "run_id": "run-ws-candles-file",
+            "start_ts": "2026-01-01T00:00:00+00:00",
+            "end_ts": "2026-01-01T01:00:00+00:00",
+            "derive_timeframes": ["5m"],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        worker_id="worker-ws-candles-file",
+    )
+    loaded = store.load_job(queued.job_id)
+    manifest_rows = ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest()
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "collector_mode=websocket_candle_batch_archive_write" in loaded.output_refs
+    assert "records_source=records_file" in loaded.output_refs
+    assert "records_file_row_count=60" in loaded.output_refs
+    assert any(ref.startswith("records_file_sha256=") for ref in loaded.output_refs)
+    assert {(row.layer, row.datatype) for row in manifest_rows} >= {
+        (ArchiveLayer.RAW, "candles"),
+        (ArchiveLayer.BRONZE, "candles"),
+        (ArchiveLayer.SILVER, "bars"),
+    }
+
+
 def test_websocket_capture_skeleton_records_gap_instead_of_silent_success(tmp_path) -> None:
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
     queued = store.enqueue(

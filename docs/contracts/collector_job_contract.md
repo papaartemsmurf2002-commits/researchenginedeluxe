@@ -38,6 +38,13 @@ request handling and they do not place orders.
   archive normalization services. They must return raw, bronze, silver,
   normalization, coverage, and optional archive snapshot refs through durable
   worker outputs.
+- `websocket_capture` jobs with `datatype=candle` or `datatype=candles` and
+  explicit local source `records` or trusted `records_file` may write bounded
+  candle batches through the same raw candle, bronze candle, silver bar,
+  coverage, and optional archive snapshot services. These jobs must return
+  bounded-batch caveats and must not claim unattended continuous capture,
+  historical coverage proof, accepted research evidence, or venue streaming
+  operation.
 - Recent candle bootstrap jobs may also use the explicit unsigned public
   Hyperliquid `source=public_api` mode for `/info` `candleSnapshot` requests.
   Public candle jobs must split requested time ranges into fixed-width page
@@ -64,11 +71,11 @@ request handling and they do not place orders.
 - Public funding jobs must still write raw records before archive normalization
   and must rebuild bronze funding plus silver funding intervals through the
   archive services.
-- Candle and funding archive-write jobs may read `records_file` inputs only
-  when `trusted_source_root` is supplied and the file stays inside that root.
-  Plain JSON arrays and JSONL/NDJSON objects are supported; unsafe extensions,
-  secret-like names, path traversal, and invalid record shapes must fail before
-  archive writes.
+- Candle, WebSocket candle batch, and funding archive-write jobs may read
+  `records_file` inputs only when `trusted_source_root` is supplied and the
+  file stays inside that root. Plain JSON arrays and JSONL/NDJSON objects are
+  supported; unsafe extensions, secret-like names, path traversal, and invalid
+  record shapes must fail before archive writes.
 - File-backed collector jobs must return source SHA-256 and record-count refs
   through durable job output refs.
 - Recent candle bootstrap jobs without local source `records` and without
@@ -76,8 +83,10 @@ request handling and they do not place orders.
   limitations as diagnostic refs. Funding backfill jobs without local source
   `records` and without explicit `source=public_api` must also remain
   diagnostic. A diagnostic no-record job is not accepted research evidence.
-- WebSocket capture in Phase 7 is a skeleton only. It must record reconnect or
-  gap evidence instead of reporting silent collection success.
+- Generic WebSocket capture remains a skeleton unless it is an explicit
+  local-record candle batch. Non-candle and no-record `websocket_capture` jobs
+  must record reconnect or gap evidence instead of reporting silent collection
+  success.
 - `websocket_trade_capture` jobs may preserve fixture trade records to the raw
   archive.
 - `websocket_trade_capture` jobs may also use explicit public Hyperliquid
@@ -188,6 +197,9 @@ request handling and they do not place orders.
 - Claiming accepted evidence from fixture/source-record collector outputs
   unless later backtest-data and validation gates explicitly accept a separate
   archive snapshot.
+- Treating bounded local WebSocket candle batches as unattended continuous
+  capture, full historical candle backfill, accepted historical coverage proof,
+  or venue streaming operation.
 - Silent public network universe refreshes when the job spec does not declare
   `source=public_api`.
 - Reading `.env`, credential/key-like, pickle-like, SQLite/database, compressed,

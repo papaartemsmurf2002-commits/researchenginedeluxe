@@ -46,6 +46,10 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   `archive_snapshot_id`, `universe_snapshot_id`, and `timeframe`; this mode
   must audit all in-scope universe instruments against local silver bars and
   return missing-file and coverage blocker refs without fetching venue data.
+- `websocket_capture` jobs with explicit candle datatype and local source
+  records may complete with raw/bronze/silver/coverage/snapshot archive refs
+  plus bounded-batch caveats; other generic WebSocket capture jobs must still
+  complete only with diagnostic gap evidence.
 - `vectorized_backtest` jobs must run through the durable worker runner, load
   panels only through `BacktestDataService`, validate inline declarative
   strategy specs before strategy code sees rows, and return run-manifest,

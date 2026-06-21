@@ -104,10 +104,15 @@ This is the first file to read after `AGENTS.md`.
   coverage audits for raw `trades`, raw `bbo`, raw `l2`, and silver
   `asset_contexts` files, including archive-snapshot plus universe-snapshot
   missing-file blocker evidence, while keeping raw microstructure coverage
-  non-evidence by default. Full historical candle coverage beyond the public
-  recent-window limit, continuous BBO/L2 capture, accepted continuous
-  historical trade/L2 coverage proof, independent audits, and authoritative
-  full-suite proof remain follow-up work.
+  non-evidence by default. WPR106-445 adds bounded local WebSocket candle batch
+  archive writes for durable `websocket_capture` jobs with explicit candle
+  datatype plus `records` or trusted `records_file`, returning raw/bronze/
+  silver/coverage/snapshot refs and bounded-batch caveats while preserving
+  generic WebSocket gap-record behavior. Full historical candle coverage
+  beyond the public recent-window limit, unattended continuous candle capture,
+  continuous BBO/L2 capture, accepted continuous historical trade/L2 coverage
+  proof, independent audits, and authoritative full-suite proof remain
+  follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

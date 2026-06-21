@@ -652,6 +652,12 @@ def _run_websocket_capture_skeleton(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = job.input_spec
+    if _is_candle_datatype(spec.get("datatype")) and _has_record_source(spec):
+        return _run_websocket_candle_batch_archive_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+        )
     reconnect_attempts = int(spec.get("reconnect_attempts", 1))
     backoff_seconds = int(spec.get("backoff_seconds", 1))
     reason = str(spec.get("gap_reason", "websocket_capture_not_started_in_phase7_skeleton"))
@@ -678,6 +684,108 @@ def _run_websocket_capture_skeleton(
         archive_manifest_refs=("archive_manifest_ref=gap_record_only",),
         gap_record_ids=(gap.gap_record_id,),
         reason="websocket_capture_gap_recorded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_websocket_candle_batch_archive_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    archive_root = _required_str(spec, "archive_root")
+    instrument_id = _required_str(spec, "instrument_id")
+    timeframe = str(spec.get("timeframe", "1m"))
+    start_ts = _parse_datetime(_required_str(spec, "start_ts"))
+    end_ts = _parse_datetime(_required_str(spec, "end_ts"))
+    records, source_refs, source_endpoint = _collector_records(
+        spec,
+        default_source_endpoint="local_records/websocket/candles",
+    )
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    manifest_store = ArchiveManifestStore(layout)
+    raw_file = RawJsonlZstdWriter(layout, manifest_store).write_records(
+        records=records,
+        venue=str(spec.get("venue", "hyperliquid")),
+        datatype="candles",
+        date=_required_str(spec, "date"),
+        run_id=str(spec.get("run_id", job.job_id)),
+        job_id=job.job_id,
+        adapter_id=str(spec.get("adapter_id", "local_websocket_candle_batch_v1")),
+        source_endpoint_or_subscription=source_endpoint,
+        symbols=(instrument_id,),
+        start_ts=start_ts,
+        end_ts=end_ts,
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+    )
+    bronze = raw_candles_to_bronze(
+        archive_root=archive_root,
+        raw_file_id=raw_file.file_id,
+        job_id=f"{job.job_id}-bronze-candles",
+        instrument_id=instrument_id,
+        timeframe=timeframe,
+    )
+    silver = bronze_candles_to_silver_bars(
+        archive_root=archive_root,
+        bronze_file_id=bronze.output_files[0].file_id,
+        job_id=f"{job.job_id}-silver-bars",
+        derive_timeframes=_derive_timeframes(spec),
+        write_coverage=not bool(spec.get("skip_coverage", False)),
+        create_snapshot=bool(spec.get("create_snapshot", False)),
+    )
+    archive_refs = _market_data_archive_refs(
+        raw_file_id=raw_file.file_id,
+        bronze=bronze,
+        silver=silver,
+    )
+    gap_record_ids: tuple[str, ...] = ()
+    gap_refs: tuple[str, ...] = ()
+    reconnect_attempts = int(spec.get("reconnect_attempts", 0))
+    backoff_seconds = int(spec.get("backoff_seconds", 0))
+    gap_reason = str(spec.get("gap_reason", "")).strip()
+    if gap_reason or reconnect_attempts > 0:
+        gap = store.record_gap(
+            job_id=job.job_id,
+            kind=job.kind,
+            reason=gap_reason or "websocket_candle_batch_reconnect_recorded",
+            worker_id=worker_id,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            backoff_seconds=backoff_seconds,
+            reconnect_attempts=reconnect_attempts,
+        )
+        gap_record_ids = (gap.gap_record_id,)
+        gap_refs = (f"gap_record_id={gap.gap_record_id}",)
+    output_refs = (
+        "collector_mode=websocket_candle_batch_archive_write",
+        "source_mode=local_records",
+        "continuous_capture=false",
+        "accepted_historical_coverage_proof=false",
+        "websocket_candle_batch_caveat=bounded_batch_not_unattended_continuous_capture",
+        f"source_endpoint_or_subscription={source_endpoint}",
+        f"row_count={raw_file.row_count or 0}",
+        f"timeframe={timeframe}",
+        *source_refs,
+        *gap_refs,
+        *archive_refs,
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        gap_record_ids=gap_record_ids,
+        reason="websocket_candle_batch_archive_write_succeeded",
     )
     return WorkerRunResult(
         job_id=job.job_id,
@@ -1560,6 +1668,10 @@ def _has_record_source(spec: dict[str, Any]) -> bool:
     return ("records" in spec and spec.get("records") is not None) or bool(
         spec.get("records_file")
     )
+
+
+def _is_candle_datatype(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"candle", "candles"}
 
 
 def _collector_records(
