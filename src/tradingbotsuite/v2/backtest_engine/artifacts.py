@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from tradingbotsuite.v2.config.schemas import V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import ensure_utc, utc_now
 from tradingbotsuite.v2.costs.models import CostModelConfig, CostStressScenario
+from tradingbotsuite.v2.security.boundary import require_research_boundary
 
 
 class EngineLane(str, Enum):
@@ -72,6 +73,13 @@ class StrategyContext(BaseModel):
     research_only: bool = True
     observe_only: bool = True
     promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
 
     @field_validator("backtest_start", "backtest_end", "lockbox_start", "lockbox_end")
     @classmethod
@@ -84,8 +92,7 @@ class StrategyContext(BaseModel):
     def _window_order(self) -> "StrategyContext":
         if self.backtest_end <= self.backtest_start:
             raise ValueError("backtest_end must be greater than backtest_start")
-        if not self.research_only or not self.observe_only or self.promotion_ready:
-            raise ValueError("strategy context must preserve the v2 research boundary")
+        require_research_boundary(self, context="strategy context")
         return self
 
 
@@ -175,13 +182,19 @@ class BacktestMetrics(BaseModel):
     research_only: bool = True
     observe_only: bool = True
     promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
 
     @model_validator(mode="after")
     def _validate_metrics(self) -> "BacktestMetrics":
         if self.gross_only:
             raise ValueError("reported v2 backtest metrics cannot be gross-only")
-        if not self.research_only or not self.observe_only or self.promotion_ready:
-            raise ValueError("backtest metrics must preserve the v2 research boundary")
+        require_research_boundary(self, context="backtest metrics")
         return self
 
 
@@ -256,19 +269,7 @@ class RunManifest(BaseModel):
             raise ValueError("failed run manifests require failure_reason")
         if self.status == RunStatus.SUCCEEDED and self.metrics is None:
             raise ValueError("succeeded run manifests require metrics")
-        forbidden_true = {
-            "promotion_ready": self.promotion_ready,
-            "candidate_evidence": self.candidate_evidence,
-            "candidate_pack_eligible": self.candidate_pack_eligible,
-            "live_signal": self.live_signal,
-            "paper_signal": self.paper_signal,
-            "sizing_instruction": self.sizing_instruction,
-            "order_placement_instruction": self.order_placement_instruction,
-            "runtime_mode_change": self.runtime_mode_change,
-        }
-        enabled = [name for name, value in forbidden_true.items() if value]
-        if not self.research_only or not self.observe_only or enabled:
-            raise ValueError(f"run manifest violates research boundary: {enabled}")
+        require_research_boundary(self, context="run manifest")
         required = {
             "strategy_spec",
             "params",

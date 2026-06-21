@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from tradingbotsuite.v2.config import defaults
 from tradingbotsuite.v2.config.schemas import V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import ensure_utc
+from tradingbotsuite.v2.security.boundary import require_research_boundary
 from tradingbotsuite.v2.strategy_specs.registry import (
     FORBIDDEN_KEY_TOKENS,
     FORBIDDEN_VALUE_TOKENS,
@@ -194,20 +195,7 @@ class StrategySpec(BaseModel):
 
     @model_validator(mode="after")
     def _validate_spec(self) -> "StrategySpec":
-        boundary = (
-            self.research_only
-            and self.observe_only
-            and not self.promotion_ready
-            and not self.candidate_evidence
-            and not self.candidate_pack_eligible
-            and not self.live_signal
-            and not self.paper_signal
-            and not self.sizing_instruction
-            and not self.order_placement_instruction
-            and not self.runtime_mode_change
-        )
-        if not boundary:
-            raise ValueError("strategy specs must preserve the v2 research boundary")
+        require_research_boundary(self, context="strategy spec")
         required = REQUIRED_FIELDS_BY_SIGNAL_TYPE[self.logic.signal_type]
         if self.logic.signal_type == StrategySignalType.FUNDING_CARRY and "funding" not in self.inputs.fields:
             if "funding_rate" in self.inputs.fields:
@@ -274,18 +262,7 @@ class SignalRow(BaseModel):
 
     @model_validator(mode="after")
     def _validate_boundary(self) -> "SignalRow":
-        forbidden = (
-            self.promotion_ready,
-            self.candidate_evidence,
-            self.candidate_pack_eligible,
-            self.live_signal,
-            self.paper_signal,
-            self.sizing_instruction,
-            self.order_placement_instruction,
-            self.runtime_mode_change,
-        )
-        if not self.research_only or not self.observe_only or any(forbidden):
-            raise ValueError("signal rows must preserve the v2 research-only invariant")
+        require_research_boundary(self, context="signal row")
         return self
 
 
@@ -312,18 +289,7 @@ class SignalFrame(BaseModel):
     def _validate_frame(self) -> "SignalFrame":
         if self.row_count != len(self.rows):
             raise ValueError("row_count must equal number of signal rows")
-        forbidden = (
-            self.promotion_ready,
-            self.candidate_evidence,
-            self.candidate_pack_eligible,
-            self.live_signal,
-            self.paper_signal,
-            self.sizing_instruction,
-            self.order_placement_instruction,
-            self.runtime_mode_change,
-        )
-        if not self.research_only or not self.observe_only or any(forbidden):
-            raise ValueError("signal frames must preserve the v2 research-only invariant")
+        require_research_boundary(self, context="signal frame")
         return self
 
 

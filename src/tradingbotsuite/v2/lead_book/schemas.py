@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from tradingbotsuite.v2.config.schemas import V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import ensure_utc
+from tradingbotsuite.v2.security.boundary import require_research_boundary
 
 LEAD_BOOK_SCHEMA_VERSION = "lead_book_row_v1"
 
@@ -180,19 +181,7 @@ class LeadBookRow(BaseModel):
                 raise ValueError("deep_validation_requires_human_inspection_completed")
             if self.agent_approval_status != AgentApprovalStatus.APPROVED_AFTER_HUMAN_INSPECTION:
                 raise ValueError("deep_validation_requires_agent_approval_after_human_inspection")
-        forbidden_true = {
-            "promotion_ready": self.promotion_ready,
-            "candidate_evidence": self.candidate_evidence,
-            "candidate_pack_eligible": self.candidate_pack_eligible,
-            "live_signal": self.live_signal,
-            "paper_signal": self.paper_signal,
-            "sizing_instruction": self.sizing_instruction,
-            "order_placement_instruction": self.order_placement_instruction,
-            "runtime_mode_change": self.runtime_mode_change,
-        }
-        enabled = [name for name, value in forbidden_true.items() if value]
-        if not self.research_only or not self.observe_only or enabled:
-            raise ValueError(f"lead row violates research boundary: {enabled}")
+        require_research_boundary(self, context="lead row")
         return self
 
 

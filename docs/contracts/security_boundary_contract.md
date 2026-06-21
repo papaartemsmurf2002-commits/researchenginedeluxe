@@ -1,7 +1,7 @@
 # V2 Security Boundary Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-SEC-001`, `V2-AUD-SEC-002`, `V2-AUD-SEC-003`
+Audit IDs: `V2-AUD-SEC-001`, `V2-AUD-SEC-002`, `V2-AUD-SEC-003`, `V2-AUD-SEC-005`
 
 ## Purpose
 
@@ -18,6 +18,10 @@ unsafe paths, and unsafe artifacts.
 - `TrustedArtifactValidation`
 - `CommandClass`
 - `CommandClassification`
+- `ResearchBoundaryError`
+- `CANONICAL_BOUNDARY_FLAGS`
+- `require_research_boundary`
+- `boundary_violation_reasons`
 
 ## Required Rules
 
@@ -35,6 +39,10 @@ unsafe paths, and unsafe artifacts.
   or live-forbidden. Accepted v2 command metadata rejects live runtime touches,
   order placement, sizing output, runtime-mode mutation, paper/live signals,
   and promotion implications.
+- Canonical v2 artifact boundary flags are centralized in
+  `CANONICAL_BOUNDARY_FLAGS`. Artifacts that carry the canonical invariant
+  must validate through `require_research_boundary`, which rejects missing
+  fields and any non-canonical value.
 
 ## Forbidden
 

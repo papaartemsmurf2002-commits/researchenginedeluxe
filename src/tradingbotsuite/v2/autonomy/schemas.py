@@ -12,6 +12,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from tradingbotsuite.v2.config.schemas import RESEARCH_BOUNDARY, V2_SCHEMA_VERSION
+from tradingbotsuite.v2.security.boundary import require_research_boundary
 
 
 class AutonomyStepStatus(str, Enum):
@@ -62,11 +63,17 @@ class AutonomyStepResult(BaseModel):
     research_only: bool = True
     observe_only: bool = True
     promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
 
     @model_validator(mode="after")
     def _validate_boundary(self) -> "AutonomyStepResult":
-        if not self.research_only or not self.observe_only or self.promotion_ready:
-            raise ValueError("autonomy step must preserve the research boundary")
+        require_research_boundary(self, context="autonomy step")
         return self
 
 
@@ -96,22 +103,7 @@ class AutonomyBlockerReport(BaseModel):
     def _validate_boundary(self) -> "AutonomyBlockerReport":
         if self.accepted_research_ready:
             raise ValueError("dry-run blocker reports cannot mark accepted_research_ready")
-        enabled = [
-            name
-            for name in (
-                "promotion_ready",
-                "candidate_evidence",
-                "candidate_pack_eligible",
-                "live_signal",
-                "paper_signal",
-                "sizing_instruction",
-                "order_placement_instruction",
-                "runtime_mode_change",
-            )
-            if getattr(self, name)
-        ]
-        if not self.research_only or not self.observe_only or enabled:
-            raise ValueError(f"autonomy blocker report violates research boundary: {enabled}")
+        require_research_boundary(self, context="autonomy blocker report")
         return self
 
 
@@ -149,22 +141,7 @@ class AutonomyDryRunManifest(BaseModel):
     def _validate_boundary(self) -> "AutonomyDryRunManifest":
         if self.evidence_mode != "sandbox_diagnostic":
             raise ValueError("autonomy dry-run manifest must stay sandbox_diagnostic")
-        enabled = [
-            name
-            for name in (
-                "promotion_ready",
-                "candidate_evidence",
-                "candidate_pack_eligible",
-                "live_signal",
-                "paper_signal",
-                "sizing_instruction",
-                "order_placement_instruction",
-                "runtime_mode_change",
-            )
-            if getattr(self, name)
-        ]
-        if not self.research_only or not self.observe_only or enabled:
-            raise ValueError(f"autonomy manifest violates research boundary: {enabled}")
+        require_research_boundary(self, context="autonomy manifest")
         return self
 
 

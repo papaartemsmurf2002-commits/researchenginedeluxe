@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from tradingbotsuite.v2.config.schemas import V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import ensure_utc
+from tradingbotsuite.v2.security.boundary import require_research_boundary
 from tradingbotsuite.v2.validation.policies import ValidationConfig
 
 _FIELD_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -96,20 +97,7 @@ class BacktestDataRequest(BaseModel):
             raise ValueError("end_ts must be greater than start_ts")
         if self.warmup_start_ts is not None and self.warmup_start_ts > self.start_ts:
             raise ValueError("warmup_start_ts must be <= start_ts")
-        boundary = (
-            self.research_only
-            and self.observe_only
-            and not self.promotion_ready
-            and not self.candidate_evidence
-            and not self.candidate_pack_eligible
-            and not self.live_signal
-            and not self.paper_signal
-            and not self.sizing_instruction
-            and not self.order_placement_instruction
-            and not self.runtime_mode_change
-        )
-        if not boundary:
-            raise ValueError("backtest data requests must preserve the v2 research boundary")
+        require_research_boundary(self, context="backtest data request")
         return self
 
 
@@ -169,20 +157,7 @@ class BacktestDataManifest(BaseModel):
             raise ValueError("end_ts must be greater than start_ts")
         if self.warmup_row_count + self.reported_row_count != self.row_count:
             raise ValueError("warmup_row_count + reported_row_count must equal row_count")
-        boundary = (
-            self.research_only
-            and self.observe_only
-            and not self.promotion_ready
-            and not self.candidate_evidence
-            and not self.candidate_pack_eligible
-            and not self.live_signal
-            and not self.paper_signal
-            and not self.sizing_instruction
-            and not self.order_placement_instruction
-            and not self.runtime_mode_change
-        )
-        if not boundary:
-            raise ValueError("backtest data manifests must preserve the v2 research boundary")
+        require_research_boundary(self, context="backtest data manifest")
         return self
 
 

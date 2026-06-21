@@ -169,7 +169,7 @@ def test_signal_row_rejects_forbidden_boundary_flags() -> None:
     row = result.rows[0].model_dump()
     row["live_signal"] = True
 
-    with pytest.raises(ValueError, match="research-only invariant"):
+    with pytest.raises(ValueError, match="live_signal_must_be_false"):
         SignalRow.model_validate(row)
 
 

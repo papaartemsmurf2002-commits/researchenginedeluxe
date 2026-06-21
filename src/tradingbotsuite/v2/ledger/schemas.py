@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from tradingbotsuite.v2.config.schemas import V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import ensure_utc
+from tradingbotsuite.v2.security.boundary import require_research_boundary
 
 LEDGER_SCHEMA_VERSION = "ledger_row_v1"
 
@@ -111,10 +112,12 @@ class LedgerRow(BaseModel):
     observe_only: bool = True
     promotion_ready: bool = False
     candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
     live_signal: bool = False
     paper_signal: bool = False
     sizing_instruction: bool = False
     order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
 
     @field_validator(
         "created_at",
@@ -133,17 +136,7 @@ class LedgerRow(BaseModel):
     def _validate_ledger_row(self) -> "LedgerRow":
         if self.gross_only:
             raise ValueError("ledger rows cannot be gross-only")
-        forbidden_true = {
-            "promotion_ready": self.promotion_ready,
-            "candidate_evidence": self.candidate_evidence,
-            "live_signal": self.live_signal,
-            "paper_signal": self.paper_signal,
-            "sizing_instruction": self.sizing_instruction,
-            "order_placement_instruction": self.order_placement_instruction,
-        }
-        enabled = [name for name, value in forbidden_true.items() if value]
-        if not self.research_only or not self.observe_only or enabled:
-            raise ValueError(f"ledger row violates research boundary: {enabled}")
+        require_research_boundary(self, context="ledger row")
         if self.row_status == "succeeded" and self.net_return is None:
             raise ValueError("succeeded ledger rows require net_return")
         if self.validation_status == "":

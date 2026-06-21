@@ -35,8 +35,10 @@ This is the first file to read after `AGENTS.md`.
   operation as a blocker. WPR106-423 upgrades that dry-run so the default path
   creates a local archive root, silver bars, coverage report, archive snapshot,
   fixture as-of universe, and `BacktestDataService` manifest before the
-  backtest, while still staying `sandbox_diagnostic`. Independent audits and
-  real data-operation proof remain follow-up work.
+  backtest, while still staying `sandbox_diagnostic`. WPR106-424 adds a
+  central v2 research-boundary policy and migrates autonomy, backtest,
+  backtest-data, ledger, Lead Book, and strategy/signal artifacts to use it.
+  Independent audits and real data-operation proof remain follow-up work.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

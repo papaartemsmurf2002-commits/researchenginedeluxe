@@ -262,10 +262,12 @@ def ledger_row_from_manifest(
         observe_only=manifest.observe_only,
         promotion_ready=manifest.promotion_ready,
         candidate_evidence=manifest.candidate_evidence,
+        candidate_pack_eligible=manifest.candidate_pack_eligible,
         live_signal=manifest.live_signal,
         paper_signal=manifest.paper_signal,
         sizing_instruction=manifest.sizing_instruction,
         order_placement_instruction=manifest.order_placement_instruction,
+        runtime_mode_change=manifest.runtime_mode_change,
     )
 
 
@@ -535,10 +537,12 @@ def _ledger_schema() -> pa.Schema:
             ("observe_only", pa.bool_()),
             ("promotion_ready", pa.bool_()),
             ("candidate_evidence", pa.bool_()),
+            ("candidate_pack_eligible", pa.bool_()),
             ("live_signal", pa.bool_()),
             ("paper_signal", pa.bool_()),
             ("sizing_instruction", pa.bool_()),
             ("order_placement_instruction", pa.bool_()),
+            ("runtime_mode_change", pa.bool_()),
         ]
     )
 
