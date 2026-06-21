@@ -52,11 +52,19 @@ def build_audit_blocker_report(
     extra_blocker_reasons: tuple[str, ...] = (),
     required_next_actions: tuple[str, ...] = (),
     artifact_refs: tuple[str, ...] = (),
+    required_successful_job_kinds: tuple[WorkerJobKind, ...] = (),
+    required_artifact_ref_prefixes: tuple[str, ...] = (),
 ) -> AuditBlockerReport:
     summaries = tuple(_summarize_job(record) for record in jobs)
+    required_evidence_blockers = _required_evidence_blockers(
+        jobs=jobs,
+        required_successful_job_kinds=required_successful_job_kinds,
+        required_artifact_ref_prefixes=required_artifact_ref_prefixes,
+    )
     blocker_reasons = _unique(
         (
             *extra_blocker_reasons,
+            *required_evidence_blockers,
             *(reason for summary in summaries for reason in summary.blocker_reasons),
         )
     )
@@ -82,6 +90,8 @@ def build_audit_blocker_report(
         "job_status_counts": job_status_counts,
         "blocker_reasons": blocker_reasons,
         "required_next_actions": next_actions,
+        "required_successful_job_kinds": [kind.value for kind in required_successful_job_kinds],
+        "required_artifact_ref_prefixes": list(required_artifact_ref_prefixes),
         "artifact_refs": refs,
         "job_summaries": [summary.model_dump(mode="json") for summary in summaries],
     }
@@ -96,6 +106,8 @@ def build_audit_blocker_report(
         job_status_counts=job_status_counts,
         blocker_reasons=blocker_reasons,
         required_next_actions=next_actions,
+        required_successful_job_kinds=tuple(identity["required_successful_job_kinds"]),
+        required_artifact_ref_prefixes=tuple(identity["required_artifact_ref_prefixes"]),
         artifact_refs=refs,
         job_summaries=summaries,
     )
@@ -117,6 +129,14 @@ def _run_audit_check_job(
             *(f"target_job_missing:{target}" for target in missing_targets),
         )
     )
+    required_successful_job_kinds = _optional_worker_job_kind_tuple(
+        spec.get("required_successful_job_kinds"),
+        default=(),
+    )
+    required_artifact_ref_prefixes = _optional_string_tuple(
+        spec.get("required_artifact_ref_prefixes"),
+        default=(),
+    )
     report = build_audit_blocker_report(
         run_id=str(spec.get("run_id") or job.job_id),
         job_store_path=store.path,
@@ -124,9 +144,11 @@ def _run_audit_check_job(
         extra_blocker_reasons=extra_blockers,
         required_next_actions=_optional_string_tuple(spec.get("required_next_actions"), default=()),
         artifact_refs=_optional_string_tuple(spec.get("artifact_refs"), default=()),
+        required_successful_job_kinds=required_successful_job_kinds,
+        required_artifact_ref_prefixes=required_artifact_ref_prefixes,
     )
     _write_report(report_path, report)
-    output_refs = (
+    output_refs = [
         "job_kind=audit_check",
         f"report_id={report.report_id}",
         f"report_status={report.status.value}",
@@ -134,7 +156,15 @@ def _run_audit_check_job(
         f"blocker_count={len(report.blocker_reasons)}",
         f"report_path={report_path}",
         f"report_sha256={file_sha256(report_path)}",
-    )
+    ]
+    if required_successful_job_kinds:
+        output_refs.append(
+            f"required_successful_job_kinds={_csv(kind.value for kind in required_successful_job_kinds)}"
+        )
+    if required_artifact_ref_prefixes:
+        output_refs.append(
+            f"required_artifact_ref_prefixes={_csv(required_artifact_ref_prefixes)}"
+        )
     domain_refs = (
         f"report_path={report_path}",
         f"report_sha256={file_sha256(report_path)}",
@@ -143,7 +173,7 @@ def _run_audit_check_job(
     record = store.succeed_job(
         job.job_id,
         worker_id=worker_id,
-        output_refs=output_refs,
+        output_refs=tuple(output_refs),
         archive_manifest_refs=domain_refs,
         reason="audit_check_job_succeeded",
     )
@@ -196,6 +226,32 @@ def _blocker_refs(refs: tuple[str, ...]) -> tuple[str, ...]:
             continue
         prefix = _BLOCKER_REF_PREFIXES[key]
         blockers.extend(f"{prefix}{item}" for item in value.split(",") if item)
+    return _unique(blockers)
+
+
+def _required_evidence_blockers(
+    *,
+    jobs: tuple[WorkerJobRecord, ...],
+    required_successful_job_kinds: tuple[WorkerJobKind, ...],
+    required_artifact_ref_prefixes: tuple[str, ...],
+) -> tuple[str, ...]:
+    successful_kinds = {
+        record.kind.value
+        for record in jobs
+        if record.status == WorkerJobStatus.SUCCEEDED
+    }
+    refs = tuple(
+        ref
+        for record in jobs
+        for ref in (*record.output_refs, *record.archive_manifest_refs)
+    )
+    blockers: list[str] = []
+    for kind in required_successful_job_kinds:
+        if kind.value not in successful_kinds:
+            blockers.append(f"missing_evidence:successful_job_kind:{kind.value}")
+    for prefix in required_artifact_ref_prefixes:
+        if not any(ref.startswith(prefix) for ref in refs):
+            blockers.append(f"missing_evidence:artifact_ref_prefix:{prefix}")
     return _unique(blockers)
 
 
@@ -252,6 +308,23 @@ def _optional_string_tuple(value: Any, *, default: tuple[str, ...] | None = None
     return tuple(item for item in values if item)
 
 
+def _optional_worker_job_kind_tuple(
+    value: Any,
+    *,
+    default: tuple[WorkerJobKind, ...] | None = None,
+) -> tuple[WorkerJobKind, ...] | None:
+    values = _optional_string_tuple(value, default=None)
+    if values is None:
+        return default
+    kinds: list[WorkerJobKind] = []
+    for item in values:
+        try:
+            kinds.append(WorkerJobKind(item))
+        except ValueError as exc:
+            raise ValueError(f"unsupported required_successful_job_kinds value: {item}") from exc
+    return tuple(kinds)
+
+
 def _default_next_actions(blocker_reasons: tuple[str, ...]) -> tuple[str, ...]:
     if blocker_reasons:
         return (
@@ -264,6 +337,10 @@ def _default_next_actions(blocker_reasons: tuple[str, ...]) -> tuple[str, ...]:
 
 def _unique(values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
+
+
+def _csv(values) -> str:
+    return ",".join(str(value) for value in values)
 
 
 def _write_report(path: Path, report: AuditBlockerReport) -> None:

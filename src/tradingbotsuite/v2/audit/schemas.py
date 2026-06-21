@@ -52,6 +52,8 @@ class AuditBlockerReport(BaseModel):
     job_status_counts: dict[str, int]
     blocker_reasons: tuple[str, ...] = ()
     required_next_actions: tuple[str, ...] = ()
+    required_successful_job_kinds: tuple[str, ...] = ()
+    required_artifact_ref_prefixes: tuple[str, ...] = ()
     artifact_refs: tuple[str, ...] = ()
     job_summaries: tuple[AuditJobSummary, ...] = ()
     boundary_flags: dict[str, bool] = Field(default_factory=lambda: dict(RESEARCH_BOUNDARY))

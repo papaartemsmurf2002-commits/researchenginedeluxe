@@ -76,6 +76,9 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   not worker-system failure.
 - Audit worker jobs must reject secret-like or unsupported report output paths
   before writing.
+- Audit worker jobs may require successful job kinds and artifact-ref prefixes
+  for a selected research loop; missing required evidence must be surfaced as
+  blocker refs rather than a passing report with absent evidence.
 
 ## Forbidden
 

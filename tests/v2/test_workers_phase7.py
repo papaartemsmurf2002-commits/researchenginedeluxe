@@ -1907,6 +1907,236 @@ def test_audit_check_worker_writes_blocker_report_from_job_store(tmp_path) -> No
     assert report["job_summaries"][0]["status"] == "failed"
 
 
+def test_audit_check_worker_blocks_missing_required_loop_evidence(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    universe = _succeed_worker_job_for_audit(
+        store,
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        job_id="JOB-required-universe",
+        output_refs=("universe_snapshot_id=UNIV-1",),
+        archive_manifest_refs=("universe_snapshot_id=UNIV-1",),
+    )
+    backtest = _succeed_worker_job_for_audit(
+        store,
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        job_id="JOB-required-backtest",
+        output_refs=(
+            "run_manifest_path=C:/tmp/run_manifest.json",
+            "archive_snapshot_id=ARCH-1",
+            "universe_snapshot_id=UNIV-1",
+        ),
+        archive_manifest_refs=("archive_snapshot_id=ARCH-1",),
+    )
+    report_path = tmp_path / "audit" / "required_loop_report.json"
+    queued = store.enqueue(
+        kind=WorkerJobKind.AUDIT_CHECK,
+        job_id="JOB-audit-required-loop-missing",
+        input_spec={
+            "run_id": "required-loop-missing",
+            "report_path": str(report_path),
+            "target_job_ids": [universe.job_id, backtest.job_id],
+            "required_successful_job_kinds": [
+                "universe_refresh",
+                "coverage_audit",
+                "vectorized_backtest",
+                "ledger_append_export",
+                "lead_book_upsert",
+            ],
+            "required_artifact_ref_prefixes": [
+                "archive_snapshot_id=",
+                "coverage_report_ids=",
+                "ledger_path=",
+                "lead_book_path=",
+            ],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.AUDIT_CHECK,
+        worker_id="worker-audit-required-loop-missing",
+    )
+    loaded = store.load_job(queued.job_id)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "report_status=completed_with_blockers" in loaded.output_refs
+    assert (
+        "required_successful_job_kinds=universe_refresh,coverage_audit,vectorized_backtest,ledger_append_export,lead_book_upsert"
+        in loaded.output_refs
+    )
+    assert (
+        "required_artifact_ref_prefixes=archive_snapshot_id=,coverage_report_ids=,ledger_path=,lead_book_path="
+        in loaded.output_refs
+    )
+    assert report["status"] == "completed_with_blockers"
+    assert report["required_successful_job_kinds"] == [
+        "universe_refresh",
+        "coverage_audit",
+        "vectorized_backtest",
+        "ledger_append_export",
+        "lead_book_upsert",
+    ]
+    assert report["required_artifact_ref_prefixes"] == [
+        "archive_snapshot_id=",
+        "coverage_report_ids=",
+        "ledger_path=",
+        "lead_book_path=",
+    ]
+    assert "missing_evidence:successful_job_kind:coverage_audit" in report["blocker_reasons"]
+    assert "missing_evidence:successful_job_kind:ledger_append_export" in report["blocker_reasons"]
+    assert "missing_evidence:successful_job_kind:lead_book_upsert" in report["blocker_reasons"]
+    assert "missing_evidence:artifact_ref_prefix:coverage_report_ids=" in report["blocker_reasons"]
+    assert "missing_evidence:artifact_ref_prefix:ledger_path=" in report["blocker_reasons"]
+    assert "missing_evidence:artifact_ref_prefix:lead_book_path=" in report["blocker_reasons"]
+    assert "missing_evidence:successful_job_kind:universe_refresh" not in report["blocker_reasons"]
+    assert "missing_evidence:successful_job_kind:vectorized_backtest" not in report["blocker_reasons"]
+    assert "missing_evidence:artifact_ref_prefix:archive_snapshot_id=" not in report["blocker_reasons"]
+    assert report["accepted_research_ready"] is False
+
+
+def test_audit_check_worker_passes_when_required_loop_evidence_is_present(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    jobs = [
+        _succeed_worker_job_for_audit(
+            store,
+            kind=WorkerJobKind.UNIVERSE_REFRESH,
+            job_id="JOB-loop-universe",
+            output_refs=("universe_snapshot_id=UNIV-2",),
+            archive_manifest_refs=("universe_snapshot_id=UNIV-2",),
+        ),
+        _succeed_worker_job_for_audit(
+            store,
+            kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+            job_id="JOB-loop-candles",
+            output_refs=("collector_mode=fixture_candle_archive_write",),
+            archive_manifest_refs=("archive_snapshot_id=ARCH-2", "silver_file_ids=SILVER-2"),
+        ),
+        _succeed_worker_job_for_audit(
+            store,
+            kind=WorkerJobKind.COVERAGE_AUDIT,
+            job_id="JOB-loop-coverage",
+            output_refs=("coverage_report_ids=COV-2",),
+            archive_manifest_refs=("coverage_report_ids=COV-2",),
+        ),
+        _succeed_worker_job_for_audit(
+            store,
+            kind=WorkerJobKind.VECTORIZED_BACKTEST,
+            job_id="JOB-loop-backtest",
+            output_refs=(
+                "run_manifest_path=C:/tmp/run_manifest.json",
+                "archive_snapshot_id=ARCH-2",
+                "universe_snapshot_id=UNIV-2",
+            ),
+            archive_manifest_refs=("archive_snapshot_id=ARCH-2",),
+        ),
+        _succeed_worker_job_for_audit(
+            store,
+            kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+            job_id="JOB-loop-ledger",
+            output_refs=("ledger_path=C:/tmp/ledger.parquet",),
+            archive_manifest_refs=("ledger_path=C:/tmp/ledger.parquet",),
+        ),
+        _succeed_worker_job_for_audit(
+            store,
+            kind=WorkerJobKind.LEAD_BOOK_UPSERT,
+            job_id="JOB-loop-lead-book",
+            output_refs=("lead_book_path=C:/tmp/lead_book.parquet",),
+            archive_manifest_refs=("lead_book_path=C:/tmp/lead_book.parquet",),
+        ),
+    ]
+    report_path = tmp_path / "audit" / "required_loop_pass_report.json"
+    queued = store.enqueue(
+        kind=WorkerJobKind.AUDIT_CHECK,
+        job_id="JOB-audit-required-loop-pass",
+        input_spec={
+            "run_id": "required-loop-pass",
+            "report_path": str(report_path),
+            "target_job_ids": [record.job_id for record in jobs],
+            "required_successful_job_kinds": [
+                "universe_refresh",
+                "recent_candle_bootstrap",
+                "coverage_audit",
+                "vectorized_backtest",
+                "ledger_append_export",
+                "lead_book_upsert",
+            ],
+            "required_artifact_ref_prefixes": [
+                "universe_snapshot_id=",
+                "archive_snapshot_id=",
+                "coverage_report_ids=",
+                "run_manifest_path=",
+                "ledger_path=",
+                "lead_book_path=",
+            ],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.AUDIT_CHECK,
+        worker_id="worker-audit-required-loop-pass",
+    )
+    loaded = store.load_job(queued.job_id)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "report_status=pass" in loaded.output_refs
+    assert report["status"] == "pass"
+    assert report["accepted_research_ready"] is False
+    assert report["blocker_reasons"] == []
+    assert report["required_successful_job_kinds"] == [
+        "universe_refresh",
+        "recent_candle_bootstrap",
+        "coverage_audit",
+        "vectorized_backtest",
+        "ledger_append_export",
+        "lead_book_upsert",
+    ]
+    assert report["required_artifact_ref_prefixes"] == [
+        "universe_snapshot_id=",
+        "archive_snapshot_id=",
+        "coverage_report_ids=",
+        "run_manifest_path=",
+        "ledger_path=",
+        "lead_book_path=",
+    ]
+    assert report["required_next_actions"] == [
+        "independent_completion_audit_required_before_autonomous_ready"
+    ]
+
+
+def test_audit_check_worker_rejects_unknown_required_job_kind_before_write(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    report_path = tmp_path / "audit" / "bad_required_kind_report.json"
+    queued = store.enqueue(
+        kind=WorkerJobKind.AUDIT_CHECK,
+        job_id="JOB-audit-required-kind-reject",
+        max_attempts=1,
+        input_spec={
+            "report_path": str(report_path),
+            "required_successful_job_kinds": ["paper_live_worker"],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.AUDIT_CHECK,
+        worker_id="worker-audit-required-kind-reject",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "unsupported required_successful_job_kinds value" in (loaded.failure_reason or "")
+    assert not report_path.exists()
+
+
 def test_audit_check_worker_rejects_secret_like_report_path_before_write(tmp_path) -> None:
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
     queued = store.enqueue(
@@ -2637,3 +2867,29 @@ def _ref_value(refs: tuple[str, ...], key: str) -> str:
         if ref.startswith(prefix):
             return ref.removeprefix(prefix)
     raise AssertionError(f"{key} not found in refs: {refs}")
+
+
+def _succeed_worker_job_for_audit(
+    store: WorkerJobStore,
+    *,
+    kind: WorkerJobKind,
+    job_id: str,
+    output_refs: tuple[str, ...] = (),
+    archive_manifest_refs: tuple[str, ...] = (),
+):
+    store.enqueue(
+        kind=kind,
+        job_id=job_id,
+        input_spec={"purpose": "audit-required-loop-evidence-fixture"},
+    )
+    worker_id = f"worker-{job_id}"
+    claimed = store.claim_next(kind=kind, worker_id=worker_id)
+    assert claimed is not None
+    running = store.start_job(claimed.job_id, worker_id=worker_id)
+    return store.succeed_job(
+        running.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_manifest_refs,
+        reason="audit_required_loop_evidence_fixture_succeeded",
+    )
