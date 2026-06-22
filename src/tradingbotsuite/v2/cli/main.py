@@ -74,11 +74,14 @@ from tradingbotsuite.v2.ledger import (
 )
 from tradingbotsuite.v2.lead_book import (
     LeadBookError,
+    LeadBookScanConfig,
     LeadBookStore,
+    LeadState,
     approve_after_human_inspection,
     complete_human_inspection,
     create_lead_from_source,
     request_human_inspection,
+    scan_lead_book_queue,
 )
 from tradingbotsuite.v2.strategy_specs import (
     example_strategy_payloads,
@@ -376,6 +379,7 @@ def build_parser() -> argparse.ArgumentParser:
     lead_list = lead_subparsers.add_parser("list", help="list Lead Book rows")
     lead_list.add_argument("--lead-book", required=True)
     lead_list.add_argument("--state")
+    _add_lead_scan_args(lead_subparsers)
     lead_inspect = lead_subparsers.add_parser("inspect-request", help="request human inspection")
     lead_inspect.add_argument("--lead-book", required=True)
     lead_inspect.add_argument("--lead-id", required=True)
@@ -387,6 +391,13 @@ def build_parser() -> argparse.ArgumentParser:
     lead_approve.add_argument("--lead-id", required=True)
     lead_approve.add_argument("--inspection-note-file", required=True)
     lead_approve.add_argument("--approving-agent-id", required=True)
+    leadbook = subparsers.add_parser(
+        "leadbook",
+        help="Lead Book queue scan alias",
+        description=f"Lead Book command alias. {BOUNDARY_HELP}",
+    )
+    leadbook_subparsers = leadbook.add_subparsers(dest="lead_command")
+    _add_lead_scan_args(leadbook_subparsers)
     audit = subparsers.add_parser(
         "audit",
         help="research-only audit and blocker-report commands",
@@ -586,7 +597,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _handle_strategy_spec(args, parser)
     if args.command == "ledger":
         return _handle_ledger(args, parser)
-    if args.command == "lead":
+    if args.command in {"lead", "leadbook"}:
         return _handle_lead(args, parser)
     if args.command == "audit":
         return _handle_audit(args, parser)
@@ -839,6 +850,35 @@ def _add_data_quality_common_args(parser: argparse.ArgumentParser) -> None:
         default=EvidenceMode.ACCEPTED_RESEARCH.value,
         choices=[mode.value for mode in EvidenceMode],
     )
+
+
+def _add_lead_scan_args(subparsers: argparse._SubParsersAction) -> None:
+    lead_scan = subparsers.add_parser(
+        "scan",
+        help="write a read-only Lead Book queue scan manifest",
+    )
+    lead_scan.add_argument("--lead-book", required=True)
+    lead_scan.add_argument(
+        "--status",
+        action="append",
+        required=True,
+        help="lead state to include; accepts comma-separated values and may be repeated",
+    )
+    lead_scan.add_argument("--output-path", required=True)
+    lead_scan.add_argument("--max-rows", type=int, default=500)
+
+
+def _parse_lead_scan_states(values: Sequence[str]) -> tuple[LeadState, ...]:
+    states: list[LeadState] = []
+    for value in values:
+        for raw_part in value.split(","):
+            part = raw_part.strip()
+            if not part:
+                continue
+            states.append(LeadState(part))
+    if not states:
+        raise LeadBookError("lead_book_scan_requires_status")
+    return tuple(dict.fromkeys(states))
 
 
 def _handle_data(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
@@ -1108,6 +1148,27 @@ def _handle_lead(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
                     )
                 )
             return 0
+        if args.lead_command == "scan":
+            result = scan_lead_book_queue(
+                LeadBookScanConfig(
+                    lead_book_path=args.lead_book,
+                    output_path=args.output_path,
+                    states=_parse_lead_scan_states(args.status),
+                    max_rows=args.max_rows,
+                )
+            )
+            print(f"lead_book_scan_manifest={result.scan_manifest_path}")
+            print(f"scan_id={result.scan_id}")
+            print(f"states={','.join(state.value for state in result.states)}")
+            print(f"total_lead_count={result.total_lead_count}")
+            print(f"matched_count={result.matched_count}")
+            print(f"returned_count={result.returned_count}")
+            print(f"blocker_count={len(result.blocker_reasons)}")
+            for blocker in result.blocker_reasons:
+                print(f"blocker={blocker}")
+            print("accepted_research_ready=false")
+            print("promotion_ready=false")
+            return 0
         if args.lead_command == "inspect-request":
             lead = request_human_inspection(store.get(args.lead_id))
             store.upsert(lead)
@@ -1132,7 +1193,7 @@ def _handle_lead(args: argparse.Namespace, parser: argparse.ArgumentParser) -> i
             print(f"agent_approval_status={lead.agent_approval_status.value}")
             print(f"state={lead.state.value}")
             return 0
-    except LeadBookError as exc:
+    except (LeadBookError, ValueError, ValidationError) as exc:
         print(f"lead_rejected={exc}")
         return 1
     parser.error(f"unsupported lead command: {args.lead_command}")

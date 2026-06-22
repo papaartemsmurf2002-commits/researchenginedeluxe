@@ -12,11 +12,15 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from tradingbotsuite.v2.config.schemas import V2_SCHEMA_VERSION
+from tradingbotsuite.v2.config.schemas import RESEARCH_BOUNDARY, V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import ensure_utc
 from tradingbotsuite.v2.security.boundary import require_research_boundary
 
 LEAD_BOOK_SCHEMA_VERSION = "lead_book_row_v1"
+LEAD_BOOK_SCAN_CONFIG_SCHEMA_VERSION = "lead_book_scan_config_v1"
+LEAD_BOOK_SCAN_MANIFEST_SCHEMA_VERSION = "lead_book_scan_manifest_v1"
+LEAD_BOOK_SCAN_RESULT_SCHEMA_VERSION = "lead_book_scan_result_v1"
+LEAD_BOOK_SCAN_EVIDENCE_MODE = "lead_book_queue_scan"
 
 
 class LeadState(str, Enum):
@@ -198,3 +202,148 @@ class LeadGateResult(BaseModel):
     research_only: bool = True
     observe_only: bool = True
     promotion_ready: bool = False
+
+
+class LeadBookScanConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = LEAD_BOOK_SCAN_CONFIG_SCHEMA_VERSION
+    lead_book_path: str = Field(min_length=1)
+    output_path: str = Field(min_length=1)
+    states: tuple[LeadState, ...] = Field(min_length=1)
+    max_rows: int = Field(default=500, ge=1, le=10_000)
+    evidence_mode: str = LEAD_BOOK_SCAN_EVIDENCE_MODE
+    accepted_research_ready: bool = False
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_scan_config(self) -> "LeadBookScanConfig":
+        if self.evidence_mode != LEAD_BOOK_SCAN_EVIDENCE_MODE:
+            raise ValueError(f"lead book scan evidence_mode must be {LEAD_BOOK_SCAN_EVIDENCE_MODE}")
+        if self.accepted_research_ready:
+            raise ValueError("lead book scans are queue visibility only")
+        require_research_boundary(self, context="lead book scan config")
+        return self
+
+
+class LeadBookScanItem(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    lead_id: str = Field(min_length=1)
+    state: LeadState
+    strategy_family: str = Field(min_length=1)
+    source_type: str = Field(min_length=1)
+    source_artifact_path: str = Field(min_length=1)
+    source_artifact_sha256: str = Field(min_length=64, max_length=64)
+    human_inspection_status: HumanInspectionStatus
+    agent_approval_status: AgentApprovalStatus
+    roi_projection_is_not_claim: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    known_blockers: tuple[str, ...] = ()
+    missing_evidence: tuple[str, ...] = ()
+    required_next_validation: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _validate_item(self) -> "LeadBookScanItem":
+        if not self.roi_projection_is_not_claim:
+            raise ValueError("lead book scan items must keep ROI projections non-claim")
+        if self.promotion_ready:
+            raise ValueError("lead book scan items must not be promotion ready")
+        if self.candidate_evidence:
+            raise ValueError("lead book scan items must not be candidate evidence")
+        return self
+
+
+class LeadBookScanManifest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = LEAD_BOOK_SCAN_MANIFEST_SCHEMA_VERSION
+    scan_id: str = Field(min_length=64, max_length=64)
+    lead_book_path: str = Field(min_length=1)
+    lead_book_exists: bool
+    lead_book_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    output_path: str = Field(min_length=1)
+    evidence_mode: str = LEAD_BOOK_SCAN_EVIDENCE_MODE
+    accepted_research_ready: bool = False
+    states: tuple[LeadState, ...] = Field(min_length=1)
+    max_rows: int = Field(ge=1)
+    total_lead_count: int = Field(ge=0)
+    matched_count: int = Field(ge=0)
+    returned_count: int = Field(ge=0)
+    state_counts: dict[str, int] = Field(default_factory=dict)
+    matched_state_counts: dict[str, int] = Field(default_factory=dict)
+    blocker_count: int = Field(ge=0)
+    blocker_reasons: tuple[str, ...] = ()
+    items: tuple[LeadBookScanItem, ...] = ()
+    boundary_flags: dict[str, bool] = Field(default_factory=lambda: dict(RESEARCH_BOUNDARY))
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_manifest(self) -> "LeadBookScanManifest":
+        if self.evidence_mode != LEAD_BOOK_SCAN_EVIDENCE_MODE:
+            raise ValueError(f"lead book scan manifest evidence_mode must be {LEAD_BOOK_SCAN_EVIDENCE_MODE}")
+        if self.accepted_research_ready:
+            raise ValueError("lead book scan manifests are queue visibility only")
+        if self.returned_count != len(self.items):
+            raise ValueError("returned_count must equal number of scan items")
+        if self.returned_count > self.matched_count:
+            raise ValueError("returned_count must not exceed matched_count")
+        if self.blocker_count != len(self.blocker_reasons):
+            raise ValueError("blocker_count must equal blocker reasons")
+        if not self.lead_book_exists and "lead_book_missing" not in self.blocker_reasons:
+            raise ValueError("missing Lead Book scans must record lead_book_missing")
+        require_research_boundary(self, context="lead book scan manifest")
+        return self
+
+
+class LeadBookScanResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = LEAD_BOOK_SCAN_RESULT_SCHEMA_VERSION
+    scan_manifest_path: str = Field(min_length=1)
+    scan_id: str = Field(min_length=64, max_length=64)
+    evidence_mode: str = LEAD_BOOK_SCAN_EVIDENCE_MODE
+    accepted_research_ready: bool = False
+    states: tuple[LeadState, ...] = Field(min_length=1)
+    total_lead_count: int = Field(ge=0)
+    matched_count: int = Field(ge=0)
+    returned_count: int = Field(ge=0)
+    blocker_reasons: tuple[str, ...] = ()
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_result(self) -> "LeadBookScanResult":
+        if self.evidence_mode != LEAD_BOOK_SCAN_EVIDENCE_MODE:
+            raise ValueError(f"lead book scan result evidence_mode must be {LEAD_BOOK_SCAN_EVIDENCE_MODE}")
+        if self.accepted_research_ready:
+            raise ValueError("lead book scan results are queue visibility only")
+        require_research_boundary(self, context="lead book scan result")
+        return self

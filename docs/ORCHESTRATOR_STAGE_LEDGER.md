@@ -472,7 +472,17 @@ deferred or rejected plans as blocker evidence, and writes a research-only
 `autopilot_scheduler_tick.json` session manifest. It is not a daemon,
 venue-fetch bypass, ASGI/operator in-process job loop, accepted research
 evidence, autonomous readiness, candidate-ready, paper/live/order/sizing/
-runtime, or promotion behavior.
+runtime, or promotion behavior. Independent WPR106-463 audit found no P0/P1
+findings and records a P2 follow-up for focused missing-manifest and
+max-jobs-per-plan scheduler blocker tests.
+Current WPR106-464 v2 Lead Book scan update: WPR106-464 adds a read-only
+`redx leadbook scan --status ...` alias and matching Lead Book scan manifest.
+The scan filters canonical Lead Book rows by one or more lead states, writes
+queue visibility JSON under the requested output path, and reports missing or
+empty queues as blocker evidence. It does not mutate lead state, enqueue jobs,
+run backtests, update ledger rows, or create accepted research evidence,
+autonomous readiness, candidate-ready, paper/live/order/sizing/runtime, or
+promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

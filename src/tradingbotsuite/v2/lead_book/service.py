@@ -7,6 +7,8 @@
 from __future__ import annotations
 
 import csv
+import json
+import re
 from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +18,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from tradingbotsuite.v2.archive.hashing import canonical_json_hash, file_sha256
+from tradingbotsuite.v2.config.schemas import RESEARCH_BOUNDARY
 from tradingbotsuite.v2.config.time import utc_now
 from tradingbotsuite.v2.lead_book.schemas import (
     AgentApprovalStatus,
@@ -23,11 +26,20 @@ from tradingbotsuite.v2.lead_book.schemas import (
     HumanInspectionStatus,
     LeadBookRow,
     LeadGateResult,
+    LeadBookScanConfig,
+    LeadBookScanItem,
+    LeadBookScanManifest,
+    LeadBookScanResult,
     LeadState,
     MonthlyStabilitySummary,
     PnlConcentrationSummary,
     RoiProjectionConfidence,
     TradeCountSummary,
+)
+
+_SECRET_NAME_RE = re.compile(
+    r"(^\.env$|secret|credential|private|token|password|wallet|api[_-]?key)",
+    re.IGNORECASE,
 )
 
 
@@ -277,6 +289,80 @@ def evaluate_lead_gates(lead: LeadBookRow) -> LeadGateResult:
     )
 
 
+def scan_lead_book_queue(
+    config: LeadBookScanConfig | dict[str, Any],
+) -> LeadBookScanResult:
+    parsed = config if isinstance(config, LeadBookScanConfig) else LeadBookScanConfig.model_validate(config)
+    lead_book_path = Path(parsed.lead_book_path).resolve(strict=False)
+    output_path = Path(parsed.output_path).resolve(strict=False)
+    _validate_scan_path(lead_book_path, field_name="lead_book_path", suffix=".parquet")
+    _validate_scan_path(output_path, field_name="output_path", suffix=".json")
+
+    blockers: list[str] = []
+    rows: list[LeadBookRow] = []
+    lead_book_sha: str | None = None
+    lead_book_exists = lead_book_path.exists()
+    if lead_book_exists:
+        if not lead_book_path.is_file():
+            raise LeadBookError("lead_book_path_must_be_file")
+        rows = LeadBookStore(lead_book_path).read()
+        lead_book_sha = file_sha256(lead_book_path)
+    else:
+        blockers.append("lead_book_missing")
+
+    requested_states = frozenset(parsed.states)
+    matched_rows = [row for row in rows if row.state in requested_states]
+    if not matched_rows:
+        blockers.append("no_matching_lead_book_rows")
+    returned_rows = matched_rows[: parsed.max_rows]
+    if len(matched_rows) > parsed.max_rows:
+        blockers.append("lead_book_scan_max_rows_exceeded")
+
+    items = tuple(_scan_item(row) for row in returned_rows)
+    blocker_reasons = tuple(sorted(dict.fromkeys(blockers)))
+    manifest_payload = {
+        "schema_version": "lead_book_scan_manifest_v1",
+        "scan_id": "0" * 64,
+        "lead_book_path": str(lead_book_path),
+        "lead_book_exists": lead_book_exists,
+        "lead_book_sha256": lead_book_sha,
+        "output_path": str(output_path),
+        "evidence_mode": "lead_book_queue_scan",
+        "accepted_research_ready": False,
+        "states": [state.value for state in parsed.states],
+        "max_rows": parsed.max_rows,
+        "total_lead_count": len(rows),
+        "matched_count": len(matched_rows),
+        "returned_count": len(items),
+        "state_counts": _state_counts(rows),
+        "matched_state_counts": _state_counts(matched_rows),
+        "blocker_count": len(blocker_reasons),
+        "blocker_reasons": blocker_reasons,
+        "items": [item.model_dump(mode="json") for item in items],
+        "boundary_flags": dict(RESEARCH_BOUNDARY),
+        **dict(RESEARCH_BOUNDARY),
+    }
+    manifest_payload["scan_id"] = canonical_json_hash(
+        {key: value for key, value in manifest_payload.items() if key != "scan_id"}
+    )
+    manifest = LeadBookScanManifest.model_validate(manifest_payload)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps(manifest.model_dump(mode="json"), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    return LeadBookScanResult(
+        scan_manifest_path=str(output_path),
+        scan_id=manifest.scan_id,
+        states=manifest.states,
+        total_lead_count=manifest.total_lead_count,
+        matched_count=manifest.matched_count,
+        returned_count=manifest.returned_count,
+        blocker_reasons=manifest.blocker_reasons,
+    )
+
+
 def _lead_id(source_path: Path, strategy_family: str, thesis: str) -> str:
     digest = canonical_json_hash(
         {
@@ -287,6 +373,39 @@ def _lead_id(source_path: Path, strategy_family: str, thesis: str) -> str:
         }
     )
     return "LEAD-" + digest[:16]
+
+
+def _scan_item(row: LeadBookRow) -> LeadBookScanItem:
+    return LeadBookScanItem(
+        lead_id=row.lead_id,
+        state=row.state,
+        strategy_family=row.strategy_family,
+        source_type=row.source_type,
+        source_artifact_path=row.source_artifact_path,
+        source_artifact_sha256=row.source_artifact_sha256,
+        human_inspection_status=row.human_inspection_status,
+        agent_approval_status=row.agent_approval_status,
+        roi_projection_is_not_claim=row.roi_projection_is_not_claim,
+        promotion_ready=row.promotion_ready,
+        candidate_evidence=row.candidate_evidence,
+        known_blockers=row.known_blockers,
+        missing_evidence=row.missing_evidence,
+        required_next_validation=row.required_next_validation,
+    )
+
+
+def _state_counts(rows: Iterable[LeadBookRow]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row.state.value] = counts.get(row.state.value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _validate_scan_path(path: Path, *, field_name: str, suffix: str) -> None:
+    if any(_SECRET_NAME_RE.search(part) for part in path.parts):
+        raise LeadBookError(f"{field_name}_secret_like_path")
+    if path.suffix.lower() != suffix:
+        raise LeadBookError(f"{field_name}_must_use_{suffix}_suffix")
 
 
 def _trade_summary(value: TradeCountSummary | dict[str, Any]) -> TradeCountSummary:

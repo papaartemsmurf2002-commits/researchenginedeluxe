@@ -1,7 +1,7 @@
 # V2 Lead Book Contract
 
 Status: v2 Phase 15 Lead Book workflow contract with Phase 20 final-governance links
-Audit IDs: `V2-AUD-LEAD-001`, `V2-AUD-FINAL-001`, `V2-AUD-LEAD-004`
+Audit IDs: `V2-AUD-LEAD-001`, `V2-AUD-FINAL-001`, `V2-AUD-LEAD-004`, `V2-AUD-LEAD-005`
 
 ## Purpose
 
@@ -13,6 +13,10 @@ deep validation.
 - `LeadBookRow`
 - `LeadState`
 - `LeadGateResult`
+- `LeadBookScanConfig`
+- `LeadBookScanItem`
+- `LeadBookScanManifest`
+- `LeadBookScanResult`
 - `HumanInspectionStatus`
 - `AgentApprovalStatus`
 - `TradeCountSummary`
@@ -47,6 +51,11 @@ deep validation.
 - Final hard-test consideration requires the validation contract's one-active
   deep-validation lock, max-three final-slot rule, frozen evidence fields, and
   non-live survivor report disclaimer.
+- Lead Book queue scans are read-only queue visibility artifacts. A scan may
+  filter the canonical Lead Book by one or more lead states, write a JSON
+  manifest, and report missing or empty queues as blockers. It must not mutate
+  lead state, request/complete human inspection, approve deep validation,
+  enqueue jobs, run backtests, or claim readiness.
 
 ## Forbidden
 
@@ -57,3 +66,6 @@ deep validation.
 - Treating final hard-test survivor state as paper/live/trade readiness.
 - Treating worker-generated Lead Book rows or CSV exports as candidate,
   paper/live/order/sizing/runtime, or promotion artifacts.
+- Treating a Lead Book scan manifest as strategy performance, validation,
+  accepted research evidence, autonomous-readiness proof, candidate-pack
+  evidence, or promotion evidence.

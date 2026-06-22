@@ -11,6 +11,10 @@ from tradingbotsuite.v2.lead_book.schemas import (
     GateSeverity,
     HumanInspectionStatus,
     LeadBookRow,
+    LeadBookScanConfig,
+    LeadBookScanItem,
+    LeadBookScanManifest,
+    LeadBookScanResult,
     LeadGateResult,
     LeadState,
     MonthlyStabilitySummary,
@@ -27,6 +31,7 @@ from tradingbotsuite.v2.lead_book.service import (
     evaluate_lead_gates,
     request_deep_validation,
     request_human_inspection,
+    scan_lead_book_queue,
 )
 from tradingbotsuite.v2.lead_book.jobs import run_lead_book_job
 
@@ -36,6 +41,10 @@ __all__ = [
     "HumanInspectionStatus",
     "LeadBookError",
     "LeadBookRow",
+    "LeadBookScanConfig",
+    "LeadBookScanItem",
+    "LeadBookScanManifest",
+    "LeadBookScanResult",
     "LeadBookStore",
     "LeadGateResult",
     "LeadState",
@@ -50,4 +59,5 @@ __all__ = [
     "request_deep_validation",
     "request_human_inspection",
     "run_lead_book_job",
+    "scan_lead_book_queue",
 ]
