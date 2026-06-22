@@ -496,6 +496,15 @@ WPR106-467 closes its P2 follow-ups by adding `V2-AUD-LEAD-006` and
 `V2-AUD-WORKER-025` to contract traceability headers and adding invalid-spec
 worker regressions for boundary overrides, secret-like output paths,
 unsupported output suffixes, and missing scan states.
+Current WPR106-468 v2 public universe refresh smoke update: WPR106-468 runs a
+bounded local public Hyperliquid universe refresh into an ignored research
+archive root. The smoke records one raw-before-parse `metaAndAssetCtxs` payload,
+manifest rows for 230 instruments, 26 current-sandbox volume-eligible rows,
+public request/response provenance, `evidence_scope=current_sandbox_only`, and
+`accepted_research_evidence_allowed=false`. The packet commits documentation
+evidence only; it does not claim as-of historical universe evidence,
+autonomous readiness, candidate readiness, paper/live/order/sizing/runtime, or
+promotion readiness.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

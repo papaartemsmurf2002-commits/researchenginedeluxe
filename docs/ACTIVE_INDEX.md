@@ -226,6 +226,12 @@ This is the first file to read after `AGENTS.md`.
   scan manifest refs/counts/blocker refs without changing Lead Book state or
   creating readiness evidence. Independent WPR106-466 audit found no P0/P1, and
   WPR106-467 closes its P2 traceability and negative-regression follow-ups.
+  WPR106-468 runs a bounded public Hyperliquid universe refresh smoke into an
+  ignored local archive root, recording 230 public metadata rows, 26
+  volume-eligible current-sandbox rows, raw request/response provenance, and
+  `accepted_research_evidence_allowed=false`; it commits only documentation
+  evidence and makes no as-of, autonomous-ready, candidate-ready, paper/live,
+  order/sizing/runtime, or promotion claim.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
