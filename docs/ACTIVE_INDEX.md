@@ -221,7 +221,10 @@ This is the first file to read after `AGENTS.md`.
   that writes a research-only JSON manifest from the canonical Lead Book,
   reports missing or empty queues as blocker evidence, and does not mutate lead
   states, enqueue jobs, run backtests, or imply accepted/autonomous/candidate/
-  paper/live/sizing/runtime/promotion readiness.
+  paper/live/sizing/runtime/promotion readiness. WPR106-466 adds durable
+  `lead_book_scan` worker routing for the same read-only scan service, returning
+  scan manifest refs/counts/blocker refs without changing Lead Book state or
+  creating readiness evidence.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

@@ -104,6 +104,10 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   replace one non-promotable Lead Book row through the canonical Lead Book
   service, and optionally produce a generated CSV view from the canonical
   Parquet Lead Book.
+- `lead_book_scan` jobs must run through the durable worker runner, filter the
+  canonical Lead Book by requested lead states through the read-only scan
+  service, write a JSON queue-visibility manifest, and surface missing or empty
+  queues as blocker refs rather than mutating lead state.
 - Lead Book worker jobs must reject secret-like or unsupported output/source
   path names before writing rows or exports, and must reject job specs that try
   to override research-boundary flags.

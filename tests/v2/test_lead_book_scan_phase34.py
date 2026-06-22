@@ -19,6 +19,9 @@ from tradingbotsuite.v2.lead_book import (
     request_deep_validation,
     scan_lead_book_queue,
 )
+from tradingbotsuite.v2.workers.job_store import WorkerJobStore
+from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobStatus
+from tradingbotsuite.v2.workers.runner import run_one_job
 
 
 def test_lead_book_scan_writes_manifest_for_multiple_states(tmp_path: Path) -> None:
@@ -115,6 +118,91 @@ def test_leadbook_scan_cli_prints_manifest(tmp_path: Path, capsys: pytest.Captur
     assert "matched_count=1" in output
     assert "accepted_research_ready=false" in output
     assert "promotion_ready=false" in output
+
+
+def test_lead_book_scan_worker_writes_read_only_manifest_and_refs(tmp_path: Path) -> None:
+    lead_book_path = tmp_path / "lead_book.parquet"
+    output_path = tmp_path / "worker" / "lead_book_scan.json"
+    store = LeadBookStore(lead_book_path)
+    sandbox = _lead(tmp_path, "worker-sandbox", state=LeadState.SANDBOX_SCREENED)
+    idea = _lead(tmp_path, "worker-idea", state=LeadState.IDEA_ONLY)
+    for lead in (sandbox, idea):
+        store.upsert(lead)
+    job_store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    job_store.enqueue(
+        kind=WorkerJobKind.LEAD_BOOK_SCAN,
+        job_id="JOB-lead-book-scan",
+        input_spec={
+            "lead_book_path": str(lead_book_path),
+            "output_path": str(output_path),
+            "states": ["sandbox_screened"],
+        },
+    )
+
+    result = run_one_job(
+        store=job_store,
+        kind=WorkerJobKind.LEAD_BOOK_SCAN,
+        worker_id="worker-lead-book-scan",
+    )
+    loaded = job_store.load_job("JOB-lead-book-scan")
+    manifest = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "job_kind=lead_book_scan" in loaded.output_refs
+    assert (
+        f"lead_book_scan_manifest_path={output_path.resolve(strict=False)}"
+        in loaded.output_refs
+    )
+    assert "lead_book_scan_evidence_mode=lead_book_queue_scan" in loaded.output_refs
+    assert "matched_count=1" in loaded.output_refs
+    assert "returned_count=1" in loaded.output_refs
+    assert "blocker_count=0" in loaded.output_refs
+    assert "accepted_research_ready=false" in loaded.output_refs
+    assert "promotion_ready=false" in loaded.output_refs
+    assert manifest["items"][0]["lead_id"] == sandbox.lead_id
+    assert manifest["accepted_research_ready"] is False
+    assert [lead.state for lead in LeadBookStore(lead_book_path).read()] == [
+        LeadState.IDEA_ONLY,
+        LeadState.SANDBOX_SCREENED,
+    ]
+
+
+def test_lead_book_scan_worker_surfaces_missing_queue_blockers(tmp_path: Path) -> None:
+    output_path = tmp_path / "worker_missing_scan.json"
+    job_store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    job_store.enqueue(
+        kind=WorkerJobKind.LEAD_BOOK_SCAN,
+        job_id="JOB-lead-book-scan-missing",
+        input_spec={
+            "lead_book_path": str(tmp_path / "missing" / "lead_book.parquet"),
+            "output_path": str(output_path),
+            "states": ["sandbox_screened"],
+        },
+    )
+
+    result = run_one_job(
+        store=job_store,
+        kind=WorkerJobKind.LEAD_BOOK_SCAN,
+        worker_id="worker-lead-book-scan-missing",
+    )
+    loaded = job_store.load_job("JOB-lead-book-scan-missing")
+    manifest = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert "job_kind=lead_book_scan" in loaded.output_refs
+    assert "blocker_count=2" in loaded.output_refs
+    assert "blocker_reason=lead_book_missing" in loaded.output_refs
+    assert "blocker_reason=no_matching_lead_book_rows" in loaded.output_refs
+    assert manifest["lead_book_exists"] is False
+    assert manifest["blocker_reasons"] == [
+        "lead_book_missing",
+        "no_matching_lead_book_rows",
+    ]
+    assert manifest["accepted_research_ready"] is False
 
 
 def _lead(root: Path, label: str, *, state: LeadState):

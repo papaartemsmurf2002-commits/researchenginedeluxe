@@ -53,9 +53,10 @@ deep validation.
   non-live survivor report disclaimer.
 - Lead Book queue scans are read-only queue visibility artifacts. A scan may
   filter the canonical Lead Book by one or more lead states, write a JSON
-  manifest, and report missing or empty queues as blockers. It must not mutate
-  lead state, request/complete human inspection, approve deep validation,
-  enqueue jobs, run backtests, or claim readiness.
+  manifest, and report missing or empty queues as blockers. The same scan may
+  run as a durable `lead_book_scan` worker job, but it must not mutate lead
+  state, request/complete human inspection, approve deep validation, enqueue
+  jobs, run backtests, or claim readiness.
 
 ## Forbidden
 

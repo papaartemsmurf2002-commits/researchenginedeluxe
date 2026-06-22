@@ -48,6 +48,7 @@ LEDGER_KINDS = {
 }
 
 LEAD_BOOK_KINDS = {
+    WorkerJobKind.LEAD_BOOK_SCAN,
     WorkerJobKind.LEAD_BOOK_UPSERT,
 }
 

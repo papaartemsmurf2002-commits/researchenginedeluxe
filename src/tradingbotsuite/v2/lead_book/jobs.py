@@ -1,8 +1,8 @@
-# V2-AUDIT-ID: V2-AUD-LEAD-004
+# V2-AUDIT-ID: V2-AUD-LEAD-004, V2-AUD-LEAD-006
 # V2-CONTRACTS: docs/contracts/lead_book_contract.md, docs/contracts/worker_job_contract.md
-# V2-BOUNDARY: research_only, durable_lead_book_upsert, non_promotable_leads, no_live_imports
+# V2-BOUNDARY: research_only, durable_lead_book_worker, non_promotable_leads, no_live_imports
 # V2-OWNER: v2_lead_book
-"""Durable worker job handlers for v2 Lead Book upsert operations."""
+"""Durable worker job handlers for v2 Lead Book operations."""
 
 from __future__ import annotations
 
@@ -13,7 +13,12 @@ from typing import Any
 
 from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.config.time import ensure_utc
-from tradingbotsuite.v2.lead_book.service import LeadBookStore, create_lead_from_source
+from tradingbotsuite.v2.lead_book.schemas import LeadBookScanConfig
+from tradingbotsuite.v2.lead_book.service import (
+    LeadBookStore,
+    create_lead_from_source,
+    scan_lead_book_queue,
+)
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobRecord, WorkerRunResult
 
@@ -41,9 +46,82 @@ def run_lead_book_job(
     store: WorkerJobStore,
     worker_id: str,
 ) -> WorkerRunResult:
+    if job.kind == WorkerJobKind.LEAD_BOOK_SCAN:
+        return _run_lead_book_scan_job(job=job, store=store, worker_id=worker_id)
     if job.kind != WorkerJobKind.LEAD_BOOK_UPSERT:
         raise ValueError(f"unsupported Lead Book job kind: {job.kind.value}")
     return _run_lead_book_upsert_job(job=job, store=store, worker_id=worker_id)
+
+
+def _run_lead_book_scan_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = dict(job.input_spec)
+    _reject_boundary_overrides(spec)
+    lead_book_path = _required_path(
+        spec,
+        "lead_book_path",
+        allowed_suffixes=(".parquet",),
+        require_file=False,
+    )
+    output_path = _required_path(
+        spec,
+        "output_path",
+        allowed_suffixes=(".json",),
+        require_file=False,
+    )
+    scan_result = scan_lead_book_queue(
+        LeadBookScanConfig.model_validate(
+            {
+                "lead_book_path": str(lead_book_path),
+                "output_path": str(output_path),
+                "states": _required_states(spec),
+                "max_rows": spec.get("max_rows", 500),
+            }
+        )
+    )
+    scan_manifest_path = Path(scan_result.scan_manifest_path).resolve(strict=False)
+    blocker_refs = tuple(
+        f"blocker_reason={reason}" for reason in scan_result.blocker_reasons
+    )
+    blocker_count = len(scan_result.blocker_reasons)
+    output_refs = (
+        "job_kind=lead_book_scan",
+        f"lead_book_scan_manifest_path={scan_manifest_path}",
+        f"lead_book_scan_manifest_sha256={file_sha256(scan_manifest_path)}",
+        f"lead_book_scan_id={scan_result.scan_id}",
+        f"lead_book_scan_evidence_mode={scan_result.evidence_mode}",
+        f"states={','.join(state.value for state in scan_result.states)}",
+        f"total_lead_count={scan_result.total_lead_count}",
+        f"matched_count={scan_result.matched_count}",
+        f"returned_count={scan_result.returned_count}",
+        f"blocker_count={blocker_count}",
+        "accepted_research_ready=false",
+        "promotion_ready=false",
+        f"lead_book_path={lead_book_path}",
+        *blocker_refs,
+    )
+    domain_refs = (
+        f"lead_book_scan_manifest_path={scan_manifest_path}",
+        f"lead_book_scan_manifest_sha256={file_sha256(scan_manifest_path)}",
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=domain_refs,
+        reason="lead_book_scan_job_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
 
 
 def _run_lead_book_upsert_job(
@@ -153,7 +231,15 @@ def _run_lead_book_upsert_job(
 def _reject_boundary_overrides(spec: dict[str, Any]) -> None:
     forbidden = sorted(_BOUNDARY_OVERRIDE_KEYS.intersection(spec))
     if forbidden:
-        raise ValueError(f"lead_book_upsert job spec must not override boundary fields: {','.join(forbidden)}")
+        raise ValueError(
+            f"Lead Book worker job spec must not override boundary fields: {','.join(forbidden)}"
+        )
+
+
+def _required_states(spec: dict[str, Any]) -> tuple[str, ...]:
+    if "states" not in spec:
+        raise ValueError("Lead Book scan worker job spec requires states")
+    return _string_tuple(spec["states"])
 
 
 def _required_path(

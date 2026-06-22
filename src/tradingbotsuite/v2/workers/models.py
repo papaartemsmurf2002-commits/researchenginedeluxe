@@ -42,6 +42,7 @@ class WorkerJobKind(str, Enum):
     EVENT_DRIVEN_SIMULATION = "event_driven_simulation"
     VALIDATION_GATE = "validation_gate"
     LEDGER_APPEND_EXPORT = "ledger_append_export"
+    LEAD_BOOK_SCAN = "lead_book_scan"
     LEAD_BOOK_UPSERT = "lead_book_upsert"
     AUDIT_CHECK = "audit_check"
 

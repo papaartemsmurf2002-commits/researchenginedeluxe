@@ -484,6 +484,14 @@ empty queues as blocker evidence. It does not mutate lead state, enqueue jobs,
 run backtests, update ledger rows, or create accepted research evidence,
 autonomous readiness, candidate-ready, paper/live/order/sizing/runtime, or
 promotion behavior.
+Current WPR106-466 v2 Lead Book scan worker update: WPR106-466 adds
+`lead_book_scan` as a durable worker job kind that delegates to the existing
+read-only Lead Book scan service. The worker writes the same research-only scan
+manifest refs, queue counts, and blocker refs while preserving missing or empty
+queues as blocker evidence. It does not mutate lead state, enqueue downstream
+jobs, run backtests, update ledger rows, or create accepted research evidence,
+autonomous readiness, candidate-ready, paper/live/order/sizing/runtime, or
+promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`
