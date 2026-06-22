@@ -179,7 +179,12 @@ This is the first file to read after `AGENTS.md`.
   normalized accepted copies, and records invalid/unsupported/secret-like
   blockers in a queue manifest. The manifest is input hygiene only and is not
   job execution, strategy performance, accepted research evidence, or
-  autonomous-ready proof.
+  autonomous-ready proof. WPR106-458 adds a durable
+  `validation_gate` worker that reads completed run manifests plus fold and
+  cost-stress artifacts, writes `validation_gate_manifest.json`, and reports
+  validation blockers before ledger/Lead Book interpretation. It is a
+  validation-stage worker output only, not accepted evidence or readiness
+  certification.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

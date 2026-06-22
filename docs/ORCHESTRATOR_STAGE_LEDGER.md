@@ -419,6 +419,15 @@ in `strategy_queue_manifest.json`. The manifest is input hygiene only and does
 not enqueue jobs, run backtests, collect data, certify validation, create
 accepted research evidence, or add autonomous-ready, candidate-ready,
 paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-458 v2 durable validation-gate worker update: WPR106-458 adds
+the `validation_gate` durable worker kind and runner path. The worker reads
+local `run_manifest.json`, fold metrics, and cost-stress artifacts, writes
+`validation_gate_manifest.json`, and surfaces date floor, usable-month,
+coverage, as-of universe, lockbox, fold-stability, and cost-stress blockers as
+successful worker output. It does not fetch venue data, rerun backtests, append
+ledgers, update Lead Book rows, certify accepted evidence, or add
+autonomous-ready, candidate-ready, paper/live/order/sizing/runtime, or
+promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

@@ -23,6 +23,7 @@ from tradingbotsuite.v2.validation.final_hard_test import (
     reject_parameter_edit_after_lockbox,
     start_deep_validation,
 )
+from tradingbotsuite.v2.validation.jobs import ValidationGateManifest, run_validation_job
 from tradingbotsuite.v2.validation.overfit import (
     SweepCompletenessReport,
     TrialFamilyReport,
@@ -60,6 +61,7 @@ __all__ = [
     "TrialFamilyReport",
     "TrialResult",
     "ValidationConfig",
+    "ValidationGateManifest",
     "WalkForwardConfig",
     "WalkForwardFold",
     "allocate_final_hard_test_slot",
@@ -72,6 +74,7 @@ __all__ = [
     "reject_parameter_edit_after_lockbox",
     "reject_post_lockbox_parameter_tuning",
     "require_complete_sweep",
+    "run_validation_job",
     "start_deep_validation",
     "summarize_fold_stability",
     "trial_family_report",

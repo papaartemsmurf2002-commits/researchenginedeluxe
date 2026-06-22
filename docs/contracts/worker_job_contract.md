@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`
 
 ## Purpose
 
@@ -75,6 +75,13 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   worker job successfully when the worker produced the required failure
   artifacts. Data-service or strategy-spec preflight failures remain worker
   failures.
+- `validation_gate` jobs must run through the durable worker runner, read only
+  local `run_manifest.json` and declared run artifacts, write a research-only
+  validation gate manifest, and surface validation blockers as successful
+  worker output rather than hidden logs.
+- Validation gate worker jobs must reject secret-like or unsupported report
+  output paths before writing and must not fetch venue data, rerun backtests,
+  append ledgers, update Lead Book rows, or certify readiness.
 - `ledger_append_export` jobs must run through the durable worker runner, append
   one run manifest through the canonical ledger service, and optionally produce
   generated CSV/XLSX exports from the canonical Parquet ledger.
@@ -147,6 +154,9 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Running durable backtests against direct venue/API reads, unvalidated
   strategy specs, or arbitrary strategy-spec files without a trusted-file
   intake packet.
+- Treating validation gate manifests as ledger rows, Lead Book updates,
+  accepted research evidence, or autonomous-ready certification by themselves.
+- Writing validation gate reports to secret/local-state filenames.
 - Treating CSV/XLSX ledger exports as canonical job state.
 - Writing ledger or export files to secret/local-state filenames.
 - Treating generated Lead Book CSV exports as canonical job state.

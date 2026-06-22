@@ -1,7 +1,7 @@
 # V2 Validation Contract
 
 Status: v2 Phase 20 deep-validation and final hard-test governance contract
-Audit IDs: `V2-AUD-VAL-001`, `V2-AUD-FINAL-001`, `V2-AUD-VAL-002`
+Audit IDs: `V2-AUD-VAL-001`, `V2-AUD-FINAL-001`, `V2-AUD-VAL-002`, `V2-AUD-VAL-003`
 
 ## Purpose
 
@@ -23,6 +23,7 @@ Validation prevents leakage, overfit, and weak evidence claims.
 - `Pre2024FallbackDiagnostic`
 - `FinalHardTestSlot`
 - `FinalSurvivorReport`
+- `ValidationGateManifest`
 
 ## Required Rules
 
@@ -62,6 +63,15 @@ Validation prevents leakage, overfit, and weak evidence claims.
 - Parameter edits after lockbox access are forbidden.
 - Final survivor reports must carry a non-live disclaimer and must not imply
   paper/live/trade readiness.
+- Durable `validation_gate` workers must consume only local run manifests and
+  declared run artifacts, write a `validation_gate_manifest_v1`, and report
+  blockers for non-pass run validation status, pre-2024 starts, under-six-
+  month windows, low coverage, current-universe accepted evidence, lockbox
+  overlap, missing cost-stress scenarios, cost-dependent failure, and weak fold
+  stability.
+- Validation gate manifests are validation-stage evidence only. They are not
+  ledger rows, Lead Book updates, accepted research evidence, autonomous-ready
+  proof, candidate-pack evidence, or promotion evidence by themselves.
 
 ## Forbidden
 
@@ -77,3 +87,6 @@ Validation prevents leakage, overfit, and weak evidence claims.
   and final-phase manifest evidence.
 - Promotion-ready, candidate-pack, sizing, order, runtime, or paper/live claims
   from deep-validation or final-survivor governance records.
+- Validation workers fetching venue data, rerunning backtests, appending
+  ledgers, updating Lead Book rows, mutating run manifests, writing reports to
+  secret/local-state filenames, or certifying autonomous readiness.
