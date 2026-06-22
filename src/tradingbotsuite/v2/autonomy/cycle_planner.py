@@ -56,6 +56,7 @@ _ALLOWED_PLANNED_JOB_KINDS = frozenset(
         WorkerJobKind.OFFICIAL_S3_BACKFILL,
         WorkerJobKind.COVERAGE_AUDIT,
         WorkerJobKind.VECTORIZED_BACKTEST,
+        WorkerJobKind.VALIDATION_GATE,
         WorkerJobKind.LEDGER_APPEND_EXPORT,
         WorkerJobKind.LEAD_BOOK_UPSERT,
     }
@@ -75,6 +76,7 @@ _REQUIRED_STAGE_KINDS = (
     ("collector", _COLLECTOR_STAGE_KINDS),
     ("coverage_audit", frozenset({WorkerJobKind.COVERAGE_AUDIT})),
     ("vectorized_backtest", frozenset({WorkerJobKind.VECTORIZED_BACKTEST})),
+    ("validation_gate", frozenset({WorkerJobKind.VALIDATION_GATE})),
     ("ledger_append_export", frozenset({WorkerJobKind.LEDGER_APPEND_EXPORT})),
     ("lead_book_upsert", frozenset({WorkerJobKind.LEAD_BOOK_UPSERT})),
 )
@@ -83,6 +85,8 @@ _DEFAULT_ARTIFACT_REF_PREFIXES = (
     "archive_snapshot_id=",
     "coverage_report_id",
     "run_manifest_path=",
+    "validation_manifest_path=",
+    "validation_manifest_id=",
     "ledger_path=",
     "lead_book_path=",
 )

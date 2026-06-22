@@ -42,6 +42,7 @@ def test_bounded_research_cycle_plan_writes_manifest_without_enqueue(tmp_path) -
         "recent_candle_bootstrap",
         "coverage_audit",
         "vectorized_backtest",
+        "validation_gate",
         "ledger_append_export",
         "lead_book_upsert",
     ]
@@ -50,6 +51,8 @@ def test_bounded_research_cycle_plan_writes_manifest_without_enqueue(tmp_path) -
         "archive_snapshot_id=",
         "coverage_report_id",
         "run_manifest_path=",
+        "validation_manifest_path=",
+        "validation_manifest_id=",
         "ledger_path=",
         "lead_book_path=",
     ]
@@ -70,12 +73,13 @@ def test_bounded_research_cycle_enqueue_adds_jobs_and_generated_audit(tmp_path) 
     audit = store.load_job(result.audit_job_id)
 
     assert result.status == AutopilotCyclePlanStatus.ENQUEUED
-    assert result.enqueued_job_count == 7
+    assert result.enqueued_job_count == 8
     assert [job.kind for job in jobs] == [
         WorkerJobKind.UNIVERSE_REFRESH,
         WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
         WorkerJobKind.COVERAGE_AUDIT,
         WorkerJobKind.VECTORIZED_BACKTEST,
+        WorkerJobKind.VALIDATION_GATE,
         WorkerJobKind.LEDGER_APPEND_EXPORT,
         WorkerJobKind.LEAD_BOOK_UPSERT,
         WorkerJobKind.AUDIT_CHECK,
@@ -87,6 +91,7 @@ def test_bounded_research_cycle_enqueue_adds_jobs_and_generated_audit(tmp_path) 
         "JOB-cycle-enqueue-candles",
         "JOB-cycle-enqueue-coverage",
         "JOB-cycle-enqueue-backtest",
+        "JOB-cycle-enqueue-validation",
         "JOB-cycle-enqueue-ledger",
         "JOB-cycle-enqueue-lead",
     ]
@@ -95,6 +100,7 @@ def test_bounded_research_cycle_enqueue_adds_jobs_and_generated_audit(tmp_path) 
         "recent_candle_bootstrap",
         "coverage_audit",
         "vectorized_backtest",
+        "validation_gate",
         "ledger_append_export",
         "lead_book_upsert",
     ]
@@ -267,8 +273,8 @@ def test_autopilot_research_cycle_cli_enqueue_prints_plan_paths(tmp_path, capsys
 
     assert exit_code == 0
     assert values["status"] == "enqueued"
-    assert values["planned_job_count"] == "7"
-    assert values["enqueued_job_count"] == "7"
+    assert values["planned_job_count"] == "8"
+    assert values["enqueued_job_count"] == "8"
     assert values["accepted_research_ready"] == "false"
     assert values["promotion_ready"] == "false"
     assert Path(values["plan_manifest"]).exists()
@@ -300,6 +306,11 @@ def _cycle_spec(*, run_id: str = "cycle-plan") -> dict:
                 "job_id": f"JOB-{run_id}-backtest",
                 "kind": "vectorized_backtest",
                 "input_spec": {"archive_root": "ARCHIVE_ROOT", "evidence_mode": "accepted_research"},
+            },
+            {
+                "job_id": f"JOB-{run_id}-validation",
+                "kind": "validation_gate",
+                "input_spec": {"run_manifest_path": "RUN_MANIFEST_PATH"},
             },
             {
                 "job_id": f"JOB-{run_id}-ledger",

@@ -26,8 +26,8 @@ def test_autopilot_fixture_cycle_executes_real_worker_chain_and_reports_blockers
     )
     spec = _read_json(Path(result.cycle_spec_path))
 
-    assert result.declared_job_count == 6
-    assert result.declared_binding_count == 6
+    assert result.declared_job_count == 7
+    assert result.declared_binding_count == 8
     assert Path(result.universe_payload_file).exists()
     assert Path(result.candle_records_file).exists()
     assert spec["schema_version"] == "autopilot_bounded_cycle_spec_v1"
@@ -37,6 +37,7 @@ def test_autopilot_fixture_cycle_executes_real_worker_chain_and_reports_blockers
         "recent_candle_bootstrap",
         "coverage_audit",
         "vectorized_backtest",
+        "validation_gate",
         "ledger_append_export",
         "lead_book_upsert",
     ]
@@ -68,7 +69,7 @@ def test_autopilot_fixture_cycle_executes_real_worker_chain_and_reports_blockers
     report = _read_json(Path(plan.audit_report_path))
 
     assert execution.status.value == "completed_with_blockers"
-    assert execution.executed_job_count == 7
+    assert execution.executed_job_count == 8
     assert execution.skipped_job_count == 0
     assert execution.audit_attempted is True
     assert manifest["accepted_research_ready"] is False
@@ -92,6 +93,12 @@ def test_autopilot_fixture_cycle_executes_real_worker_chain_and_reports_blockers
     assert _job_execution(manifest, "ledger_append_export")["applied_bindings"][0].startswith(
         "input_spec.run_manifest_path<=JOB-cycle-fixture-pass-backtest:run_manifest_path="
     )
+    assert _job_execution(manifest, "ledger_append_export")["applied_bindings"][1].startswith(
+        "input_spec.validation_manifest_path<=JOB-cycle-fixture-pass-validation:validation_manifest_path="
+    )
+    assert _job_execution(manifest, "validation_gate")["applied_bindings"][0].startswith(
+        "input_spec.run_manifest_path<=JOB-cycle-fixture-pass-backtest:run_manifest_path="
+    )
     assert _job_execution(manifest, "lead_book_upsert")["applied_bindings"][0].startswith(
         "input_spec.source_artifact_path<=JOB-cycle-fixture-pass-ledger:ledger_path="
     )
@@ -99,10 +106,14 @@ def test_autopilot_fixture_cycle_executes_real_worker_chain_and_reports_blockers
     store = WorkerJobStore(result.suggested_job_store_path)
     assert all(job.status == WorkerJobStatus.SUCCEEDED for job in store.list_jobs())
     coverage_job = store.load_job("JOB-cycle-fixture-pass-coverage")
+    validation_job = store.load_job("JOB-cycle-fixture-pass-validation")
     lead_job = store.load_job("JOB-cycle-fixture-pass-lead")
     assert coverage_job is not None
+    assert validation_job is not None
     assert lead_job is not None
     assert "blocker_reasons=sandbox_diagnostic_non_evidence" in coverage_job.output_refs
+    assert any(ref.startswith("validation_manifest_path=") for ref in validation_job.output_refs)
+    assert any(ref.startswith("validation_manifest_id=") for ref in validation_job.archive_manifest_refs)
     assert any(ref.startswith("known_blockers=fixture_cycle_non_evidence") for ref in lead_job.output_refs)
     assert any(ref.startswith("missing_evidence=real_hyperliquid_archive_operation") for ref in lead_job.output_refs)
 
@@ -159,8 +170,8 @@ def test_autopilot_fixture_cycle_cli_writes_spec_paths(tmp_path, capsys) -> None
     assert values["evidence_mode"] == "sandbox_diagnostic"
     assert values["accepted_research_ready"] == "false"
     assert values["promotion_ready"] == "false"
-    assert values["declared_job_count"] == "6"
-    assert values["declared_binding_count"] == "6"
+    assert values["declared_job_count"] == "7"
+    assert values["declared_binding_count"] == "8"
     assert Path(values["cycle_spec"]).exists()
     assert Path(values["universe_payload_file"]).exists()
     assert Path(values["candle_records_file"]).exists()

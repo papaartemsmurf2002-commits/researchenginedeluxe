@@ -217,6 +217,7 @@ def _cycle_spec_payload(
     candles_job_id = f"JOB-{run_id}-candles"
     coverage_job_id = f"JOB-{run_id}-coverage"
     backtest_job_id = f"JOB-{run_id}-backtest"
+    validation_job_id = f"JOB-{run_id}-validation"
     ledger_job_id = f"JOB-{run_id}-ledger"
     lead_job_id = f"JOB-{run_id}-lead"
     start = utc_isoformat(config.start_ts)
@@ -303,6 +304,13 @@ def _cycle_spec_payload(
                 },
             },
             {
+                "job_id": validation_job_id,
+                "kind": "validation_gate",
+                "input_spec": {
+                    "evidence_mode": config.evidence_mode,
+                },
+            },
+            {
                 "job_id": ledger_job_id,
                 "kind": "ledger_append_export",
                 "input_spec": {
@@ -385,9 +393,21 @@ def _cycle_spec_payload(
             },
             {
                 "source_job_id": backtest_job_id,
+                "target_job_id": validation_job_id,
+                "target_input_path": "run_manifest_path",
+                "source_ref_prefix": "run_manifest_path=",
+            },
+            {
+                "source_job_id": backtest_job_id,
                 "target_job_id": ledger_job_id,
                 "target_input_path": "run_manifest_path",
                 "source_ref_prefix": "run_manifest_path=",
+            },
+            {
+                "source_job_id": validation_job_id,
+                "target_job_id": ledger_job_id,
+                "target_input_path": "validation_manifest_path",
+                "source_ref_prefix": "validation_manifest_path=",
             },
             {
                 "source_job_id": ledger_job_id,

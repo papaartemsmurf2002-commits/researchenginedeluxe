@@ -35,14 +35,14 @@ def test_bounded_cycle_runner_skips_successes_and_runs_generated_audit(tmp_path)
 
     assert execution.status.value == "completed"
     assert execution.executed_job_count == 1
-    assert execution.skipped_job_count == 6
+    assert execution.skipped_job_count == 7
     assert execution.audit_attempted is True
     assert execution.blocker_reasons == ()
     assert manifest["schema_version"] == "autopilot_bounded_cycle_execution_v1"
     assert manifest["accepted_research_ready"] is False
     assert manifest["research_only"] is True
     assert manifest["promotion_ready"] is False
-    assert [job["action"] for job in manifest["job_executions"]].count("skipped_already_succeeded") == 6
+    assert [job["action"] for job in manifest["job_executions"]].count("skipped_already_succeeded") == 7
     assert manifest["job_executions"][-1]["action"] == "ran"
     assert report["status"] == "pass"
     assert report["accepted_research_ready"] is False
@@ -274,7 +274,7 @@ def test_autopilot_run_cycle_plan_cli_prints_execution_manifest(tmp_path, capsys
     assert exit_code == 0
     assert values["status"] == "completed"
     assert values["executed_job_count"] == "1"
-    assert values["skipped_job_count"] == "6"
+    assert values["skipped_job_count"] == "7"
     assert values["audit_attempted"] == "true"
     assert values["blocker_count"] == "0"
     assert values["accepted_research_ready"] == "false"
@@ -289,6 +289,11 @@ def _seed_successful_loop_jobs(store: WorkerJobStore, *, run_id: str) -> None:
         (WorkerJobKind.RECENT_CANDLE_BOOTSTRAP, f"JOB-{run_id}-candles", ("archive_snapshot_id=ARCH",)),
         (WorkerJobKind.COVERAGE_AUDIT, f"JOB-{run_id}-coverage", ("coverage_report_id=COV",)),
         (WorkerJobKind.VECTORIZED_BACKTEST, f"JOB-{run_id}-backtest", ("run_manifest_path=RUN",)),
+        (
+            WorkerJobKind.VALIDATION_GATE,
+            f"JOB-{run_id}-validation",
+            ("validation_manifest_path=VALIDATION", "validation_manifest_id=VAL"),
+        ),
         (WorkerJobKind.LEDGER_APPEND_EXPORT, f"JOB-{run_id}-ledger", ("ledger_path=LEDGER",)),
         (WorkerJobKind.LEAD_BOOK_UPSERT, f"JOB-{run_id}-lead", ("lead_book_path=LEAD",)),
     ]
@@ -354,6 +359,11 @@ def _cycle_spec(*, run_id: str) -> dict:
                 "job_id": f"JOB-{run_id}-backtest",
                 "kind": "vectorized_backtest",
                 "input_spec": {"archive_root": "ARCHIVE_ROOT", "evidence_mode": "accepted_research"},
+            },
+            {
+                "job_id": f"JOB-{run_id}-validation",
+                "kind": "validation_gate",
+                "input_spec": {"run_manifest_path": "RUN_MANIFEST_PATH"},
             },
             {
                 "job_id": f"JOB-{run_id}-ledger",

@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`, `V2-AUD-AUTONOMY-011`
 
 ## Purpose
 
@@ -111,6 +111,9 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   one generated `audit_check` job. Planning/enqueueing is not worker execution:
   queued jobs remain incomplete evidence until a worker runs them and the final
   audit report passes without blockers.
+- Bounded autopilot cycle plans must require `validation_gate` after
+  `vectorized_backtest` and before ledger/Lead Book interpretation. The
+  generated audit job must require validation manifest refs as loop evidence.
 - Bounded autopilot cycle plans must reject unsupported worker kinds,
   user-supplied `audit_check` jobs, boundary override keys in job specs, and
   cycle sizes above the declared cap before enqueueing any jobs.
@@ -133,9 +136,10 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   or max-job-blocked planned jobs.
 - The executable autopilot fixture cycle may prove worker-chain operability by
   generating fixture inputs, planning/enqueueing the declared bounded cycle,
-  running the real durable worker handlers, and writing the final generated
-  audit report. Its expected sandbox and missing-real-evidence blockers are
-  successful blocker-report output, not autonomous-ready evidence.
+  running the real durable worker handlers through validation, and writing the
+  final generated audit report. Its expected sandbox and missing-real-evidence
+  blockers are successful blocker-report output, not autonomous-ready
+  evidence.
 
 ## Forbidden
 

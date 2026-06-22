@@ -428,6 +428,15 @@ successful worker output. It does not fetch venue data, rerun backtests, append
 ledgers, update Lead Book rows, certify accepted evidence, or add
 autonomous-ready, candidate-ready, paper/live/order/sizing/runtime, or
 promotion behavior.
+Current WPR106-459 v2 autopilot validation-stage update: WPR106-459 makes
+`validation_gate` a required bounded autopilot cycle stage after vectorized
+backtest and before ledger/Lead Book interpretation. The planner now allows and
+requires validation jobs, the generated audit check requires validation
+manifest path and ID refs plus loop-order evidence, and the fixture/public
+cycle spec writers bind backtest run manifests into validation before ledger
+append/export. Cycle plans and executions remain operational evidence only and
+do not certify accepted research evidence, autonomous readiness,
+candidate-ready, paper/live/order/sizing/runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

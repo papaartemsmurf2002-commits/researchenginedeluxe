@@ -1,6 +1,6 @@
 # Active Index
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
 
 This is the first file to read after `AGENTS.md`.
 
@@ -184,7 +184,12 @@ This is the first file to read after `AGENTS.md`.
   cost-stress artifacts, writes `validation_gate_manifest.json`, and reports
   validation blockers before ledger/Lead Book interpretation. It is a
   validation-stage worker output only, not accepted evidence or readiness
-  certification.
+  certification. WPR106-459 wires that worker into bounded autopilot cycle
+  planning and generated fixture/public cycle specs as a required stage after
+  vectorized backtest and before ledger/Lead Book interpretation. The generated
+  audit job now requires validation manifest refs and loop order evidence, but
+  cycle plans/executions still remain operational evidence only, not accepted
+  research evidence or autonomous-ready proof.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
