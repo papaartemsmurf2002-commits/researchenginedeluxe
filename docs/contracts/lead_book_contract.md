@@ -1,7 +1,7 @@
 # V2 Lead Book Contract
 
 Status: v2 Phase 15 Lead Book workflow contract with Phase 20 final-governance links
-Audit IDs: `V2-AUD-LEAD-001`, `V2-AUD-FINAL-001`, `V2-AUD-LEAD-004`, `V2-AUD-LEAD-005`
+Audit IDs: `V2-AUD-LEAD-001`, `V2-AUD-FINAL-001`, `V2-AUD-LEAD-004`, `V2-AUD-LEAD-005`, `V2-AUD-LEAD-006`
 
 ## Purpose
 

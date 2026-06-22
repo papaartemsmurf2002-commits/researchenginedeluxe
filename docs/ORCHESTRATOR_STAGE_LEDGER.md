@@ -491,7 +491,11 @@ manifest refs, queue counts, and blocker refs while preserving missing or empty
 queues as blocker evidence. It does not mutate lead state, enqueue downstream
 jobs, run backtests, update ledger rows, or create accepted research evidence,
 autonomous readiness, candidate-ready, paper/live/order/sizing/runtime, or
-promotion behavior.
+promotion behavior. Independent WPR106-466 audit found no P0/P1 findings.
+WPR106-467 closes its P2 follow-ups by adding `V2-AUD-LEAD-006` and
+`V2-AUD-WORKER-025` to contract traceability headers and adding invalid-spec
+worker regressions for boundary overrides, secret-like output paths,
+unsupported output suffixes, and missing scan states.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

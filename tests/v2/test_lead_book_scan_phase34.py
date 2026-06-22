@@ -205,6 +205,75 @@ def test_lead_book_scan_worker_surfaces_missing_queue_blockers(tmp_path: Path) -
     assert manifest["accepted_research_ready"] is False
 
 
+@pytest.mark.parametrize(
+    ("case", "input_overrides", "expected_failure", "output_relative_path"),
+    [
+        (
+            "boundary_override",
+            {"promotion_ready": True},
+            "must not override boundary fields: promotion_ready",
+            Path("rejected") / "boundary_override_scan.json",
+        ),
+        (
+            "secret_output",
+            {},
+            "reserved for secrets or local state",
+            Path("secret") / "scan.json",
+        ),
+        (
+            "unsupported_suffix",
+            {},
+            "output_path must use one of these suffixes: .json",
+            Path("rejected") / "scan.txt",
+        ),
+        (
+            "missing_states",
+            {"states": None},
+            "Lead Book scan worker job spec requires states",
+            Path("rejected") / "missing_states_scan.json",
+        ),
+    ],
+)
+def test_lead_book_scan_worker_rejects_invalid_specs_before_write(
+    tmp_path: Path,
+    case: str,
+    input_overrides: dict[str, object],
+    expected_failure: str,
+    output_relative_path: Path,
+) -> None:
+    output_path = tmp_path / output_relative_path
+    input_spec = {
+        "lead_book_path": str(tmp_path / "lead_book.parquet"),
+        "output_path": str(output_path),
+        "states": ["sandbox_screened"],
+    }
+    for key, value in input_overrides.items():
+        if value is None:
+            input_spec.pop(key, None)
+        else:
+            input_spec[key] = value
+    job_store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = job_store.enqueue(
+        kind=WorkerJobKind.LEAD_BOOK_SCAN,
+        job_id=f"JOB-lead-book-scan-reject-{case}",
+        max_attempts=1,
+        input_spec=input_spec,
+    )
+
+    result = run_one_job(
+        store=job_store,
+        kind=WorkerJobKind.LEAD_BOOK_SCAN,
+        worker_id=f"worker-lead-book-scan-reject-{case}",
+    )
+    loaded = job_store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded.status == WorkerJobStatus.FAILED
+    assert expected_failure in (loaded.failure_reason or "")
+    assert not output_path.exists()
+
+
 def _lead(root: Path, label: str, *, state: LeadState):
     source = root / f"{label}.json"
     source.write_text(json.dumps({"label": label}) + "\n", encoding="utf-8")

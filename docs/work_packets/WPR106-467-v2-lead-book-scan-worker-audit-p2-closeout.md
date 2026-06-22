@@ -1,28 +1,26 @@
-# WPR106-466 - V2 Durable Lead Book Scan Worker
+# WPR106-467 - V2 Lead Book Scan Worker Audit P2 Closeout
 
-Status: fixed_after_audit
+Status: self_checked
 Audit ID: `V2-AUD-LEAD-006`
 Related audit IDs: `V2-AUD-WORKER-025`
 
 ## Objective
 
-Make the existing read-only Lead Book queue scan runnable through the durable
-worker runner as `lead_book_scan`, so manager/scheduler workflows can produce
-queue visibility manifests without mutating Lead Book rows, enqueueing
-backtests, or implying accepted/autonomous/candidate/paper/live/sizing/runtime/
-promotion readiness.
+Close the independent WPR106-466 audit P2 findings. The independent audit found
+no P0/P1, no research-boundary regression, no lead mutation or readiness
+implication, no worker routing blocker, and no no-touch violation. It requested
+two P2 closeouts: update contract audit-ID traceability headers and add focused
+negative worker regressions for scan-specific rejection semantics.
 
 ## Allowed Paths
 
+- `docs/work_packets/WPR106-467-v2-lead-book-scan-worker-audit-p2-closeout.md`
 - `docs/work_packets/WPR106-466-v2-lead-book-scan-worker.md`
 - `docs/audit/V2_AUDIT_INDEX.md`
 - `docs/ACTIVE_INDEX.md`
 - `docs/ORCHESTRATOR_STAGE_LEDGER.md`
-- `docs/contracts/worker_job_contract.md`
 - `docs/contracts/lead_book_contract.md`
-- `src/tradingbotsuite/v2/workers/models.py`
-- `src/tradingbotsuite/v2/workers/runner.py`
-- `src/tradingbotsuite/v2/lead_book/jobs.py`
+- `docs/contracts/worker_job_contract.md`
 - `tests/v2/test_lead_book_scan_phase34.py`
 
 ## No-Touch Paths
@@ -59,36 +57,42 @@ git diff --check
 
 ## Planned Changed Files
 
-- `src/tradingbotsuite/v2/workers/models.py`
-- `src/tradingbotsuite/v2/workers/runner.py`
-- `src/tradingbotsuite/v2/lead_book/jobs.py`
 - `tests/v2/test_lead_book_scan_phase34.py`
-- `docs/contracts/worker_job_contract.md`
 - `docs/contracts/lead_book_contract.md`
+- `docs/contracts/worker_job_contract.md`
 - `docs/audit/V2_AUDIT_INDEX.md`
 - `docs/ACTIVE_INDEX.md`
 - `docs/ORCHESTRATOR_STAGE_LEDGER.md`
 - `docs/work_packets/WPR106-466-v2-lead-book-scan-worker.md`
+- `docs/work_packets/WPR106-467-v2-lead-book-scan-worker-audit-p2-closeout.md`
 
 ## Decisions Made
 
-- `lead_book_scan` is a durable worker job kind, but remains queue visibility
-  only. It is not a bounded-cycle required stage and does not replace canonical
-  Lead Book or final audit evidence.
-- Missing or empty Lead Book queues remain successful worker output with
-  blocker refs, matching the existing scan-service contract.
-- The worker returns scan manifest refs, queue counts, and blocker refs; it
-  does not mutate lead state, request/complete human inspection, approve deep
-  validation, enqueue jobs, run backtests, update ledgers, or claim readiness.
+- The WPR106-466 implementation remains behaviorally unchanged; this packet is
+  a traceability and test-coverage closeout.
+- Worker scan validation failures should remain worker-system failures when the
+  job spec itself is invalid, while missing/empty Lead Book queues remain
+  successful scan outputs with blocker refs.
+- The new tests assert terminal failure with `max_attempts=1`, matching existing
+  durable worker rejection-test patterns.
 
 ## Acceptance Evidence
 
+- Independent audit result:
+  Turing reviewed WPR106-466 and found no P0/P1, no research-only boundary
+  regression, no lead mutation/readiness implication, no worker routing
+  blocker, and no no-touch violation. The audit recommended pass with two P2
+  follow-ups.
+- P2 closeout:
+  Contract headers now include `V2-AUD-LEAD-006` and `V2-AUD-WORKER-025`.
+  Focused worker regressions now cover boundary override, secret-like output
+  path, unsupported output suffix, and missing scan states.
 - Focused Lead Book scan worker/service/CLI regressions:
   `$env:PYTHONPATH='src'; python -m pytest tests/v2/test_lead_book_scan_phase34.py -q`
-  passed with `6 passed`.
+  passed with `10 passed`.
 - V2 baseline:
   `$env:PYTHONPATH='src'; python -m pytest tests/v2 -q`
-  passed with `321 passed`.
+  passed with `325 passed`.
 - Compile baseline:
   `$env:PYTHONPATH='src'; python -m compileall -q src/tradingbotsuite`
   passed.
@@ -97,11 +101,4 @@ git diff --check
   passed with `463 passed`.
 - Whitespace check:
   `git diff --check` passed.
-- No paper/live/order/sizing/runtime/promotion behavior was added. The new
-  worker only writes read-only Lead Book queue visibility manifests and blocker
-  refs through the existing scan service.
-- Independent audit: Turing reviewed WPR106-466 after commit `95849fb` and
-  found no P0/P1 findings, no research-only boundary regression, no lead
-  mutation/readiness implication, no worker routing blocker, and no no-touch
-  violation. WPR106-467 closes the two P2 follow-ups: contract audit-ID header
-  traceability and scan-worker invalid-spec regressions.
+- No production behavior changed in this closeout packet.

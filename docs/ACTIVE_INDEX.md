@@ -224,7 +224,8 @@ This is the first file to read after `AGENTS.md`.
   paper/live/sizing/runtime/promotion readiness. WPR106-466 adds durable
   `lead_book_scan` worker routing for the same read-only scan service, returning
   scan manifest refs/counts/blocker refs without changing Lead Book state or
-  creating readiness evidence.
+  creating readiness evidence. Independent WPR106-466 audit found no P0/P1, and
+  WPR106-467 closes its P2 traceability and negative-regression follow-ups.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the
