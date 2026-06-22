@@ -456,6 +456,14 @@ worker before binding accepted spec path/SHA refs into backtests. Cycle plans
 and executions remain operational evidence only and do not certify accepted
 research evidence, autonomous readiness, candidate-ready, paper/live/order/
 sizing/runtime, or promotion behavior.
+Current WPR106-462 v2 readiness loop-stage evidence update: WPR106-462 keeps
+the autonomous readiness manager gate aligned with the current durable loop.
+Readiness now requires `strategy_queue_scan` and `validation_gate` in cycle
+execution evidence, and verifies that the consumed final audit report declared
+and contains current queue/spec/backtest/validation/ledger/Lead Book artifact
+ref prefixes before a readiness report can pass. This packet does not create
+accepted research evidence, autonomous readiness, candidate-ready,
+paper/live/order/sizing/runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

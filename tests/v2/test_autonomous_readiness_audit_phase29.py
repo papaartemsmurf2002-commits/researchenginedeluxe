@@ -16,6 +16,8 @@ from tradingbotsuite.v2.audit import (
     run_autonomous_readiness_audit,
 )
 from tradingbotsuite.v2.audit.readiness import REQUIRED_CYCLE_JOB_KINDS
+from tradingbotsuite.v2.audit.readiness import REQUIRED_CYCLE_AUDIT_JOB_KINDS
+from tradingbotsuite.v2.audit.readiness import REQUIRED_CYCLE_ARTIFACT_REF_PREFIXES
 from tradingbotsuite.v2.cli.main import main
 from tradingbotsuite.v2.ledger import LedgerAppendRequest, append_run_to_ledger
 from tradingbotsuite.v2.lead_book import LeadBookStore, create_lead_from_source
@@ -114,6 +116,96 @@ def test_synthetic_complete_evidence_can_pass_gate_without_promotion_claims(tmp_
     assert payload["sizing_instruction"] is False
 
 
+def test_autonomous_readiness_blocks_stale_cycle_missing_queue_and_validation(tmp_path) -> None:
+    ledger_path = _write_ledger(tmp_path)
+    lead_book_path = _write_lead_book(tmp_path, source_artifact_path=ledger_path)
+    stale_cycle_jobs = tuple(
+        kind
+        for kind in REQUIRED_CYCLE_JOB_KINDS
+        if kind not in {"strategy_queue_scan", "validation_gate"}
+    )
+    cycle_path = _write_cycle_execution(tmp_path, job_kinds=stale_cycle_jobs)
+    audit_report_path = _write_audit_report(tmp_path)
+    evidence = _complete_evidence(
+        run_id="synthetic-stale-cycle",
+        cycle_path=cycle_path,
+        audit_report_path=audit_report_path,
+        ledger_path=ledger_path,
+        lead_book_path=lead_book_path,
+    )
+
+    report = run_autonomous_readiness_audit(
+        evidence,
+        output_path=tmp_path / "stale_cycle_readiness_report.json",
+    )
+
+    assert report.status == AutonomousReadinessStatus.BLOCKED
+    assert "cycle_execution_missing_job_kind:strategy_queue_scan" in report.blocker_reasons
+    assert "cycle_execution_missing_job_kind:validation_gate" in report.blocker_reasons
+    assert report.autonomous_research_ready is False
+
+
+def test_autonomous_readiness_blocks_stale_final_audit_requirements(tmp_path) -> None:
+    ledger_path = _write_ledger(tmp_path)
+    lead_book_path = _write_lead_book(tmp_path, source_artifact_path=ledger_path)
+    cycle_path = _write_cycle_execution(tmp_path)
+    stale_required_kinds = tuple(
+        kind
+        for kind in REQUIRED_CYCLE_AUDIT_JOB_KINDS
+        if kind not in {"strategy_queue_scan", "validation_gate"}
+    )
+    stale_prefixes = tuple(
+        prefix
+        for prefix in REQUIRED_CYCLE_ARTIFACT_REF_PREFIXES
+        if prefix
+        not in {
+            "strategy_queue_manifest_id=",
+            "accepted_spec_path=",
+            "accepted_spec_sha256=",
+            "validation_manifest_path=",
+            "validation_manifest_id=",
+        }
+    )
+    audit_report_path = _write_audit_report(
+        tmp_path,
+        required_successful_job_kinds=stale_required_kinds,
+        required_job_kind_order=stale_required_kinds,
+        required_artifact_ref_prefixes=stale_prefixes,
+        artifact_refs=_synthetic_required_artifact_refs(stale_prefixes),
+    )
+    evidence = _complete_evidence(
+        run_id="synthetic-stale-audit-criteria",
+        cycle_path=cycle_path,
+        audit_report_path=audit_report_path,
+        ledger_path=ledger_path,
+        lead_book_path=lead_book_path,
+    )
+
+    report = run_autonomous_readiness_audit(
+        evidence,
+        output_path=tmp_path / "stale_audit_readiness_report.json",
+    )
+
+    assert report.status == AutonomousReadinessStatus.BLOCKED
+    assert (
+        "final_audit_missing_required_successful_job_kind:strategy_queue_scan"
+        in report.blocker_reasons
+    )
+    assert (
+        "final_audit_missing_required_successful_job_kind:validation_gate"
+        in report.blocker_reasons
+    )
+    assert (
+        "final_audit_missing_required_artifact_ref_prefix:strategy_queue_manifest_id="
+        in report.blocker_reasons
+    )
+    assert (
+        "final_audit_missing_artifact_ref_prefix:validation_manifest_path="
+        in report.blocker_reasons
+    )
+    assert report.autonomous_research_ready is False
+
+
 def test_autonomous_readiness_cli_writes_blocker_report(tmp_path, capsys) -> None:
     evidence_path = tmp_path / "incomplete_evidence.json"
     output_path = tmp_path / "cli_readiness_report.json"
@@ -184,6 +276,7 @@ def _write_cycle_execution(
     *,
     status: str = "completed",
     blockers: tuple[str, ...] = (),
+    job_kinds: tuple[str, ...] = REQUIRED_CYCLE_JOB_KINDS,
 ) -> Path:
     path = root / f"{status}_cycle_execution.json"
     payload = {
@@ -199,7 +292,7 @@ def _write_cycle_execution(
                 "action": "ran",
                 "status_after": "succeeded",
             }
-            for kind in REQUIRED_CYCLE_JOB_KINDS
+            for kind in job_kinds
         ],
         "accepted_research_ready": False,
         "promotion_ready": False,
@@ -213,6 +306,10 @@ def _write_audit_report(
     *,
     status: AuditReportStatus = AuditReportStatus.PASS,
     blockers: tuple[str, ...] = (),
+    required_successful_job_kinds: tuple[str, ...] = REQUIRED_CYCLE_AUDIT_JOB_KINDS,
+    required_job_kind_order: tuple[str, ...] = REQUIRED_CYCLE_AUDIT_JOB_KINDS,
+    required_artifact_ref_prefixes: tuple[str, ...] = REQUIRED_CYCLE_ARTIFACT_REF_PREFIXES,
+    artifact_refs: tuple[str, ...] | None = None,
 ) -> Path:
     path = root / f"{status.value}_audit_report.json"
     report = AuditBlockerReport(
@@ -222,18 +319,29 @@ def _write_audit_report(
         status=status,
         accepted_research_ready=False,
         job_store_path=str(root / "jobs.sqlite"),
-        audited_job_ids=tuple(f"JOB-{kind}" for kind in REQUIRED_CYCLE_JOB_KINDS),
-        job_status_counts={"succeeded": len(REQUIRED_CYCLE_JOB_KINDS)},
+        audited_job_ids=tuple(f"JOB-{kind}" for kind in required_successful_job_kinds),
+        job_status_counts={"succeeded": len(required_successful_job_kinds)},
         blocker_reasons=blockers,
         required_next_actions=()
         if not blockers
         else ("provide_real_hyperliquid_archive_operation_evidence",),
-        required_successful_job_kinds=REQUIRED_CYCLE_JOB_KINDS,
-        required_job_kind_order=REQUIRED_CYCLE_JOB_KINDS,
-        artifact_refs=("synthetic_loop_artifact_refs_complete=true",),
+        required_successful_job_kinds=required_successful_job_kinds,
+        required_artifact_ref_prefixes=required_artifact_ref_prefixes,
+        required_job_kind_order=required_job_kind_order,
+        artifact_refs=artifact_refs
+        if artifact_refs is not None
+        else _synthetic_required_artifact_refs(required_artifact_ref_prefixes),
     )
     path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
     return path
+
+
+def _synthetic_required_artifact_refs(prefixes: tuple[str, ...]) -> tuple[str, ...]:
+    refs = []
+    for prefix in prefixes:
+        separator = "" if prefix.endswith("=") else "="
+        refs.append(f"{prefix}{separator}synthetic")
+    return tuple(refs)
 
 
 def _write_ledger(root: Path) -> Path:

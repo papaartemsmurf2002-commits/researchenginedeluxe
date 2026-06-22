@@ -202,7 +202,12 @@ This is the first file to read after `AGENTS.md`.
   generated audit job requires queue manifest/spec refs, and generated cycles
   bind accepted spec path/SHA refs into backtests instead of using inline specs.
   Cycle plans/executions remain operational evidence only, not accepted research
-  evidence or autonomous-ready proof.
+  evidence or autonomous-ready proof. WPR106-462 tightens the autonomous
+  readiness manager gate so it now blocks stale cycle/final-audit evidence that
+  omits the `strategy_queue_scan` or `validation_gate` stages, or that lacks
+  queue manifest, accepted-spec path/SHA, strategy hash, validation manifest,
+  ledger, and Lead Book artifact-ref requirements. This is still a blocker
+  gate only, not accepted research evidence or autonomous-ready proof.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

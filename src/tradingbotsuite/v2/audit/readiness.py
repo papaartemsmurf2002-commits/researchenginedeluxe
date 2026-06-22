@@ -80,10 +80,31 @@ REQUIRED_CYCLE_JOB_KINDS: tuple[str, ...] = (
     "universe_refresh",
     "recent_candle_bootstrap",
     "coverage_audit",
+    "strategy_queue_scan",
     "vectorized_backtest",
+    "validation_gate",
     "ledger_append_export",
     "lead_book_upsert",
     "audit_check",
+)
+
+REQUIRED_CYCLE_AUDIT_JOB_KINDS: tuple[str, ...] = tuple(
+    kind for kind in REQUIRED_CYCLE_JOB_KINDS if kind != "audit_check"
+)
+
+REQUIRED_CYCLE_ARTIFACT_REF_PREFIXES: tuple[str, ...] = (
+    "universe_snapshot_id=",
+    "archive_snapshot_id=",
+    "coverage_report_id",
+    "strategy_queue_manifest_id=",
+    "accepted_spec_path=",
+    "accepted_spec_sha256=",
+    "strategy_spec_hash=",
+    "run_manifest_path=",
+    "validation_manifest_path=",
+    "validation_manifest_id=",
+    "ledger_path=",
+    "lead_book_path=",
 )
 
 _SECRET_NAME_RE = re.compile(
@@ -398,6 +419,22 @@ def _check_final_audit_report(path_value: str | None, artifact_refs: list[str]) 
     blockers.extend(f"final_audit_blocker:{reason}" for reason in report.blocker_reasons)
     if report.accepted_research_ready:
         blockers.append("final_audit_invalid_accepted_research_ready_true")
+    for kind in REQUIRED_CYCLE_AUDIT_JOB_KINDS:
+        if kind not in report.required_successful_job_kinds:
+            blockers.append(f"final_audit_missing_required_successful_job_kind:{kind}")
+        if kind not in report.required_job_kind_order:
+            blockers.append(f"final_audit_missing_required_job_kind_order:{kind}")
+    blockers.extend(_job_order_blockers(report.required_job_kind_order))
+    all_report_refs = (
+        *report.artifact_refs,
+        *(ref for summary in report.job_summaries for ref in summary.output_refs),
+        *(ref for summary in report.job_summaries for ref in summary.archive_manifest_refs),
+    )
+    for prefix in REQUIRED_CYCLE_ARTIFACT_REF_PREFIXES:
+        if prefix not in report.required_artifact_ref_prefixes:
+            blockers.append(f"final_audit_missing_required_artifact_ref_prefix:{prefix}")
+        if not any(ref.startswith(prefix) for ref in all_report_refs):
+            blockers.append(f"final_audit_missing_artifact_ref_prefix:{prefix}")
     return _unique(blockers)
 
 
@@ -438,6 +475,15 @@ def _file_refs(name: str, path: Path) -> tuple[str, str]:
         f"{name}_path={path}",
         f"{name}_sha256={file_sha256(path)}",
     )
+
+
+def _job_order_blockers(required_order: tuple[str, ...]) -> tuple[str, ...]:
+    positions = [required_order.index(kind) for kind in REQUIRED_CYCLE_AUDIT_JOB_KINDS if kind in required_order]
+    if len(positions) != len(REQUIRED_CYCLE_AUDIT_JOB_KINDS):
+        return ()
+    if positions != sorted(positions):
+        return ("final_audit_required_job_kind_order_drift",)
+    return ()
 
 
 def _required_next_actions(blockers: tuple[str, ...]) -> tuple[str, ...]:
