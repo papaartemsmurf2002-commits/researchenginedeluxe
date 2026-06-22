@@ -214,14 +214,14 @@ This is the first file to read after `AGENTS.md`.
   durable cycle runner, defers excess plans as blocker evidence, and writes a
   research-only scheduler session manifest. It is not a daemon, venue fetch
   bypass, ASGI/operator in-process job loop, accepted research evidence, or
-  autonomous-ready proof. Independent WPR106-463 audit found no P0/P1 findings
-  and records a P2 focused-test follow-up for missing-manifest and
-  max-jobs-per-plan scheduler blockers. WPR106-464 adds `redx leadbook scan
-  --status ...`, a read-only multi-state Lead Book queue scan that writes a
-  research-only JSON manifest from the canonical Lead Book, reports missing or
-  empty queues as blocker evidence, and does not mutate lead states, enqueue
-  jobs, run backtests, or imply accepted/autonomous/candidate/paper/live/
-  sizing/runtime/promotion readiness.
+  autonomous-ready proof. Independent WPR106-463 audit found no P0/P1 findings,
+  and WPR106-465 closes the P2 follow-up with focused missing-manifest and
+  max-jobs-per-plan scheduler blocker regressions. WPR106-464 adds `redx
+  leadbook scan --status ...`, a read-only multi-state Lead Book queue scan
+  that writes a research-only JSON manifest from the canonical Lead Book,
+  reports missing or empty queues as blocker evidence, and does not mutate lead
+  states, enqueue jobs, run backtests, or imply accepted/autonomous/candidate/
+  paper/live/sizing/runtime/promotion readiness.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

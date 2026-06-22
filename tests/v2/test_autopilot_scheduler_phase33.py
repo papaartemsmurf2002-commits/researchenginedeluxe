@@ -99,6 +99,62 @@ def test_scheduler_tick_blocks_plan_only_manifest(tmp_path) -> None:
     assert manifest["accepted_research_ready"] is False
 
 
+def test_scheduler_tick_records_missing_plan_manifest_as_blocker(tmp_path) -> None:
+    missing_plan = tmp_path / "missing" / "autopilot_cycle_plan.json"
+
+    tick = run_autopilot_scheduler_tick(
+        plan_manifest_paths=(missing_plan,),
+        output_root=tmp_path / "scheduler",
+    )
+    manifest = _read_json(Path(tick.scheduler_manifest_path))
+
+    assert tick.status.value == "completed_with_blockers"
+    assert tick.executed_plan_count == 0
+    assert any(
+        reason.startswith(
+            "scheduler_plan_blocker:"
+            f"{missing_plan.resolve(strict=False)}:"
+            f"scheduler_plan_rejected:{missing_plan.resolve(strict=False)}:"
+        )
+        and "cycle plan cannot be read" in reason
+        for reason in tick.blocker_reasons
+    )
+    assert manifest["plan_results"][0]["action"] == "blocked"
+    assert manifest["plan_results"][0]["status"] == "blocked"
+    assert manifest["accepted_research_ready"] is False
+
+
+def test_scheduler_tick_records_max_jobs_per_plan_runner_blockers(tmp_path) -> None:
+    job_store_path = tmp_path / "jobs.sqlite"
+    result = plan_autopilot_research_cycle(
+        _cycle_spec(run_id="scheduler-max-jobs"),
+        output_root=tmp_path / "plans",
+        job_store_path=job_store_path,
+        enqueue=True,
+    )
+
+    tick = run_autopilot_scheduler_tick(
+        plan_manifest_paths=(result.plan_manifest_path,),
+        output_root=tmp_path / "scheduler",
+        worker_id="scheduler-max-jobs-worker",
+        max_jobs_per_plan=1,
+    )
+    manifest = _read_json(Path(tick.scheduler_manifest_path))
+    plan_result = manifest["plan_results"][0]
+    execution_manifest = _read_json(Path(plan_result["execution_manifest_path"]))
+
+    assert tick.status.value == "completed_with_blockers"
+    assert tick.executed_plan_count == 1
+    assert any("max_jobs_exhausted_before:" in reason for reason in tick.blocker_reasons)
+    assert plan_result["action"] == "ran"
+    assert plan_result["status"] == "completed_with_blockers"
+    assert plan_result["executed_job_count"] == 1
+    assert any("max_jobs_exhausted_before:" in reason for reason in plan_result["blocker_reasons"])
+    assert execution_manifest["max_jobs"] == 1
+    assert any(execution["action"] == "not_run_max_jobs" for execution in execution_manifest["job_executions"])
+    assert manifest["accepted_research_ready"] is False
+
+
 def test_autopilot_scheduler_tick_cli_prints_manifest(tmp_path, capsys) -> None:
     job_store_path = tmp_path / "jobs.sqlite"
     result = plan_autopilot_research_cycle(
