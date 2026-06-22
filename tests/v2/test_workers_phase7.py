@@ -1704,6 +1704,54 @@ def test_ledger_append_export_worker_records_backtest_run_and_generated_exports(
     assert xlsx_path.exists()
 
 
+def test_ledger_append_export_worker_uses_bound_validation_manifest(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    run_manifest_path = _worker_backtest_run_manifest(
+        tmp_path,
+        store=store,
+        job_id="JOB-backtest-for-ledger-validation",
+        run_id="worker-ledger-validation-source-run",
+    )
+    validation_manifest_path = _worker_validation_gate_manifest(
+        run_manifest_path,
+        validation_status="fail",
+        blocker_reasons=["cost_dependent_failure"],
+        cost_fragile_warning=True,
+    )
+    ledger_path = tmp_path / "ledger" / "experiment_ledger.parquet"
+    queued = store.enqueue(
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        job_id="JOB-ledger-append-export-validation",
+        input_spec={
+            "run_manifest_path": str(run_manifest_path),
+            "validation_manifest_path": str(validation_manifest_path),
+            "ledger_path": str(ledger_path),
+            "evidence_mode": "sandbox_diagnostic",
+            "notes": "worker validation manifest authority smoke",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.LEDGER_APPEND_EXPORT,
+        worker_id="worker-ledger-validation",
+    )
+    loaded = store.load_job(queued.job_id)
+    rows = read_ledger(ledger_path)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "validation_status=fail" in loaded.output_refs
+    assert "blocker_reasons=validation_status_fail,cost_dependent_failure" in loaded.output_refs
+    assert len(rows) == 1
+    assert rows[0].validation_status == "fail"
+    assert rows[0].blocker_reasons == ("validation_status_fail", "cost_dependent_failure")
+    assert rows[0].walk_forward_pass is False
+    assert rows[0].cost_fragile_warning is True
+    assert rows[0].validation_manifest_path == str(validation_manifest_path.resolve(strict=False))
+
+
 def test_ledger_append_export_worker_rejects_secret_like_ledger_path_before_write(tmp_path) -> None:
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
     run_manifest_path = _worker_backtest_run_manifest(
@@ -3300,6 +3348,51 @@ def _worker_backtest_run_manifest(
     assert loaded is not None
     assert loaded.status == WorkerJobStatus.SUCCEEDED
     return tmp_path / "runs" / run_id / "run_manifest.json"
+
+
+def _worker_validation_gate_manifest(
+    run_manifest_path: Path,
+    *,
+    validation_status: str = "pass",
+    blocker_reasons: list[str] | None = None,
+    cost_fragile_warning: bool = False,
+) -> Path:
+    payload = json.loads(run_manifest_path.read_text(encoding="utf-8"))
+    blockers = [] if blocker_reasons is None else blocker_reasons
+    path = run_manifest_path.parent / "validation_gate_manifest.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "validation_gate_manifest_v1",
+                "validation_manifest_id": "e" * 64,
+                "run_id": payload["run_id"],
+                "run_manifest_path": str(run_manifest_path),
+                "run_manifest_sha256": file_sha256(run_manifest_path),
+                "validation_status": validation_status,
+                "evidence_mode": "sandbox_diagnostic",
+                "blocker_reasons": blockers,
+                "fold_count": 1,
+                "positive_fold_count": 1 if validation_status == "pass" else 0,
+                "fold_stability_score": 1.0 if validation_status == "pass" else 0.0,
+                "cost_stress_scenarios": ["base", "stress_2x", "stress_3x"],
+                "cost_fragile_warning": cost_fragile_warning,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "candidate_evidence": False,
+                "candidate_pack_eligible": False,
+                "live_signal": False,
+                "paper_signal": False,
+                "sizing_instruction": False,
+                "order_placement_instruction": False,
+                "runtime_mode_change": False,
+            },
+            sort_keys=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def _run_cli(args: list[str], *, env: dict[str, str]) -> subprocess.CompletedProcess[str]:

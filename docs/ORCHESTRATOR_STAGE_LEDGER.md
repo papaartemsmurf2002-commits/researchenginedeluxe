@@ -505,6 +505,25 @@ public request/response provenance, `evidence_scope=current_sandbox_only`, and
 evidence only; it does not claim as-of historical universe evidence,
 autonomous readiness, candidate readiness, paper/live/order/sizing/runtime, or
 promotion readiness.
+Current WPR106-469/WPR106-470/WPR106-471 v2 public diagnostic cycle update:
+WPR106-469 runs a bounded public Hyperliquid diagnostic cycle through durable
+universe, candle, coverage, strategy queue, vectorized backtest, validation
+gate, ledger, Lead Book, and audit workers under ignored local evidence
+storage. The first run exposed invalid public universe mode `current`, and
+WPR106-470 fixes the public cycle generator to emit
+`current_labeled_sandbox`. A later rerun exposed that ledger rows preserved the
+pre-validation run-manifest pass while the validation gate manifest failed,
+and WPR106-471 makes a bound validation gate manifest authoritative for ledger
+validation status, walk-forward pass, blockers, fold summary, cost fragility,
+and validation manifest path. The final public diagnostic rerun executes all 9
+durable jobs and finishes `completed_with_blockers`: the ledger now records
+`validation_status=fail`, `validation_status_fail`, and
+`cost_dependent_failure`, while the Lead Book row remains `idea_only`,
+`promotion_ready=false`, and `candidate_evidence=false`. The cycle remains
+sandbox diagnostic only and still lacks accepted historical as-of universe,
+accepted 0.98 coverage, independent completion audit, authoritative full-suite
+validation, and other readiness evidence; no autonomous-ready, candidate-ready,
+paper/live/order/sizing/runtime, or promotion claim exists.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

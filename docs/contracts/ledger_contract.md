@@ -1,7 +1,8 @@
 # V2 Ledger Contract
 
 Status: v2 Phase 13 append-only ledger contract
-Audit IDs: `V2-AUD-LEDGER-001`, `V2-AUD-LEDGER-004`
+Audit IDs: `V2-AUD-LEDGER-001`, `V2-AUD-LEDGER-004`,
+`V2-AUD-LEDGER-005`
 
 ## Purpose
 
@@ -21,6 +22,11 @@ views only.
   validation status, net metrics, blocker reasons, and boundary metadata.
 - Accepted-research appends enforce 2024+ start, at least 6 usable months,
   as-of universe mode, no lockbox overlap, validation status, and net metrics.
+- If a ledger append supplies a `validation_manifest_path`, the ledger must
+  validate the manifest schema, run ID, run-manifest SHA-256, pass/fail blocker
+  consistency, and research boundary flags before using it as the authoritative
+  source for validation status, walk-forward pass, validation blockers, fold
+  summary fields, and cost-fragility warnings.
 - Duplicate run IDs fail.
 - Manual edits are rejected by hash/index validation.
 - Canonical rows are written to Parquet with deterministic row hashes and
@@ -39,6 +45,7 @@ views only.
 
 - Manual spreadsheet as source of truth.
 - Hiding failed trials.
+- Ignoring a bound validation gate manifest while logging a trial.
 - Promotion-ready ledger rows.
 - Gross-only leaderboard rows.
 - Current-universe evidence claims in accepted-research mode.

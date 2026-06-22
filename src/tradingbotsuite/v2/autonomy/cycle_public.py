@@ -242,7 +242,7 @@ def _cycle_spec_payload(
                     "public_info_timeout": config.public_info_timeout,
                     "asof_date": config.asof_date.isoformat(),
                     "min_day_notional_usd": config.min_day_notional_usd,
-                    "mode": "current",
+                    "mode": "current_labeled_sandbox",
                 },
             },
             {

@@ -231,7 +231,21 @@ This is the first file to read after `AGENTS.md`.
   volume-eligible current-sandbox rows, raw request/response provenance, and
   `accepted_research_evidence_allowed=false`; it commits only documentation
   evidence and makes no as-of, autonomous-ready, candidate-ready, paper/live,
-  order/sizing/runtime, or promotion claim.
+  order/sizing/runtime, or promotion claim. WPR106-469 then runs a bounded
+  public diagnostic cycle through durable universe, candle, coverage, strategy
+  queue, backtest, validation, ledger, Lead Book, and audit workers under an
+  ignored packet-local root. It executes 9 jobs and remains
+  `completed_with_blockers`, not accepted evidence: blockers include current
+  public universe/recent public window limitations, missing accepted historical
+  coverage/as-of/full-suite/independent evidence, missing silver coverage for
+  the full universe, low trade frequency/six-month validation failures, and
+  validation cost dependence. WPR106-470 fixes the generated public universe
+  mode from invalid `current` to canonical `current_labeled_sandbox`.
+  WPR106-471 fixes ledger validation authority so a bound validation gate
+  manifest drives ledger `validation_status`, `walk_forward_pass`, blockers,
+  and cost-fragility; the final WPR106-469 rerun records
+  `validation_status=fail`, `validation_status_fail`, and
+  `cost_dependent_failure` in the ledger/audit path.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

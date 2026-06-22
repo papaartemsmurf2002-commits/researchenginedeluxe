@@ -51,12 +51,23 @@ def append_run_to_ledger(request: LedgerAppendRequest | dict[str, Any]) -> Ledge
     except Exception as exc:  # pydantic errors are intentionally surfaced as ledger validation failures.
         raise LedgerError(f"invalid_run_manifest: {exc}") from exc
     _validate_manifest_for_ledger(manifest, parsed_request.evidence_mode)
+    validation_manifest_path: Path | None = None
+    validation_manifest: dict[str, Any] | None = None
+    if parsed_request.validation_manifest_path:
+        validation_manifest_path = Path(parsed_request.validation_manifest_path).resolve()
+        validation_manifest = _read_validation_gate_manifest(
+            validation_manifest_path,
+            manifest=manifest,
+            manifest_path=manifest_path,
+        )
     rows = read_ledger(ledger_path)
     if any(row.run_id == manifest.run_id for row in rows):
         raise LedgerError(f"duplicate_run_id: {manifest.run_id}")
     row = ledger_row_from_manifest(
         manifest=manifest,
         manifest_path=manifest_path,
+        validation_manifest=validation_manifest,
+        validation_manifest_path=validation_manifest_path,
         ledger_index=len(rows),
         evidence_mode=parsed_request.evidence_mode,
         notes=parsed_request.notes,
@@ -178,6 +189,8 @@ def ledger_row_from_manifest(
     *,
     manifest: RunManifest,
     manifest_path: Path,
+    validation_manifest: dict[str, Any] | None = None,
+    validation_manifest_path: Path | None = None,
     ledger_index: int,
     evidence_mode: str,
     notes: str = "",
@@ -185,13 +198,23 @@ def ledger_row_from_manifest(
     metrics = manifest.metrics
     cost_manifest = _read_artifact_json(manifest_path.parent, manifest, "cost_manifest")
     fold_count, fold_stability_score = _fold_summary(manifest_path.parent, manifest)
+    if validation_manifest is not None:
+        fold_count = int(validation_manifest.get("fold_count", fold_count))
+        if validation_manifest.get("fold_stability_score") is not None:
+            fold_stability_score = float(validation_manifest["fold_stability_score"])
     max_drawdown = _max_drawdown(manifest_path.parent, manifest)
     days = max(1.0, (manifest.backtest_end - manifest.backtest_start).total_seconds() / 86_400.0)
     annualized_return = _annualized_return(metrics.net_return, days) if metrics is not None else None
     calmar = None
     if annualized_return is not None and max_drawdown is not None and max_drawdown < 0.0:
         calmar = annualized_return / abs(max_drawdown)
-    blocker_reasons = _blocker_reasons(manifest)
+    validation_status = _validation_status(manifest, validation_manifest)
+    blocker_reasons = _blocker_reasons(manifest, validation_manifest)
+    resolved_validation_manifest_path = (
+        str(validation_manifest_path)
+        if validation_manifest_path is not None
+        else _artifact_path(manifest, "validation_manifest")
+    )
     return LedgerRow(
         ledger_index=ledger_index,
         run_id=manifest.run_id,
@@ -226,7 +249,7 @@ def ledger_row_from_manifest(
         cost_model_id=manifest.cost_model_id,
         cost_model_hash=manifest.cost_model_hash,
         gross_return=None if metrics is None else metrics.gross_return,
-        validation_status=manifest.validation_status.value,
+        validation_status=validation_status,
         net_return=None if metrics is None else metrics.net_return,
         roi_observed=None if metrics is None else metrics.net_return,
         annualized_return=annualized_return,
@@ -241,7 +264,7 @@ def ledger_row_from_manifest(
         funding_pnl=None if metrics is None else metrics.total_funding_pnl,
         slippage_cost=None if metrics is None else metrics.total_slippage_cost,
         impact_cost=None if metrics is None else metrics.total_impact_cost,
-        walk_forward_pass=manifest.validation_status.value == "pass",
+        walk_forward_pass=validation_status == "pass",
         pbo_score=None,
         trial_count=1,
         fold_count=fold_count,
@@ -250,10 +273,11 @@ def ledger_row_from_manifest(
         best_vs_median_gap=None,
         failure_reason=manifest.failure_reason,
         minimum_trade_frequency_pass=None if metrics is None else metrics.trade_count > 0,
-        cost_fragile_warning=_cost_fragile_warning(cost_manifest),
+        cost_fragile_warning=_cost_fragile_warning(cost_manifest)
+        or bool(validation_manifest and validation_manifest.get("cost_fragile_warning")),
         artifact_path=str(manifest_path),
         artifact_sha256=file_sha256(manifest_path),
-        validation_manifest_path=_artifact_path(manifest, "validation_manifest"),
+        validation_manifest_path=resolved_validation_manifest_path,
         metrics_path=_artifact_path(manifest, "metrics"),
         notes=notes,
         gross_only=False if metrics is None else metrics.gross_only,
@@ -340,6 +364,48 @@ def _export_columns() -> tuple[str, ...]:
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _read_validation_gate_manifest(
+    path: Path,
+    *,
+    manifest: RunManifest,
+    manifest_path: Path,
+) -> dict[str, Any]:
+    if not path.exists():
+        raise LedgerError("validation_manifest_missing")
+    raw = _read_json(path)
+    if raw.get("schema_version") != "validation_gate_manifest_v1":
+        raise LedgerError("invalid_validation_manifest_schema")
+    if raw.get("run_id") != manifest.run_id:
+        raise LedgerError("validation_manifest_run_id_mismatch")
+    if raw.get("run_manifest_sha256") != file_sha256(manifest_path):
+        raise LedgerError("validation_manifest_run_manifest_sha256_mismatch")
+    status = str(raw.get("validation_status", "")).strip().lower()
+    if status not in {"pass", "fail"}:
+        raise LedgerError("validation_manifest_status_invalid")
+    blockers = raw.get("blocker_reasons", ())
+    if not isinstance(blockers, list):
+        raise LedgerError("validation_manifest_blocker_reasons_invalid")
+    if status == "pass" and blockers:
+        raise LedgerError("validation_manifest_pass_with_blockers")
+    if status == "fail" and not blockers:
+        raise LedgerError("validation_manifest_fail_without_blockers")
+    if not bool(raw.get("research_only")) or not bool(raw.get("observe_only")):
+        raise LedgerError("validation_manifest_boundary_violation")
+    for forbidden in (
+        "promotion_ready",
+        "candidate_evidence",
+        "candidate_pack_eligible",
+        "live_signal",
+        "paper_signal",
+        "sizing_instruction",
+        "order_placement_instruction",
+        "runtime_mode_change",
+    ):
+        if bool(raw.get(forbidden)):
+            raise LedgerError("validation_manifest_boundary_violation")
+    return raw
 
 
 def _read_artifact_json(root: Path, manifest: RunManifest, name: str) -> dict[str, Any]:
@@ -437,14 +503,29 @@ def _annualized_return(net_return: float, days: float) -> float | None:
     return value
 
 
-def _blocker_reasons(manifest: RunManifest) -> tuple[str, ...]:
+def _validation_status(
+    manifest: RunManifest,
+    validation_manifest: dict[str, Any] | None,
+) -> str:
+    if validation_manifest is not None:
+        return str(validation_manifest["validation_status"]).strip().lower()
+    return manifest.validation_status.value
+
+
+def _blocker_reasons(
+    manifest: RunManifest,
+    validation_manifest: dict[str, Any] | None = None,
+) -> tuple[str, ...]:
     reasons: list[str] = []
     if manifest.failure_reason:
         reasons.append(manifest.failure_reason)
     if manifest.status != RunStatus.SUCCEEDED:
         reasons.append(f"run_status_{manifest.status.value}")
-    if manifest.validation_status.value != "pass":
-        reasons.append(f"validation_status_{manifest.validation_status.value}")
+    status = _validation_status(manifest, validation_manifest)
+    if status != "pass":
+        reasons.append(f"validation_status_{status}")
+    if validation_manifest is not None:
+        reasons.extend(str(reason) for reason in validation_manifest.get("blocker_reasons", ()))
     return tuple(dict.fromkeys(reasons))
 
 

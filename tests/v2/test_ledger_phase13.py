@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.ledger import (
     LedgerAppendRequest,
     LedgerError,
@@ -72,6 +73,56 @@ def test_ledger_records_failed_trials(tmp_path) -> None:
         "run_status_failed",
         "validation_status_fail",
     )
+
+
+def test_ledger_append_uses_validation_gate_manifest_when_provided(tmp_path) -> None:
+    run_manifest = _write_run_manifest(tmp_path, "validation-gate-failed-run")
+    validation_manifest = _write_validation_gate_manifest(
+        run_manifest,
+        validation_status="fail",
+        blocker_reasons=["cost_dependent_failure"],
+        cost_fragile_warning=True,
+    )
+    ledger_path = tmp_path / "ledger.parquet"
+
+    row = append_run_to_ledger(
+        LedgerAppendRequest(
+            run_manifest_path=str(run_manifest),
+            validation_manifest_path=str(validation_manifest),
+            ledger_path=str(ledger_path),
+            evidence_mode="sandbox_diagnostic",
+        )
+    )
+    rows = read_ledger(ledger_path)
+
+    assert row.row_status == "succeeded"
+    assert row.validation_status == "fail"
+    assert row.walk_forward_pass is False
+    assert row.fold_count == 1
+    assert row.fold_stability_score == 0.0
+    assert row.cost_fragile_warning is True
+    assert row.blocker_reasons == ("validation_status_fail", "cost_dependent_failure")
+    assert row.validation_manifest_path == str(validation_manifest.resolve(strict=False))
+    assert rows[0] == row
+
+
+def test_ledger_append_rejects_validation_gate_manifest_for_different_run(tmp_path) -> None:
+    run_manifest = _write_run_manifest(tmp_path, "validation-gate-source-run")
+    other_run_manifest = _write_run_manifest(tmp_path, "validation-gate-other-run")
+    validation_manifest = _write_validation_gate_manifest(
+        other_run_manifest,
+        validation_status="fail",
+        blocker_reasons=["cost_dependent_failure"],
+    )
+
+    with pytest.raises(LedgerError, match="validation_manifest_run_id_mismatch"):
+        append_run_to_ledger(
+            LedgerAppendRequest(
+                run_manifest_path=str(run_manifest),
+                validation_manifest_path=str(validation_manifest),
+                ledger_path=str(tmp_path / "ledger.parquet"),
+            )
+        )
 
 
 def test_ledger_rejects_duplicate_run_id(tmp_path) -> None:
@@ -270,6 +321,51 @@ def _write_run_manifest(
         payload["metrics"] = None
     path = run_dir / "run_manifest.json"
     path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+    return path
+
+
+def _write_validation_gate_manifest(
+    run_manifest: Path,
+    *,
+    validation_status: str = "pass",
+    blocker_reasons: list[str] | None = None,
+    cost_fragile_warning: bool = False,
+) -> Path:
+    payload = json.loads(run_manifest.read_text(encoding="utf-8"))
+    blockers = [] if blocker_reasons is None else blocker_reasons
+    path = run_manifest.parent / "validation_gate_manifest.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "validation_gate_manifest_v1",
+                "validation_manifest_id": "d" * 64,
+                "run_id": payload["run_id"],
+                "run_manifest_path": str(run_manifest),
+                "run_manifest_sha256": file_sha256(run_manifest),
+                "validation_status": validation_status,
+                "evidence_mode": "sandbox_diagnostic",
+                "blocker_reasons": blockers,
+                "fold_count": 1,
+                "positive_fold_count": 1 if validation_status == "pass" else 0,
+                "fold_stability_score": 1.0 if validation_status == "pass" else 0.0,
+                "cost_stress_scenarios": ["base", "stress_2x", "stress_3x"],
+                "cost_fragile_warning": cost_fragile_warning,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "candidate_evidence": False,
+                "candidate_pack_eligible": False,
+                "live_signal": False,
+                "paper_signal": False,
+                "sizing_instruction": False,
+                "order_placement_instruction": False,
+                "runtime_mode_change": False,
+            },
+            sort_keys=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return path
 
 

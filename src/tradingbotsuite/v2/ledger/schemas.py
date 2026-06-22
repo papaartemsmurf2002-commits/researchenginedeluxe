@@ -21,6 +21,7 @@ class LedgerAppendRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     run_manifest_path: str = Field(min_length=1)
+    validation_manifest_path: str | None = None
     ledger_path: str = Field(min_length=1)
     evidence_mode: str = "sandbox_diagnostic"
     notes: str = ""

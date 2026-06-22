@@ -48,6 +48,12 @@ def _run_ledger_append_export_job(
     )
     if run_manifest_path.name != "run_manifest.json":
         raise ValueError("ledger worker run_manifest_path must point to run_manifest.json")
+    validation_manifest_path = _optional_path(
+        spec.get("validation_manifest_path"),
+        field_name="validation_manifest_path",
+        allowed_suffixes=(".json",),
+        require_file=True,
+    )
     ledger_path = _required_path(
         spec,
         "ledger_path",
@@ -67,6 +73,9 @@ def _run_ledger_append_export_job(
     row = append_run_to_ledger(
         LedgerAppendRequest(
             run_manifest_path=str(run_manifest_path),
+            validation_manifest_path=None
+            if validation_manifest_path is None
+            else str(validation_manifest_path),
             ledger_path=str(ledger_path),
             evidence_mode=str(spec.get("evidence_mode", "sandbox_diagnostic")),
             notes=str(spec.get("notes", "")),
@@ -154,6 +163,7 @@ def _optional_path(
     *,
     field_name: str,
     allowed_suffixes: tuple[str, ...],
+    require_file: bool = False,
 ) -> Path | None:
     if value is None:
         return None
@@ -163,7 +173,7 @@ def _optional_path(
         Path(value),
         field_name=field_name,
         allowed_suffixes=allowed_suffixes,
-        require_file=False,
+        require_file=require_file,
     )
 
 

@@ -51,7 +51,7 @@ def test_public_candle_cycle_spec_enqueues_public_api_diagnostic_jobs(tmp_path) 
     lead_spec = jobs["lead_book_upsert"]["input_spec"]
 
     assert universe_spec["source"] == "public_api"
-    assert universe_spec["mode"] == "current"
+    assert universe_spec["mode"] == "current_labeled_sandbox"
     assert universe_spec["public_info_url"] == "https://example.test/info"
     assert candle_spec["source"] == "public_api"
     assert candle_spec["public_info_url"] == "https://example.test/info"
