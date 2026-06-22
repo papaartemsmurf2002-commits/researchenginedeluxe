@@ -141,6 +141,8 @@ def write_autopilot_fixture_cycle_spec(
         raise ValueError("fixture cycle output root escapes requested output_root") from exc
 
     fixture_root = run_root / "fixtures"
+    strategy_root = run_root / "strategy_specs"
+    strategy_queue_output_root = run_root / "strategy_queue"
     archive_root = run_root / "archive"
     backtest_output_root = run_root / "backtests"
     ledger_path = run_root / "ledger" / "experiment_ledger.parquet"
@@ -148,9 +150,11 @@ def write_autopilot_fixture_cycle_spec(
     plan_output_root = run_root / "plans"
     job_store_path = run_root / "jobs.sqlite"
     fixture_root.mkdir(parents=True, exist_ok=True)
+    strategy_root.mkdir(parents=True, exist_ok=True)
 
     universe_payload_file = fixture_root / "hyperliquid_universe_payload.json"
     candle_records_file = fixture_root / "daily_candles.jsonl"
+    strategy_spec_file = strategy_root / "fixture_mean_reversion.json"
     universe_payload_file.write_text(
         json.dumps(_universe_payload(parsed), sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
@@ -159,12 +163,18 @@ def write_autopilot_fixture_cycle_spec(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in _daily_candle_rows(parsed)),
         encoding="utf-8",
     )
+    strategy_spec_file.write_text(
+        json.dumps(_fixture_strategy_spec(), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     cycle_spec = _cycle_spec_payload(
         parsed,
         archive_root=archive_root,
         backtest_output_root=backtest_output_root,
         fixture_root=fixture_root,
+        strategy_root=strategy_root,
+        strategy_queue_output_root=strategy_queue_output_root,
         universe_payload_file=universe_payload_file,
         candle_records_file=candle_records_file,
         ledger_path=ledger_path,
@@ -207,6 +217,8 @@ def _cycle_spec_payload(
     archive_root: Path,
     backtest_output_root: Path,
     fixture_root: Path,
+    strategy_root: Path,
+    strategy_queue_output_root: Path,
     universe_payload_file: Path,
     candle_records_file: Path,
     ledger_path: Path,
@@ -216,6 +228,7 @@ def _cycle_spec_payload(
     universe_job_id = f"JOB-{run_id}-universe"
     candles_job_id = f"JOB-{run_id}-candles"
     coverage_job_id = f"JOB-{run_id}-coverage"
+    strategy_queue_job_id = f"JOB-{run_id}-strategy-queue"
     backtest_job_id = f"JOB-{run_id}-backtest"
     validation_job_id = f"JOB-{run_id}-validation"
     ledger_job_id = f"JOB-{run_id}-ledger"
@@ -282,6 +295,17 @@ def _cycle_spec_payload(
                 },
             },
             {
+                "job_id": strategy_queue_job_id,
+                "kind": "strategy_queue_scan",
+                "input_spec": {
+                    "strategy_root": str(strategy_root),
+                    "output_root": str(strategy_queue_output_root),
+                    "run_id": f"{run_id}-strategy-queue",
+                    "max_files": 10,
+                    "require_single_accepted": True,
+                },
+            },
+            {
                 "job_id": backtest_job_id,
                 "kind": "vectorized_backtest",
                 "input_spec": {
@@ -299,7 +323,6 @@ def _cycle_spec_payload(
                     "asof_date": config.asof_date.isoformat(),
                     "evidence_mode": config.evidence_mode,
                     "universe_mode": "as_of",
-                    "strategy_spec": _fixture_strategy_spec(),
                     "cost_model": _fixture_cost_model(),
                 },
             },
@@ -390,6 +413,18 @@ def _cycle_spec_payload(
                 "target_job_id": backtest_job_id,
                 "target_input_path": "archive_snapshot_id",
                 "source_ref_prefix": "archive_snapshot_id=",
+            },
+            {
+                "source_job_id": strategy_queue_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "strategy_spec_file",
+                "source_ref_prefix": "accepted_spec_path=",
+            },
+            {
+                "source_job_id": strategy_queue_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "strategy_spec_file_sha256",
+                "source_ref_prefix": "accepted_spec_sha256=",
             },
             {
                 "source_job_id": backtest_job_id,

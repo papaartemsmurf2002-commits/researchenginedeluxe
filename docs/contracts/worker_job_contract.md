@@ -124,6 +124,10 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   one generated `audit_check` job. Planning/enqueueing is not worker execution:
   queued jobs remain incomplete evidence until a worker runs them and the final
   audit report passes without blockers.
+- Bounded autopilot cycle plans must require `strategy_queue_scan` after
+  `coverage_audit` and before `vectorized_backtest`. The generated audit job
+  must require strategy queue manifest refs, accepted spec path/SHA refs, and
+  strategy spec hash refs as loop evidence.
 - Bounded autopilot cycle plans must require `validation_gate` after
   `vectorized_backtest` and before ledger/Lead Book interpretation. The
   generated audit job must require validation manifest refs as loop evidence.

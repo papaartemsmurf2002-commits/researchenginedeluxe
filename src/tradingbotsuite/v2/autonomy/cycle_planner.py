@@ -55,6 +55,7 @@ _ALLOWED_PLANNED_JOB_KINDS = frozenset(
         WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
         WorkerJobKind.OFFICIAL_S3_BACKFILL,
         WorkerJobKind.COVERAGE_AUDIT,
+        WorkerJobKind.STRATEGY_QUEUE_SCAN,
         WorkerJobKind.VECTORIZED_BACKTEST,
         WorkerJobKind.VALIDATION_GATE,
         WorkerJobKind.LEDGER_APPEND_EXPORT,
@@ -75,6 +76,7 @@ _REQUIRED_STAGE_KINDS = (
     ("universe_refresh", frozenset({WorkerJobKind.UNIVERSE_REFRESH})),
     ("collector", _COLLECTOR_STAGE_KINDS),
     ("coverage_audit", frozenset({WorkerJobKind.COVERAGE_AUDIT})),
+    ("strategy_queue_scan", frozenset({WorkerJobKind.STRATEGY_QUEUE_SCAN})),
     ("vectorized_backtest", frozenset({WorkerJobKind.VECTORIZED_BACKTEST})),
     ("validation_gate", frozenset({WorkerJobKind.VALIDATION_GATE})),
     ("ledger_append_export", frozenset({WorkerJobKind.LEDGER_APPEND_EXPORT})),
@@ -84,6 +86,10 @@ _DEFAULT_ARTIFACT_REF_PREFIXES = (
     "universe_snapshot_id=",
     "archive_snapshot_id=",
     "coverage_report_id",
+    "strategy_queue_manifest_id=",
+    "accepted_spec_path=",
+    "accepted_spec_sha256=",
+    "strategy_spec_hash=",
     "run_manifest_path=",
     "validation_manifest_path=",
     "validation_manifest_id=",
@@ -130,6 +136,7 @@ def plan_autopilot_research_cycle(
         )
     _validate_job_specs(parsed.jobs)
     _validate_required_stage_coverage(parsed.jobs)
+    _validate_required_stage_order(parsed.jobs)
     _validate_bindings(parsed.jobs, parsed.bindings)
 
     root = Path(output_root).resolve()
@@ -245,6 +252,22 @@ def _validate_required_stage_coverage(jobs: tuple[AutopilotCycleJobSpec, ...]) -
         raise AutopilotCyclePlanError(
             "bounded cycle is missing required stage(s): " + ",".join(missing)
         )
+
+
+def _validate_required_stage_order(jobs: tuple[AutopilotCycleJobSpec, ...]) -> None:
+    previous_stage_name: str | None = None
+    previous_max_index = -1
+    for stage_name, stage_kinds in _REQUIRED_STAGE_KINDS:
+        indexes = [index for index, job in enumerate(jobs) if job.kind in stage_kinds]
+        if not indexes:
+            continue
+        if previous_stage_name is not None and min(indexes) <= previous_max_index:
+            raise AutopilotCyclePlanError(
+                "bounded cycle required stages are out of order: "
+                f"{previous_stage_name}->{stage_name}"
+            )
+        previous_stage_name = stage_name
+        previous_max_index = max(indexes)
 
 
 def _validate_bindings(

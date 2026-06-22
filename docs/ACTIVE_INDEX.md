@@ -196,7 +196,13 @@ This is the first file to read after `AGENTS.md`.
   workers reject missing/mismatched/secret-like/unsupported file intake before
   panel loads and still validate loaded declarative specs before run artifacts.
   This is trusted input plumbing only, not strategy performance, accepted
-  research evidence, or autonomous-ready proof.
+  research evidence, or autonomous-ready proof. WPR106-461 wires that queue
+  worker into bounded autopilot plans and generated fixture/public cycle specs:
+  `strategy_queue_scan` is required after coverage and before backtest, the
+  generated audit job requires queue manifest/spec refs, and generated cycles
+  bind accepted spec path/SHA refs into backtests instead of using inline specs.
+  Cycle plans/executions remain operational evidence only, not accepted research
+  evidence or autonomous-ready proof.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

@@ -151,16 +151,26 @@ def write_autopilot_public_candle_cycle_spec(
         raise ValueError("public diagnostic cycle output root escapes requested output_root") from exc
 
     archive_root = run_root / "archive"
+    strategy_root = run_root / "strategy_specs"
+    strategy_queue_output_root = run_root / "strategy_queue"
     backtest_output_root = run_root / "backtests"
     ledger_path = run_root / "ledger" / "experiment_ledger.parquet"
     lead_book_path = run_root / "lead_book" / "lead_book.parquet"
     plan_output_root = run_root / "plans"
     job_store_path = run_root / "jobs.sqlite"
     run_root.mkdir(parents=True, exist_ok=True)
+    strategy_root.mkdir(parents=True, exist_ok=True)
+    strategy_spec_file = strategy_root / "public_diagnostic_mean_reversion.json"
+    strategy_spec_file.write_text(
+        json.dumps(_public_strategy_spec(parsed), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
     cycle_spec = _cycle_spec_payload(
         parsed,
         archive_root=archive_root,
+        strategy_root=strategy_root,
+        strategy_queue_output_root=strategy_queue_output_root,
         backtest_output_root=backtest_output_root,
         ledger_path=ledger_path,
         lead_book_path=lead_book_path,
@@ -191,6 +201,8 @@ def _cycle_spec_payload(
     config: AutopilotPublicCandleCycleConfig,
     *,
     archive_root: Path,
+    strategy_root: Path,
+    strategy_queue_output_root: Path,
     backtest_output_root: Path,
     ledger_path: Path,
     lead_book_path: Path,
@@ -199,6 +211,7 @@ def _cycle_spec_payload(
     universe_job_id = f"JOB-{run_id}-universe"
     candles_job_id = f"JOB-{run_id}-candles"
     coverage_job_id = f"JOB-{run_id}-coverage"
+    strategy_queue_job_id = f"JOB-{run_id}-strategy-queue"
     backtest_job_id = f"JOB-{run_id}-backtest"
     validation_job_id = f"JOB-{run_id}-validation"
     ledger_job_id = f"JOB-{run_id}-ledger"
@@ -270,6 +283,17 @@ def _cycle_spec_payload(
                 },
             },
             {
+                "job_id": strategy_queue_job_id,
+                "kind": "strategy_queue_scan",
+                "input_spec": {
+                    "strategy_root": str(strategy_root),
+                    "output_root": str(strategy_queue_output_root),
+                    "run_id": f"{run_id}-strategy-queue",
+                    "max_files": 10,
+                    "require_single_accepted": True,
+                },
+            },
+            {
                 "job_id": backtest_job_id,
                 "kind": "vectorized_backtest",
                 "input_spec": {
@@ -287,7 +311,6 @@ def _cycle_spec_payload(
                     "asof_date": config.asof_date.isoformat(),
                     "evidence_mode": config.evidence_mode,
                     "universe_mode": "current",
-                    "strategy_spec": _public_strategy_spec(config),
                     "cost_model": _public_cost_model(),
                 },
             },
@@ -393,6 +416,18 @@ def _cycle_spec_payload(
                 "target_job_id": backtest_job_id,
                 "target_input_path": "archive_snapshot_id",
                 "source_ref_prefix": "archive_snapshot_id=",
+            },
+            {
+                "source_job_id": strategy_queue_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "strategy_spec_file",
+                "source_ref_prefix": "accepted_spec_path=",
+            },
+            {
+                "source_job_id": strategy_queue_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "strategy_spec_file_sha256",
+                "source_ref_prefix": "accepted_spec_sha256=",
             },
             {
                 "source_job_id": backtest_job_id,

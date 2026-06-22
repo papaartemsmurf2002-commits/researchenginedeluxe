@@ -447,6 +447,15 @@ evidence. The packet does not make strategy queue scanning a required bounded
 cycle stage and does not certify strategy performance, accepted research
 evidence, autonomous readiness, candidate-ready, paper/live/order/sizing/
 runtime, or promotion behavior.
+Current WPR106-461 v2 autopilot strategy-queue stage update: WPR106-461 makes
+`strategy_queue_scan` a required bounded autopilot cycle stage after coverage
+audit and before vectorized backtest. The planner now enforces required-stage
+order, the generated audit job requires queue manifest/spec refs, and
+fixture/public cycle specs write local declarative strategy files for the queue
+worker before binding accepted spec path/SHA refs into backtests. Cycle plans
+and executions remain operational evidence only and do not certify accepted
+research evidence, autonomous readiness, candidate-ready, paper/live/order/
+sizing/runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

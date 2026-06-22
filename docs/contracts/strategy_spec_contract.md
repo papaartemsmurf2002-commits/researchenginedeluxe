@@ -62,6 +62,9 @@ Declarative strategy specs are the first-class v2 strategy interface.
 - Durable backtest workers may load a local normalized declarative spec file
   only when the job also provides the matching SHA-256 and the loaded spec
   passes this contract's validator.
+- Bounded autopilot cycle specs must route generated or queued declarative
+  specs through `strategy_queue_scan` before `vectorized_backtest`, then bind
+  the accepted spec path and SHA-256 into the backtest worker input.
 
 ## Forbidden
 
