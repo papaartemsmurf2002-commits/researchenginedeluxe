@@ -36,6 +36,7 @@ class WorkerJobKind(str, Enum):
     WEBSOCKET_L2_BBO_CAPTURE = "websocket_l2_bbo_capture"
     OFFICIAL_S3_BACKFILL = "official_s3_backfill"
     COVERAGE_AUDIT = "coverage_audit"
+    STRATEGY_QUEUE_SCAN = "strategy_queue_scan"
     BACKTEST = "backtest"
     VECTORIZED_BACKTEST = "vectorized_backtest"
     EVENT_DRIVEN_SIMULATION = "event_driven_simulation"

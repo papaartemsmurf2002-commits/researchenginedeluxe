@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`, `V2-AUD-AUTONOMY-011`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`, `V2-AUD-WORKER-023`, `V2-AUD-AUTONOMY-011`
 
 ## Purpose
 
@@ -46,6 +46,13 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   `archive_snapshot_id`, `universe_snapshot_id`, and `timeframe`; this mode
   must audit all in-scope universe instruments against local silver bars and
   return missing-file and coverage blocker refs without fetching venue data.
+- `strategy_queue_scan` jobs must run through the durable worker runner, scan
+  only local JSON/YAML declarative specs through the canonical strategy-spec
+  validator, write a strategy queue manifest, and return manifest path/ID/SHA,
+  accepted/rejected counts, and blocker refs. If exactly one spec is accepted,
+  the worker may also return normalized accepted-spec path/SHA plus
+  strategy-ID/spec-hash refs. Multiple accepted specs must remain ambiguous
+  blocker evidence rather than a hidden selection.
 - `websocket_capture` jobs with explicit candle datatype and local source
   records may complete with raw/bronze/silver/coverage/snapshot archive refs
   plus bounded-batch caveats; other generic WebSocket capture jobs must still
@@ -68,9 +75,15 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   unattended capture segments, not scheduler proof or accepted historical
   coverage proof.
 - `vectorized_backtest` jobs must run through the durable worker runner, load
-  panels only through `BacktestDataService`, validate inline declarative
-  strategy specs before strategy code sees rows, and return run-manifest,
-  data-manifest, coverage, archive-snapshot, and universe-snapshot refs.
+  panels only through `BacktestDataService`, validate declarative strategy
+  specs before strategy code sees rows, and return run-manifest, data-manifest,
+  coverage, archive-snapshot, and universe-snapshot refs.
+- `vectorized_backtest` jobs may use either an inline `strategy_spec` object or
+  a local `strategy_spec_file` with a matching `strategy_spec_file_sha256`.
+  File intake must support only JSON/YAML declarative specs, reject secret-like
+  or unsupported filenames, reject missing or mismatched SHA-256 values, reject
+  simultaneous inline/file specs, and validate the loaded spec before any panel
+  load or run artifact write.
 - Engine-level failed run manifests are research artifacts and may complete the
   worker job successfully when the worker produced the required failure
   artifacts. Data-service or strategy-spec preflight failures remain worker
@@ -149,6 +162,8 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Terminal state changes without a transition record.
 - Running data-quality audits against venue APIs or non-archive local files in
   the worker path.
+- Treating strategy queue worker outputs as strategy performance, validation,
+  ledger, Lead Book, accepted research, or autonomous-ready evidence.
 - Running universe refresh jobs from public network sources without explicit
   `source=public_api` and unsigned public-info provenance refs.
 - Running public WebSocket BBO/L2 capture without explicit
@@ -156,8 +171,8 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Treating public WebSocket capture-session heartbeats or reports as
   autonomous-ready certification, scheduler proof, or accepted coverage proof.
 - Running durable backtests against direct venue/API reads, unvalidated
-  strategy specs, or arbitrary strategy-spec files without a trusted-file
-  intake packet.
+  strategy specs, arbitrary unhashed strategy-spec files, or strategy-spec
+  files with missing or mismatched SHA-256 refs.
 - Treating validation gate manifests as ledger rows, Lead Book updates,
   accepted research evidence, or autonomous-ready certification by themselves.
 - Writing validation gate reports to secret/local-state filenames.

@@ -1552,6 +1552,104 @@ def test_vectorized_backtest_worker_rejects_invalid_strategy_spec_before_run(tmp
     assert not (tmp_path / "runs" / "worker-vectorized-bad-spec" / "run_manifest.json").exists()
 
 
+def test_vectorized_backtest_worker_loads_sha_checked_strategy_spec_file(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    strategy_root = tmp_path / "strategy_queue" / "accepted_specs"
+    strategy_root.mkdir(parents=True)
+    strategy_path = strategy_root / "worker-file-strategy.json"
+    strategy_path.write_text(
+        json.dumps(_worker_backtest_strategy_spec(), sort_keys=True),
+        encoding="utf-8",
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        job_id="JOB-vectorized-backtest-file-spec",
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "output_root": str(tmp_path / "runs"),
+            "run_id": "worker-vectorized-file-spec",
+            "experiment_id": "phase7-worker-backtest-file-spec",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-07-01T00:00:00+00:00",
+            "asof_date": "2026-06-21",
+            "evidence_mode": "accepted_research",
+            "strategy_spec_file": str(strategy_path),
+            "strategy_spec_file_sha256": file_sha256(strategy_path),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        worker_id="worker-backtest-file-spec",
+    )
+    loaded = store.load_job(queued.job_id)
+    run_manifest = json.loads(
+        (tmp_path / "runs" / "worker-vectorized-file-spec" / "run_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "strategy_spec_source=file" in loaded.output_refs
+    assert f"strategy_spec_file={strategy_path.resolve(strict=False)}" in loaded.output_refs
+    assert f"strategy_spec_file_sha256={file_sha256(strategy_path)}" in loaded.output_refs
+    assert run_manifest["status"] == "succeeded"
+    assert run_manifest["research_only"] is True
+    assert run_manifest["promotion_ready"] is False
+
+
+def test_vectorized_backtest_worker_rejects_strategy_spec_file_without_sha_before_run(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    strategy_path = tmp_path / "strategy.json"
+    strategy_path.write_text(
+        json.dumps(_worker_backtest_strategy_spec(), sort_keys=True),
+        encoding="utf-8",
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        job_id="JOB-vectorized-backtest-file-missing-sha",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "output_root": str(tmp_path / "runs"),
+            "run_id": "worker-vectorized-file-missing-sha",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-07-01T00:00:00+00:00",
+            "asof_date": "2026-06-21",
+            "evidence_mode": "accepted_research",
+            "strategy_spec_file": str(strategy_path),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        worker_id="worker-backtest-missing-sha",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "strategy_spec_file_sha256 is required" in (loaded.failure_reason or "")
+    assert not (tmp_path / "runs" / "worker-vectorized-file-missing-sha" / "run_manifest.json").exists()
+
+
 def test_ledger_append_export_worker_records_backtest_run_and_generated_exports(tmp_path) -> None:
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
     run_manifest_path = _worker_backtest_run_manifest(

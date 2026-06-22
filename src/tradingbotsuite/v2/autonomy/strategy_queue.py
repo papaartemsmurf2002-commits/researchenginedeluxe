@@ -21,6 +21,8 @@ from tradingbotsuite.v2.strategy_specs import (
     parse_strategy_spec,
     validate_strategy_spec,
 )
+from tradingbotsuite.v2.workers.job_store import WorkerJobStore
+from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobRecord, WorkerRunResult
 
 STRATEGY_QUEUE_CONFIG_SCHEMA_VERSION = "strategy_queue_scan_config_v1"
 STRATEGY_QUEUE_MANIFEST_SCHEMA_VERSION = "strategy_queue_manifest_v1"
@@ -50,6 +52,7 @@ class StrategyQueueScanConfig(BaseModel):
     output_root: str = Field(min_length=1)
     run_id: str = Field(default="strategy-queue-scan", pattern=r"^[A-Za-z0-9_.-]+$")
     max_files: int = Field(default=500, ge=1, le=10_000)
+    require_single_accepted: bool = False
     evidence_mode: str = STRATEGY_QUEUE_EVIDENCE_MODE
     research_only: bool = True
     observe_only: bool = True
@@ -94,6 +97,7 @@ class StrategyQueueManifest(BaseModel):
     strategy_root: str = Field(min_length=1)
     output_root: str = Field(min_length=1)
     evidence_mode: str = STRATEGY_QUEUE_EVIDENCE_MODE
+    require_single_accepted: bool = False
     accepted_research_ready: bool = False
     item_count: int = Field(ge=0)
     accepted_count: int = Field(ge=0)
@@ -136,6 +140,7 @@ class StrategyQueueScanResult(BaseModel):
     manifest_id: str = Field(min_length=64, max_length=64)
     run_id: str = Field(min_length=1)
     evidence_mode: str = STRATEGY_QUEUE_EVIDENCE_MODE
+    require_single_accepted: bool = False
     accepted_research_ready: bool = False
     item_count: int = Field(ge=0)
     accepted_count: int = Field(ge=0)
@@ -189,11 +194,15 @@ def scan_strategy_queue(
         _scan_strategy_file(path, strategy_root=strategy_root, normalized_root=normalized_root)
         for path in source_files
     )
+    accepted_count = sum(1 for item in items if item.status == "accepted")
+    rejected_count = sum(1 for item in items if item.status == "rejected")
     blockers = _aggregate_blockers(items)
     if not items:
         blockers = tuple(sorted((*blockers, "strategy_queue_empty")))
-    if not any(item.status == "accepted" for item in items):
+    if accepted_count == 0:
         blockers = tuple(sorted((*blockers, "no_accepted_strategy_specs")))
+    if parsed.require_single_accepted and accepted_count > 1:
+        blockers = tuple(sorted((*blockers, "multiple_accepted_strategy_specs")))
 
     manifest_payload = {
         "schema_version": STRATEGY_QUEUE_MANIFEST_SCHEMA_VERSION,
@@ -202,10 +211,11 @@ def scan_strategy_queue(
         "strategy_root": str(strategy_root),
         "output_root": str(output_root),
         "evidence_mode": STRATEGY_QUEUE_EVIDENCE_MODE,
+        "require_single_accepted": parsed.require_single_accepted,
         "accepted_research_ready": False,
         "item_count": len(items),
-        "accepted_count": sum(1 for item in items if item.status == "accepted"),
-        "rejected_count": sum(1 for item in items if item.status == "rejected"),
+        "accepted_count": accepted_count,
+        "rejected_count": rejected_count,
         "blocker_reasons": blockers,
         "items": [item.model_dump(mode="json") for item in items],
         "boundary_flags": dict(RESEARCH_BOUNDARY),
@@ -224,10 +234,75 @@ def scan_strategy_queue(
         manifest_path=str(manifest_path),
         manifest_id=manifest.manifest_id,
         run_id=manifest.run_id,
+        require_single_accepted=manifest.require_single_accepted,
         item_count=manifest.item_count,
         accepted_count=manifest.accepted_count,
         rejected_count=manifest.rejected_count,
         blocker_reasons=manifest.blocker_reasons,
+    )
+
+
+def run_strategy_queue_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    if job.kind != WorkerJobKind.STRATEGY_QUEUE_SCAN:
+        raise ValueError(f"unsupported strategy queue job kind: {job.kind.value}")
+
+    result = scan_strategy_queue(job.input_spec)
+    manifest_path = Path(result.manifest_path)
+    manifest = StrategyQueueManifest.model_validate(
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+    )
+    manifest_sha = file_sha256(manifest_path)
+    accepted_items = tuple(item for item in manifest.items if item.status == "accepted")
+    output_refs = [
+        "job_kind=strategy_queue_scan",
+        f"job_id={job.job_id}",
+        f"run_id={manifest.run_id}",
+        f"evidence_mode={manifest.evidence_mode}",
+        f"strategy_queue_manifest_path={manifest_path}",
+        f"strategy_queue_manifest_id={manifest.manifest_id}",
+        f"strategy_queue_manifest_sha256={manifest_sha}",
+        f"accepted_research_ready={str(manifest.accepted_research_ready).lower()}",
+        f"require_single_accepted={str(manifest.require_single_accepted).lower()}",
+        f"item_count={manifest.item_count}",
+        f"accepted_count={manifest.accepted_count}",
+        f"rejected_count={manifest.rejected_count}",
+        f"blocker_reasons={','.join(manifest.blocker_reasons)}",
+    ]
+    if len(accepted_items) == 1:
+        accepted = accepted_items[0]
+        if accepted.normalized_spec_path is None or accepted.spec_hash is None:
+            raise ValueError("accepted strategy queue item missing normalized spec refs")
+        accepted_path = Path(accepted.normalized_spec_path)
+        output_refs.extend(
+            [
+                f"accepted_spec_path={accepted_path}",
+                f"accepted_spec_sha256={file_sha256(accepted_path)}",
+                f"strategy_id={accepted.strategy_id}",
+                f"strategy_spec_hash={accepted.spec_hash}",
+            ]
+        )
+
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=tuple(output_refs),
+        archive_manifest_refs=(
+            f"strategy_queue_manifest_id={manifest.manifest_id}",
+            f"strategy_queue_manifest_sha256={manifest_sha}",
+        ),
+        reason="strategy_queue_scan_job_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
     )
 
 

@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
+import re
 from typing import Any
 
 from tradingbotsuite.v2.archive.hashing import canonical_json_hash, file_sha256
@@ -23,11 +24,19 @@ from tradingbotsuite.v2.config.time import utc_isoformat
 from tradingbotsuite.v2.costs.models import CostModelConfig
 from tradingbotsuite.v2.strategy_specs import (
     StrategySpec,
+    load_strategy_spec_file,
     parse_strategy_spec,
     validate_strategy_spec,
 )
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobRecord, WorkerRunResult
+
+_SECRET_NAME_RE = re.compile(
+    r"(^\.env$|secret|credential|private|token|password|wallet|api[_-]?key)",
+    re.IGNORECASE,
+)
+_STRATEGY_SPEC_FILE_SUFFIXES = (".json", ".yaml", ".yml")
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
 def run_backtest_job(
@@ -51,11 +60,7 @@ def _run_vectorized_backtest_job(
     requested_lane = str(spec.get("engine_lane", EngineLane.VECTORIZED.value))
     if requested_lane != EngineLane.VECTORIZED.value:
         raise ValueError(f"unsupported durable backtest engine_lane: {requested_lane}")
-    if "strategy_spec_file" in spec:
-        raise ValueError("strategy_spec_file intake is not supported for durable backtest jobs")
-    strategy_payload = spec.get("strategy_spec")
-    if not isinstance(strategy_payload, Mapping):
-        raise ValueError("vectorized backtest job spec requires inline strategy_spec object")
+    strategy_payload, strategy_source_refs = _strategy_payload_and_refs(spec)
 
     validation = validate_strategy_spec(strategy_payload)
     if not validation.ok:
@@ -97,6 +102,7 @@ def _run_vectorized_backtest_job(
         failure_reason=result.manifest.failure_reason,
         gross_return=None if result.metrics is None else result.metrics.gross_return,
         net_return=None if result.metrics is None else result.metrics.net_return,
+        strategy_source_refs=strategy_source_refs,
     )
     archive_refs = (
         f"archive_snapshot_id={data_slice.archive_snapshot_id}",
@@ -237,6 +243,50 @@ def _requested_fields(
     return tuple(dict.fromkeys(fields))
 
 
+def _strategy_payload_and_refs(spec: Mapping[str, Any]) -> tuple[Mapping[str, Any], tuple[str, ...]]:
+    has_inline = "strategy_spec" in spec and spec.get("strategy_spec") is not None
+    has_file = "strategy_spec_file" in spec and spec.get("strategy_spec_file") is not None
+    if has_inline and has_file:
+        raise ValueError("vectorized backtest job spec must not provide both strategy_spec and strategy_spec_file")
+    if has_file:
+        path = _strategy_spec_file_path(spec.get("strategy_spec_file"))
+        expected_sha = spec.get("strategy_spec_file_sha256")
+        if not isinstance(expected_sha, str) or not _SHA256_RE.fullmatch(expected_sha):
+            raise ValueError("strategy_spec_file_sha256 is required for strategy_spec_file intake")
+        actual_sha = file_sha256(path)
+        if actual_sha.lower() != expected_sha.lower():
+            raise ValueError("strategy_spec_file_sha256 mismatch")
+        payload = load_strategy_spec_file(path)
+        return payload, (
+            "strategy_spec_source=file",
+            f"strategy_spec_file={path}",
+            f"strategy_spec_file_sha256={actual_sha}",
+        )
+    strategy_payload = spec.get("strategy_spec")
+    if not isinstance(strategy_payload, Mapping):
+        raise ValueError("vectorized backtest job spec requires inline strategy_spec object or SHA-checked strategy_spec_file")
+    return strategy_payload, ("strategy_spec_source=inline",)
+
+
+def _strategy_spec_file_path(value: Any) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ValueError("strategy_spec_file must be a non-empty string when provided")
+    path = Path(value)
+    if any(_SECRET_NAME_RE.search(part) for part in path.parts):
+        raise ValueError("strategy_spec_file name is reserved for secrets or local state")
+    if path.suffix.lower() not in _STRATEGY_SPEC_FILE_SUFFIXES:
+        raise ValueError(
+            "strategy_spec_file must use one of these suffixes: "
+            + ",".join(_STRATEGY_SPEC_FILE_SUFFIXES)
+        )
+    resolved = path.resolve(strict=False)
+    if not resolved.exists():
+        raise ValueError(f"strategy_spec_file missing: {path}")
+    if not resolved.is_file():
+        raise ValueError(f"strategy_spec_file must be a file: {path}")
+    return resolved
+
+
 def _output_refs(
     *,
     job: WorkerJobRecord,
@@ -250,6 +300,7 @@ def _output_refs(
     failure_reason: str | None,
     gross_return: float | None,
     net_return: float | None,
+    strategy_source_refs: tuple[str, ...],
 ) -> tuple[str, ...]:
     refs = [
         "job_kind=vectorized_backtest",
@@ -261,6 +312,7 @@ def _output_refs(
         f"run_manifest_sha256={file_sha256(result_path)}",
         f"strategy_id={strategy_spec.strategy_id}",
         f"strategy_spec_hash={strategy_spec.spec_hash}",
+        *strategy_source_refs,
         f"archive_snapshot_id={data_request.archive_snapshot_id}",
         f"universe_snapshot_id={data_request.universe_snapshot_id}",
         f"data_manifest_id={data_manifest_id}",

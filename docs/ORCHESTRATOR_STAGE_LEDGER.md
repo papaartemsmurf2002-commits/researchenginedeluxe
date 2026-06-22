@@ -437,6 +437,16 @@ cycle spec writers bind backtest run manifests into validation before ledger
 append/export. Cycle plans and executions remain operational evidence only and
 do not certify accepted research evidence, autonomous readiness,
 candidate-ready, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-460 v2 durable strategy-queue worker update: WPR106-460 wires
+`strategy_queue_scan` into the durable worker runner and allows durable
+vectorized backtest jobs to consume local JSON/YAML `strategy_spec_file`
+inputs only when paired with a matching SHA-256 and declarative spec validation.
+Queue workers return manifest refs plus accepted-spec path/SHA refs only for
+exactly one accepted spec; zero or multiple accepted specs remain blocker
+evidence. The packet does not make strategy queue scanning a required bounded
+cycle stage and does not certify strategy performance, accepted research
+evidence, autonomous readiness, candidate-ready, paper/live/order/sizing/
+runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

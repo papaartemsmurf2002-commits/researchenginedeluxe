@@ -1,7 +1,7 @@
 # V2 Backtest Engine Contract
 
 Status: v2 Phase 16 vectorized and event-driven engine contract
-Audit IDs: `V2-AUD-BTENG-001`, `V2-AUD-BTENG-002`, `V2-AUD-COST-001`, `V2-AUD-BTENG-006`
+Audit IDs: `V2-AUD-BTENG-001`, `V2-AUD-BTENG-002`, `V2-AUD-COST-001`, `V2-AUD-BTENG-006`, `V2-AUD-BTENG-007`
 
 ## Purpose
 
@@ -33,6 +33,11 @@ research-only run artifacts.
 - Durable `vectorized_backtest` worker jobs must use `BacktestDataService` as
   the archive-backed panel source and must not bypass 2024+, six-month,
   coverage, as-of universe, or lockbox preflight gates.
+- Durable `vectorized_backtest` worker jobs may accept either an inline
+  declarative `strategy_spec` object or a local JSON/YAML `strategy_spec_file`
+  with a matching `strategy_spec_file_sha256`. File intake must validate the
+  loaded spec through the same declarative spec validator before
+  `BacktestDataService` loads rows.
 - `StrategyContext` records archive snapshot, universe snapshot, data
   manifest, validation policy, cost model, timeframe, universe mode, venue
   scope, backtest window, lockbox policy, and coverage floor.
@@ -86,6 +91,8 @@ research-only run artifacts.
 ## Forbidden
 
 - Direct venue/API reads.
+- Unhashed, hash-mismatched, secret-like, unsupported-suffix, or unvalidated
+  strategy-spec file intake.
 - Order placement or runtime execution.
 - Gross-only advancement.
 - Silent forward-fill of PnL-critical prices.

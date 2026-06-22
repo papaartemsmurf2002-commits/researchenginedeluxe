@@ -1,7 +1,7 @@
 # Autonomy Loop Contract
 
 Status: v2 dry-run and bounded autopilot contract
-Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`, `V2-AUD-AUTONOMY-009`, `V2-AUD-AUTONOMY-010`, `V2-AUD-AUTONOMY-011`
+Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`, `V2-AUD-AUTONOMY-009`, `V2-AUD-AUTONOMY-010`, `V2-AUD-AUTONOMY-011`, `V2-AUD-AUTONOMY-012`
 
 The autonomy loop is a research-only orchestration surface for proving that v2
 components can be wired together without weakening evidence rules. The dry-run
@@ -26,6 +26,13 @@ into normalized JSON under the requested output root, and write a queue
 manifest with accepted and rejected items. It must not enqueue jobs, run
 backtests, collect venue data, certify coverage, or mark the repo
 autonomous-ready.
+
+The durable `strategy_queue_scan` worker may run that same scanner through the
+worker runner and return queue-manifest refs. When exactly one spec is accepted,
+the worker may return `accepted_spec_path`, `accepted_spec_sha256`,
+`strategy_id`, and `strategy_spec_hash` refs for later bounded bindings. If the
+scan has zero or multiple accepted specs, the worker must surface blocker refs
+instead of choosing a spec.
 
 ## Schemas
 
@@ -215,6 +222,9 @@ operation and independent completion audit evidence exist.
   They are never accepted research evidence, backtest proof, validation proof,
   autonomous-ready proof, candidate-pack evidence, or promotion evidence by
   themselves.
+- Durable strategy queue worker records are execution evidence for the scanner
+  job only. Their accepted spec refs are file-integrity inputs for later bounded
+  jobs, not strategy-performance or readiness evidence.
 
 ## Forbidden
 
@@ -238,6 +248,8 @@ operation and independent completion audit evidence exist.
 - Treating a strategy queue scan manifest as job execution evidence, backtest
   evidence, validation evidence, accepted research evidence, autonomous-ready
   certification, or a replacement for ledger/Lead Book blocker reports.
+- Treating a strategy queue worker's `accepted_spec_path` as sufficient for
+  backtesting without a matching SHA-256 ref and declarative spec validation.
 
 ## Acceptance
 
@@ -257,6 +269,12 @@ A strategy queue scan is accepted as input-hygiene evidence only when it writes
 declarative specs through the strategy-spec validator, records rejected items
 with blockers, and preserves the full research-only invariant. It is never
 accepted as job execution, strategy performance, or readiness evidence.
+
+A durable strategy queue worker run is accepted as scanner execution evidence
+only when the worker record stores the queue manifest path, manifest ID,
+manifest SHA-256, accepted/rejected counts, blocker refs, and, for exactly one
+accepted spec, the normalized spec path and SHA-256. It is never accepted as
+strategy performance or readiness evidence.
 
 ## Public API Diagnostic Cycle Spec
 

@@ -6,9 +6,13 @@ from pathlib import Path
 
 import pytest
 
+from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.autonomy import StrategyQueueScanConfig, scan_strategy_queue
 from tradingbotsuite.v2.cli.main import main
 from tradingbotsuite.v2.strategy_specs import example_strategy_payloads
+from tradingbotsuite.v2.workers.job_store import WorkerJobStore
+from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobStatus
+from tradingbotsuite.v2.workers.runner import run_one_job
 
 
 def test_strategy_queue_scan_accepts_valid_and_reports_rejections(tmp_path) -> None:
@@ -93,6 +97,104 @@ def test_strategy_queue_scan_accepts_valid_and_reports_rejections(tmp_path) -> N
     assert "secret_like_strategy_file_path" in result.blocker_reasons
 
 
+def test_strategy_queue_worker_outputs_single_normalized_spec_refs(tmp_path) -> None:
+    strategy_root = tmp_path / "queue_inputs"
+    output_root = tmp_path / "queue_outputs"
+    strategy_root.mkdir()
+    payload = example_strategy_payloads()["hl_mean_reversion_v1"]
+    (strategy_root / "mean-reversion.json").write_text(
+        json.dumps(payload, sort_keys=True),
+        encoding="utf-8",
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.STRATEGY_QUEUE_SCAN,
+        job_id="JOB-strategy-queue-single",
+        input_spec={
+            "strategy_root": str(strategy_root),
+            "output_root": str(output_root),
+            "run_id": "queue-worker-single",
+            "require_single_accepted": True,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.STRATEGY_QUEUE_SCAN,
+        worker_id="worker-strategy-queue",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    values = _ref_values(loaded.output_refs)
+    manifest = _read_json(Path(values["strategy_queue_manifest_path"]))
+    accepted = manifest["items"][0]
+    accepted_path = Path(values["accepted_spec_path"])
+
+    assert loaded.status == WorkerJobStatus.SUCCEEDED
+    assert values["job_kind"] == "strategy_queue_scan"
+    assert values["accepted_research_ready"] == "false"
+    assert values["require_single_accepted"] == "true"
+    assert values["accepted_count"] == "1"
+    assert values["rejected_count"] == "0"
+    assert values["blocker_reasons"] == ""
+    assert values["strategy_queue_manifest_id"] == manifest["manifest_id"]
+    assert values["strategy_queue_manifest_sha256"] == file_sha256(Path(values["strategy_queue_manifest_path"]))
+    assert values["accepted_spec_sha256"] == file_sha256(accepted_path)
+    assert values["strategy_spec_hash"] == accepted["spec_hash"]
+    assert values["strategy_id"] == "hl_mean_reversion_v1"
+    assert accepted_path.exists()
+    assert any(ref.startswith("strategy_queue_manifest_id=") for ref in loaded.archive_manifest_refs)
+    assert any(ref.startswith("strategy_queue_manifest_sha256=") for ref in loaded.archive_manifest_refs)
+
+
+def test_strategy_queue_worker_reports_multiple_accepted_specs_without_ambiguous_ref(tmp_path) -> None:
+    strategy_root = tmp_path / "queue_inputs"
+    output_root = tmp_path / "queue_outputs"
+    strategy_root.mkdir()
+    examples = example_strategy_payloads()
+    (strategy_root / "mean-reversion.json").write_text(
+        json.dumps(examples["hl_mean_reversion_v1"], sort_keys=True),
+        encoding="utf-8",
+    )
+    (strategy_root / "funding-carry.json").write_text(
+        json.dumps(examples["hl_funding_carry_v1"], sort_keys=True),
+        encoding="utf-8",
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.STRATEGY_QUEUE_SCAN,
+        job_id="JOB-strategy-queue-multiple",
+        input_spec={
+            "strategy_root": str(strategy_root),
+            "output_root": str(output_root),
+            "run_id": "queue-worker-multiple",
+            "require_single_accepted": True,
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.STRATEGY_QUEUE_SCAN,
+        worker_id="worker-strategy-queue-multiple",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    values = _ref_values(loaded.output_refs)
+
+    assert values["accepted_count"] == "2"
+    assert values["rejected_count"] == "0"
+    assert "multiple_accepted_strategy_specs" in values["blocker_reasons"]
+    assert "accepted_spec_path" not in values
+    assert "accepted_spec_sha256" not in values
+    assert "strategy_spec_hash" not in values
+
+
 def test_strategy_queue_scan_is_deterministic_for_same_inputs(tmp_path) -> None:
     strategy_root = tmp_path / "queue_inputs"
     output_root = tmp_path / "queue_outputs"
@@ -175,3 +277,7 @@ def test_strategy_queue_cli_writes_manifest(tmp_path, capsys) -> None:
 
 def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _ref_values(refs: tuple[str, ...]) -> dict[str, str]:
+    return dict(ref.split("=", 1) for ref in refs if "=" in ref)

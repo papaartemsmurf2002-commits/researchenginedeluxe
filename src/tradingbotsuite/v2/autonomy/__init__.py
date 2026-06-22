@@ -54,6 +54,7 @@ from tradingbotsuite.v2.autonomy.strategy_queue import (
     StrategyQueueManifest,
     StrategyQueueScanConfig,
     StrategyQueueScanResult,
+    run_strategy_queue_job,
     scan_strategy_queue,
 )
 
@@ -94,6 +95,7 @@ __all__ = [
     "plan_autopilot_research_cycle",
     "run_autopilot_cycle_plan",
     "run_autonomy_dry_run",
+    "run_strategy_queue_job",
     "scan_strategy_queue",
     "write_autopilot_fixture_cycle_spec",
     "write_autopilot_public_candle_cycle_spec",

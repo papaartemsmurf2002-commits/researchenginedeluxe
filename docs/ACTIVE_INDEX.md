@@ -189,7 +189,14 @@ This is the first file to read after `AGENTS.md`.
   vectorized backtest and before ledger/Lead Book interpretation. The generated
   audit job now requires validation manifest refs and loop order evidence, but
   cycle plans/executions still remain operational evidence only, not accepted
-  research evidence or autonomous-ready proof.
+  research evidence or autonomous-ready proof. WPR106-460 adds durable
+  `strategy_queue_scan` worker routing and SHA-checked `strategy_spec_file`
+  intake for durable vectorized backtests. Queue workers expose normalized
+  accepted spec path/SHA refs only when exactly one spec is accepted; backtest
+  workers reject missing/mismatched/secret-like/unsupported file intake before
+  panel loads and still validate loaded declarative specs before run artifacts.
+  This is trusted input plumbing only, not strategy performance, accepted
+  research evidence, or autonomous-ready proof.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

@@ -30,6 +30,10 @@ DATA_QUALITY_KINDS = {
     WorkerJobKind.COVERAGE_AUDIT,
 }
 
+STRATEGY_QUEUE_KINDS = {
+    WorkerJobKind.STRATEGY_QUEUE_SCAN,
+}
+
 BACKTEST_KINDS = {
     WorkerJobKind.BACKTEST,
     WorkerJobKind.VECTORIZED_BACKTEST,
@@ -72,6 +76,10 @@ def run_one_job(
             return run_collector_job(job=running, store=store, worker_id=worker_id)
         if job_kind in DATA_QUALITY_KINDS:
             return run_data_quality_job(job=running, store=store, worker_id=worker_id)
+        if job_kind in STRATEGY_QUEUE_KINDS:
+            from tradingbotsuite.v2.autonomy.strategy_queue import run_strategy_queue_job
+
+            return run_strategy_queue_job(job=running, store=store, worker_id=worker_id)
         if job_kind in BACKTEST_KINDS:
             return run_backtest_job(job=running, store=store, worker_id=worker_id)
         if job_kind in VALIDATION_KINDS:

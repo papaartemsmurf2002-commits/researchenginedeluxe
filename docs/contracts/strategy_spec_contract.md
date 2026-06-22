@@ -1,7 +1,7 @@
 # V2 Strategy Spec Contract
 
 Status: v2 Phase 10 declarative spec contract
-Audit IDs: `V2-AUD-STRAT-001`, `V2-AUD-STRAT-006`
+Audit IDs: `V2-AUD-STRAT-001`, `V2-AUD-STRAT-006`, `V2-AUD-STRAT-007`
 
 ## Purpose
 
@@ -56,6 +56,12 @@ Declarative strategy specs are the first-class v2 strategy interface.
   requested output root for downstream bounded jobs. Those normalized copies
   do not certify strategy performance, backtest validity, validation status,
   or autonomous readiness.
+- Durable strategy queue workers may expose a normalized accepted spec path and
+  SHA-256 only when the scan has exactly one accepted spec. Multiple accepted
+  specs must remain ambiguous blocker evidence.
+- Durable backtest workers may load a local normalized declarative spec file
+  only when the job also provides the matching SHA-256 and the loaded spec
+  passes this contract's validator.
 
 ## Forbidden
 
@@ -71,3 +77,5 @@ Declarative strategy specs are the first-class v2 strategy interface.
   reading secret-like filenames, or treating a valid spec as accepted
   performance evidence before the archive, backtest, validation, ledger, Lead
   Book, and audit steps pass.
+- Durable backtest workers loading unhashed, hash-mismatched, secret-like,
+  unsupported-suffix, or validator-failing strategy spec files.
