@@ -1,7 +1,7 @@
 # Autonomy Loop Contract
 
 Status: v2 dry-run and bounded autopilot contract
-Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`, `V2-AUD-AUTONOMY-009`, `V2-AUD-AUTONOMY-010`, `V2-AUD-AUTONOMY-011`, `V2-AUD-AUTONOMY-012`, `V2-AUD-AUTONOMY-013`
+Audit IDs: `V2-AUD-AUTONOMY-001`, `V2-AUD-AUTONOMY-004`, `V2-AUD-AUTONOMY-006`, `V2-AUD-AUTONOMY-007`, `V2-AUD-AUTONOMY-008`, `V2-AUD-AUTONOMY-009`, `V2-AUD-AUTONOMY-010`, `V2-AUD-AUTONOMY-011`, `V2-AUD-AUTONOMY-012`, `V2-AUD-AUTONOMY-013`, `V2-AUD-AUTONOMY-014`
 
 The autonomy loop is a research-only orchestration surface for proving that v2
 components can be wired together without weakening evidence rules. The dry-run
@@ -18,6 +18,12 @@ an already enqueued plan. It may run planned durable jobs in declared order,
 skip already successful planned jobs, and run the generated final `audit_check`
 job. It is not a daemon, continuous scheduler, venue fetch bypass, or readiness
 certification surface.
+
+The bounded autopilot scheduler tick is a run-once manager surface for already
+enqueued plans. It may select explicit plan manifests under max-plan and
+max-job budgets, delegate each selected plan to the bounded cycle runner, and
+write a scheduler session manifest. It is not a daemon, timer, venue fetch
+bypass, ASGI/operator in-process job loop, or readiness certification surface.
 
 The strategy queue scanner is an input-hygiene surface for the autonomous loop.
 It may scan a bounded local directory for declarative JSON/YAML strategy specs,
@@ -50,6 +56,9 @@ instead of choosing a spec.
 - `AutopilotCycleJobExecution`
 - `AutopilotCycleExecutionManifest`
 - `AutopilotCycleExecutionResult`
+- `AutopilotSchedulerPlanResult`
+- `AutopilotSchedulerTickManifest`
+- `AutopilotSchedulerTickResult`
 - `AutopilotFixtureCycleConfig`
 - `AutopilotFixtureCycleSpecResult`
 - `AutopilotPublicCandleCycleConfig`
@@ -149,6 +158,40 @@ Execution manifests must preserve the full research-only invariant, set
   refs;
 - execution blockers plus any blockers found in the final audit report.
 
+## Bounded Autopilot Scheduler Tick
+
+`redx autopilot scheduler-tick` may run one bounded scheduler session over an
+explicit list of already-enqueued bounded-cycle plan manifests. It must require
+at least one plan manifest, a positive `max_plans`, and a positive
+`max_jobs_per_plan` when supplied.
+
+The scheduler tick may:
+
+- select at most `max_plans` plan manifests in the provided order;
+- call the bounded cycle runner for each selected manifest;
+- pass through the optional job-store override, worker ID, max jobs per plan,
+  and audit-on-blocker policy;
+- mark plans beyond `max_plans` as deferred blocker evidence without mutating
+  their jobs;
+- record plan-level runner errors as blockers instead of raising after partial
+  work;
+- write `autopilot_scheduler_tick.json` under the requested output root.
+
+Scheduler tick manifests must preserve the full research-only invariant, set
+`accepted_research_ready=false`, and record:
+
+- scheduler/session ID, output root, worker ID, and optional job-store path;
+- max-plan and max-job budgets;
+- requested, selected, and executed plan counts;
+- every plan action, execution manifest path, audit report path, job counts,
+  audit-attempted status, and blocker reasons;
+- session blocker reasons.
+
+Scheduler ticks are operational manager-loop evidence only. They do not replace
+the final autonomous readiness gate and do not prove real archive coverage,
+strategy performance, accepted research evidence, candidate-pack evidence, or
+promotion evidence.
+
 ## Executable Fixture Cycle Spec
 
 `redx autopilot fixture-cycle-spec` may write a canonical
@@ -216,6 +259,9 @@ operation and independent completion audit evidence exist.
 - Bounded cycle execution manifests are operational evidence only and are never
   accepted research evidence, autonomous-ready proof, candidate-pack evidence,
   or promotion evidence by themselves.
+- Bounded scheduler tick manifests are operational manager-loop evidence only
+  and are never accepted research evidence, autonomous-ready proof,
+  candidate-pack evidence, or promotion evidence by themselves.
 - Fixture cycle specs and their completed worker-chain outputs are
   sandbox-diagnostic operability evidence only and are never accepted research
   evidence, autonomous-ready proof, candidate-pack evidence, or promotion
@@ -244,6 +290,9 @@ operation and independent completion audit evidence exist.
 - Treating a bounded cycle execution manifest or passing generated audit report
   as autonomous-ready release proof without real archive coverage, independent
   audits, authoritative validation, and open-blocker closure.
+- Treating a bounded scheduler tick as a daemon, live runtime, venue fetch
+  bypass, accepted research evidence, autonomous-ready release proof, or
+  promotion evidence.
 - Treating the executable fixture cycle as real Hyperliquid archive operation,
   accepted strategy evidence, autonomous-ready certification, or a replacement
   for independent completion audit.

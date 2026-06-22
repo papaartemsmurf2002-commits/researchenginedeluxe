@@ -37,10 +37,12 @@ from tradingbotsuite.v2.autonomy import (
     AutopilotCycleRunnerError,
     AutopilotFixtureCycleConfig,
     AutopilotPublicCandleCycleConfig,
+    AutopilotSchedulerError,
     StrategyQueueScanConfig,
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
     run_autopilot_cycle_plan,
+    run_autopilot_scheduler_tick,
     AutonomyDryRunConfig,
     AutonomyLoopError,
     run_autonomy_dry_run,
@@ -460,6 +462,23 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_run_cycle.add_argument("--worker-id", default="autopilot-cycle-runner")
     autopilot_run_cycle.add_argument("--max-jobs", type=int)
     autopilot_run_cycle.add_argument("--no-audit-on-blocker", action="store_true")
+    autopilot_scheduler_tick = autopilot_subparsers.add_parser(
+        "scheduler-tick",
+        help="run one bounded scheduler tick over already-enqueued cycle plans",
+    )
+    autopilot_scheduler_tick.add_argument(
+        "--plan-manifest",
+        action="append",
+        required=True,
+        help="enqueued bounded-cycle plan manifest; repeat to provide multiple plans",
+    )
+    autopilot_scheduler_tick.add_argument("--output-root", required=True)
+    autopilot_scheduler_tick.add_argument("--job-store")
+    autopilot_scheduler_tick.add_argument("--worker-id", default="autopilot-scheduler")
+    autopilot_scheduler_tick.add_argument("--scheduler-id", default="autopilot-scheduler")
+    autopilot_scheduler_tick.add_argument("--max-plans", type=int, default=1)
+    autopilot_scheduler_tick.add_argument("--max-jobs-per-plan", type=int)
+    autopilot_scheduler_tick.add_argument("--no-audit-on-blocker", action="store_true")
     autonomy = subparsers.add_parser(
         "autonomy",
         help="fixture-backed research-only autonomy dry-run commands",
@@ -1300,6 +1319,31 @@ def _handle_autopilot(args: argparse.Namespace, parser: argparse.ArgumentParser)
         print(f"skipped_job_count={result.skipped_job_count}")
         print(f"audit_attempted={str(result.audit_attempted).lower()}")
         print(f"audit_report_path={result.audit_report_path}")
+        print(f"blocker_count={len(result.blocker_reasons)}")
+        for blocker in result.blocker_reasons:
+            print(f"blocker={blocker}")
+        print("accepted_research_ready=false")
+        print("promotion_ready=false")
+        return 0
+    if args.autopilot_command == "scheduler-tick":
+        try:
+            result = run_autopilot_scheduler_tick(
+                plan_manifest_paths=tuple(args.plan_manifest),
+                output_root=args.output_root,
+                job_store_path=args.job_store,
+                worker_id=args.worker_id,
+                scheduler_id=args.scheduler_id,
+                max_plans=args.max_plans,
+                max_jobs_per_plan=args.max_jobs_per_plan,
+                run_audit_on_blocker=not args.no_audit_on_blocker,
+            )
+        except (AutopilotSchedulerError, ValidationError) as exc:
+            print(f"autopilot_scheduler_tick_rejected={exc}")
+            return 1
+        print(f"scheduler_manifest={result.scheduler_manifest_path}")
+        print(f"session_id={result.session_id}")
+        print(f"status={result.status.value}")
+        print(f"executed_plan_count={result.executed_plan_count}")
         print(f"blocker_count={len(result.blocker_reasons)}")
         for blocker in result.blocker_reasons:
             print(f"blocker={blocker}")

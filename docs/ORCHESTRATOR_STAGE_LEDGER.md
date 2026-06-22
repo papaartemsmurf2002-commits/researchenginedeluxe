@@ -464,6 +464,15 @@ and contains current queue/spec/backtest/validation/ledger/Lead Book artifact
 ref prefixes before a readiness report can pass. This packet does not create
 accepted research evidence, autonomous readiness, candidate-ready,
 paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-463 v2 bounded scheduler-tick update: WPR106-463 adds a
+run-once `redx autopilot scheduler-tick` surface for explicit already-enqueued
+bounded-cycle plan manifests. The tick enforces max-plan and per-plan job
+budgets, delegates selected plans to the existing bounded cycle runner, records
+deferred or rejected plans as blocker evidence, and writes a research-only
+`autopilot_scheduler_tick.json` session manifest. It is not a daemon,
+venue-fetch bypass, ASGI/operator in-process job loop, accepted research
+evidence, autonomous readiness, candidate-ready, paper/live/order/sizing/
+runtime, or promotion behavior.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

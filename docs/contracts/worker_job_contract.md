@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`, `V2-AUD-WORKER-023`, `V2-AUD-AUTONOMY-011`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`, `V2-AUD-WORKER-023`, `V2-AUD-WORKER-024`, `V2-AUD-AUTONOMY-011`
 
 ## Purpose
 
@@ -151,6 +151,12 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   `succeeded` state and use their stored worker refs as audit evidence. It must
   report blockers for missing, incomplete, failed, cancelled, stale, retrying,
   or max-job-blocked planned jobs.
+- Bounded autopilot scheduler ticks may select already-enqueued cycle plan
+  manifests and delegate selected plans to the bounded cycle runner under
+  explicit plan/job budgets. They must write scheduler session manifests and
+  record deferred or rejected plans as blocker evidence. Scheduler ticks are
+  not a daemon, do not bypass worker-claim rules, and do not turn queued jobs or
+  passing audit reports into autonomous-ready proof.
 - The executable autopilot fixture cycle may prove worker-chain operability by
   generating fixture inputs, planning/enqueueing the declared bounded cycle,
   running the real durable worker handlers through validation, and writing the
@@ -194,6 +200,9 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Treating a bounded cycle execution manifest as autonomous-ready proof,
   accepted historical coverage proof, candidate-pack evidence, or promotion
   evidence.
+- Treating a bounded scheduler tick as a daemon, ASGI/operator in-process job
+  loop, worker-claim bypass, autonomous-ready proof, accepted historical
+  coverage proof, candidate-pack evidence, or promotion evidence.
 - Mutating claimed, running, terminal, missing, or non-planned worker jobs
   during bounded-cycle binding.
 - Treating a generated fixture worker chain as real venue archive operation,

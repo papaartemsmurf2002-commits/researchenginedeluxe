@@ -208,6 +208,13 @@ This is the first file to read after `AGENTS.md`.
   queue manifest, accepted-spec path/SHA, strategy hash, validation manifest,
   ledger, and Lead Book artifact-ref requirements. This is still a blocker
   gate only, not accepted research evidence or autonomous-ready proof.
+  WPR106-463 adds `redx autopilot scheduler-tick`, a run-once bounded manager
+  surface that selects explicit already-enqueued cycle plan manifests under
+  max-plan and max-job budgets, delegates selected plans to the existing
+  durable cycle runner, defers excess plans as blocker evidence, and writes a
+  research-only scheduler session manifest. It is not a daemon, venue fetch
+  bypass, ASGI/operator in-process job loop, accepted research evidence, or
+  autonomous-ready proof.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

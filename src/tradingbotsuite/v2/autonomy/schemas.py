@@ -406,3 +406,103 @@ class AutopilotCycleExecutionResult(BaseModel):
     skipped_job_count: int = Field(ge=0)
     audit_attempted: bool
     blocker_reasons: tuple[str, ...] = ()
+
+
+class AutopilotSchedulerTickStatus(str, Enum):
+    COMPLETED = "completed"
+    COMPLETED_WITH_BLOCKERS = "completed_with_blockers"
+
+
+class AutopilotSchedulerPlanAction(str, Enum):
+    RAN = "ran"
+    BLOCKED = "blocked"
+    DEFERRED_MAX_PLANS = "deferred_max_plans"
+
+
+class AutopilotSchedulerPlanResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    plan_manifest_path: str = Field(min_length=1)
+    action: AutopilotSchedulerPlanAction
+    status: str = Field(min_length=1)
+    execution_manifest_path: str | None = None
+    execution_id: str | None = None
+    audit_report_path: str | None = None
+    executed_job_count: int = Field(default=0, ge=0)
+    skipped_job_count: int = Field(default=0, ge=0)
+    audit_attempted: bool = False
+    blocker_reasons: tuple[str, ...] = ()
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_boundary(self) -> "AutopilotSchedulerPlanResult":
+        require_research_boundary(self, context="autopilot scheduler plan result")
+        return self
+
+
+class AutopilotSchedulerTickManifest(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = "autopilot_scheduler_tick_v1"
+    session_id: str = Field(min_length=64, max_length=64)
+    scheduler_id: str = Field(min_length=1)
+    status: AutopilotSchedulerTickStatus
+    output_root: str = Field(min_length=1)
+    scheduler_manifest_path: str = Field(min_length=1)
+    job_store_path: str | None = None
+    worker_id: str = Field(min_length=1)
+    max_plans: int = Field(ge=1)
+    max_jobs_per_plan: int | None = Field(default=None, ge=1)
+    requested_plan_count: int = Field(ge=0)
+    selected_plan_count: int = Field(ge=0)
+    executed_plan_count: int = Field(ge=0)
+    blocker_count: int = Field(ge=0)
+    blocker_reasons: tuple[str, ...] = ()
+    plan_results: tuple[AutopilotSchedulerPlanResult, ...]
+    accepted_research_ready: bool = False
+    boundary_flags: dict[str, bool] = Field(default_factory=lambda: dict(RESEARCH_BOUNDARY))
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_boundary(self) -> "AutopilotSchedulerTickManifest":
+        if self.accepted_research_ready:
+            raise ValueError("scheduler ticks cannot mark accepted_research_ready")
+        if self.blocker_count != len(self.blocker_reasons):
+            raise ValueError("blocker_count must match blocker_reasons length")
+        if self.status == AutopilotSchedulerTickStatus.COMPLETED and self.blocker_reasons:
+            raise ValueError("completed scheduler ticks cannot contain blockers")
+        if (
+            self.status == AutopilotSchedulerTickStatus.COMPLETED_WITH_BLOCKERS
+            and not self.blocker_reasons
+        ):
+            raise ValueError("completed_with_blockers scheduler ticks require blockers")
+        require_research_boundary(self, context="autopilot scheduler tick")
+        return self
+
+
+class AutopilotSchedulerTickResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    status: AutopilotSchedulerTickStatus
+    scheduler_manifest_path: str = Field(min_length=1)
+    session_id: str = Field(min_length=64, max_length=64)
+    executed_plan_count: int = Field(ge=0)
+    blocker_reasons: tuple[str, ...] = ()

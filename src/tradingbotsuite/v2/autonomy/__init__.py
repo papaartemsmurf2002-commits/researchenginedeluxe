@@ -26,6 +26,10 @@ from tradingbotsuite.v2.autonomy.cycle_runner import (
     load_autopilot_cycle_plan,
     run_autopilot_cycle_plan,
 )
+from tradingbotsuite.v2.autonomy.cycle_scheduler import (
+    AutopilotSchedulerError,
+    run_autopilot_scheduler_tick,
+)
 from tradingbotsuite.v2.autonomy.runner import AutonomyLoopError, run_autonomy_dry_run
 from tradingbotsuite.v2.autonomy.schemas import (
     AutopilotCycleExecutionManifest,
@@ -40,6 +44,11 @@ from tradingbotsuite.v2.autonomy.schemas import (
     AutopilotCyclePlanResult,
     AutopilotCyclePlanStatus,
     AutopilotPlannedJob,
+    AutopilotSchedulerPlanAction,
+    AutopilotSchedulerPlanResult,
+    AutopilotSchedulerTickManifest,
+    AutopilotSchedulerTickResult,
+    AutopilotSchedulerTickStatus,
     AutonomyDataMode,
     AutonomyBlockerReport,
     AutonomyDryRunConfig,
@@ -77,6 +86,12 @@ __all__ = [
     "AutopilotPlannedJob",
     "AutopilotPublicCandleCycleConfig",
     "AutopilotPublicCandleCycleSpecResult",
+    "AutopilotSchedulerError",
+    "AutopilotSchedulerPlanAction",
+    "AutopilotSchedulerPlanResult",
+    "AutopilotSchedulerTickManifest",
+    "AutopilotSchedulerTickResult",
+    "AutopilotSchedulerTickStatus",
     "AutonomyBlockerReport",
     "AutonomyDataMode",
     "AutonomyDryRunConfig",
@@ -94,6 +109,7 @@ __all__ = [
     "load_autopilot_cycle_spec",
     "plan_autopilot_research_cycle",
     "run_autopilot_cycle_plan",
+    "run_autopilot_scheduler_tick",
     "run_autonomy_dry_run",
     "run_strategy_queue_job",
     "scan_strategy_queue",
