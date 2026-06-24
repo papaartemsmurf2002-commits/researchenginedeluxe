@@ -1,0 +1,51 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": false,
+  "auth_required": false,
+  "caveats": [
+    "public requester-pays transfer source",
+    "disabled under strict-zero-dollar mode",
+    "legacy native fills require source-hash and coverage audit before research use"
+  ],
+  "cost_class": "public_requester_pays_transfer",
+  "data_families": [
+    "fills",
+    "derived_trades"
+  ],
+  "history_mode": "official_public_archive_requester_pays",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": true,
+  "paid_required": false,
+  "priority": "P0_quarantined",
+  "provenance_required": [
+    "operator_gate_ref",
+    "source_uri",
+    "native_file_sha256",
+    "byte_count",
+    "dataset_scope",
+    "coverage_audit_ref"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 1,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "native_historical_fill_replay_if_operator_approved",
+  "required_operator_gate": [
+    "explicit_packet_scope",
+    "transfer_cost_acknowledgement",
+    "source_hash_manifest",
+    "coverage_audit_by_symbol_and_day"
+  ],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "hyperliquid_official_s3_node_fills",
+  "source_url_template": "s3://hl-mainnet-node-data/node_fills/*",
+  "strict_zero_dollar_allowed": false,
+  "venue": "hyperliquid"
+}

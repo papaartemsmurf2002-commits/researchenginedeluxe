@@ -1,0 +1,54 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "external venue; never relabel rows as Hyperliquid-native data",
+    "endpoint-specific lookback, page, and rate limits must be enforced before any backfill",
+    "availability matrix and symbol-map verification are required before download"
+  ],
+  "cost_class": "public_rate_limited",
+  "data_families": [
+    "candles",
+    "trades",
+    "bbo",
+    "l2_order_book",
+    "funding",
+    "open_interest"
+  ],
+  "history_mode": "public_rest_endpoint_limited_market_data",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": false,
+  "paid_required": false,
+  "priority": "P1",
+  "provenance_required": [
+    "source_registry_source_id",
+    "symbol_map_ref",
+    "raw_request_id",
+    "raw_response_id",
+    "raw_payload_sha256",
+    "endpoint",
+    "params",
+    "page_count",
+    "row_count",
+    "rate_limit_metadata"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 1000,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "external_comparison",
+  "required_operator_gate": [],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "bybit_public_market",
+  "source_url_template": "https://api.bybit.com/v5/market/{endpoint}",
+  "strict_zero_dollar_allowed": true,
+  "venue": "bybit"
+}

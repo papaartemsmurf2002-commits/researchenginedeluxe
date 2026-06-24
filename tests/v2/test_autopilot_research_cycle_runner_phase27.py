@@ -35,14 +35,14 @@ def test_bounded_cycle_runner_skips_successes_and_runs_generated_audit(tmp_path)
 
     assert execution.status.value == "completed"
     assert execution.executed_job_count == 1
-    assert execution.skipped_job_count == 8
+    assert execution.skipped_job_count == 9
     assert execution.audit_attempted is True
     assert execution.blocker_reasons == ()
     assert manifest["schema_version"] == "autopilot_bounded_cycle_execution_v1"
     assert manifest["accepted_research_ready"] is False
     assert manifest["research_only"] is True
     assert manifest["promotion_ready"] is False
-    assert [job["action"] for job in manifest["job_executions"]].count("skipped_already_succeeded") == 8
+    assert [job["action"] for job in manifest["job_executions"]].count("skipped_already_succeeded") == 9
     assert manifest["job_executions"][-1]["action"] == "ran"
     assert report["status"] == "pass"
     assert report["accepted_research_ready"] is False
@@ -274,7 +274,7 @@ def test_autopilot_run_cycle_plan_cli_prints_execution_manifest(tmp_path, capsys
     assert exit_code == 0
     assert values["status"] == "completed"
     assert values["executed_job_count"] == "1"
-    assert values["skipped_job_count"] == "8"
+    assert values["skipped_job_count"] == "9"
     assert values["audit_attempted"] == "true"
     assert values["blocker_count"] == "0"
     assert values["accepted_research_ready"] == "false"
@@ -296,6 +296,18 @@ def _seed_successful_loop_jobs(store: WorkerJobStore, *, run_id: str) -> None:
                 "accepted_spec_path=SPEC",
                 "accepted_spec_sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 "strategy_spec_hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            ),
+        ),
+        (
+            WorkerJobKind.BACKTEST_DATA_LOAD,
+            f"JOB-{run_id}-backtest-data",
+            (
+                "backtest_data_manifest_path=BACKTEST_DATA",
+                "data_manifest_id=DATA",
+                "data_manifest_hash=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "archive_snapshot_id=ARCH",
+                "universe_snapshot_id=UNIV",
+                "coverage_report_id=COV",
             ),
         ),
         (WorkerJobKind.VECTORIZED_BACKTEST, f"JOB-{run_id}-backtest", ("run_manifest_path=RUN",)),
@@ -369,6 +381,11 @@ def _cycle_spec(*, run_id: str) -> dict:
                 "job_id": f"JOB-{run_id}-strategy-queue",
                 "kind": "strategy_queue_scan",
                 "input_spec": {"strategy_root": "STRATEGY_ROOT", "output_root": "STRATEGY_QUEUE"},
+            },
+            {
+                "job_id": f"JOB-{run_id}-backtest-data",
+                "kind": "backtest_data_load",
+                "input_spec": {"archive_root": "ARCHIVE_ROOT", "evidence_mode": "accepted_research"},
             },
             {
                 "job_id": f"JOB-{run_id}-backtest",

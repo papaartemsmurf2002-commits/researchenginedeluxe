@@ -1,0 +1,53 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "macro/on-chain context only; never relabel rows as Hyperliquid-native data",
+    "token, chain, protocol, and metric mappings must be verified before use",
+    "DeFi context rows are not trade, fill, order-book, or exchange-native evidence",
+    "availability matrix and raw request/response preservation are required before download"
+  ],
+  "cost_class": "zero_cost_public",
+  "data_families": [
+    "asset_contexts",
+    "open_interest",
+    "spot_oracle_context"
+  ],
+  "history_mode": "public_defi_context_endpoint",
+  "market_type": "context",
+  "native_to_hyperliquid": false,
+  "paid_required": false,
+  "priority": "P2",
+  "provenance_required": [
+    "source_registry_source_id",
+    "context_map_ref",
+    "raw_request_id",
+    "raw_response_id",
+    "raw_payload_sha256",
+    "endpoint",
+    "params",
+    "chain",
+    "metric",
+    "row_count",
+    "rate_limit_metadata"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 500,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "spot_or_oracle_context",
+  "required_operator_gate": [],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "defillama_public",
+  "source_url_template": "https://api.llama.fi/{endpoint}",
+  "strict_zero_dollar_allowed": true,
+  "venue": "defillama"
+}

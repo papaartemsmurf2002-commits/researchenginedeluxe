@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -23,8 +23,55 @@ Stage advancement stop rule:
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
 | P1 | 0 | 0 | 25 | 0 |
-| P2 | 1 | 0 | 7 | 0 |
+| P2 | 1 | 0 | 8 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
+
+## ISSUE-R106-030: Hyperliquid public candleSnapshot old intraday windows return empty
+
+Severity: P2
+Stage discovered: WPR106-473 - V2 historical perp dataset collection validation
+Owner: Codex Research Agent
+Status: open
+Paths affected: public Hyperliquid historical data operation,
+`src/tradingbotsuite/v2/collectors/historical_dataset.py`,
+generated `data/research/operator_runs/v2_historical_dataset/**` reports
+
+### Problem
+
+The WPR106-473 historical-perps command can collect old daily Hyperliquid
+candle history, but direct public `/info` `candleSnapshot` requests for old
+1h windows returned no rows. Binance USD-M public klines did return matching
+old 1h rows for the same BTCUSDT window, so Binance can be used as
+cross-venue/proxy sanity data, but it is not Hyperliquid ground truth.
+
+### Evidence
+
+During WPR106-473 on 2026-06-22:
+
+```powershell
+$env:PYTHONPATH='src'; python -m tradingbotsuite.v2.cli.main collectors historical-perps --output-root data\research\operator_runs\v2_historical_dataset --run-id wpr106-473-liquid10-1h-2024h1 --start-ts 2024-01-01T00:00:00+00:00 --end-ts 2024-07-01T00:00:00+00:00 --timeframe 1h --asof-date 2026-06-22 --max-instruments 0 --coin BTC --coin ETH --coin SOL --coin ZEC --coin WLD --coin SUI --coin NEAR --coin XRP --coin AVAX --coin UNI --binance-timeout 20 --max-public-info-pages 20
+# selected_instrument_count=10
+# collected_instrument_count=0
+# binance_skipped_count=10
+```
+
+A direct provider probe showed:
+
+```text
+Hyperliquid BTC 1h 2024-01-01..2024-01-08: 0 rows
+Hyperliquid BTC 1d 2024-01-01..2024-01-08: 8 rows
+Hyperliquid BTC 1h 2026-06-01..2026-06-08: 169 rows
+Binance BTCUSDT 1h 2024-01-01..2024-01-08: HTTP 200 with rows
+```
+
+### Required resolution
+
+Before claiming accepted Hyperliquid intraday evidence, use a trusted
+historical Hyperliquid source that actually supplies old intraday candles, or
+import a manifest-backed official/vendor archive with provenance and coverage
+proof. If Binance is used for 1h/15m research iteration, label it explicitly
+as cross-venue/proxy data and do not treat it as accepted Hyperliquid
+execution or venue-specific evidence.
 
 ## ISSUE-R106-029: Direct v2 worker-store import can hit data-quality circular import
 
@@ -103,7 +150,7 @@ $env:PYTHONPATH='src'; python -c "from tradingbotsuite.v2.workers.job_store impo
 Severity: P2
 Stage discovered: Stage R106 - sandbox archive manifest builder validation
 Owner: Codex Research Agent
-Status: open
+Status: resolved by WPR106-472
 Paths affected: local Windows validation environment, `tests/contracts/test_historical_fixture_pack_contract.py`
 
 ### Problem
@@ -191,10 +238,21 @@ async behavior under test.
 
 ### Resolution notes
 
-Open. This issue records a validation-environment blocker only. It does not
-indicate a sandbox manifest-builder assertion failure, candidate-pack write,
-paper/live signal, sizing instruction, order placement, runtime-mode change, or
-promotion claim.
+Resolved by WPR106-472. The local Windows Python 3.11 validation lane now has
+fresh full-suite evidence:
+
+```powershell
+$env:PYTHONPATH='src'; py -3.11 -m pytest tests -q
+# 2235 passed, 2 skipped, 6 warnings in 764.88s
+$env:PYTHONPATH='src'; python -m pytest tests\contracts -q
+# 463 passed
+```
+
+The previous blocker is closed as a local environment/resource condition, not a
+source assertion failure. This resolution does not create a sandbox
+manifest-builder assertion change, candidate-pack write, paper/live signal,
+sizing instruction, order placement, runtime-mode change, autonomous-ready
+claim, or promotion claim.
 
 ## ISSUE-R106-027: Official S3 backfill accepted arbitrary local source files
 

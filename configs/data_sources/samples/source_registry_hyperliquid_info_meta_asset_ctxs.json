@@ -1,0 +1,46 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "as_of_universe_metadata_only",
+    "not_a_historical_trade_or_candle_archive"
+  ],
+  "cost_class": "zero_cost_public",
+  "data_families": [
+    "universe_metadata",
+    "universe_snapshot",
+    "asset_contexts"
+  ],
+  "history_mode": "daily_as_of_public_snapshot",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": true,
+  "paid_required": false,
+  "priority": "P0",
+  "provenance_required": [
+    "raw_request_id",
+    "raw_response_id",
+    "raw_payload_sha256",
+    "raw_file_id",
+    "snapshot_id",
+    "as_of_date"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 1,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "as_of_hyperliquid_universe_selection",
+  "required_operator_gate": [],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "hyperliquid_info_meta_asset_ctxs",
+  "source_url_template": "https://api.hyperliquid.xyz/info type=metaAndAssetCtxs",
+  "strict_zero_dollar_allowed": true,
+  "venue": "hyperliquid"
+}

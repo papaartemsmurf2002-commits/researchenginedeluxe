@@ -1,7 +1,7 @@
 # V2 Data Quality Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-QUAL-001`, `V2-AUD-QUAL-004`
+Audit IDs: `V2-AUD-QUAL-001`, `V2-AUD-QUAL-004`, `V2-AUD-QUAL-006`
 
 ## Purpose
 
@@ -61,6 +61,11 @@ research evidence.
 - Raw microstructure bucket coverage is measurement evidence only and must
   remain non-evidence by default with an explicit caveat until a later packet
   proves continuous source coverage and any required queue/fill realism.
+- Historical-perps collection reports may include `technical_coverage_pass`
+  for collected candle slices when coverage ratio meets the configured floor
+  and duplicates/parse failures are absent. That technical pass is archive data
+  quality only; reports must still set `accepted_research_ready=false` when the
+  universe is current-public rather than historical as-of.
 
 ## Forbidden
 

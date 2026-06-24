@@ -1,0 +1,27 @@
+{
+  "source_id": "hyperliquid_official_s3_node_fills_by_block",
+  "venue": "hyperliquid",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": true,
+  "cost_class": "public_requester_pays_transfer",
+  "auth_required": false,
+  "secret_required": false,
+  "paid_required": false,
+  "strict_zero_dollar_allowed": false,
+  "accepted_under_strict_free": false,
+  "accepted_historical_coverage_proof": false,
+  "data_families": ["fills", "derived_trades"],
+  "history_mode": "official_public_archive_requester_pays",
+  "priority": "P0_quarantined",
+  "research_role": "native_historical_trade_reconstruction_if_operator_approved",
+  "required_operator_gate": [
+    "explicit_packet_scope",
+    "transfer_cost_acknowledgement",
+    "source_hash_manifest",
+    "coverage_audit_by_symbol_and_day"
+  ],
+  "caveats": [
+    "public but not zero-cost",
+    "data completeness must be independently audited"
+  ]
+}

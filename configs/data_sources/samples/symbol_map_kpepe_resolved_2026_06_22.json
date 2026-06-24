@@ -1,0 +1,59 @@
+{
+  "hyperliquid_coin": "kPEPE",
+  "as_of_date": "2026-06-22",
+  "canonical_base_asset": "PEPE",
+  "symbols": {
+    "hyperliquid_perp": {
+      "venue": "hyperliquid",
+      "symbol": "kPEPE",
+      "market_type": "perpetual",
+      "status": "verified",
+      "quote_asset": "USD",
+      "contract_type": "linear_perpetual",
+      "native_symbol": "kPEPE"
+    },
+    "binance_usdm": {
+      "venue": "binance",
+      "symbol": "1000PEPEUSDT",
+      "market_type": "perpetual",
+      "status": "verified",
+      "quote_asset": "USDT",
+      "contract_type": "linear_perpetual",
+      "native_symbol": "1000PEPEUSDT",
+      "source_refs": ["binance_exchange_info:2026-06-22"]
+    },
+    "okx_swap": {
+      "venue": "okx",
+      "symbol": "PEPE-USDT-SWAP",
+      "market_type": "perpetual",
+      "status": "missing",
+      "quote_asset": "USDT",
+      "contract_type": "swap",
+      "native_symbol": "PEPE-USDT-SWAP",
+      "source_refs": ["okx_instruments:2026-06-22"]
+    },
+    "bybit_linear": {
+      "venue": "bybit",
+      "symbol": "PEPEUSDT",
+      "market_type": "perpetual",
+      "status": "ambiguous",
+      "quote_asset": "USDT",
+      "contract_type": "linear_perpetual",
+      "native_symbol": "PEPEUSDT",
+      "notes": ["multiple PEPE-like contracts returned by fixture probe"],
+      "source_refs": ["bybit_instruments_info:2026-06-22"]
+    }
+  },
+  "hyperliquid_liquid_as_of": true,
+  "above_day_notional_threshold": true,
+  "external_mapping_verified": "ambiguous",
+  "provenance": {
+    "hyperliquid_universe_snapshot_ref": "manifests/universe/hyperliquid_asof_2026-06-22.json",
+    "external_exchange_info_refs": [
+      "binance_exchange_info:2026-06-22",
+      "okx_instruments:2026-06-22",
+      "bybit_instruments_info:2026-06-22"
+    ]
+  },
+  "blocker_reasons": ["bybit_linear_ambiguous"]
+}

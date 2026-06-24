@@ -1,7 +1,7 @@
 # V2 Worker Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`, `V2-AUD-WORKER-023`, `V2-AUD-WORKER-024`, `V2-AUD-WORKER-025`, `V2-AUD-AUTONOMY-011`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-WORKER-005`, `V2-AUD-WORKER-006`, `V2-AUD-WORKER-007`, `V2-AUD-WORKER-008`, `V2-AUD-WORKER-009`, `V2-AUD-WORKER-013`, `V2-AUD-WORKER-014`, `V2-AUD-WORKER-015`, `V2-AUD-WORKER-018`, `V2-AUD-WORKER-019`, `V2-AUD-WORKER-020`, `V2-AUD-WORKER-021`, `V2-AUD-WORKER-022`, `V2-AUD-WORKER-023`, `V2-AUD-WORKER-024`, `V2-AUD-WORKER-025`, `V2-AUD-WORKER-026`, `V2-AUD-WORKER-027`, `V2-AUD-WORKER-028`, `V2-AUD-AUTONOMY-011`
 
 ## Purpose
 
@@ -36,8 +36,16 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
 - Job outputs must include archive manifest refs, durable domain artifact refs,
   or explicit diagnostic gap records.
 - `universe_refresh` jobs must run through the durable collector worker path
-  with either `payload_file` or explicit `source=public_api`; public API runs
-  must surface venue raw-request/raw-response provenance refs.
+  with `payload_file`, explicit `source=public_api`, or explicit
+  `source=existing_ref`; public API runs must surface venue
+  raw-request/raw-response provenance refs, while existing-ref runs must verify
+  the local universe snapshot and return `universe_snapshot_id` without writing
+  universe data.
+- `recent_candle_bootstrap` jobs with `source=existing_ref` must run through the
+  durable collector worker path, verify an existing local silver archive
+  snapshot against requested venue/window/family/instrument/timeframe context,
+  return `archive_snapshot_id` and `silver_file_ids`, and write no market-data
+  rows.
 - `coverage_audit` jobs must run through the durable worker runner and write
   coverage/quality manifest refs instead of requiring in-process UI/API calls.
 - Coverage blockers found by a successful audit are output evidence, not hidden
@@ -53,6 +61,12 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   the worker may also return normalized accepted-spec path/SHA plus
   strategy-ID/spec-hash refs. Multiple accepted specs must remain ambiguous
   blocker evidence rather than a hidden selection.
+- `backtest_data_load` jobs must run through the durable worker runner, build
+  the request through the canonical `BacktestDataRequest` schema, require
+  canonical manifest writes, load only through `BacktestDataService`, and
+  return backtest-data manifest path/SHA, data manifest ID/hash, archive
+  snapshot, universe snapshot, coverage report, field, row-count, and window
+  refs.
 - `websocket_capture` jobs with explicit candle datatype and local source
   records may complete with raw/bronze/silver/coverage/snapshot archive refs
   plus bounded-batch caveats; other generic WebSocket capture jobs must still
@@ -74,10 +88,19 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   and keep `accepted_historical_coverage_proof=false`. These jobs are bounded
   unattended capture segments, not scheduler proof or accepted historical
   coverage proof.
+- Public WebSocket candle, trade, BBO, and L2 jobs must declare
+  `source_registry_source_id` matching the exact stream before a worker opens a
+  stream: `hyperliquid_ws_candle`, `hyperliquid_ws_trades`,
+  `hyperliquid_ws_bbo`, or `hyperliquid_ws_l2_book`. Missing or mismatched
+  source IDs are worker failures before archive writes.
 - `vectorized_backtest` jobs must run through the durable worker runner, load
   panels only through `BacktestDataService`, validate declarative strategy
   specs before strategy code sees rows, and return run-manifest, data-manifest,
   coverage, archive-snapshot, and universe-snapshot refs.
+- `vectorized_backtest` jobs may receive expected archive, universe, coverage,
+  and data-manifest refs bound from a prior `backtest_data_load` job. When
+  provided, mismatched expected refs must fail the worker before it declares
+  success.
 - `vectorized_backtest` jobs may use either an inline `strategy_spec` object or
   a local `strategy_spec_file` with a matching `strategy_spec_file_sha256`.
   File intake must support only JSON/YAML declarative specs, reject secret-like
@@ -108,6 +131,18 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   canonical Lead Book by requested lead states through the read-only scan
   service, write a JSON queue-visibility manifest, and surface missing or empty
   queues as blocker refs rather than mutating lead state.
+- `binance_derivatives_context_backfill` jobs must run through the durable
+  worker runner as collector jobs for one Binance USD-M derivatives context
+  family and symbol. They must require explicit archive, universe snapshot,
+  source-registry, and symbol-map refs; support only declared
+  `source=fixture_payloads` or `source=public_api`; route through
+  `run_binance_derivatives_context_backfill()`; and return page, archive-ingest,
+  coverage-report, accepted-coverage, source-mode, family, symbol,
+  instrument-ID, and blocker refs through durable worker outputs.
+- Blocked Binance derivatives context coverage is successful worker output when
+  the worker produced coverage evidence. Invalid job specs, empty fixture
+  payloads, unsupported source modes, or preflight failures remain worker-system
+  failures.
 - Lead Book worker jobs must reject secret-like or unsupported output/source
   path names before writing rows or exports, and must reject job specs that try
   to override research-boundary flags.
@@ -129,9 +164,11 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   queued jobs remain incomplete evidence until a worker runs them and the final
   audit report passes without blockers.
 - Bounded autopilot cycle plans must require `strategy_queue_scan` after
-  `coverage_audit` and before `vectorized_backtest`. The generated audit job
-  must require strategy queue manifest refs, accepted spec path/SHA refs, and
-  strategy spec hash refs as loop evidence.
+  `coverage_audit` and before `backtest_data_load`, and must require
+  `backtest_data_load` before `vectorized_backtest`. The generated audit job
+  must require strategy queue manifest refs, accepted spec path/SHA refs,
+  strategy spec hash refs, backtest-data manifest refs, and data manifest refs
+  as loop evidence.
 - Bounded autopilot cycle plans must require `validation_gate` after
   `vectorized_backtest` and before ledger/Lead Book interpretation. The
   generated audit job must require validation manifest refs as loop evidence.
@@ -163,10 +200,17 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   passing audit reports into autonomous-ready proof.
 - The executable autopilot fixture cycle may prove worker-chain operability by
   generating fixture inputs, planning/enqueueing the declared bounded cycle,
-  running the real durable worker handlers through validation, and writing the
-  final generated audit report. Its expected sandbox and missing-real-evidence
-  blockers are successful blocker-report output, not autonomous-ready
-  evidence.
+  running the real durable worker handlers through explicit backtest-data load
+  and validation, and writing the final generated audit report. Its expected
+  sandbox and missing-real-evidence blockers are successful blocker-report
+  output, not autonomous-ready evidence.
+- The executable autopilot archive-ref cycle may prove that already-built local
+  archive and universe refs plus an uploaded declarative strategy spec can run
+  through `strategy_queue_scan -> backtest_data_load -> vectorized_backtest ->
+  validation_gate -> ledger_append_export -> lead_book_upsert -> audit_check`.
+  A passing blocker-free audit remains bounded research-loop evidence only and
+  must keep `accepted_research_ready=false` plus all promotion/candidate/
+  paper-live/order/sizing/runtime flags false.
 
 ## Forbidden
 
@@ -178,10 +222,15 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   the worker path.
 - Treating strategy queue worker outputs as strategy performance, validation,
   ledger, Lead Book, accepted research, or autonomous-ready evidence.
+- Treating `backtest_data_load` worker outputs as strategy performance,
+  validation, ledger, Lead Book, accepted research, or autonomous-ready
+  evidence.
 - Running universe refresh jobs from public network sources without explicit
   `source=public_api` and unsigned public-info provenance refs.
 - Running public WebSocket BBO/L2 capture without explicit
   `source=public_websocket` and public WebSocket provenance refs.
+- Running public WebSocket candle, trade, BBO, or L2 capture without a matching
+  checked `source_registry_source_id`.
 - Treating public WebSocket capture-session heartbeats or reports as
   autonomous-ready certification, scheduler proof, or accepted coverage proof.
 - Running durable backtests against direct venue/API reads, unvalidated
@@ -211,3 +260,7 @@ Workers run durable long-running jobs outside the ASGI/operator loop.
   during bounded-cycle binding.
 - Treating a generated fixture worker chain as real venue archive operation,
   accepted research evidence, scheduler proof, or promotion evidence.
+- Treating Binance USD-M derivatives context worker outputs as
+  Hyperliquid-native evidence, unattended broad backfill proof, accepted
+  research evidence by themselves, candidate-pack evidence, scheduler proof,
+  paper/live/order/sizing/runtime evidence, or promotion evidence.

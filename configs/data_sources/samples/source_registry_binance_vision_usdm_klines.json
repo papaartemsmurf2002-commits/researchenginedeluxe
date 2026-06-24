@@ -1,0 +1,41 @@
+{
+  "accepted_historical_coverage_proof": true,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "external venue; never relabel as Hyperliquid-native candles"
+  ],
+  "cost_class": "zero_cost_public",
+  "data_families": [
+    "candles_1m"
+  ],
+  "history_mode": "public_daily_monthly_archive",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": false,
+  "paid_required": false,
+  "priority": "P0",
+  "provenance_required": [
+    "source_url",
+    "downloaded_at_utc",
+    "source_file_sha256",
+    "checksum_sha256_when_available",
+    "row_count",
+    "byte_count"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 4,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "external_historical_candle_backbone",
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "binance_vision_usdm_klines",
+  "source_url_template": "https://data.binance.vision/data/futures/um/daily/klines/{symbol}/1m/{symbol}-1m-{date}.zip",
+  "strict_zero_dollar_allowed": true,
+  "venue": "binance"
+}

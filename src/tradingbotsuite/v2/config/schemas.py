@@ -31,6 +31,7 @@ BOUNDED_CONTEXTS = (
     "universe",
     "venues",
     "collectors",
+    "data_sources",
     "data_quality",
     "backtest_data",
     "strategy_specs",

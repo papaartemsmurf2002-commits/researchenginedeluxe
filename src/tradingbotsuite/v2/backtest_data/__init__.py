@@ -10,6 +10,7 @@ from tradingbotsuite.v2.backtest_data.coverage_gate import (
     CoverageGateError,
     require_coverage_for_evidence,
 )
+from tradingbotsuite.v2.backtest_data.jobs import run_backtest_data_job
 from tradingbotsuite.v2.backtest_data.lockbox import (
     LockboxWindow,
     latest_full_calendar_month_lockbox,
@@ -34,5 +35,6 @@ __all__ = [
     "LockboxWindow",
     "latest_full_calendar_month_lockbox",
     "require_coverage_for_evidence",
+    "run_backtest_data_job",
     "windows_overlap",
 ]

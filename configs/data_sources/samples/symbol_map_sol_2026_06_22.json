@@ -1,0 +1,45 @@
+{
+  "hyperliquid_coin": "SOL",
+  "as_of_date": "2026-06-22",
+  "canonical_base_asset": "SOL",
+  "symbols": {
+    "hyperliquid_perp": {
+      "venue": "hyperliquid",
+      "symbol": "SOL",
+      "market_type": "perpetual",
+      "status": "verified",
+      "quote_asset": "USD",
+      "contract_type": "linear_perpetual"
+    },
+    "binance_usdm": {
+      "venue": "binance",
+      "symbol": "SOLUSDT",
+      "market_type": "perpetual",
+      "status": "verified",
+      "quote_asset": "USDT",
+      "contract_type": "linear_perpetual"
+    },
+    "okx_swap": {
+      "venue": "okx",
+      "symbol": "SOL-USDT-SWAP",
+      "market_type": "perpetual",
+      "status": "not_checked",
+      "quote_asset": "USDT",
+      "contract_type": "swap"
+    },
+    "coinbase_spot": {
+      "venue": "coinbase",
+      "symbol": "SOL-USD",
+      "market_type": "spot",
+      "status": "not_checked",
+      "quote_asset": "USD"
+    }
+  },
+  "hyperliquid_liquid_as_of": true,
+  "above_day_notional_threshold": true,
+  "external_mapping_verified": "not_checked",
+  "provenance": {
+    "hyperliquid_universe_snapshot_ref": "manifests/universe/hyperliquid_asof_2026-06-22.json",
+    "external_exchange_info_refs": []
+  }
+}

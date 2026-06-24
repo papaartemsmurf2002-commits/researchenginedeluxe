@@ -269,6 +269,9 @@ def test_public_websocket_l2_bbo_worker_capture_writes_snapshot_microstructure(
     input_spec = {
         "archive_root": str(archive_root),
         "source": "public_websocket",
+        "source_registry_source_id": (
+            "hyperliquid_ws_l2_book" if datatype == "l2" else "hyperliquid_ws_bbo"
+        ),
         "public_ws_url": "wss://example.test/ws",
         "public_ws_timeout": 3.0,
         "venue": "hyperliquid",
@@ -313,6 +316,11 @@ def test_public_websocket_l2_bbo_worker_capture_writes_snapshot_microstructure(
     assert loaded.status == WorkerJobStatus.SUCCEEDED
     assert "collector_mode=public_websocket_l2_bbo_snapshot_capture" in loaded.output_refs
     assert "source_mode=public_websocket" in loaded.output_refs
+    assert (
+        f"source_registry_source_id="
+        f"{'hyperliquid_ws_l2_book' if datatype == 'l2' else 'hyperliquid_ws_bbo'}"
+        in loaded.output_refs
+    )
     assert "continuous_capture=false" in loaded.output_refs
     assert "accepted_historical_coverage_proof=false" in loaded.output_refs
     assert (
@@ -393,6 +401,9 @@ def test_public_websocket_l2_bbo_unattended_session_writes_report(
     input_spec = {
         "archive_root": str(archive_root),
         "source": "public_websocket",
+        "source_registry_source_id": (
+            "hyperliquid_ws_l2_book" if datatype == "l2" else "hyperliquid_ws_bbo"
+        ),
         "capture_mode": "unattended_session",
         "public_ws_url": "wss://example.test/ws",
         "public_ws_timeout": 3.0,
@@ -439,6 +450,11 @@ def test_public_websocket_l2_bbo_unattended_session_writes_report(
     heartbeat_phases = [heartbeat.details.get("phase") for heartbeat in store.list_heartbeats(queued.job_id)]
 
     assert "collector_mode=public_websocket_l2_bbo_capture_session" in loaded.output_refs
+    assert (
+        f"source_registry_source_id="
+        f"{'hyperliquid_ws_l2_book' if datatype == 'l2' else 'hyperliquid_ws_bbo'}"
+        in loaded.output_refs
+    )
     assert "capture_mode=unattended_session" in loaded.output_refs
     assert "continuous_capture=true" in loaded.output_refs
     assert "accepted_historical_coverage_proof=false" in loaded.output_refs
@@ -551,6 +567,57 @@ def test_public_websocket_l2_bbo_worker_rejects_public_websocket_with_local_reco
     assert result.status == WorkerJobStatus.FAILED
     assert loaded is not None
     assert "source=public_websocket cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
+@pytest.mark.parametrize(
+    ("datatype", "source_registry_source_id", "expected_reason"),
+    [
+        ("bbo", None, "source_registry_source_id is required"),
+        ("bbo", "hyperliquid_ws_l2_book", "must be hyperliquid_ws_bbo"),
+        ("l2", None, "source_registry_source_id is required"),
+        ("l2", "hyperliquid_ws_bbo", "must be hyperliquid_ws_l2_book"),
+    ],
+)
+def test_public_websocket_l2_bbo_requires_matching_source_registry_id(
+    tmp_path,
+    datatype: str,
+    source_registry_source_id: str | None,
+    expected_reason: str,
+) -> None:
+    archive_root = tmp_path / f"archive-public-ws-source-registry-{datatype}"
+    store = WorkerJobStore(tmp_path / f"jobs-public-ws-source-registry-{datatype}.sqlite")
+    input_spec = {
+        "archive_root": str(archive_root),
+        "source": "public_websocket",
+        "venue": "hyperliquid",
+        "instrument_id": INSTRUMENT,
+        "datatype": datatype,
+        "date": "2026-01-01",
+        "run_id": f"run-public-ws-source-registry-{datatype}",
+        "start_ts": "2026-01-01T00:00:00+00:00",
+        "end_ts": "2026-01-01T00:01:00+00:00",
+    }
+    if source_registry_source_id is not None:
+        input_spec["source_registry_source_id"] = source_registry_source_id
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        job_id=f"JOB-public-ws-source-registry-{datatype}",
+        max_attempts=1,
+        input_spec=input_spec,
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
+        worker_id=f"worker-public-ws-source-registry-{datatype}",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert expected_reason in (loaded.failure_reason or "")
     assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 
@@ -745,6 +812,7 @@ def test_public_websocket_trade_worker_capture_writes_snapshot_microstructure(
         input_spec={
             "archive_root": str(archive_root),
             "source": "public_websocket",
+            "source_registry_source_id": "hyperliquid_ws_trades",
             "public_ws_url": "wss://example.test/ws",
             "public_ws_timeout": 3.0,
             "venue": "hyperliquid",
@@ -780,6 +848,7 @@ def test_public_websocket_trade_worker_capture_writes_snapshot_microstructure(
     assert loaded.status == WorkerJobStatus.SUCCEEDED
     assert "collector_mode=public_websocket_trade_snapshot_capture" in loaded.output_refs
     assert "source_mode=public_websocket" in loaded.output_refs
+    assert "source_registry_source_id=hyperliquid_ws_trades" in loaded.output_refs
     assert "datatype=trades" in loaded.output_refs
     assert "row_count=2" in loaded.output_refs
     assert "ws_message_count=2" in loaded.output_refs
@@ -837,6 +906,7 @@ def test_public_websocket_trade_unattended_session_writes_report(
         input_spec={
             "archive_root": str(archive_root),
             "source": "public_websocket",
+            "source_registry_source_id": "hyperliquid_ws_trades",
             "capture_mode": "unattended_session",
             "public_ws_url": "wss://example.test/ws",
             "public_ws_timeout": 3.0,
@@ -874,6 +944,7 @@ def test_public_websocket_trade_unattended_session_writes_report(
     heartbeat_phases = [heartbeat.details.get("phase") for heartbeat in store.list_heartbeats(queued.job_id)]
 
     assert "collector_mode=public_websocket_trade_capture_session" in loaded.output_refs
+    assert "source_registry_source_id=hyperliquid_ws_trades" in loaded.output_refs
     assert "capture_mode=unattended_session" in loaded.output_refs
     assert "continuous_capture=true" in loaded.output_refs
     assert "accepted_historical_coverage_proof=false" in loaded.output_refs
@@ -928,6 +999,53 @@ def test_public_websocket_trade_worker_rejects_public_websocket_with_local_recor
     assert result.status == WorkerJobStatus.FAILED
     assert loaded is not None
     assert "source=public_websocket cannot include records" in (loaded.failure_reason or "")
+    assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
+
+
+@pytest.mark.parametrize(
+    ("source_registry_source_id", "expected_reason"),
+    [
+        (None, "source_registry_source_id is required"),
+        ("hyperliquid_ws_bbo", "must be hyperliquid_ws_trades"),
+    ],
+)
+def test_public_websocket_trade_requires_matching_source_registry_id(
+    tmp_path,
+    source_registry_source_id: str | None,
+    expected_reason: str,
+) -> None:
+    archive_root = tmp_path / "archive-public-ws-trades-source-registry"
+    store = WorkerJobStore(tmp_path / "jobs-public-ws-trades-source-registry.sqlite")
+    input_spec = {
+        "archive_root": str(archive_root),
+        "source": "public_websocket",
+        "venue": "hyperliquid",
+        "instrument_id": INSTRUMENT,
+        "date": "2026-01-01",
+        "run_id": "run-public-ws-trades-source-registry",
+        "start_ts": "2026-01-01T00:00:00+00:00",
+        "end_ts": "2026-01-01T00:01:00+00:00",
+    }
+    if source_registry_source_id is not None:
+        input_spec["source_registry_source_id"] = source_registry_source_id
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        job_id="JOB-public-ws-trades-source-registry",
+        max_attempts=1,
+        input_spec=input_spec,
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
+        worker_id="worker-public-ws-trades-source-registry",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert expected_reason in (loaded.failure_reason or "")
     assert not (archive_root / "manifests" / "file_manifest.parquet").exists()
 
 

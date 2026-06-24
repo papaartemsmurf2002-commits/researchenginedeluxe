@@ -74,6 +74,16 @@ def _run_vectorized_backtest_job(
         asof_date=asof_date,
         write_manifest=bool(spec.get("write_data_manifest", True)),
     )
+    data_manifest = data_slice.data_manifest.model_dump(mode="json")
+    data_manifest_hash = canonical_json_hash(data_manifest)
+    _verify_expected_data_refs(
+        spec,
+        archive_snapshot_id=data_slice.archive_snapshot_id,
+        universe_snapshot_id=data_slice.universe_snapshot_id,
+        coverage_report_id=data_slice.coverage_report_id,
+        data_manifest_id=data_slice.data_manifest.data_manifest_id,
+        data_manifest_hash=data_manifest_hash,
+    )
     panel_rows = _json_safe_rows(data_slice.rows)
     run_config = _run_config(
         spec,
@@ -81,7 +91,7 @@ def _run_vectorized_backtest_job(
         data_request=data_request,
         strategy_spec=strategy_spec,
         cost_model=cost_model,
-        data_manifest=data_slice.data_manifest.model_dump(mode="json"),
+        data_manifest=data_manifest,
     )
     result = run_vectorized_backtest(
         config=run_config,
@@ -266,6 +276,32 @@ def _strategy_payload_and_refs(spec: Mapping[str, Any]) -> tuple[Mapping[str, An
     if not isinstance(strategy_payload, Mapping):
         raise ValueError("vectorized backtest job spec requires inline strategy_spec object or SHA-checked strategy_spec_file")
     return strategy_payload, ("strategy_spec_source=inline",)
+
+
+def _verify_expected_data_refs(
+    spec: Mapping[str, Any],
+    *,
+    archive_snapshot_id: str,
+    universe_snapshot_id: str,
+    coverage_report_id: str,
+    data_manifest_id: str,
+    data_manifest_hash: str,
+) -> None:
+    expected = {
+        "expected_archive_snapshot_id": archive_snapshot_id,
+        "expected_universe_snapshot_id": universe_snapshot_id,
+        "expected_coverage_report_id": coverage_report_id,
+        "expected_data_manifest_id": data_manifest_id,
+        "expected_data_manifest_hash": data_manifest_hash,
+    }
+    for key, actual in expected.items():
+        value = spec.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"{key} must be a non-empty string when provided")
+        if value != actual:
+            raise ValueError(f"backtest_data_ref_mismatch:{key}:expected={value}:actual={actual}")
 
 
 def _strategy_spec_file_path(value: Any) -> Path:

@@ -1,0 +1,52 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "bounded public WebSocket candle capture only",
+    "not continuous historical candle coverage proof",
+    "capture sessions require message, row, elapsed-time, heartbeat, reconnect, and gap evidence"
+  ],
+  "cost_class": "zero_cost_public",
+  "data_families": [
+    "candles"
+  ],
+  "history_mode": "public_websocket_bounded_capture",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": true,
+  "paid_required": false,
+  "priority": "P0",
+  "provenance_required": [
+    "source_registry_source_id",
+    "raw_request_id",
+    "raw_response_id",
+    "raw_payload_sha256",
+    "source_endpoint_or_subscription",
+    "source_coin",
+    "interval",
+    "message_count",
+    "row_count",
+    "max_messages",
+    "max_rows",
+    "max_seconds",
+    "capture_session_id"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 1,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "native_hyperliquid_forward_candle_capture",
+  "required_operator_gate": [],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "hyperliquid_ws_candle",
+  "source_url_template": "wss://api.hyperliquid.xyz/ws subscription=candle",
+  "strict_zero_dollar_allowed": true,
+  "venue": "hyperliquid"
+}

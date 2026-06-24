@@ -29,14 +29,15 @@ def test_public_candle_cycle_spec_enqueues_public_api_diagnostic_jobs(tmp_path) 
     )
     spec = _read_json(Path(result.cycle_spec_path))
 
-    assert result.declared_job_count == 8
-    assert result.declared_binding_count == 10
+    assert result.declared_job_count == 9
+    assert result.declared_binding_count == 17
     assert "public_api_current_universe_not_historical_asof" in result.expected_audit_blockers
     assert [job["kind"] for job in spec["jobs"]] == [
         "universe_refresh",
         "recent_candle_bootstrap",
         "coverage_audit",
         "strategy_queue_scan",
+        "backtest_data_load",
         "vectorized_backtest",
         "validation_gate",
         "ledger_append_export",
@@ -46,6 +47,7 @@ def test_public_candle_cycle_spec_enqueues_public_api_diagnostic_jobs(tmp_path) 
     universe_spec = jobs["universe_refresh"]["input_spec"]
     candle_spec = jobs["recent_candle_bootstrap"]["input_spec"]
     strategy_queue_spec = jobs["strategy_queue_scan"]["input_spec"]
+    backtest_data_spec = jobs["backtest_data_load"]["input_spec"]
     backtest_spec = jobs["vectorized_backtest"]["input_spec"]
     validation_spec = jobs["validation_gate"]["input_spec"]
     lead_spec = jobs["lead_book_upsert"]["input_spec"]
@@ -63,6 +65,9 @@ def test_public_candle_cycle_spec_enqueues_public_api_diagnostic_jobs(tmp_path) 
     assert len(strategy_files) == 1
     strategy_payload = _read_json(strategy_files[0])
     assert strategy_queue_spec["require_single_accepted"] is True
+    assert backtest_data_spec["evidence_mode"] == "sandbox_diagnostic"
+    assert "archive_snapshot_id" not in backtest_data_spec
+    assert "universe_snapshot_id" not in backtest_data_spec
     assert backtest_spec["evidence_mode"] == "sandbox_diagnostic"
     assert backtest_spec["universe_mode"] == "current"
     assert "strategy_spec" not in backtest_spec
@@ -105,8 +110,8 @@ def test_public_candle_cycle_spec_enqueues_public_api_diagnostic_jobs(tmp_path) 
     queued_candles = store.load_job("JOB-public-cycle-pass-candles")
 
     assert plan.status == AutopilotCyclePlanStatus.ENQUEUED
-    assert plan.planned_job_count == 9
-    assert plan.enqueued_job_count == 9
+    assert plan.planned_job_count == 10
+    assert plan.enqueued_job_count == 10
     assert queued_candles is not None
     assert queued_candles.input_spec["source"] == "public_api"
     assert queued_candles.input_spec["public_info_url"] == "https://example.test/info"
@@ -155,8 +160,8 @@ def test_public_candle_cycle_cli_writes_spec_paths(tmp_path, capsys) -> None:
     assert values["evidence_mode"] == "sandbox_diagnostic"
     assert values["accepted_research_ready"] == "false"
     assert values["promotion_ready"] == "false"
-    assert values["declared_job_count"] == "8"
-    assert values["declared_binding_count"] == "10"
+    assert values["declared_job_count"] == "9"
+    assert values["declared_binding_count"] == "17"
     assert Path(values["cycle_spec"]).exists()
     assert values["public_info_url"] == "https://example.test/info"
     assert "public_api_current_universe_not_historical_asof" in blockers

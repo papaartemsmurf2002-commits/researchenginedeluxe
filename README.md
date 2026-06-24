@@ -35,12 +35,23 @@ and OI flow strategies, GMM/regime-assisted strategies, HMM/KNN local analog
 filters, liquidation diagnostics, rapid sandbox tooling, and LC reference
 material.
 
-V2 is not complete yet. Phase 0 source-lock and safety-rail documents exist,
-but later packets must still implement the v2 package skeleton, contracts,
-archive, Hyperliquid universe manager, coverage service, durable collectors,
-lockbox-aware backtest data service, declarative strategy lane, backtest
-artifacts, cost models, append-only ledger, Lead Book, validation workflow, and
-final hard-test governance.
+The v2 foundation is implemented and self-checked as a research-only platform:
+package skeleton, contracts, archive layout, Hyperliquid universe manager,
+coverage service, durable workers, public collectors, lockbox-aware backtest
+data service, declarative strategy specs, vectorized backtest artifacts, cost
+models, append-only ledger, Lead Book, validation gates, bounded autopilot,
+read-only UI rendering, scheduler tick, and autonomous-readiness blocker audit.
+
+The latest archive-ref bounded cycle can run end-to-end through durable
+universe, archive-ref, coverage, strategy queue, backtest-data, vectorized
+backtest, validation, ledger, Lead Book, and audit workers when supplied
+passing local archive evidence. This state is ready for independent final
+audit, but not for agentic strategy testing yet: accepted historical as-of
+archive coverage, independent audit acceptance, and a separate readiness report
+with real evidence paths are still required before agent iteration can be
+called fully operational.
+No output is candidate-ready, paper-ready, live-ready, order-ready,
+sizing-ready, runtime-ready, or promotion-ready.
 
 ## Install
 
@@ -54,15 +65,17 @@ pip install -e .[dev]
 
 ```powershell
 python -m compileall -q src\tradingbot src\tradingbotsuite
+$env:PYTHONPATH='src'; python -m pytest tests\v2 -q
 $env:PYTHONPATH='src'; python -m pytest tests\contracts -q
 python -m pytest -q
 ```
 
 The checked-in GitHub Actions baseline is
 `.github/workflows/research-validation.yml`. It installs `.[dev]` in Python
-3.11, runs `pip check`, compiles `src/tradingbotsuite`, runs contracts, and runs
-focused live/artifact boundary tests. Optional research, Crypto Lake, and GPU
-extras are intentionally excluded from that baseline.
+3.11, runs `pip check`, compiles `src/tradingbotsuite`, runs contracts, runs
+the v2 foundation suite, and runs focused sandbox plus live/artifact boundary
+tests. Optional research, Crypto Lake, and GPU extras are intentionally
+excluded from that baseline.
 
 ## Core Commands
 

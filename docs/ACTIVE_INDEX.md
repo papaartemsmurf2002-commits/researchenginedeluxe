@@ -1,6 +1,6 @@
 # Active Index
 
-Last updated: 2026-06-22
+Last updated: 2026-06-24
 
 This is the first file to read after `AGENTS.md`.
 
@@ -22,9 +22,13 @@ This is the first file to read after `AGENTS.md`.
   boundary findings in official-file source handling and signal-bearing
   artifact invariants. The foundation is committed but is not autonomous-ready:
   WPR106-420 installs local Python 3.11 dev dependencies, proves 3.11 v2 and
-  contract suites pass, and fixes deterministic v2 worker transition ordering,
-  but monolithic full-suite authoritative validation remains blocked by
-  `ISSUE-R106-026` on this Windows/Python 3.11.0 host. WPR106-421 resolves
+  contract suites pass, and fixes deterministic v2 worker transition ordering.
+  WPR106-472 later resolves `ISSUE-R106-026` with Python 3.11 monolithic
+  full-suite evidence: 2235 passed and 2 skipped. WPR106-524 records the
+  final-audit handoff: the WPR106-472 through WPR106-523 foundation is ready
+  for independent final audit after clean validation and remote-roadmap
+  accounting, but not ready for agentic strategy testing until that audit and
+  separate readiness evidence pass. WPR106-421 resolves
   `ISSUE-R106-020` by tightening latest-window strategy gates, GMM detector
   metadata, lower-frame no-hit proof, exit-policy alias artifacts, static
   barrier canonical identity, and timestamped funding-path costs. WPR106-422
@@ -245,7 +249,242 @@ This is the first file to read after `AGENTS.md`.
   manifest drives ledger `validation_status`, `walk_forward_pass`, blockers,
   and cost-fragility; the final WPR106-469 rerun records
   `validation_status=fail`, `validation_status_fail`, and
-  `cost_dependent_failure` in the ledger/audit path.
+  `cost_dependent_failure` in the ledger/audit path. WPR106-472 syncs
+  top-level readiness docs, adds `tests/v2 -q` to the checked-in CI baseline,
+  updates `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`, and keeps the remaining
+  no-candidate/no-readiness state explicit: accepted historical as-of archive
+  coverage and a no-blocker accepted bounded cycle are still required before
+  full agent-iteration readiness. WPR106-473 adds
+  `redx collectors historical-perps`, a bounded public historical dataset
+  command that collected current-eligible Hyperliquid daily candle history,
+  validates technical coverage, optionally archives funding, and cross-checks
+  overlapping Binance USD-M candles as sanity evidence. The WPR106-473 runs
+  remain `sandbox_diagnostic` because the universe is current-public rather
+  than historical as-of; they do not create candidate, paper/live, order,
+  sizing, runtime, promotion, or accepted-research readiness claims.
+  WPR106-474 starts the Hyperliquid data-venue roadmap implementation locally
+  by adding strict-free source registry, cost-class, symbol-map, and
+  data-family coverage schemas plus samples and Pydantic validators. It covers
+  the `DATA-001` foundation and the first schema portions of `DATA-002` and
+  `DATA-016`; paid/keyed sources, requester-pays official files, ambiguous
+  mappings, forward-capture-only coverage, external proxy coverage, and
+  boundary violations fail closed. It does not collect data or create accepted
+  evidence/readiness claims. WPR106-475 implements the `DATA-002` resolver
+  scaffold: deterministic candidate symbols are generated for Binance, Bybit,
+  OKX, Bitget, MEXC, Gate, KuCoin, HTX, dYdX, Deribit, Coinbase, Kraken,
+  Pyth, DefiLlama, DexScreener, and GeckoTerminal, but only explicit
+  `SymbolProbeResult`
+  availability evidence can mark a mapping verified. Missing, ambiguous,
+  delisted, not-checked, and manual-review states remain first-class blocker
+  evidence before downstream external backfills. WPR106-476 connects recorded
+  Hyperliquid universe rows to the data-source layer by writing deterministic
+  strict-free source-registry and symbol-map snapshot manifests under archive
+  `manifests/source_registry/` and `manifests/symbol_maps/`. It preserves
+  below-threshold rows as blocker evidence, rejects requester-pays, paid/keyed,
+  and strict-free-unaccepted sources before writes. WPR106-477 implements the
+  `DATA-004` Binance Vision availability scanner for daily ZIP and checksum
+  paths across USD-M/spot trades, aggTrades, and 1m klines. It requires
+  verified symbol-map rows before probes, records missing ZIPs/checksums and
+  mapping blockers as manifest rows. WPR106-478 starts `DATA-005` parser
+  validation for local Binance Vision ZIP bytes: checksum payload verification,
+  single-CSV ZIP validation, headered/headerless trades, aggTrades, and 1m
+  kline parsing, duplicate/gap/monotonicity diagnostics, and stable normalized
+  row hashes. WPR106-479 ingests already-available local Binance Vision ZIP
+  bytes into raw archive records, bronze/silver 1m kline Parquet, and raw
+  trade/aggTrade microstructure captures while preserving parser diagnostics.
+  WPR106-480 adds reconstructed 1m bar comparison from parsed trades/aggTrades
+  against parsed klines with fail-closed missing-bucket and OHLCV tolerance
+  blockers. WPR106-481 builds deterministic data-family coverage reports from
+  Binance Vision availability, parser, archive-ingest, and reconstructed-bar
+  comparison evidence. Full archived/reconstruction-checked 1m kline days can
+  be accepted only as external-comparison coverage, while missing mappings,
+  ZIPs, parser output, ingest/archive refs, checksum verification, duplicate
+  IDs, gaps, partial buckets, and failed comparisons stay blocker metadata. It
+  leaves downloader/cache integration and coverage-report write/job
+  orchestration as the next data-venue roadmap slices. WPR106-482 adds the
+  bounded downloader/cache helper for available Binance Vision rows: ZIP and
+  checksum bytes are fetched through an injectable GET client, cached under
+  deterministic archive-root-contained raw paths, verified when checksum
+  payloads exist, and described by source-download manifests. Cache hits avoid
+  network calls. Non-available rows, HTTP errors, max-byte violations, and
+  checksum mismatches remain blocker metadata. Report-write/job orchestration
+  and multi-day backfill coordination remain next. WPR106-483 adds the bounded
+  single-day local backfill chain: a target availability row runs through
+  downloader/cache, parser, target archive ingest, optional reconstructed-bar
+  comparison, and data-family coverage JSON writing under
+  `manifests/coverage_reports/`. Completed rows return target/comparison/
+  download/coverage refs; blocked rows still write non-accepted coverage with
+  explicit blockers. Durable worker integration and multi-day coordination
+  remain next. WPR106-484 coordinates bounded batches from a Binance Vision
+  availability manifest by selecting target rows, matching optional comparison
+  rows by symbol/date, running daily backfills under a max-row cap, and writing
+  `manifests/binance_vision_backfills/` summaries with completed/blocked/
+  accepted counts and aggregate blockers. Durable worker integration remains
+  the next operational handoff. WPR106-485 starts `DATA-006` with
+  `binance_usdm_public_derivatives_context`, granular derivatives context
+  family names, a strict-free public-rate-limited source fixture, and offline
+  deterministic request builders for Binance funding, OI, mark/index/premium
+  klines, taker flow, long/short ratios, and basis. It performs no public REST
+  fetches and leaves derivatives pagination, normalization, archive writes,
+  coverage reports, and durable workers for later packets. WPR106-486 adds the
+  next `DATA-006` link: a single-request injectable fetch/normalize layer with
+  HTTP metadata, content hashes, raw/normalized row counts, stable row hashes,
+  source and publication timestamps, interval/period bucket seconds, numeric
+  fields, and base/quote/rate/share unit annotations. HTTP errors, response
+  size violations, invalid JSON, invalid row shapes, and bad timestamps become
+  explicit blocker metadata. It still performs no pagination, archive writes,
+  coverage reports, or worker scheduling. WPR106-487 adds bounded multi-page
+  pagination over that layer: historical families require explicit start/end
+  windows, current OI remains one-page, cursors advance from normalized
+  timestamps and bucket seconds, and page URLs/fetch-result IDs are preserved.
+  Missing bounds, blocked pages, non-advancing cursors, and max-page exhaustion
+  become blocker metadata. It still performs no archive writes, coverage
+  reports, or worker scheduling. WPR106-488 adds local archive ingest for
+  completed paginated derivatives context rows, writing raw JSONL.zst and
+  generic silver `derivatives_context` Parquet refs with source/page refs,
+  timestamps, bucket metadata, numeric/unit/raw field JSON, and research-only
+  boundary flags. Blocked, empty, and timestamp-missing page results fail
+  before archive writes. Coverage reports and worker scheduling remain later.
+  WPR106-489 adds derivatives data-family coverage reports for archived
+  context rows, keeping funding, OI, mark/index/premium, taker flow,
+  long/short ratio, and basis coverage separate from candle/trade coverage.
+  Complete archived context windows can be accepted only as
+  external-comparison coverage with archive refs and archive snapshot refs;
+  current OI snapshots, missing buckets, blocked inputs, and missing archive
+  evidence remain non-accepted blocker reports. Worker scheduling remains
+  later. WPR106-490 adds the local one-shot backfill chain for one Binance
+  derivatives family/symbol: pagination, archive ingest, and coverage JSON
+  writing. Completed attempts return page, ingest, and coverage refs; blocked
+  attempts still preserve non-accepted coverage JSON and blocker reasons.
+  WPR106-491 adds the durable `binance_derivatives_context_backfill` worker
+  route for that bounded one-family/symbol chain, supports fixture-payload
+  replay for deterministic tests plus explicit public-API mode, and returns
+  page, archive-ingest, coverage, accepted-coverage, source-mode, and blocker
+  refs. WPR106-492 aligns existing Hyperliquid public REST collector sources
+  with checked source-registry entries for funding history, recent candle
+  snapshots, and one-shot L2 book snapshots. All three entries are native
+  strict-free sources but remain non-accepted historical coverage proof by
+  themselves. WPR106-493 adds checked source-registry entries for Hyperliquid
+  public WebSocket trades, BBO, L2 book, and candle streams and requires
+  public WebSocket worker specs to declare the exact matching
+  `source_registry_source_id` before stream fetch. WPR106-494 registers the
+  full quarantined Hyperliquid official requester-pays source set for L2 book,
+  asset contexts, node fills by block, node fills, and node trades; all five
+  fail strict-zero-dollar mode and cannot claim accepted historical coverage
+  proof. WPR106-495 starts `DATA-010` by registering Bybit and OKX public
+  market sources as public-rate-limited, strict-free-allowed,
+  external-comparison-only entries; they remain non-native to Hyperliquid and
+  cannot claim accepted historical coverage proof. WPR106-496 adds
+  deterministic Bybit/OKX public REST request builders and metadata-only
+  availability manifests with injected probes; recent/snapshot-only endpoints
+  are endpoint-limit blockers, not historical evidence. WPR106-497 adds
+  in-memory smoke fetch normalization for supported date-window Bybit/OKX
+  fixture responses, emitting stable research-only rows without archive writes
+  or accepted historical coverage proof. WPR106-498 starts `DATA-011` by
+  registering MEXC, Bitget, Gate, KuCoin, and HTX public derivatives sources
+  as strict-free public-rate-limited external-comparison entries; they remain
+  non-native and cannot claim accepted historical coverage proof. WPR106-499
+  adds deterministic candle request builders and metadata-only availability
+  manifests for those five venues, requiring verified symbol maps and injected
+  probes before rows can pass. WPR106-500 adds in-memory smoke fetch
+  normalization for DATA-011 candle fixture responses, emitting stable
+  research-only rows without archive writes or accepted historical coverage
+  proof. WPR106-501 starts `DATA-012` by registering dYdX indexer and Deribit
+  public sources as strict-free public-rate-limited external-comparison/
+  reference entries; they remain non-native and cannot claim accepted
+  historical coverage proof. WPR106-502 adds deterministic dYdX indexer candle
+  and Deribit TradingView candle availability matrices with injectable probes
+  and verified-mapping gates; it writes no archive market-data rows and creates
+  no accepted historical coverage proof. WPR106-503 adds in-memory smoke fetch
+  normalization for injected DATA-012 dYdX/Deribit candle responses, emitting
+  stable research-only normalized rows without archive writes or accepted
+  historical coverage proof. WPR106-504 starts `DATA-013` by registering
+  Coinbase spot, Kraken spot, Pyth Hermes, DefiLlama, DexScreener, and
+  GeckoTerminal as strict-free spot/oracle/on-chain context sources; they remain
+  non-native and cannot claim accepted historical coverage proof. WPR106-505
+  adds `defillama_context` to deterministic symbol-map candidates so later
+  context availability can fail closed on explicit mapping status. WPR106-506
+  adds deterministic metadata-only availability manifests for those DATA-013
+  sources with verified-mapping gates and strict-free source-role validation;
+  rows remain non-native and non-accepted as historical coverage proof.
+  WPR106-507 adds in-memory smoke fetch normalization for injected DATA-013
+  responses, emitting stable research-only rows without archive writes or
+  accepted historical coverage proof. WPR106-508 starts DATA-014 with generic
+  trade-to-bar reconstruction models and OHLCV bucketing for already-normalized
+  rows, while keeping native and external provenance separated and leaving
+  candle comparisons, archive writes, accepted coverage, and gold panels for
+  later packets. WPR106-509 adds generic reconstructed-vs-source candle
+  comparison as fail-closed quality metadata; missing buckets, extra buckets,
+  tolerance breaches, or mismatched provenance do not create accepted coverage.
+  WPR106-510 starts DATA-015 with generic orderflow/VWAP feature reconstruction
+  from already-normalized trade rows; empty input, missing side, zero-volume
+  buckets, and mixed provenance fail closed, and funding/OI/BBO/L2/cross-venue
+  feature families, archive writes, accepted coverage, and gold panels remain
+  later packets. WPR106-511 adds funding/OI/basis context feature
+  reconstruction from already-normalized derivatives context rows; unsupported
+  families, missing timestamps/numerics, non-finite numeric values, and mixed
+  provenance fail closed, and BBO/L2/cross-venue feature families, archive
+  writes, accepted coverage, and gold panels remain later packets. WPR106-512
+  adds BBO spread feature reconstruction from already-normalized BBO rows;
+  empty input, missing timestamps/sizes, crossed books, bad prices, and mixed
+  provenance fail closed, and L2/cross-venue feature families, archive writes,
+  accepted coverage, and gold panels remain later packets. WPR106-513 adds L2
+  depth feature reconstruction from already-normalized L2 rows; empty input,
+  missing timestamps, zero total depth, negative depths, invalid book levels,
+  and mixed provenance fail closed, and cross-venue feature families, archive
+  writes, accepted coverage, and gold panels remain later packets. WPR106-514
+  completes the DATA-015 feature reconstruction foundation with cross-venue
+  basis features from already-normalized price observations; rows remain
+  external-comparison only, and archive writes, accepted coverage, and gold
+  panels remain later packets. WPR106-515 starts DATA-016 with a generic gate
+  over existing `DataFamilyCoverageReport` objects; required families pass only
+  when already accepted reports meet the requested minimum, while missing or
+  rejected families and mismatched context fail closed. WPR106-516 starts
+  DATA-017 with metadata-only gold research panel manifests over passed
+  coverage gates and feature refs; blocked gates, missing archive refs, empty
+  feature refs, missing required feature families, uncovered feature families,
+  blocked feature refs, and mismatched ref context fail closed without writing
+  gold panel rows or creating accepted coverage, candidate, or promotion
+  evidence. WPR106-517 adds in-memory gold panel row assembly from ready
+  manifests and timestamped feature-column values; complete rows carry stable
+  row hashes, row-level coverage flags, and source row hashes, while blocked
+  manifests, empty inputs, duplicate column/timestamp pairs, missing
+  non-nullable values, unknown columns, and feature-report mismatches fail
+  closed without writing gold panel files. WPR106-518 adds local artifact
+  writes for ready assemblies through the archive gold-layer Parquet writer,
+  file-manifest store, and `manifests/gold_panels/` assembly JSON; blocked or
+  empty assemblies, unsafe partitions, and duplicate writes fail closed without
+  provider downloads, accepted coverage evidence, candidate evidence, or
+  promotion claims. WPR106-519 completes the DATA-018 foundation with
+  `docs/runbooks/v2_hyperliquid_data_venue_runbook.md`, covering strict-free
+  source order, requester-pays quarantine, prerequisites, archive layers,
+  data-family coverage gates, gold panels, fail-closed handling, validation,
+  and operator stops. WPR106-520 adds the multi-symbol coverage and gold-panel
+  preflight bridge over existing coverage and feature reconstruction refs:
+  required-family gates are evaluated per declared symbol, accepted feature
+  reports are mapped into `GoldResearchPanelFeatureRef` rows, and per-symbol
+  manifest preflight results retain missing-coverage, missing-feature, blocked
+  feature, and manifest blockers. It writes no archive rows or gold panel
+  files and does not create accepted coverage evidence, candidate evidence, or
+  promotion claims. WPR106-521 adds the all-or-nothing materializer for ready
+  preflights and explicit per-symbol row-value inputs, writing gold-layer
+  archive artifacts only when every declared symbol assembles cleanly with
+  source row hashes; blocked preflights, missing inputs, incomplete values,
+  duplicate column/timestamp values, unknown input symbols, and missing source
+  row hashes fail before writes. WPR106-522 adds an explicit durable
+  `backtest_data_load` stage between `strategy_queue_scan` and
+  `vectorized_backtest` in bounded research cycles. The stage loads panels only
+  through `BacktestDataService`, returns archive/universe/coverage/data
+  manifest refs, and generated fixture/public cycles bind those refs into
+  vectorized backtests for fail-closed verification. WPR106-523 adds the
+  existing archive-ref bounded-cycle spec lane: it validates local
+  `archive_snapshot_id` and `universe_snapshot_id` refs through durable
+  existing-ref jobs, accepts only local declarative JSON/YAML strategy specs
+  through `strategy_queue_scan`, loads data through `backtest_data_load`, and
+  can complete the bounded research loop with a no-blocker final audit over
+  supplied archive evidence. Broad unattended backfill scheduling, direct
+  gold-panel consumption by backtest-data jobs, and promotion/readiness claims
+  remain out of scope.
 - Read `docs/RESEARCH_ENGINE_DELUXE_COMPLETION_ROADMAP.md` before planning
   more legacy sandbox feature work. It remains useful historical transition
   guidance and makes repo-state stabilization mandatory before the

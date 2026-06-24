@@ -40,7 +40,7 @@ def test_scheduler_tick_runs_enqueued_plan_and_writes_manifest(tmp_path) -> None
     assert manifest["plan_results"][0]["action"] == "ran"
     assert manifest["plan_results"][0]["status"] == "completed"
     assert manifest["plan_results"][0]["executed_job_count"] == 1
-    assert manifest["plan_results"][0]["skipped_job_count"] == 8
+    assert manifest["plan_results"][0]["skipped_job_count"] == 9
     assert Path(manifest["plan_results"][0]["execution_manifest_path"]).exists()
 
 
@@ -205,6 +205,18 @@ def _seed_successful_loop_jobs(store: WorkerJobStore, *, run_id: str) -> None:
                 "strategy_spec_hash=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             ),
         ),
+        (
+            WorkerJobKind.BACKTEST_DATA_LOAD,
+            f"JOB-{run_id}-backtest-data",
+            (
+                "backtest_data_manifest_path=BACKTEST_DATA",
+                "data_manifest_id=DATA",
+                "data_manifest_hash=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "archive_snapshot_id=ARCH",
+                "universe_snapshot_id=UNIV",
+                "coverage_report_id=COV",
+            ),
+        ),
         (WorkerJobKind.VECTORIZED_BACKTEST, f"JOB-{run_id}-backtest", ("run_manifest_path=RUN",)),
         (
             WorkerJobKind.VALIDATION_GATE,
@@ -250,6 +262,11 @@ def _cycle_spec(*, run_id: str) -> dict:
                 "job_id": f"JOB-{run_id}-strategy-queue",
                 "kind": "strategy_queue_scan",
                 "input_spec": {"strategy_root": "STRATEGY_ROOT", "output_root": "STRATEGY_QUEUE"},
+            },
+            {
+                "job_id": f"JOB-{run_id}-backtest-data",
+                "kind": "backtest_data_load",
+                "input_spec": {"archive_root": "ARCHIVE_ROOT", "evidence_mode": "accepted_research"},
             },
             {
                 "job_id": f"JOB-{run_id}-backtest",

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://researchenginedeluxe.local/schemas/v2_symbol_map.schema.json",
+  "title": "ResearchEngineDeluxe v2 cross-venue symbol map row",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "hyperliquid_coin",
+    "as_of_date",
+    "canonical_base_asset",
+    "symbols",
+    "hyperliquid_liquid_as_of",
+    "above_day_notional_threshold"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "hyperliquid_coin": { "type": "string", "minLength": 1 },
+    "as_of_date": { "type": "string", "format": "date" },
+    "canonical_base_asset": { "type": "string", "minLength": 1 },
+    "symbols": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["venue", "market_type", "status"],
+        "properties": {
+          "venue": { "type": "string", "minLength": 1 },
+          "symbol": { "type": ["string", "null"] },
+          "market_type": {
+            "type": "string",
+            "enum": ["perpetual", "spot", "oracle", "context", "unknown"]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "missing",
+              "ambiguous",
+              "delisted",
+              "not_checked",
+              "manual_review_required"
+            ]
+          },
+          "quote_asset": { "type": ["string", "null"] },
+          "contract_type": { "type": ["string", "null"] },
+          "native_symbol": { "type": ["string", "null"] },
+          "notes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "source_refs": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "hyperliquid_liquid_as_of": { "type": "boolean" },
+    "above_day_notional_threshold": { "type": "boolean" },
+    "external_mapping_verified": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "missing",
+        "ambiguous",
+        "delisted",
+        "not_checked",
+        "manual_review_required"
+      ]
+    },
+    "provenance": { "type": "object" },
+    "blocker_reasons": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  }
+}

@@ -1,7 +1,7 @@
 # V2 Collector Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-004`, `V2-AUD-COLLECT-016`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-004`, `V2-AUD-COLLECT-016`, `V2-AUD-COLLECT-019`, `V2-AUD-COLLECT-020`, `V2-AUD-COLLECT-021`
 
 ## Purpose
 
@@ -31,8 +31,15 @@ request handling and they do not place orders.
 - Public API universe refresh jobs must return `source_mode=public_api`,
   `raw_payload_sha256`, `venue_adapter_id`, source endpoint, raw request ID,
   and raw response ID through durable output refs.
-- Durable universe refresh jobs must fail closed when neither `payload_file`
-  nor `source=public_api` is declared.
+- Universe refresh jobs may use `source=existing_ref` to verify an existing
+  local universe snapshot row without writing universe data. Existing-ref jobs
+  must require `universe_snapshot_id`, reject payload/public-source mixtures,
+  fail closed on missing refs, context mismatches, non-`as_of` accepted
+  evidence, or non-evidence-allowed instruments, and return
+  `source_mode=existing_ref`, `universe_ref_checked=true`, and
+  `universe_snapshot_id` refs.
+- Durable universe refresh jobs must fail closed when none of `payload_file`,
+  `source=public_api`, or `source=existing_ref` is declared.
 - Recent candle bootstrap jobs with local source `records` must write raw
   candle archive files and rebuild bronze candles plus silver bars through the
   archive normalization services. They must return raw, bronze, silver,
@@ -67,6 +74,11 @@ request handling and they do not place orders.
   They do not prove historical coverage, full archive readiness, accepted
   research evidence, event completeness, queue/fill realism, scheduler
   operation, or promotion readiness.
+- Public WebSocket candle, trade, BBO, and L2 jobs must declare
+  `source_registry_source_id` matching the exact stream before stream fetch:
+  `hyperliquid_ws_candle`, `hyperliquid_ws_trades`, `hyperliquid_ws_bbo`, or
+  `hyperliquid_ws_l2_book`. The declared source ID must be returned through
+  durable worker output refs.
 - Recent candle bootstrap jobs may also use the explicit unsigned public
   Hyperliquid `source=public_api` mode for `/info` `candleSnapshot` requests.
   Public candle jobs must split requested time ranges into fixed-width page
@@ -80,10 +92,29 @@ request handling and they do not place orders.
   normalization and must rebuild bronze candles plus silver bars through the
   archive services. The public snapshot endpoint is a recent-window source, not
   full historical backfill evidence.
+- Recent candle bootstrap jobs may use `source=existing_ref` to verify an
+  existing local silver archive snapshot without writing raw, bronze, or silver
+  market data. Existing-ref archive jobs must require `archive_snapshot_id`,
+  reject record/public-source mixtures, fail closed on missing snapshots,
+  non-silver layers, venue/window/family/instrument/timeframe mismatches, empty
+  included files, or missing manifest files, and return
+  `source_mode=existing_ref`, `archive_ref_checked=true`, `archive_snapshot_id`,
+  and matching `silver_file_ids` refs.
 - Funding backfill jobs with local source `records` must write raw funding
   archive files and rebuild bronze funding plus silver funding intervals
   through the archive normalization services. They must return raw, bronze,
   silver, and normalization refs through durable worker outputs.
+- `binance_derivatives_context_backfill` collector jobs route one Binance USD-M
+  derivatives context family and symbol through bounded pagination, local raw
+  and silver `derivatives_context` archive writes, and data-family coverage
+  report output. They must expose source mode, family, symbol, instrument ID,
+  page result ID, archive ingest ID, coverage report ID/ref, acceptance status,
+  and blocker reasons through durable worker output refs.
+- Binance derivatives context collector jobs may use `source=fixture_payloads`
+  for deterministic offline tests or `source=public_api` for explicit
+  operator-invoked public REST mode only. They are external-comparison context
+  intake and do not overwrite Hyperliquid-native candle, funding, trade, BBO,
+  L2, or asset-context families.
 - Funding backfill jobs may also use the explicit unsigned public Hyperliquid
   `source=public_api` mode for `/info` `fundingHistory` requests. Public
   funding jobs must page through time-range responses with an advancing cursor,
@@ -93,6 +124,18 @@ request handling and they do not place orders.
 - Public funding jobs must still write raw records before archive normalization
   and must rebuild bronze funding plus silver funding intervals through the
   archive services.
+- `redx collectors historical-perps` may orchestrate bounded public
+  Hyperliquid current-universe candle collection across many instruments. It
+  must write every collected candle slice through the existing raw, bronze, and
+  silver archive services, emit a local JSON report with per-instrument
+  coverage ratios, preserve `sandbox_diagnostic` evidence mode, and keep
+  `accepted_research_ready=false` because the selection is current-public, not
+  historical as-of universe evidence.
+- `redx collectors historical-perps --include-funding` may additionally write
+  public Hyperliquid funding history through raw, bronze, and silver funding
+  archive services for the same selected instruments. Funding collection is
+  intake evidence only; accepted research still requires as-of universe,
+  coverage, lockbox, validation, ledger, and audit gates.
 - Candle, WebSocket candle batch, and funding archive-write jobs may read
   `records_file` inputs only when `trusted_source_root` is supplied and the
   file stays inside that root. Plain JSON arrays and JSONL/NDJSON objects are
@@ -275,5 +318,12 @@ request handling and they do not place orders.
 - Treating bounded public WebSocket capture-session reports as accepted
   historical coverage proof, scheduler proof, queue/fill realism, full archive
   readiness, or autonomous-ready certification.
+- Opening public WebSocket candle, trade, BBO, or L2 streams without the exact
+  matching checked `source_registry_source_id`.
 - Treating fixture microstructure captures as live execution proof or
   promotion-ready evidence.
+- Treating Binance USD-M derivatives context collector outputs as
+  Hyperliquid-native data, unattended broad backfill completion, accepted
+  research evidence by themselves, queue/fill realism, full archive readiness,
+  scheduler proof, candidate-pack evidence, paper/live/order/sizing/runtime
+  evidence, or promotion-ready evidence.

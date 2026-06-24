@@ -1,0 +1,48 @@
+{
+  "source_id": "binance_usdm_public_derivatives_context",
+  "venue": "binance",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": false,
+  "cost_class": "public_rate_limited",
+  "auth_required": false,
+  "secret_required": false,
+  "paid_required": false,
+  "strict_zero_dollar_allowed": true,
+  "accepted_under_strict_free": true,
+  "accepted_historical_coverage_proof": false,
+  "data_families": [
+    "funding_rate_history",
+    "open_interest",
+    "open_interest_statistics",
+    "mark_price_klines",
+    "index_price_klines",
+    "premium_index_klines",
+    "taker_buy_sell_volume",
+    "long_short_ratios",
+    "basis"
+  ],
+  "history_mode": "public_rest_paginated_context",
+  "priority": "P0",
+  "research_role": "external_derivatives_context",
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "retry_backoff_seconds": [1, 2, 5, 10],
+    "page_cap": 500
+  },
+  "provenance_required": [
+    "source_url",
+    "requested_at_utc",
+    "response_sha256",
+    "row_count",
+    "byte_count",
+    "rate_limit_metadata",
+    "endpoint",
+    "params"
+  ],
+  "caveats": [
+    "external venue; never overwrite Hyperliquid-native funding or asset contexts",
+    "some context endpoints expose latest-window constraints and require endpoint-specific coverage reports",
+    "public REST rate limits must be enforced by callers before fetching"
+  ],
+  "source_url_template": "https://fapi.binance.com/{endpoint}"
+}

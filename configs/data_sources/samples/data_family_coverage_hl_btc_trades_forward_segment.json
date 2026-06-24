@@ -1,0 +1,37 @@
+{
+  "manifest_type": "data_family_coverage_report",
+  "coverage_report_id": "hl-btc-trades-forward-2026-06-22",
+  "universe_snapshot_ref": "manifests/universe/hyperliquid_asof_2026-06-22.json",
+  "source_registry_ref": "manifests/source_registry/source_registry_v1.json",
+  "symbol_map_ref": "manifests/symbol_maps/symbol_map_2026-06-22.json",
+  "archive_snapshot_ref": null,
+  "symbol": "BTC",
+  "family": "trades",
+  "venue": "hyperliquid",
+  "source_ids": ["hyperliquid_ws_trades"],
+  "source_cost_classes": ["zero_cost_public"],
+  "labels": ["native_hyperliquid"],
+  "coverage_window": {
+    "start": "2026-06-22T00:00:00Z",
+    "end": "2026-06-22T00:15:00Z"
+  },
+  "expected_buckets": {
+    "bucket_seconds": 60,
+    "count": 15
+  },
+  "observed_buckets": 15,
+  "coverage_ratio": 1.0,
+  "missing_buckets": [],
+  "accepted_for_research_reporting": false,
+  "reason": ["forward_capture_segment_only", "not_full_2024_plus_window"],
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "candidate_evidence": false,
+  "candidate_pack_eligible": false,
+  "live_signal": false,
+  "paper_signal": false,
+  "sizing_instruction": false,
+  "order_placement_instruction": false,
+  "runtime_mode_change": false
+}

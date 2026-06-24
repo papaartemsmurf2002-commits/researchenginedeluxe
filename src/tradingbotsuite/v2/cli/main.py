@@ -33,6 +33,7 @@ from tradingbotsuite.v2.archive.rebuild import (
 from tradingbotsuite.v2.archive.schemas import ArchiveLayer
 from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
 from tradingbotsuite.v2.autonomy import (
+    AutopilotArchiveCycleConfig,
     AutopilotCyclePlanError,
     AutopilotCycleRunnerError,
     AutopilotFixtureCycleConfig,
@@ -47,6 +48,7 @@ from tradingbotsuite.v2.autonomy import (
     AutonomyLoopError,
     run_autonomy_dry_run,
     scan_strategy_queue,
+    write_autopilot_archive_cycle_spec,
     write_autopilot_fixture_cycle_spec,
     write_autopilot_public_candle_cycle_spec,
 )
@@ -60,6 +62,11 @@ from tradingbotsuite.v2.config.schemas import (
     BOUNDED_CONTEXTS,
     RESEARCH_BOUNDARY,
     V2_SCHEMA_VERSION,
+)
+from tradingbotsuite.v2.collectors.historical_dataset import (
+    DEFAULT_MAX_INSTRUMENTS,
+    HistoricalPerpDatasetConfig,
+    collect_historical_perp_dataset,
 )
 from tradingbotsuite.v2.data_quality.checks import build_quality_checks
 from tradingbotsuite.v2.data_quality.coverage import coverage_report_for_bars
@@ -260,6 +267,50 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_data_quality_common_args(data_quality)
     data_quality.add_argument("--write-manifest", action="store_true")
+    collectors = subparsers.add_parser(
+        "collectors",
+        help="bounded research-only public data collection commands",
+        description=f"Collectors command group. {BOUNDARY_HELP}",
+    )
+    collectors_subparsers = collectors.add_subparsers(dest="collectors_command")
+    historical_perps = collectors_subparsers.add_parser(
+        "historical-perps",
+        help="collect historical Hyperliquid public perp candles and validate coverage/Binance overlap",
+    )
+    historical_perps.add_argument("--output-root", required=True)
+    historical_perps.add_argument("--archive-root")
+    historical_perps.add_argument("--run-id", default="v2-historical-perp-dataset")
+    historical_perps.add_argument("--start-ts", required=True)
+    historical_perps.add_argument("--end-ts", required=True)
+    historical_perps.add_argument("--timeframe", default="1d")
+    historical_perps.add_argument("--asof-date", default=date.today().isoformat())
+    historical_perps.add_argument("--min-day-notional-usd", type=int, default=5_000_000)
+    historical_perps.add_argument(
+        "--max-instruments",
+        type=int,
+        default=DEFAULT_MAX_INSTRUMENTS,
+        help="top-liquidity current eligible instruments to collect; 0 means all selected instruments",
+    )
+    historical_perps.add_argument(
+        "--coin",
+        action="append",
+        dest="coins",
+        default=[],
+        help="restrict to a Hyperliquid coin; repeat for multiple coins",
+    )
+    historical_perps.add_argument("--coverage-min", type=float, default=DEFAULT_COVERAGE_MIN)
+    historical_perps.add_argument("--public-info-url", default="https://api.hyperliquid.xyz/info")
+    historical_perps.add_argument("--public-info-timeout", type=float, default=20.0)
+    historical_perps.add_argument("--max-public-info-pages", type=int, default=50)
+    historical_perps.add_argument("--max-candles-per-public-page", type=int, default=5_000)
+    historical_perps.add_argument("--include-funding", action="store_true")
+    historical_perps.add_argument("--max-funding-pages", type=int, default=100)
+    historical_perps.add_argument("--include-hip3-dexs", action="store_true")
+    historical_perps.add_argument("--no-binance-validation", action="store_true")
+    historical_perps.add_argument("--binance-base-url", default="https://fapi.binance.com")
+    historical_perps.add_argument("--binance-timeout", type=float, default=20.0)
+    historical_perps.add_argument("--binance-close-diff-warn-bps", type=float, default=250.0)
+    historical_perps.add_argument("--created-by-id", default="codex-manager-agent")
     backtest_data = subparsers.add_parser(
         "backtest-data",
         help="local archive-backed backtest data reads; no strategy execution",
@@ -446,6 +497,42 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_public_cycle.add_argument("--max-public-info-pages", type=int, default=50)
     autopilot_public_cycle.add_argument("--max-candles-per-public-page", type=int, default=5_000)
     autopilot_public_cycle.add_argument("--coverage-min", type=float, default=DEFAULT_COVERAGE_MIN)
+    autopilot_archive_cycle = autopilot_subparsers.add_parser(
+        "archive-cycle-spec",
+        help="write an accepted archive-ref bounded-cycle spec without collecting data",
+    )
+    autopilot_archive_cycle.add_argument("--output-root", required=True)
+    autopilot_archive_cycle.add_argument("--run-id", default="autopilot-archive-cycle")
+    autopilot_archive_cycle.add_argument("--archive-root", required=True)
+    autopilot_archive_cycle.add_argument("--strategy-root", required=True)
+    autopilot_archive_cycle.add_argument("--archive-snapshot-id", required=True)
+    autopilot_archive_cycle.add_argument("--universe-snapshot-id", required=True)
+    autopilot_archive_cycle.add_argument("--venue", default="hyperliquid")
+    autopilot_archive_cycle.add_argument("--instrument-id", default="hyperliquid:perp:BTC")
+    autopilot_archive_cycle.add_argument("--family", default="bars")
+    autopilot_archive_cycle.add_argument("--timeframe", default="1d")
+    autopilot_archive_cycle.add_argument("--start-ts", default="2024-01-01T00:00:00+00:00")
+    autopilot_archive_cycle.add_argument("--end-ts", default="2024-08-01T00:00:00+00:00")
+    autopilot_archive_cycle.add_argument("--asof-date", default=date.today().isoformat())
+    autopilot_archive_cycle.add_argument("--coverage-min", type=float, default=DEFAULT_COVERAGE_MIN)
+    autopilot_archive_cycle.add_argument("--requested-field", dest="requested_fields", action="append")
+    autopilot_archive_cycle.add_argument("--strategy-max-files", type=int, default=50)
+    autopilot_archive_cycle.add_argument("--created-by-id", default="codex-manager-agent")
+    autopilot_archive_cycle.add_argument("--strategy-family", default="uploaded_declarative_strategy")
+    autopilot_archive_cycle.add_argument(
+        "--economic-thesis",
+        default=(
+            "Local declarative strategy spec was tested by the bounded research loop "
+            "against operator-supplied accepted archive refs."
+        ),
+    )
+    autopilot_archive_cycle.add_argument("--lead-avg-trades-per-month", type=float, default=6.0)
+    autopilot_archive_cycle.add_argument("--lead-total-trades", type=int, default=42)
+    autopilot_archive_cycle.add_argument("--lead-usable-months", type=int, default=6)
+    autopilot_archive_cycle.add_argument("--lead-losing-months-12m", type=int, default=0)
+    autopilot_archive_cycle.add_argument("--lead-positive-months-12m", type=int, default=6)
+    autopilot_archive_cycle.add_argument("--lead-top-2-trades-profit-share", type=float, default=0.0)
+    autopilot_archive_cycle.add_argument("--lead-best-month-profit-share", type=float, default=0.0)
     autopilot_strategy_queue = autopilot_subparsers.add_parser(
         "strategy-queue-scan",
         help="scan local declarative strategy specs and write an input-hygiene manifest",
@@ -589,6 +676,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _handle_archive(args, parser)
     if args.command == "universe":
         return _handle_universe(args, parser)
+    if args.command == "collectors":
+        return _handle_collectors(args, parser)
     if args.command == "data":
         return _handle_data(args, parser)
     if args.command == "backtest-data":
@@ -814,6 +903,67 @@ def _handle_universe(args: argparse.Namespace, parser: argparse.ArgumentParser) 
 
 def _parse_date(value: str):
     return datetime.fromisoformat(value).date()
+
+
+def _handle_collectors(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.collectors_command is None:
+        parser.parse_args(["collectors", "--help"])
+        return 0
+    if args.collectors_command == "historical-perps":
+        output_root = (Path(args.output_root).resolve(strict=False) / args.run_id).resolve(strict=False)
+        archive_root = (
+            Path(args.archive_root).resolve(strict=False)
+            if args.archive_root
+            else (output_root / "archive").resolve(strict=False)
+        )
+        result = collect_historical_perp_dataset(
+            HistoricalPerpDatasetConfig(
+                output_root=str(output_root),
+                archive_root=str(archive_root),
+                run_id=args.run_id,
+                start_ts=_parse_datetime(args.start_ts),
+                end_ts=_parse_datetime(args.end_ts),
+                timeframe=args.timeframe,
+                asof_date=_parse_date(args.asof_date),
+                min_day_notional_usd=args.min_day_notional_usd,
+                max_instruments=args.max_instruments,
+                coins=tuple(args.coins or ()),
+                coverage_min=args.coverage_min,
+                public_info_url=args.public_info_url,
+                public_info_timeout=args.public_info_timeout,
+                max_public_info_pages=args.max_public_info_pages,
+                max_candles_per_public_page=args.max_candles_per_public_page,
+                include_funding=args.include_funding,
+                max_funding_pages=args.max_funding_pages,
+                include_hip3_dexs=args.include_hip3_dexs,
+                validate_binance=not args.no_binance_validation,
+                binance_base_url=args.binance_base_url,
+                binance_timeout=args.binance_timeout,
+                binance_close_diff_warn_bps=args.binance_close_diff_warn_bps,
+                created_by_id=args.created_by_id,
+            )
+        )
+        print(f"report_path={result.report_path}")
+        print(f"archive_root={result.archive_root}")
+        print(f"universe_snapshot_id={result.universe_snapshot_id}")
+        print(f"archive_snapshot_id={result.archive_snapshot_id}")
+        print(f"universe_eligible_count={result.universe_eligible_count}")
+        print(f"selected_instrument_count={result.selected_instrument_count}")
+        print(f"collected_instrument_count={result.collected_instrument_count}")
+        print(f"technical_coverage_pass_count={result.technical_coverage_pass_count}")
+        if result.min_coverage_ratio is not None:
+            print(f"min_coverage_ratio={result.min_coverage_ratio:.12f}")
+        print(f"binance_checked_count={result.binance_checked_count}")
+        print(f"binance_pass_count={result.binance_pass_count}")
+        print(f"binance_warning_count={result.binance_warning_count}")
+        print(f"binance_skipped_count={result.binance_skipped_count}")
+        print(f"funding_collected_count={result.funding_collected_count}")
+        print(f"funding_skipped_count={result.funding_skipped_count}")
+        print("accepted_research_ready=false")
+        print(f"current_universe_caveat={result.current_universe_caveat}")
+        return 0
+    parser.error(f"unsupported collectors command: {args.collectors_command}")
+    return 2
 
 
 def _universe_refresh_source(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
@@ -1306,6 +1456,62 @@ def _handle_autopilot(args: argparse.Namespace, parser: argparse.ArgumentParser)
             print(f"expected_audit_blocker={blocker}")
         print("source_mode=public_api")
         print("evidence_mode=sandbox_diagnostic")
+        print("accepted_research_ready=false")
+        print("promotion_ready=false")
+        return 0
+    if args.autopilot_command == "archive-cycle-spec":
+        try:
+            config_payload = {
+                "output_root": args.output_root,
+                "run_id": args.run_id,
+                "archive_root": args.archive_root,
+                "strategy_root": args.strategy_root,
+                "archive_snapshot_id": args.archive_snapshot_id,
+                "universe_snapshot_id": args.universe_snapshot_id,
+                "venue": args.venue,
+                "instrument_id": args.instrument_id,
+                "family": args.family,
+                "timeframe": args.timeframe,
+                "start_ts": _parse_datetime(args.start_ts),
+                "end_ts": _parse_datetime(args.end_ts),
+                "asof_date": date.fromisoformat(args.asof_date),
+                "coverage_min": args.coverage_min,
+                "strategy_max_files": args.strategy_max_files,
+                "created_by_id": args.created_by_id,
+                "strategy_family": args.strategy_family,
+                "economic_thesis": args.economic_thesis,
+                "lead_avg_trades_per_month": args.lead_avg_trades_per_month,
+                "lead_total_trades": args.lead_total_trades,
+                "lead_usable_months": args.lead_usable_months,
+                "lead_losing_months_12m": args.lead_losing_months_12m,
+                "lead_positive_months_12m": args.lead_positive_months_12m,
+                "lead_top_2_trades_profit_share": args.lead_top_2_trades_profit_share,
+                "lead_best_month_profit_share": args.lead_best_month_profit_share,
+            }
+            if args.requested_fields:
+                config_payload["requested_fields"] = tuple(args.requested_fields)
+            result = write_autopilot_archive_cycle_spec(
+                AutopilotArchiveCycleConfig(**config_payload)
+            )
+        except (argparse.ArgumentTypeError, ValueError, ValidationError) as exc:
+            print(f"autopilot_archive_cycle_spec_rejected={exc}")
+            return 1
+        print(f"cycle_spec={result.cycle_spec_path}")
+        print(f"archive_root={result.archive_root}")
+        print(f"strategy_root={result.strategy_root}")
+        print(f"archive_snapshot_id={result.archive_snapshot_id}")
+        print(f"universe_snapshot_id={result.universe_snapshot_id}")
+        print(f"backtest_output_root={result.backtest_output_root}")
+        print(f"ledger_path={result.ledger_path}")
+        print(f"lead_book_path={result.lead_book_path}")
+        print(f"suggested_plan_output_root={result.suggested_plan_output_root}")
+        print(f"suggested_job_store={result.suggested_job_store_path}")
+        print(f"declared_job_count={result.declared_job_count}")
+        print(f"declared_binding_count={result.declared_binding_count}")
+        for blocker in result.expected_audit_blockers:
+            print(f"expected_audit_blocker={blocker}")
+        print("source_mode=existing_ref")
+        print("evidence_mode=accepted_research")
         print("accepted_research_ready=false")
         print("promotion_ready=false")
         return 0

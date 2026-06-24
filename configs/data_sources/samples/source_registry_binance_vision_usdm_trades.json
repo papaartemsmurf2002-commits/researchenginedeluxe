@@ -1,0 +1,30 @@
+{
+  "source_id": "binance_vision_usdm_trades",
+  "venue": "binance",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": false,
+  "cost_class": "zero_cost_public",
+  "auth_required": false,
+  "secret_required": false,
+  "paid_required": false,
+  "strict_zero_dollar_allowed": true,
+  "accepted_under_strict_free": true,
+  "accepted_historical_coverage_proof": true,
+  "data_families": ["trades"],
+  "history_mode": "public_daily_monthly_archive",
+  "priority": "P0",
+  "research_role": "external_historical_orderflow_backbone",
+  "rate_limit_policy": {
+    "max_parallel_downloads": 4,
+    "retry_backoff_seconds": [1, 2, 5, 10]
+  },
+  "provenance_required": [
+    "source_url",
+    "downloaded_at_utc",
+    "source_file_sha256",
+    "checksum_sha256_when_available",
+    "row_count",
+    "byte_count"
+  ],
+  "caveats": ["external venue; never relabel as Hyperliquid-native fills"]
+}

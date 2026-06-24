@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://researchenginedeluxe.local/schemas/v2_data_family_coverage.schema.json",
+  "title": "ResearchEngineDeluxe v2 data-family coverage report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_type",
+    "coverage_report_id",
+    "universe_snapshot_ref",
+    "source_registry_ref",
+    "symbol_map_ref",
+    "symbol",
+    "family",
+    "venue",
+    "source_ids",
+    "source_cost_classes",
+    "labels",
+    "coverage_window",
+    "expected_buckets",
+    "observed_buckets",
+    "coverage_ratio",
+    "accepted_for_research_reporting",
+    "research_only",
+    "observe_only",
+    "promotion_ready",
+    "candidate_evidence",
+    "candidate_pack_eligible",
+    "live_signal",
+    "paper_signal",
+    "sizing_instruction",
+    "order_placement_instruction",
+    "runtime_mode_change"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "manifest_type": { "const": "data_family_coverage_report" },
+    "coverage_report_id": { "type": "string", "minLength": 1 },
+    "universe_snapshot_ref": { "type": "string", "minLength": 1 },
+    "source_registry_ref": { "type": "string", "minLength": 1 },
+    "symbol_map_ref": { "type": "string", "minLength": 1 },
+    "archive_snapshot_ref": { "type": ["string", "null"] },
+    "symbol": { "type": "string", "minLength": 1 },
+    "family": { "type": "string", "minLength": 1 },
+    "venue": { "type": "string", "minLength": 1 },
+    "source_ids": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "source_cost_classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "zero_cost_public",
+          "public_rate_limited",
+          "free_sample_only",
+          "public_requester_pays_transfer",
+          "paid_or_keyed"
+        ]
+      }
+    },
+    "labels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "native_hyperliquid",
+          "external_comparison",
+          "external_proxy",
+          "diagnostic_sample"
+        ]
+      }
+    },
+    "coverage_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "expected_buckets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bucket_seconds", "count"],
+      "properties": {
+        "bucket_seconds": { "type": "integer", "minimum": 1 },
+        "count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "observed_buckets": { "type": "integer", "minimum": 0 },
+    "coverage_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+    "coverage_min": { "type": "number", "minimum": 0, "maximum": 1 },
+    "missing_buckets": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "accepted_for_research_reporting": { "type": "boolean" },
+    "reason": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "research_only": { "const": true },
+    "observe_only": { "const": true },
+    "promotion_ready": { "const": false },
+    "candidate_evidence": { "const": false },
+    "candidate_pack_eligible": { "const": false },
+    "live_signal": { "const": false },
+    "paper_signal": { "const": false },
+    "sizing_instruction": { "const": false },
+    "order_placement_instruction": { "const": false },
+    "runtime_mode_change": { "const": false }
+  }
+}

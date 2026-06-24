@@ -39,6 +39,9 @@ jobs:
       - name: Run contract tests
         run: python -m pytest tests/contracts -q
 
+      - name: Run v2 foundation tests
+        run: python -m pytest tests/v2 -q
+
       - name: Run rapid strategy sandbox tests
         run: python -m pytest tests/research_sandbox -q
 

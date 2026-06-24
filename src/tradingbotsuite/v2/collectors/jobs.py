@@ -33,9 +33,14 @@ from tradingbotsuite.v2.archive.rebuild import (
     raw_candles_to_bronze,
     raw_funding_to_bronze,
 )
+from tradingbotsuite.v2.archive.schemas import ArchiveLayer
 from tradingbotsuite.v2.config.time import utc_isoformat, utc_now
+from tradingbotsuite.v2.data_sources.binance_derivatives import (
+    BinanceDerivativesContextGetResult,
+    run_binance_derivatives_context_backfill,
+)
 from tradingbotsuite.v2.security.path_policy import resolve_within_root
-from tradingbotsuite.v2.universe.hyperliquid import refresh_hyperliquid_universe
+from tradingbotsuite.v2.universe.hyperliquid import load_universe_rows, refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode
 from tradingbotsuite.v2.venues.hyperliquid import HyperliquidInfoClient, HyperliquidWebSocketClient
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
@@ -176,6 +181,12 @@ def run_collector_job(
         )
     if job.kind == WorkerJobKind.OFFICIAL_S3_BACKFILL:
         return _run_official_s3_backfill_job(job=job, store=store, worker_id=worker_id)
+    if job.kind == WorkerJobKind.BINANCE_DERIVATIVES_CONTEXT_BACKFILL:
+        return _run_binance_derivatives_context_backfill_job(
+            job=job,
+            store=store,
+            worker_id=worker_id,
+        )
     raise ValueError(f"unsupported collector job kind: {job.kind.value}")
 
 
@@ -187,6 +198,8 @@ def _run_universe_refresh_job(
 ) -> WorkerRunResult:
     spec = job.input_spec
     source_mode = _universe_source_mode(spec)
+    if source_mode == "existing_ref":
+        return _run_existing_universe_ref_job(job=job, store=store, worker_id=worker_id)
     client = (
         HyperliquidInfoClient(
             base_url=str(spec.get("public_info_url", "https://api.hyperliquid.xyz/info")),
@@ -245,6 +258,8 @@ def _run_recent_candle_bootstrap_job(
 ) -> WorkerRunResult:
     spec = job.input_spec
     source_mode = _recent_candle_source_mode(spec)
+    if source_mode == "existing_ref":
+        return _run_existing_archive_ref_job(job=job, store=store, worker_id=worker_id)
     if source_mode == "public_api":
         return _run_public_recent_candle_bootstrap_job(
             job=job,
@@ -342,6 +357,183 @@ def _run_recent_candle_bootstrap_job(
         status=record.status,
         output_refs=record.output_refs,
         archive_manifest_refs=record.archive_manifest_refs,
+    )
+
+
+def _run_existing_universe_ref_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    archive_root = Path(_required_str(spec, "archive_root")).resolve(strict=False)
+    if not archive_root.is_dir():
+        raise ValueError("universe_refresh source=existing_ref requires an existing archive_root")
+    snapshot_id = _required_str(spec, "universe_snapshot_id")
+    if len(snapshot_id) != 64:
+        raise ValueError("universe_snapshot_id must be 64 hex characters")
+    expected_instrument = str(spec.get("instrument_id", "")).strip()
+    expected_mode = UniverseMode(str(spec.get("mode", UniverseMode.AS_OF.value)))
+    expected_asof_date = (
+        _parse_date(str(spec["asof_date"]))
+        if isinstance(spec.get("asof_date"), str) and spec.get("asof_date")
+        else None
+    )
+    evidence_mode = str(spec.get("evidence_mode", "accepted_research")).strip().lower()
+    rows = [
+        row
+        for row in load_universe_rows(archive_root)
+        if row.snapshot_id == snapshot_id
+    ]
+    if not rows:
+        raise ValueError(f"universe_snapshot_not_found: {snapshot_id}")
+    if any(row.universe_mode != expected_mode for row in rows):
+        raise ValueError(f"universe_snapshot_mode_mismatch: {expected_mode.value}")
+    if expected_asof_date is not None and any(row.asof_date != expected_asof_date for row in rows):
+        raise ValueError(f"universe_snapshot_asof_date_mismatch: {expected_asof_date.isoformat()}")
+    checked_rows = rows
+    if expected_instrument:
+        checked_rows = [row for row in rows if row.instrument_id == expected_instrument]
+        if len(checked_rows) != 1:
+            raise ValueError(f"instrument_not_in_universe_snapshot: {expected_instrument}")
+    if evidence_mode in {"accepted_research", "reported_evidence"}:
+        for row in checked_rows:
+            if row.universe_mode != UniverseMode.AS_OF:
+                raise ValueError("existing_ref accepted evidence requires as_of universe")
+            if row.evidence_scope != "accepted_research":
+                raise ValueError(f"universe_evidence_scope_not_accepted: {row.evidence_scope}")
+            if not row.accepted_research_evidence_allowed:
+                raise ValueError(f"instrument_not_evidence_allowed: {row.instrument_id}")
+    raw_file_ids = tuple(dict.fromkeys(row.raw_file_id for row in rows))
+    raw_payload_hashes = tuple(dict.fromkeys(row.raw_payload_sha256 for row in rows))
+    output_refs = [
+        "source_mode=existing_ref",
+        "universe_ref_checked=true",
+        f"universe_snapshot_id={snapshot_id}",
+        f"universe_mode={expected_mode.value}",
+        f"instrument_count={len(rows)}",
+        f"eligible_count={sum(1 for row in rows if row.eligible)}",
+        f"accepted_evidence_allowed_count={sum(1 for row in rows if row.accepted_research_evidence_allowed)}",
+        f"raw_file_ids={_csv(raw_file_ids)}",
+        f"raw_payload_sha256s={_csv(raw_payload_hashes)}",
+    ]
+    if expected_instrument:
+        output_refs.append(f"instrument_id={expected_instrument}")
+    archive_refs = (
+        f"universe_snapshot_id={snapshot_id}",
+        f"raw_file_ids={_csv(raw_file_ids)}",
+        "universe_ref_checked=true",
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=tuple(output_refs),
+        archive_manifest_refs=archive_refs,
+        reason="universe_refresh_existing_ref_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
+    )
+
+
+def _run_existing_archive_ref_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    archive_root = Path(_required_str(spec, "archive_root")).resolve(strict=False)
+    if not archive_root.is_dir():
+        raise ValueError("recent_candle_bootstrap source=existing_ref requires an existing archive_root")
+    snapshot_id = _required_str(spec, "archive_snapshot_id")
+    if len(snapshot_id) != 64:
+        raise ValueError("archive_snapshot_id must be 64 hex characters")
+    layout = ArchiveLayout(archive_root)
+    manifest_store = ArchiveManifestStore(layout)
+    snapshots = [
+        snapshot
+        for snapshot in manifest_store.load_archive_snapshots()
+        if snapshot.archive_snapshot_id == snapshot_id
+    ]
+    if len(snapshots) != 1:
+        raise ValueError(f"archive_snapshot_not_found: {snapshot_id}")
+    snapshot = snapshots[0]
+    if snapshot.layer != ArchiveLayer.SILVER:
+        raise ValueError("archive_snapshot_layer_not_silver")
+    venue = str(spec.get("venue", "")).strip()
+    if venue and snapshot.venue_scope not in {venue, "all", "*"}:
+        raise ValueError(f"archive_snapshot_venue_scope_mismatch: {snapshot.venue_scope}")
+    start_ts = _optional_datetime(spec.get("start_ts"))
+    end_ts = _optional_datetime(spec.get("end_ts"))
+    if start_ts is not None and snapshot.start_ts > start_ts:
+        raise ValueError("archive_snapshot_window_starts_after_requested_start")
+    if end_ts is not None and snapshot.end_ts < end_ts:
+        raise ValueError("archive_snapshot_window_ends_before_requested_end")
+    included_file_ids = set(snapshot.included_file_ids)
+    if not included_file_ids:
+        raise ValueError("archive_snapshot_has_no_included_files")
+    family = str(spec.get("family", spec.get("datatype", "bars"))).strip()
+    instrument_id = str(spec.get("instrument_id", "")).strip()
+    timeframe = str(spec.get("timeframe", "")).strip()
+    included_rows = [
+        row
+        for row in manifest_store.load_file_manifest()
+        if row.file_id in included_file_ids and row.layer == ArchiveLayer.SILVER
+    ]
+    matching_rows = [
+        row
+        for row in included_rows
+        if (not venue or row.venue == venue)
+        and (not family or row.datatype == family)
+        and (not instrument_id or row.instrument_id == instrument_id)
+        and (not timeframe or row.timeframe == timeframe)
+    ]
+    if not matching_rows:
+        raise ValueError("archive_snapshot_no_matching_silver_files")
+    missing_paths = [
+        row.path
+        for row in matching_rows
+        if not layout.resolve(row.path).is_file()
+    ]
+    if missing_paths:
+        raise ValueError("archive_snapshot_file_missing: " + ",".join(missing_paths))
+    silver_file_ids = tuple(row.file_id for row in matching_rows)
+    output_refs = (
+        "collector_mode=existing_archive_ref_check",
+        "source_mode=existing_ref",
+        "archive_ref_checked=true",
+        f"archive_snapshot_id={snapshot.archive_snapshot_id}",
+        f"source_layer={snapshot.layer.value}",
+        f"venue_scope={snapshot.venue_scope}",
+        f"snapshot_start_ts={utc_isoformat(snapshot.start_ts)}",
+        f"snapshot_end_ts={utc_isoformat(snapshot.end_ts)}",
+        f"matching_file_count={len(matching_rows)}",
+        f"silver_file_ids={_csv(silver_file_ids)}",
+    )
+    archive_refs = (
+        f"archive_snapshot_id={snapshot.archive_snapshot_id}",
+        f"silver_file_ids={_csv(silver_file_ids)}",
+        "archive_ref_checked=true",
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="recent_candle_bootstrap_existing_ref_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+        gap_record_ids=record.gap_record_ids,
     )
 
 
@@ -553,6 +745,79 @@ def _run_funding_backfill_job(
     )
 
 
+def _run_binance_derivatives_context_backfill_job(
+    *,
+    job: WorkerJobRecord,
+    store: WorkerJobStore,
+    worker_id: str,
+) -> WorkerRunResult:
+    spec = job.input_spec
+    source = str(spec.get("source", "public_api")).strip()
+    if source not in {"public_api", "fixture_payloads"}:
+        raise ValueError("binance derivatives context source must be public_api or fixture_payloads")
+    get_client = (
+        _binance_derivatives_fixture_get(spec)
+        if source == "fixture_payloads"
+        else None
+    )
+    result = run_binance_derivatives_context_backfill(
+        archive_root=_required_str(spec, "archive_root"),
+        family=_required_str(spec, "family"),
+        symbol=_required_str(spec, "symbol"),
+        instrument_id=_required_str(spec, "instrument_id"),
+        start_time_ms=_optional_int(spec.get("start_time_ms")),
+        end_time_ms=_optional_int(spec.get("end_time_ms")),
+        interval=spec.get("interval"),
+        period=spec.get("period"),
+        limit=_optional_int(spec.get("limit")),
+        max_pages=int(spec.get("max_pages", 10)),
+        universe_snapshot_ref=_required_str(spec, "universe_snapshot_ref"),
+        source_registry_ref=_required_str(spec, "source_registry_ref"),
+        symbol_map_ref=_required_str(spec, "symbol_map_ref"),
+        archive_snapshot_ref=spec.get("archive_snapshot_ref"),
+        base_url=str(spec.get("base_url", "https://fapi.binance.com")),
+        contract_type=spec.get("contract_type", "PERPETUAL"),
+        get=get_client,
+        max_bytes=int(spec.get("max_bytes", 10 * 1024 * 1024)),
+        coverage_min=float(spec.get("coverage_min", 0.98)),
+    )
+    blocker_text = ",".join(result.blocker_reasons)
+    output_refs = (
+        "job_kind=binance_derivatives_context_backfill",
+        "collector_mode=binance_derivatives_context_backfill",
+        f"source_mode={source}",
+        f"family={result.family.value}",
+        f"symbol={result.symbol}",
+        f"instrument_id={result.instrument_id}",
+        f"backfill_status={result.status.value}",
+        f"accepted_for_research_reporting={str(result.accepted_for_research_reporting).lower()}",
+        f"page_result_id={result.page_result_id}",
+        f"archive_ingest_id={result.archive_ingest_id}",
+        f"coverage_report_id={result.coverage_report_id}",
+        f"coverage_report_ref={result.coverage_report_ref}",
+        f"blocker_reasons={blocker_text}",
+    )
+    archive_refs = (
+        f"page_result_id={result.page_result_id}",
+        f"archive_ingest_id={result.archive_ingest_id}",
+        f"coverage_report_id={result.coverage_report_id}",
+        f"coverage_report_ref={result.coverage_report_ref}",
+    )
+    record = store.succeed_job(
+        job.job_id,
+        worker_id=worker_id,
+        output_refs=output_refs,
+        archive_manifest_refs=archive_refs,
+        reason="binance_derivatives_context_backfill_succeeded",
+    )
+    return WorkerRunResult(
+        job_id=job.job_id,
+        status=record.status,
+        output_refs=record.output_refs,
+        archive_manifest_refs=record.archive_manifest_refs,
+    )
+
+
 def _run_public_funding_backfill_job(
     *,
     job: WorkerJobRecord,
@@ -711,6 +976,10 @@ def _run_public_websocket_candle_capture_job(
     spec = job.input_spec
     if _has_record_source(spec):
         raise ValueError("public websocket candle capture cannot mix source=public_websocket with local records")
+    source_registry_source_id = _require_public_websocket_source_registry(
+        spec,
+        expected_source_id="hyperliquid_ws_candle",
+    )
     archive_root = _required_str(spec, "archive_root")
     instrument_id = _required_str(spec, "instrument_id")
     timeframe = str(spec.get("timeframe", "1m"))
@@ -809,6 +1078,7 @@ def _run_public_websocket_candle_capture_job(
     output_refs = (
         _public_websocket_candle_collector_mode(capture_mode),
         "source_mode=public_websocket",
+        f"source_registry_source_id={source_registry_source_id}",
         f"capture_mode={capture_mode}",
         f"continuous_capture={str(capture_mode == 'unattended_session').lower()}",
         "accepted_historical_coverage_proof=false",
@@ -1167,6 +1437,10 @@ def _run_public_websocket_trade_capture_job(
     if datatype != MicrostructureDataType.TRADES:
         raise ValueError("public websocket capture only supports datatype trades")
     spec = job.input_spec
+    source_registry_source_id = _require_public_websocket_source_registry(
+        spec,
+        expected_source_id="hyperliquid_ws_trades",
+    )
     archive_root = _required_str(spec, "archive_root")
     instrument_id = _required_str(spec, "instrument_id")
     start_ts = _parse_datetime(_required_str(spec, "start_ts"))
@@ -1243,6 +1517,7 @@ def _run_public_websocket_trade_capture_job(
     output_refs = (
         _public_websocket_trade_collector_mode(capture_mode),
         "source_mode=public_websocket",
+        f"source_registry_source_id={source_registry_source_id}",
         f"capture_mode={capture_mode}",
         f"continuous_capture={str(capture_mode == 'unattended_session').lower()}",
         "accepted_historical_coverage_proof=false",
@@ -1292,6 +1567,14 @@ def _run_public_websocket_l2_bbo_capture_job(
     if datatype not in {MicrostructureDataType.BBO, MicrostructureDataType.L2}:
         raise ValueError("public websocket BBO/L2 capture only supports datatype bbo or l2")
     spec = job.input_spec
+    source_registry_source_id = _require_public_websocket_source_registry(
+        spec,
+        expected_source_id=(
+            "hyperliquid_ws_bbo"
+            if datatype == MicrostructureDataType.BBO
+            else "hyperliquid_ws_l2_book"
+        ),
+    )
     archive_root = _required_str(spec, "archive_root")
     instrument_id = _required_str(spec, "instrument_id")
     start_ts = _parse_datetime(_required_str(spec, "start_ts"))
@@ -1390,6 +1673,7 @@ def _run_public_websocket_l2_bbo_capture_job(
     output_refs = (
         _public_websocket_l2_bbo_collector_mode(capture_mode),
         "source_mode=public_websocket",
+        f"source_registry_source_id={source_registry_source_id}",
         f"capture_mode={capture_mode}",
         f"continuous_capture={str(capture_mode == 'unattended_session').lower()}",
         "accepted_historical_coverage_proof=false",
@@ -1881,12 +2165,17 @@ def _universe_source_mode(spec: dict[str, Any]) -> str:
     source = str(spec.get("source", "")).strip()
     has_payload_file = bool(spec.get("payload_file"))
     if source:
-        if source not in {"payload_file", "public_api"}:
-            raise ValueError("universe_refresh source must be payload_file or public_api")
+        if source not in {"payload_file", "public_api", "existing_ref"}:
+            raise ValueError("universe_refresh source must be payload_file, public_api, or existing_ref")
         if source == "payload_file" and not has_payload_file:
             raise ValueError("universe_refresh source=payload_file requires payload_file")
         if source == "public_api" and has_payload_file:
             raise ValueError("universe_refresh source=public_api cannot include payload_file")
+        if source == "existing_ref":
+            if has_payload_file:
+                raise ValueError("universe_refresh source=existing_ref cannot include payload_file")
+            if not spec.get("universe_snapshot_id"):
+                raise ValueError("universe_refresh source=existing_ref requires universe_snapshot_id")
         return source
     if has_payload_file:
         return "payload_file"
@@ -1898,12 +2187,18 @@ def _recent_candle_source_mode(spec: dict[str, Any]) -> str:
     has_records = _has_record_source(spec)
     if not source:
         return "records" if has_records else "diagnostic"
+    if source == "existing_ref":
+        if has_records:
+            raise ValueError("recent_candle_bootstrap source=existing_ref cannot include records")
+        if not spec.get("archive_snapshot_id"):
+            raise ValueError("recent_candle_bootstrap source=existing_ref requires archive_snapshot_id")
+        return "existing_ref"
     if source == "public_api":
         if has_records:
             raise ValueError("recent_candle_bootstrap source=public_api cannot include records")
         return "public_api"
     if source not in {"records", "records_file", "inline"}:
-        raise ValueError("recent_candle_bootstrap source must be public_api, records, or records_file")
+        raise ValueError("recent_candle_bootstrap source must be public_api, existing_ref, records, or records_file")
     if not has_records:
         raise ValueError(f"recent_candle_bootstrap source={source} requires records or records_file")
     return "records"
@@ -2001,6 +2296,27 @@ def _optional_int(value: Any) -> int | None:
     return int(value)
 
 
+def _binance_derivatives_fixture_get(
+    spec: dict[str, Any],
+) -> Any:
+    payloads = spec.get("response_payloads")
+    if not isinstance(payloads, list) or not payloads:
+        raise ValueError("source=fixture_payloads requires non-empty response_payloads")
+    index = {"value": 0}
+
+    def get(_url: str) -> BinanceDerivativesContextGetResult:
+        if index["value"] >= len(payloads):
+            return BinanceDerivativesContextGetResult(error="fixture_payloads_exhausted")
+        payload = payloads[index["value"]]
+        index["value"] += 1
+        return BinanceDerivativesContextGetResult(
+            status_code=200,
+            content=json.dumps(payload, ensure_ascii=True).encode("utf-8"),
+        )
+
+    return get
+
+
 def _optional_l2_book_n_sig_figs(spec: dict[str, Any]) -> int | None:
     value = spec.get("n_sig_figs")
     if value is None and "nSigFigs" in spec:
@@ -2014,6 +2330,25 @@ def _public_websocket_capture_mode(spec: dict[str, Any]) -> str:
         allowed = ", ".join(sorted(_PUBLIC_WEBSOCKET_CAPTURE_MODES))
         raise ValueError(f"public websocket capture_mode must be one of: {allowed}")
     return mode
+
+
+def _require_public_websocket_source_registry(
+    spec: dict[str, Any],
+    *,
+    expected_source_id: str,
+) -> str:
+    source_id = str(spec.get("source_registry_source_id", "")).strip()
+    if not source_id:
+        raise ValueError(
+            "public_websocket source_registry_source_id is required "
+            f"and must be {expected_source_id}"
+        )
+    if source_id != expected_source_id:
+        raise ValueError(
+            "public_websocket source_registry_source_id must be "
+            f"{expected_source_id}, got {source_id}"
+        )
+    return source_id
 
 
 def _public_websocket_candle_collector_mode(capture_mode: str) -> str:

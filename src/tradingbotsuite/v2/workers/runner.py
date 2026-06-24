@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from tradingbotsuite.v2.audit.jobs import run_audit_job
+from tradingbotsuite.v2.backtest_data.jobs import run_backtest_data_job
 from tradingbotsuite.v2.backtest_engine.jobs import run_backtest_job
 from tradingbotsuite.v2.collectors.jobs import run_collector_job
 from tradingbotsuite.v2.data_quality.jobs import run_data_quality_job
@@ -24,6 +25,7 @@ COLLECTOR_KINDS = {
     WorkerJobKind.WEBSOCKET_TRADE_CAPTURE,
     WorkerJobKind.WEBSOCKET_L2_BBO_CAPTURE,
     WorkerJobKind.OFFICIAL_S3_BACKFILL,
+    WorkerJobKind.BINANCE_DERIVATIVES_CONTEXT_BACKFILL,
 }
 
 DATA_QUALITY_KINDS = {
@@ -32,6 +34,10 @@ DATA_QUALITY_KINDS = {
 
 STRATEGY_QUEUE_KINDS = {
     WorkerJobKind.STRATEGY_QUEUE_SCAN,
+}
+
+BACKTEST_DATA_KINDS = {
+    WorkerJobKind.BACKTEST_DATA_LOAD,
 }
 
 BACKTEST_KINDS = {
@@ -81,6 +87,8 @@ def run_one_job(
             from tradingbotsuite.v2.autonomy.strategy_queue import run_strategy_queue_job
 
             return run_strategy_queue_job(job=running, store=store, worker_id=worker_id)
+        if job_kind in BACKTEST_DATA_KINDS:
+            return run_backtest_data_job(job=running, store=store, worker_id=worker_id)
         if job_kind in BACKTEST_KINDS:
             return run_backtest_job(job=running, store=store, worker_id=worker_id)
         if job_kind in VALIDATION_KINDS:

@@ -1512,6 +1512,87 @@ def test_vectorized_backtest_worker_loads_archive_panel_and_writes_run_artifacts
     assert {row["scenario_id"] for row in cost_stress} == {"base", "stress_2x", "stress_3x"}
 
 
+def test_backtest_data_load_worker_loads_archive_panel_and_returns_refs(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.BACKTEST_DATA_LOAD,
+        job_id="JOB-backtest-data-load",
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "family": "bars",
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-07-01T00:00:00+00:00",
+            "asof_date": "2026-06-21",
+            "evidence_mode": "accepted_research",
+            "requested_fields": ["ts", "instrument_id", "close", "volume", "open"],
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.BACKTEST_DATA_LOAD,
+        worker_id="worker-backtest-data-load",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "job_kind=backtest_data_load" in loaded.output_refs
+    assert any(ref.startswith("backtest_data_manifest_path=") for ref in loaded.output_refs)
+    assert any(ref.startswith("backtest_data_manifest_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("data_manifest_id=") for ref in loaded.output_refs)
+    assert any(ref.startswith("data_manifest_hash=") for ref in loaded.output_refs)
+    assert f"archive_snapshot_id={fixture.archive_snapshot_id}" in loaded.archive_manifest_refs
+    assert f"universe_snapshot_id={fixture.universe_snapshot_id}" in loaded.archive_manifest_refs
+    assert (fixture.archive_root / "manifests" / "backtest_data_requests.parquet").exists()
+
+
+def test_vectorized_backtest_worker_rejects_expected_data_ref_mismatch(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        job_id="JOB-vectorized-backtest-ref-mismatch",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "output_root": str(tmp_path / "runs"),
+            "run_id": "worker-vectorized-ref-mismatch",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-07-01T00:00:00+00:00",
+            "asof_date": "2026-06-21",
+            "evidence_mode": "accepted_research",
+            "expected_data_manifest_id": "0" * 64,
+            "strategy_spec": _worker_backtest_strategy_spec(),
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.VECTORIZED_BACKTEST,
+        worker_id="worker-backtest-ref-mismatch",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "backtest_data_ref_mismatch:expected_data_manifest_id" in (loaded.failure_reason or "")
+    assert not (tmp_path / "runs" / "worker-vectorized-ref-mismatch" / "run_manifest.json").exists()
+
+
 def test_vectorized_backtest_worker_rejects_invalid_strategy_spec_before_run(tmp_path) -> None:
     fixture = _backtest_archive_fixture(tmp_path)
     bad_spec = _worker_backtest_strategy_spec()
@@ -2772,6 +2853,7 @@ def test_websocket_candle_public_websocket_worker_writes_archive_layers(
         input_spec={
             "archive_root": str(archive_root),
             "source": "public_websocket",
+            "source_registry_source_id": "hyperliquid_ws_candle",
             "public_ws_url": "wss://example.test/ws",
             "public_ws_timeout": 3.0,
             "venue": "hyperliquid",
@@ -2821,6 +2903,7 @@ def test_websocket_candle_public_websocket_worker_writes_archive_layers(
     ]
     assert "collector_mode=public_websocket_candle_archive_write" in loaded.output_refs
     assert "source_mode=public_websocket" in loaded.output_refs
+    assert "source_registry_source_id=hyperliquid_ws_candle" in loaded.output_refs
     assert "continuous_capture=false" in loaded.output_refs
     assert "accepted_historical_coverage_proof=false" in loaded.output_refs
     assert (
@@ -2917,6 +3000,7 @@ def test_websocket_candle_public_websocket_unattended_session_writes_report(
         input_spec={
             "archive_root": str(archive_root),
             "source": "public_websocket",
+            "source_registry_source_id": "hyperliquid_ws_candle",
             "capture_mode": "unattended_session",
             "public_ws_url": "wss://example.test/ws",
             "public_ws_timeout": 3.0,
@@ -2955,6 +3039,7 @@ def test_websocket_candle_public_websocket_unattended_session_writes_report(
     heartbeat_phases = [heartbeat.details.get("phase") for heartbeat in store.list_heartbeats(queued.job_id)]
 
     assert "collector_mode=public_websocket_candle_capture_session_archive_write" in loaded.output_refs
+    assert "source_registry_source_id=hyperliquid_ws_candle" in loaded.output_refs
     assert "capture_mode=unattended_session" in loaded.output_refs
     assert "continuous_capture=true" in loaded.output_refs
     assert "accepted_historical_coverage_proof=false" in loaded.output_refs
@@ -3033,6 +3118,7 @@ def test_websocket_public_websocket_rejects_unknown_capture_mode(tmp_path) -> No
         input_spec={
             "archive_root": str(archive_root),
             "source": "public_websocket",
+            "source_registry_source_id": "hyperliquid_ws_candle",
             "capture_mode": "forever",
             "venue": "hyperliquid",
             "instrument_id": INSTRUMENT,
@@ -3055,6 +3141,55 @@ def test_websocket_public_websocket_rejects_unknown_capture_mode(tmp_path) -> No
     assert result.status == WorkerJobStatus.FAILED
     assert loaded is not None
     assert "capture_mode must be one of" in (loaded.failure_reason or "")
+    assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
+
+
+@pytest.mark.parametrize(
+    ("source_registry_source_id", "expected_reason"),
+    [
+        (None, "source_registry_source_id is required"),
+        ("hyperliquid_ws_trades", "must be hyperliquid_ws_candle"),
+    ],
+)
+def test_websocket_candle_public_websocket_requires_matching_source_registry_id(
+    tmp_path,
+    source_registry_source_id: str | None,
+    expected_reason: str,
+) -> None:
+    archive_root = tmp_path / "archive-ws-public-candles-source-registry"
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    input_spec = {
+        "archive_root": str(archive_root),
+        "source": "public_websocket",
+        "venue": "hyperliquid",
+        "instrument_id": INSTRUMENT,
+        "datatype": "candles",
+        "timeframe": "1m",
+        "date": "2026-01-01",
+        "run_id": "run-ws-public-candles-source-registry",
+        "start_ts": "2026-01-01T00:00:00+00:00",
+        "end_ts": "2026-01-01T00:05:00+00:00",
+    }
+    if source_registry_source_id is not None:
+        input_spec["source_registry_source_id"] = source_registry_source_id
+    queued = store.enqueue(
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        job_id="JOB-ws-public-candles-source-registry",
+        max_attempts=1,
+        input_spec=input_spec,
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.WEBSOCKET_CAPTURE,
+        worker_id="worker-ws-public-candles-source-registry",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert expected_reason in (loaded.failure_reason or "")
     assert ArchiveManifestStore(ArchiveLayout(archive_root)).load_file_manifest() == []
 
 
@@ -3199,6 +3334,110 @@ class _BacktestFixture:
         self.archive_root = archive_root
         self.archive_snapshot_id = archive_snapshot_id
         self.universe_snapshot_id = universe_snapshot_id
+
+
+def test_universe_refresh_worker_accepts_existing_asof_universe_ref(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        job_id="JOB-existing-universe-ref",
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "source": "existing_ref",
+            "universe_snapshot_id": fixture.universe_snapshot_id,
+            "instrument_id": INSTRUMENT,
+            "asof_date": "2024-01-01",
+            "mode": "as_of",
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.UNIVERSE_REFRESH,
+        worker_id="worker-existing-universe-ref",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "source_mode=existing_ref" in loaded.output_refs
+    assert "universe_ref_checked=true" in loaded.output_refs
+    assert f"universe_snapshot_id={fixture.universe_snapshot_id}" in loaded.output_refs
+    assert f"universe_snapshot_id={fixture.universe_snapshot_id}" in loaded.archive_manifest_refs
+    assert not any(ref.startswith("raw_file_id=") for ref in loaded.archive_manifest_refs)
+
+
+def test_recent_candle_bootstrap_worker_accepts_existing_silver_archive_ref(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-existing-archive-ref",
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "source": "existing_ref",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "family": "bars",
+            "timeframe": "1d",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-08-01T00:00:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-existing-archive-ref",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert loaded is not None
+    assert "source_mode=existing_ref" in loaded.output_refs
+    assert "archive_ref_checked=true" in loaded.output_refs
+    assert f"archive_snapshot_id={fixture.archive_snapshot_id}" in loaded.output_refs
+    assert f"archive_snapshot_id={fixture.archive_snapshot_id}" in loaded.archive_manifest_refs
+    assert any(ref.startswith("silver_file_ids=") for ref in loaded.archive_manifest_refs)
+    assert not any(ref.startswith("raw_file_id=") for ref in loaded.archive_manifest_refs)
+
+
+def test_recent_candle_bootstrap_worker_rejects_existing_ref_context_mismatch(tmp_path) -> None:
+    fixture = _backtest_archive_fixture(tmp_path)
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        job_id="JOB-existing-archive-ref-mismatch",
+        max_attempts=1,
+        input_spec={
+            "archive_root": str(fixture.archive_root),
+            "source": "existing_ref",
+            "archive_snapshot_id": fixture.archive_snapshot_id,
+            "venue": "hyperliquid",
+            "instrument_id": INSTRUMENT,
+            "family": "bars",
+            "timeframe": "1h",
+            "start_ts": "2024-01-01T00:00:00+00:00",
+            "end_ts": "2024-08-01T00:00:00+00:00",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        worker_id="worker-existing-archive-ref-mismatch",
+    )
+    loaded = store.load_job(queued.job_id)
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.FAILED
+    assert loaded is not None
+    assert "archive_snapshot_no_matching_silver_files" in (loaded.failure_reason or "")
 
 
 def _backtest_archive_fixture(tmp_path: Path) -> _BacktestFixture:

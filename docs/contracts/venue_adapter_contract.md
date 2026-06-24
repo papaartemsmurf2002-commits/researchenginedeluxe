@@ -1,7 +1,7 @@
 # V2 Venue Adapter Contract
 
 Status: v2 Phase 19 fixture adapter foundation
-Audit IDs: `V2-AUD-XVENUE-001`, `V2-AUD-XVENUE-012`
+Audit IDs: `V2-AUD-XVENUE-001`, `V2-AUD-XVENUE-012`, `V2-AUD-XVENUE-013`
 
 ## Purpose
 
@@ -99,13 +99,20 @@ execution behavior to v2 research modules.
   `instrument_id`, and `venue_provenance` on every silver row.
 - Binance fixture capability must not become the default primary venue;
   Hyperliquid remains the default venue until a later explicit decision.
+- The WPR106-473 historical-perps collector may call Binance USD-M public
+  kline REST as validation-only cross-venue sanity evidence for matching
+  `COINUSDT` symbols. Binance validation must remain clearly labeled as
+  cross-venue comparison, not Hyperliquid ground truth, execution proof,
+  accepted research evidence, or a replacement for Hyperliquid as-of archive
+  coverage.
 
 ## Forbidden
 
 - Secret/private-key access.
 - Signed trading endpoints.
 - Order, account, leverage, margin, or position mutation.
-- Real CCXT or venue network downloads in the Phase 19 fixture adapter path.
+- Real CCXT or venue network downloads in the Phase 19 fixture adapter path,
+  except the explicitly scoped WPR106-473 Binance public kline sanity check.
 - Extending the Hyperliquid public-info adapter beyond unsigned universe
   metadata, recent candle snapshots, historical funding rates, and L2 book
   snapshots without a new scoped packet and boundary audit.

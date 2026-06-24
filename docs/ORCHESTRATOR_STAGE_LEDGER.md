@@ -524,6 +524,670 @@ sandbox diagnostic only and still lacks accepted historical as-of universe,
 accepted 0.98 coverage, independent completion audit, authoritative full-suite
 validation, and other readiness evidence; no autonomous-ready, candidate-ready,
 paper/live/order/sizing/runtime, or promotion claim exists.
+Current WPR106-472 v2 readiness doc/CI/full-suite closeout: WPR106-472 syncs
+the stale top-level README and roadmap status with the current WPR106-471
+state, adds `tests/v2 -q` to the checked-in Python 3.11 CI baseline, resolves
+`ISSUE-R106-026`, and records fresh Python 3.11 validation evidence:
+`pip check` passed, compile passed, v2 328 passed, contracts 463 passed,
+research_sandbox 226 passed, live/artifact boundary lane 103 passed, and the
+monolithic full suite passed with 2235 passed and 2 skipped. The packet changes
+no source behavior, generated research evidence, live/runtime/order/sizing
+paths, candidate-pack truth layer, or promotion behavior. The repository still
+requires accepted historical as-of Hyperliquid archive coverage and a
+no-blocker accepted bounded cycle before any autonomous-ready or full
+agent-iteration readiness claim; no candidate-ready, paper/live/order/sizing/
+runtime, or promotion claim exists.
+Current WPR106-473 v2 historical-perp dataset collection update: WPR106-473
+adds `redx collectors historical-perps`, a bounded research-only public data
+collection command that refreshes the current Hyperliquid universe, collects
+selected historical candle rows through raw/bronze/silver archive services,
+optionally archives funding history through raw/bronze/silver funding
+services, writes a JSON coverage/validation report, and cross-checks matching
+Binance USD-M kline closes as sanity evidence only. Focused validation passed
+with `tests\v2\test_historical_dataset_collection_phase36.py -q` at 2 passed,
+and baseline validation passed with full compile, `tests\v2 -q` at 330 passed,
+`tests\contracts -q` at 463 passed, and diff hygiene warnings limited to
+expected LF-to-CRLF notices. Real WPR106-473 runs wrote local generated artifacts under
+`data/research/operator_runs/v2_historical_dataset/`. The top-25 daily run
+`wpr106-473-top25c-1d-2024-2026` selected all 25 current eligible instruments,
+collected 25/25 candle datasets for 2024-01-01 through 2026-06-01, found 14/25
+with full technical coverage for that full window, and recorded 24 Binance
+passes plus 1 cross-venue warning. The funding smoke
+`wpr106-473-funding-smoke-btc-eth-sol-2024-01` collected BTC/ETH/SOL daily
+bars and 744 funding rows per symbol for January 2024. These runs remain
+`sandbox_diagnostic` because the universe is current-public, not historical
+as-of; they do not create accepted research, autonomous-ready, candidate-ready,
+paper/live/order/sizing/runtime, or promotion claims.
+Current WPR106-474 v2 data-source registry foundation update: WPR106-474 adds
+the first local implementation slice for the Hyperliquid data-venue roadmap:
+strict-free source registry and cost-class schemas, cross-venue symbol-map
+schemas, data-family coverage report schemas, sample fixtures, and Pydantic
+validators under the new `tradingbotsuite.v2.data_sources` bounded context.
+The source registry distinguishes `zero_cost_public`, `public_rate_limited`,
+`free_sample_only`, `public_requester_pays_transfer`, and `paid_or_keyed`;
+strict-zero-dollar gates reject paid/keyed and requester-pays sources by
+default; Hyperliquid official requester-pays files remain quarantined; symbol
+maps surface ambiguous/unverified mappings as blocker evidence; and coverage
+reports carry full v2 boundary flags while rejecting forward-session,
+diagnostic, proxy, paid, requester-pays, and boundary-violating acceptance.
+Focused validation passed with
+`tests\v2\test_data_source_registry_phase37.py -q` at 10 passed, and compile
+passed. The packet performs no venue/API fetch, writes no generated research
+evidence, and creates no accepted research, autonomous-ready, candidate-ready,
+paper/live/order/sizing/runtime, or promotion claim.
+Current WPR106-475 v2 symbol-map resolver scaffold update: WPR106-475 closes
+the `DATA-002` resolver-scaffold slice of the Hyperliquid data-venue roadmap.
+The new resolver generates deterministic cross-venue candidates for Binance,
+Bybit, OKX, Bitget, MEXC, Gate, KuCoin, HTX, dYdX, Coinbase, Kraken, Pyth,
+DexScreener, and GeckoTerminal while keeping candidate generation separate from
+verification. `SymbolProbeResult` inputs from future availability scanners mark
+venues as verified, missing, ambiguous, delisted, or manual-review; ambiguous
+and manual-review probes require notes and become blocker evidence. The
+resolver preserves exact Hyperliquid coin spelling when supplied, supports
+`kPEPE` to Binance `1000PEPEUSDT` contract mapping only when availability
+evidence verifies it, and keeps spot/oracle/context mappings separate from
+perpetual mappings. Focused validation passed with
+`tests\v2\test_symbol_map_resolver_phase38.py -q` at 7 passed. The packet
+performs no venue/API fetch, writes no generated research evidence, and creates
+no accepted research, autonomous-ready, candidate-ready, paper/live/order/
+sizing/runtime, or promotion claim.
+Current WPR106-476 v2 universe data-source manifest bridge update: WPR106-476
+connects existing Hyperliquid `UniverseSnapshotRow` records to the
+data-source registry and symbol-map layer needed for `DATA-003`. It adds
+`SourceRegistrySnapshot`, `SymbolMapSnapshot`, and
+`write_universe_data_source_manifests()`, writes deterministic JSON refs under
+`manifests/source_registry/` and `manifests/symbol_maps/`, and adds the
+strict-free `hyperliquid_info_meta_asset_ctxs` source fixture. The bridge
+requires one Hyperliquid-native universe source, rejects requester-pays,
+paid/keyed, and strict-free-unaccepted sources before writes, preserves
+below-threshold universe rows as symbol-map blocker evidence, and keeps
+candidate generation separate from verification. Focused validation passed
+with `tests\v2\test_universe_data_source_manifest_bridge_phase39.py -q` at 5
+passed. The packet performs no venue/API fetch, downloads no market data, and
+creates no accepted research, autonomous-ready, candidate-ready, paper/live/
+order/sizing/runtime, or promotion claim.
+Current WPR106-477 v2 Binance Vision availability scanner update: WPR106-477
+closes the `DATA-004` availability-scanner slice of the Hyperliquid
+data-venue roadmap. It adds strict-free source samples for Binance Vision
+USD-M and spot trades, aggTrades, and 1m klines; daily URL builders matching
+the roadmap paths; injectable HEAD-style ZIP/checksum probes; and
+`BinanceVisionAvailabilityManifest` output under
+`manifests/source_availability/`. The scanner requires strict-free source
+entries and verified `binance_usdm` or `binance_spot` symbol-map refs before
+probing; unverified mappings, missing ZIPs, missing checksums, and probe errors
+are explicit manifest rows. Focused validation passed with
+`tests\v2\test_binance_vision_availability_phase40.py -q` at 5 passed. The
+packet performs no archive download, ZIP parse, bronze/silver normalization,
+bar reconstruction, backtest, accepted-research claim, candidate-ready claim,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-478 v2 Binance Vision ZIP parser validation update: WPR106-478
+starts the `DATA-005` parser/checksum slice for local Binance Vision daily
+ZIP bytes. It adds `parse_binance_vision_zip_bytes()`,
+`BinanceVisionParseResult`, and `BinanceVisionParsedDataRow` for trades,
+aggTrades, and 1m klines; validates optional checksum payloads; requires
+exactly one CSV member per ZIP; supports headered and Binance Vision
+headerless rows; preserves native trade/aggregate IDs and raw fields; and
+reports duplicate IDs, kline gaps, input monotonicity, interval alignment, and
+stable normalized-row hashes. Focused validation passed with
+`tests\v2\test_binance_vision_parser_phase41.py -q` at 5 passed. The packet
+performs no network download, raw/bronze/silver archive write, reconstructed
+bar comparison, coverage report, backtest, accepted-research claim,
+candidate-ready claim, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-479 v2 Binance Vision local archive ingest update: WPR106-479
+continues `DATA-005` by ingesting already-available local Binance Vision ZIP
+bytes through the WPR106-478 parser into v2 archive artifacts. Kline inputs
+write raw parsed records, bronze candle Parquet, and silver 1m bar Parquet;
+trade and aggTrade inputs write raw microstructure trade captures plus
+quality/storage refs. `BinanceVisionArchiveIngestResult` preserves checksum,
+duplicate, gap, monotonicity, interval-alignment, parser-manifest, and archive
+file refs while keeping `accepted_research_evidence=false` and
+`native_to_hyperliquid=false`. Focused validation passed with
+`tests\v2\test_binance_vision_archive_ingest_phase42.py -q` at 2 passed. The
+packet performs no network download, downloader/cache management,
+reconstructed-bar comparison, coverage report, backtest, accepted-research
+claim, candidate-ready claim, paper/live/order/sizing/runtime, or promotion
+behavior.
+Current WPR106-480 v2 Binance Vision reconstructed-bar comparison update:
+WPR106-480 adds the next `DATA-005` quality gate:
+`compare_binance_vision_reconstructed_bars()` reconstructs 1m OHLCV buckets
+from parsed Binance Vision trades or aggTrades and compares them to parsed 1m
+klines with explicit price/volume tolerances. The resulting
+`BinanceVisionBarComparisonReport` records source/kline row hashes,
+per-bucket diffs, missing reconstructed buckets, pass/fail counts, stable
+report identity, and blocker reasons. Focused validation passed with
+`tests\v2\test_binance_vision_reconstruction_phase43.py -q` at 3 passed. The
+packet performs no network download, coverage report, backtest,
+accepted-research claim, candidate-ready claim, paper/live/order/sizing/
+runtime, or promotion behavior.
+Current WPR106-481 v2 Binance Vision data-family coverage update: WPR106-481
+adds the next `DATA-005` coverage gate:
+`build_binance_vision_data_family_coverage_report()` converts one Binance
+Vision availability row plus optional parser, archive-ingest, and
+reconstructed-bar comparison evidence into a deterministic
+`DataFamilyCoverageReport`. Daily trades/aggTrades use a one-day source
+presence bucket, daily 1m klines use 1,440 minute buckets, and missing ZIPs,
+blocked mappings, parser gaps, duplicate IDs, missing ingest/archive snapshot
+refs, available-but-unverified checksums, partial kline coverage, and failed
+reconstructed-bar comparison become explicit blocker reasons. Focused
+validation passed with
+`tests\v2\test_binance_vision_coverage_phase44.py -q` at 4 passed. The packet
+performs no network download, downloader/cache management, backtest,
+Hyperliquid-native accepted-research claim, candidate-ready claim,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-482 v2 Binance Vision downloader-cache update: WPR106-482 adds
+the bounded `DATA-005` downloader/cache gate:
+`download_binance_vision_availability_row_to_cache()` consumes one available
+Binance Vision availability row, downloads ZIP and optional checksum payloads
+through an injectable GET client, writes deterministic archive-root-contained
+raw cache files, verifies checksums when present, and writes
+`BinanceVisionDownloadResult` manifests with SHA-256, byte counts, cache refs,
+cache-hit status, max-byte cap, and blocker reasons. Cache hits avoid network
+calls. Non-available rows, HTTP errors, byte-cap violations, and checksum
+mismatches fail closed. Focused validation passed with
+`tests\v2\test_binance_vision_downloader_phase45.py -q` at 3 passed. The
+packet does not add broad backfill jobs, parse/ingest orchestration, accepted
+Hyperliquid-native evidence, candidate-ready claims, paper/live/order/sizing/
+runtime, or promotion behavior.
+Current WPR106-483 v2 Binance Vision daily backfill orchestration update:
+WPR106-483 adds the bounded single-day local `DATA-005` chain:
+`run_binance_vision_daily_backfill()` connects one target availability row to
+download/cache, parser, target archive ingest, optional reconstructed-bar
+comparison, and `DataFamilyCoverageReport` JSON writing under
+`manifests/coverage_reports/`. `BinanceVisionDailyBackfillResult` returns
+target download/parse/ingest refs, optional comparison refs, coverage report
+refs, acceptance status, and blockers. Completed rows can become accepted only
+as external-comparison coverage when all coverage gates pass; blocked rows
+still write non-accepted coverage reports. Focused validation passed with
+`tests\v2\test_binance_vision_backfill_phase46.py -q` at 3 passed. The packet
+does not add durable worker scheduling, multi-day broad backfills,
+Hyperliquid-native evidence, candidate-ready claims, paper/live/order/sizing/
+runtime, or promotion behavior.
+Current WPR106-484 v2 Binance Vision backfill batch coordination update:
+WPR106-484 adds bounded availability-manifest coordination for `DATA-005`:
+`run_binance_vision_backfill_batch()` selects target rows by source ID, matches
+optional comparison rows by `(binance_symbol, probe_date)`, runs daily
+backfills under a `max_rows` cap, and writes
+`BinanceVisionBackfillBatchResult` manifests under
+`manifests/binance_vision_backfills/` with daily result IDs,
+completed/blocked/accepted counts, and aggregate blockers. Focused validation
+passed with `tests\v2\test_binance_vision_backfill_batch_phase47.py -q` at 2
+passed. The packet does not add durable worker scheduling, unattended broad
+backfills, Hyperliquid-native evidence, candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-485 v2 Binance USD-M derivatives context foundation update:
+WPR106-485 starts `DATA-006` by registering
+`binance_usdm_public_derivatives_context` as a strict-free, public-rate-limited,
+non-Hyperliquid-native source and adding offline deterministic request builders
+for funding-rate history, open interest, open-interest statistics,
+mark/index/premium klines, taker buy/sell volume, long/short ratios, and basis.
+Focused validation passed with
+`tests\v2\test_binance_derivatives_context_phase48.py -q` at 5 passed. The
+packet does not fetch Binance REST data, write archive rows, create accepted
+coverage, overwrite Hyperliquid-native funding or asset contexts, add
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-486 v2 Binance USD-M derivatives fetch normalize update:
+WPR106-486 adds `fetch_binance_derivatives_context_request()` for one
+prebuilt Binance derivatives context request using an injectable GET client.
+It records HTTP status/headers, content SHA-256, byte counts, raw and
+normalized row counts, stable row hashes, source and publication timestamps,
+bucket seconds, numeric fields, unit annotations, and blocker reasons for HTTP,
+size, JSON, row-shape, and timestamp failures. Focused validation passed with
+`tests\v2\test_binance_derivatives_fetch_phase49.py -q` at 5 passed. The
+packet does not add pagination, archive writes, coverage acceptance, worker
+scheduling, Hyperliquid-native evidence, candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-487 v2 Binance USD-M derivatives pagination update:
+WPR106-487 adds `fetch_binance_derivatives_context_pages()` for bounded
+multi-page derivatives context fetches. Historical families require explicit
+`start_time_ms` and `end_time_ms`, current OI remains a single current-context
+page, page URLs and fetch-result IDs are preserved, and cursors advance from
+normalized timestamps plus bucket seconds where available. Missing bounded
+windows, blocked pages, non-advancing cursors, and max-page exhaustion are
+blocker metadata. Focused validation passed with
+`tests\v2\test_binance_derivatives_pagination_phase50.py -q` at 5 passed. The
+packet does not write archive rows, create coverage reports, schedule durable
+workers, create Hyperliquid-native evidence, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-488 v2 Binance USD-M derivatives archive ingest update:
+WPR106-488 adds `ingest_binance_derivatives_context_pages_to_archive()` for
+completed paginated derivatives context results. The helper writes raw
+JSONL.zst `derivatives_context` records before generic silver
+`derivatives_context` Parquet rows with source/page refs, timestamps,
+publication timestamps, interval/period bucket metadata, numeric/unit/raw field
+JSON, raw file refs, and full research-only boundary flags. Blocked, empty, or
+timestamp-missing page results fail before archive writes. Focused validation
+passed with
+`tests\v2\test_binance_derivatives_archive_ingest_phase51.py -q` at 4 passed.
+The packet does not create coverage reports, schedule durable workers, create
+Hyperliquid-native evidence, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-489 v2 Binance USD-M derivatives coverage update:
+WPR106-489 adds `build_binance_derivatives_context_coverage_report()` for
+archived derivatives context page results. Funding, OI, mark/index/premium,
+taker flow, long/short ratio, and basis coverage reports are separate from
+candle/trade coverage and keep `external_comparison` semantics. Complete
+archived context windows can be accepted only with page/archive evidence,
+raw/silver refs, archive snapshot refs, complete buckets, and no blockers.
+Current OI snapshots, missing buckets, blocked inputs, and missing archive
+evidence remain non-accepted blocker reports. Focused validation passed with
+`tests\v2\test_binance_derivatives_coverage_phase52.py -q` at 4 passed. The
+packet does not schedule durable workers, create Hyperliquid-native evidence,
+add candidate-ready claims, paper/live/order/sizing/runtime, or promotion
+behavior.
+Current WPR106-490 v2 Binance USD-M derivatives backfill orchestration update:
+WPR106-490 adds `run_binance_derivatives_context_backfill()`, the local
+one-shot `DATA-006` chain for one family/symbol. It runs bounded pagination,
+local raw/silver archive ingest, builds a data-family coverage report, writes
+coverage JSON under `manifests/coverage_reports/`, and returns page result,
+archive-ingest, and coverage refs plus blocker reasons. Focused validation
+passed with `tests\v2\test_binance_derivatives_backfill_phase53.py -q` at 4
+passed. The packet does not schedule durable workers, create
+Hyperliquid-native evidence, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-491 v2 Binance USD-M derivatives worker routing update:
+WPR106-491 adds `binance_derivatives_context_backfill` as a durable collector
+worker kind for the bounded one-family/symbol `DATA-006` chain. The route
+delegates to `run_binance_derivatives_context_backfill()`, supports
+fixture-payload replay for offline deterministic tests and explicit
+`source=public_api` mode for operator-invoked public REST, and returns
+source-mode, family, symbol, instrument, page-result, archive-ingest, coverage,
+accepted-coverage, and blocker refs. Blocked coverage remains successful
+worker output when coverage evidence is written; invalid specs fail. Focused
+validation passed with `tests\v2\test_binance_derivatives_worker_phase54.py -q`
+at 3 passed. The packet does not schedule broad backfills, create
+Hyperliquid-native evidence, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-492 v2 Hyperliquid public REST source registry update:
+WPR106-492 adds checked source-registry entries for existing native
+Hyperliquid public REST collector sources:
+`hyperliquid_info_funding_history`,
+`hyperliquid_info_candle_snapshot_recent`, and
+`hyperliquid_info_l2_book_snapshot`. The entries are strict-free and
+native-to-Hyperliquid, require raw request/response/hash provenance plus
+endpoint-specific page or cap metadata, and keep
+`accepted_historical_coverage_proof=false` because funding intake, recent
+candle snapshots, and one-shot L2 snapshots are not accepted six-month
+historical coverage proof by themselves. Focused validation passed with
+`tests\v2\test_data_source_registry_phase37.py -q` at 11 passed. The packet
+does not change collector behavior, open public network calls, schedule broad
+collection, create candidate-ready claims, paper/live/order/sizing/runtime, or
+promotion behavior.
+Current WPR106-493 v2 Hyperliquid public WebSocket source registry update:
+WPR106-493 adds checked source-registry entries for native Hyperliquid public
+WebSocket trades, BBO, L2 book, and candle streams. Public WebSocket worker
+specs must now declare the exact matching `source_registry_source_id` before
+stream fetch: `hyperliquid_ws_trades`, `hyperliquid_ws_bbo`,
+`hyperliquid_ws_l2_book`, or `hyperliquid_ws_candle`. Successful jobs return
+that source ID through durable output refs; missing or mismatched IDs fail
+before archive writes or stream fetch. Focused validation passed with
+`tests\v2\test_data_source_registry_phase37.py`,
+`tests\v2\test_workers_phase7.py`, and
+`tests\v2\test_microstructure_collection_phase17.py` at 108 passed. The packet
+does not run public WebSocket collection, schedule broad capture, create
+accepted historical coverage proof, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-494 v2 Hyperliquid official requester-pays registry update:
+WPR106-494 adds the missing quarantined source-registry entries for
+Hyperliquid official S3/source families:
+`hyperliquid_official_s3_l2_book`,
+`hyperliquid_official_s3_asset_ctxs`,
+`hyperliquid_official_s3_node_fills`, and
+`hyperliquid_official_s3_node_trades`, while keeping the existing
+`hyperliquid_official_s3_node_fills_by_block` sample quarantined. All five
+official source IDs validate as native Hyperliquid requester-pays sources, fail
+strict-zero-dollar mode, require explicit operator gates, and cannot claim
+accepted historical coverage proof. Focused validation passed with
+`tests\v2\test_data_source_registry_phase37.py -q` at 13 passed. The packet
+does not enable S3 downloads, relax strict-zero-dollar mode, ingest official
+files, run coverage audits, create accepted historical coverage proof, add
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-495 v2 Bybit/OKX source-registry foundation update:
+WPR106-495 registers `bybit_public_market` and `okx_public_market` as
+public-rate-limited, strict-free-allowed external comparison sources for
+derivatives market data. Both entries validate through the source-registry
+contract but remain `native_to_hyperliquid=false` and
+`accepted_historical_coverage_proof=false`; future collectors must still add
+symbol-map verification, availability matrices, endpoint-specific rate-limit
+and pagination gates, raw request/response preservation, and separate coverage
+evidence. Focused validation passed with
+`tests\v2\test_data_source_registry_phase37.py -q` at 14 passed. The packet
+does not add Bybit/OKX collectors, run network probes, download market data,
+write archive rows, create accepted historical coverage proof, add
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-496 v2 Bybit/OKX availability-matrix foundation update:
+WPR106-496 adds deterministic Bybit/OKX public REST request builders and a
+metadata-only `bybit_okx_availability_manifest` writer for small symbol/date
+availability checks. The writer requires verified `bybit_linear`/`okx_swap`
+symbol mappings plus strict-free external-comparison source entries before any
+injected probe runs. Recent/snapshot-only endpoints are emitted as
+`blocked_endpoint_limit` rows instead of historical evidence. Focused
+validation passed with `tests\v2\test_bybit_okx_availability_phase55.py -q`
+at 5 passed. The packet does not add collectors, run real network probes in
+tests, download market data, write archive rows, normalize venue data, create
+accepted historical coverage proof, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-497 v2 Bybit/OKX smoke fetch-normalize update:
+WPR106-497 adds an in-memory injected-response smoke fetch/normalization layer
+for supported date-window Bybit/OKX public market endpoints. Fixture payloads
+normalize into stable research-only rows with source ID, endpoint ID, venue
+symbol, source timestamp, raw fields, numeric fields, request URL, and row
+hashes. Empty payloads, malformed rows, API errors, and recent/snapshot-only
+endpoints fail closed. Focused validation passed with
+`tests\v2\test_bybit_okx_fetch_normalize_phase56.py -q` at 5 passed. The
+packet does not add durable workers, schedule collectors, run real network
+probes in tests, download market data, write archive rows, create accepted
+historical coverage proof, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-498 v2 alt-derivatives source-registry foundation update:
+WPR106-498 registers `bitget_public_mix_market`, `mexc_contract_public`,
+`gate_futures_public`, `kucoin_futures_public`, and `htx_swap_public` as
+public-rate-limited, strict-free-allowed external comparison sources for
+derivatives market data. All five entries validate through the source-registry
+contract but remain `native_to_hyperliquid=false` and
+`accepted_historical_coverage_proof=false`; future collectors must still add
+symbol-map verification, availability matrices, endpoint-specific rate-limit
+and pagination gates, raw request/response preservation, and separate coverage
+evidence. Focused validation passed with
+`tests\v2\test_data_source_registry_phase37.py -q` at 15 passed. The packet
+does not add alt-venue collectors, run network probes, download market data,
+write archive rows, create accepted historical coverage proof, add
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-499 v2 alt-derivatives availability-matrix foundation update:
+WPR106-499 adds deterministic public REST candle request builders and a
+metadata-only `alt_derivatives_availability_manifest` writer for Bitget, MEXC,
+Gate, KuCoin, and HTX. The writer requires verified venue symbol mappings and
+strict-free external-comparison source entries before injected probes run, and
+rows preserve request URL, endpoint, date window, response row count,
+rate-limit hint, and blocker metadata. Focused validation passed with
+`tests\v2\test_alt_derivatives_availability_phase57.py -q` at 4 passed. The
+packet does not add collectors, run real network probes in tests, download
+market data, write archive rows, normalize venue data, create accepted
+historical coverage proof, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-500 v2 alt-derivatives smoke fetch-normalize update:
+WPR106-500 adds an in-memory injected-response smoke fetch/normalization layer
+for DATA-011 public candle endpoints across Bitget, MEXC, Gate, KuCoin, and
+HTX. Fixture payloads normalize into stable research-only rows with source ID,
+endpoint ID, venue symbol, source timestamp, raw fields, numeric fields,
+request URL, and row hashes. Empty payloads, malformed rows, API errors, and
+bad source claims fail closed. Focused validation passed with
+`tests\v2\test_alt_derivatives_fetch_normalize_phase58.py -q` at 4 passed.
+The packet does not add durable workers, schedule collectors, run real network
+probes in tests, download market data, write archive rows, create accepted
+historical coverage proof, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-501 v2 dYdX/Deribit source-registry foundation update:
+WPR106-501 registers `dydx_indexer_public` and `deribit_public` as
+public-rate-limited, strict-free-allowed external comparison/reference context
+sources. Both entries validate through the source-registry contract but remain
+`native_to_hyperliquid=false` and `accepted_historical_coverage_proof=false`;
+future collectors must still add overlap verification, symbol-map evidence,
+availability matrices, endpoint-specific rate-limit and pagination gates, raw
+request/response preservation, and separate coverage evidence. Focused
+validation passed with `tests\v2\test_data_source_registry_phase37.py -q` at
+16 passed. The packet does not add dYdX/Deribit collectors, run network probes,
+download market data, write archive rows, create accepted historical coverage
+proof, add candidate-ready claims, paper/live/order/sizing/runtime, or
+promotion behavior.
+Current WPR106-502 v2 dYdX/Deribit availability-matrix foundation update:
+WPR106-502 adds `reference_derivatives.py` for metadata-only DATA-012 candle
+availability manifests across dYdX indexer candles and Deribit TradingView
+chart data. It also adds `deribit_perpetual` deterministic symbol candidates
+for `BASE-PERPETUAL` instruments while keeping candidates untrusted until
+explicit probe evidence verifies them. Availability rows require strict-free
+external-comparison source entries and verified symbol-map rows before probes;
+blocked mappings are recorded without network calls. Focused validation passed
+with `tests\v2\test_reference_derivatives_availability_phase59.py
+tests\v2\test_symbol_map_resolver_phase38.py -q` at 11 passed. The packet does
+not add collectors, run real network probes in tests, download market data,
+write archive market-data rows, create accepted historical coverage proof, add
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-503 v2 dYdX/Deribit smoke fetch-normalization update:
+WPR106-503 extends `reference_derivatives.py` with injected-response smoke
+fetch normalization for DATA-012 dYdX indexer candle rows and Deribit
+TradingView columnar candle responses. Fetch results are `completed`, `empty`,
+`fetch_error`, or `parse_error`; normalized rows preserve source/request,
+venue-symbol, timestamp, raw/numeric fields, stable row hashes, and the full
+research-only boundary. Focused validation passed with
+`tests\v2\test_reference_derivatives_fetch_normalize_phase60.py -q` at 5
+passed. The packet does not add collectors, run real network probes in tests,
+download market data, write archive market-data rows, create accepted
+historical coverage proof, add candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-504 v2 spot/oracle/on-chain context source-registry foundation
+update: WPR106-504 starts DATA-013 by registering `coinbase_spot_public`,
+`kraken_spot_public`, `pyth_hermes_public`, `defillama_public`,
+`dexscreener_public`, and `geckoterminal_public` as strict-free non-native
+source entries. Coinbase and Kraken are external spot comparison sources;
+Pyth, DefiLlama, DexScreener, and GeckoTerminal are spot/oracle/on-chain
+context sources. Focused validation passed with
+`tests\v2\test_data_source_registry_phase37.py -q` at 17 passed. The packet
+does not add availability matrices, collectors, run network probes, download
+market data, write archive rows, create accepted historical coverage proof, add
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-505 v2 DefiLlama context symbol-candidate update: WPR106-505
+adds `defillama_context` to deterministic symbol-map candidate generation so
+later DATA-013 availability matrices can require explicit mapping verification
+instead of ad hoc context identifiers. Unprobed DefiLlama mappings remain
+`not_checked` and downstream-blocking. Focused validation passed with
+`tests\v2\test_symbol_map_resolver_phase38.py -q` at 7 passed. The packet does
+not add source entries, availability matrices, collectors, network probes,
+downloads, archive rows, accepted historical coverage proof, candidate-ready
+claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-506 v2 spot/oracle/on-chain context availability update:
+WPR106-506 adds deterministic DATA-013 request builders and metadata-only
+availability manifests for Coinbase spot, Kraken spot, Pyth Hermes,
+DefiLlama, DexScreener, and GeckoTerminal. Verified mappings and strict-free
+role-aligned source entries are required before probes; blocked mappings are
+recorded without network calls. Focused validation passed with
+`tests\v2\test_spot_oracle_context_availability_phase61.py -q` at 4 passed.
+The packet does not add collectors, downloads, archive rows, accepted
+historical coverage proof, candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-507 v2 spot/oracle/on-chain context smoke-normalization update:
+WPR106-507 adds an in-memory injected-response smoke fetch/normalization layer
+for DATA-013 Coinbase, Kraken, Pyth, DefiLlama, DexScreener, and GeckoTerminal
+responses. Fetch results classify completed, empty, fetch-error, and
+parse-error outcomes; normalized rows preserve source/request/timestamp/raw/
+numeric/hash metadata with the full research-only boundary. Focused validation
+passed with `tests\v2\test_spot_oracle_context_fetch_normalize_phase62.py -q`
+at 5 passed. The packet does not add collectors, downloads, archive rows,
+accepted historical coverage proof, candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-508 v2 generic trade-bar reconstruction update: WPR106-508
+starts DATA-014 with venue-neutral trade-to-bar reconstruction models and a
+deterministic OHLCV bucketing helper for already-normalized trade rows.
+Reports preserve source registry and symbol-map refs, keep native Hyperliquid
+and external-comparison provenance separated, and treat empty or mixed
+provenance as fail-closed blocker evidence. Focused validation passed with
+`tests\v2\test_bar_reconstruction_phase63.py -q` at 5 passed. The packet does
+not add collectors, downloads, archive rows, source-native candle comparison,
+accepted coverage, gold panels, candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-509 v2 generic reconstructed-bar comparison update: WPR106-509
+adds venue-neutral source-native candle input rows and comparison reports for
+DATA-014 reconstructed trade bars. Matching buckets can pass as quality
+metadata; missing reconstructed buckets, extra reconstructed buckets,
+tolerance breaches, and mismatched provenance fail closed. Focused validation
+passed with `tests\v2\test_bar_reconstruction_phase63.py -q` at 9 passed. The
+packet does not add collectors, downloads, archive rows, accepted coverage,
+gold panels, candidate-ready claims, paper/live/order/sizing/runtime, or
+promotion behavior.
+Current WPR106-510 v2 orderflow feature reconstruction update: WPR106-510
+starts DATA-015 with venue-neutral orderflow/VWAP feature reconstruction from
+already-normalized trade rows. Reports preserve source registry and symbol-map
+refs, keep native Hyperliquid and external-comparison provenance separated, and
+treat empty input, missing side, zero-volume buckets, and mixed provenance as
+fail-closed blocker evidence. Focused validation passed with
+`tests\v2\test_feature_reconstruction_phase64.py -q` at 6 passed. The packet
+does not add collectors, downloads, archive rows, accepted coverage, gold
+panels, candidate-ready claims, paper/live/order/sizing/runtime, or promotion
+behavior.
+Current WPR106-511 v2 funding/OI feature reconstruction update: WPR106-511
+continues DATA-015 with deterministic funding, open-interest,
+open-interest-statistics, and basis feature rows from already-normalized
+derivatives context rows. Reports preserve source registry and symbol-map refs,
+keep native Hyperliquid and external-comparison provenance separated, and treat
+empty input, unsupported families, missing timestamps/numerics, non-finite
+numeric values, and mixed provenance as fail-closed blocker evidence. Focused
+validation passed with the phase64 plus phase65 feature reconstruction tests at
+13 passed. The packet does not add collectors, downloads, archive rows,
+accepted coverage, gold panels, candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-512 v2 BBO spread feature reconstruction update: WPR106-512
+continues DATA-015 with deterministic mid-price, absolute spread, spread-bps,
+and top-of-book size-imbalance feature rows from already-normalized BBO rows.
+Reports preserve source registry and symbol-map refs, keep native Hyperliquid
+and external-comparison provenance separated, and treat empty input, missing
+timestamps/sizes, crossed books, bad prices, and mixed provenance as
+fail-closed blocker evidence. Focused validation passed with the phase64
+through phase66 feature reconstruction tests at 20 passed. The packet does not
+add collectors, downloads, archive rows, accepted coverage, gold panels,
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-513 v2 L2 depth feature reconstruction update: WPR106-513
+continues DATA-015 with deterministic bid-depth, ask-depth, total-depth,
+depth-imbalance, and book-level metadata feature rows from already-normalized
+L2 rows. Reports preserve source registry and symbol-map refs, keep native
+Hyperliquid and external-comparison provenance separated, and treat empty
+input, missing timestamps, zero total depth, negative depths, invalid book
+levels, and mixed provenance as fail-closed blocker evidence. Focused
+validation passed with the phase64 through phase67 feature reconstruction tests
+at 27 passed. The packet does not add collectors, downloads, archive rows,
+accepted coverage, gold panels, candidate-ready claims,
+paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-514 v2 cross-venue basis feature reconstruction update:
+WPR106-514 completes the DATA-015 feature reconstruction foundation with
+deterministic absolute and bps price-basis rows from already-normalized price
+observations. Reports preserve source registry and symbol-map refs, keep
+primary and comparison venue provenance explicit, and keep all rows
+external-comparison only. Empty input, insufficient venue coverage, missing or
+duplicate primary prices, missing comparison prices, missing timestamps, mixed
+context, and bad prices fail closed. Focused validation passed with the phase64
+through phase68 feature reconstruction tests at 34 passed. The packet does not
+add collectors, downloads, archive rows, accepted coverage, gold panels,
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-515 v2 data-family coverage gate update: WPR106-515 starts
+DATA-016 with a deterministic gate over existing `DataFamilyCoverageReport`
+objects for one symbol/ref context. Required families pass only when already
+accepted coverage reports meet the requested minimum; empty inputs, missing
+required families, rejected family reports, mismatched symbol/ref context, and
+empty required-family sets fail closed. Focused validation passed with
+`tests\v2\test_data_family_coverage_gate_phase69.py -q` at 7 passed. The
+packet does not add collectors, downloads, archive rows, accepted coverage
+evidence, gold panels, candidate-ready claims, paper/live/order/sizing/runtime,
+or promotion behavior.
+Current WPR106-516 v2 gold research panel manifest update: WPR106-516 starts
+DATA-017 with deterministic metadata-only `GoldResearchPanelManifest` output
+over a passed data-family coverage gate and feature refs. Ready manifests carry
+universe, source-registry, symbol-map, archive, coverage-gate, coverage-report,
+and feature-report refs; blocked gates, missing archive refs, empty feature
+refs, missing required feature families, uncovered feature families, blocked
+feature refs, and mismatched ref context fail closed. Focused validation passed
+with `tests\v2\test_gold_research_panel_phase70.py -q` at 8 passed. The packet
+does not add collectors, downloads, archive rows, gold panel row writes,
+accepted coverage evidence, candidate-ready claims, paper/live/order/sizing/
+runtime, or promotion behavior.
+Current WPR106-517 v2 gold research panel row assembly update: WPR106-517
+continues DATA-017 with deterministic in-memory `GoldResearchPanelRow` and
+`GoldResearchPanelAssemblyResult` output over a ready manifest and timestamped
+feature-column values. Complete rows carry feature values, row-level coverage
+flags, source row hashes, and stable row hashes; blocked manifests, empty
+inputs, duplicate column/timestamp pairs, missing non-nullable values, unknown
+columns, and feature-report mismatches fail closed. Focused validation passed
+with `tests\v2\test_gold_research_panel_phase71.py -q` at 8 passed. The packet
+does not add collectors, downloads, archive rows, gold panel file writes,
+accepted coverage evidence, candidate-ready claims, paper/live/order/sizing/
+runtime, or promotion behavior.
+Current WPR106-518 v2 gold research panel artifact write update: WPR106-518
+continues DATA-017 with local archive artifact writes for ready gold panel
+assemblies. The helper writes flattened rows to the archive `gold` layer
+through the existing Parquet writer, records file-manifest evidence, and writes
+assembly JSON under `manifests/gold_panels/`. Blocked or empty assemblies,
+unsafe partitions, and duplicate writes fail closed. Focused validation passed
+with `tests\v2\test_gold_research_panel_phase72.py -q` at 5 passed. The packet
+does not add collectors, provider downloads, accepted coverage evidence,
+candidate-ready claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-519 v2 data-venue runbook update: WPR106-519 completes the
+DATA-018 foundation with `docs/runbooks/v2_hyperliquid_data_venue_runbook.md`.
+The runbook covers strict-free source order, requester-pays quarantine,
+prerequisites, archive layers, data-family coverage gates, gold panels,
+fail-closed handling, validation commands, and operator stops. The packet is
+documentation-only and does not add source behavior, collectors, provider
+downloads, archive artifacts, accepted coverage evidence, candidate-ready
+claims, paper/live/order/sizing/runtime, or promotion behavior.
+Current WPR106-520 v2 multi-symbol coverage gold-panel preflight update:
+WPR106-520 adds a research-only preflight bridge over existing
+`DataFamilyCoverageReport` and feature reconstruction report refs. It groups
+coverage by declared symbol, evaluates required-family gates per symbol with
+`evaluate_data_family_coverage_gate()`, maps accepted feature reports into
+`GoldResearchPanelFeatureRef` objects, and builds per-symbol
+`GoldResearchPanelManifest` preflight results while retaining explicit
+coverage, feature, and manifest blockers. The packet does not add collectors,
+provider downloads, archive row writes, gold panel file writes, accepted
+coverage evidence, candidate-ready claims, paper/live/order/sizing/runtime, or
+promotion behavior. Focused validation passed with
+`tests\v2\test_gold_research_panel_preflight_phase73.py -q` at 5 passed;
+baseline validation passed with compileall, `tests\v2 -q` at 536 passed,
+`tests\contracts -q` at 463 passed, and `git diff --check` with expected
+LF-to-CRLF warnings only.
+Current WPR106-521 v2 gold panel materializer update: WPR106-521 adds an
+all-or-nothing materializer over ready WPR106-520 preflight output. It consumes
+explicit per-symbol `GoldResearchPanelInputValue` rows, assembles each declared
+symbol with the existing gold panel row assembler, and writes archive gold-layer
+artifacts only when every symbol assembles cleanly with source row hashes.
+Blocked preflights, missing inputs, incomplete row values, duplicate
+column/timestamp values, unknown input symbols, and missing source row hashes
+fail before archive writes. The packet does not add collectors, provider
+downloads, accepted coverage evidence, backtest data manifests, bounded-cycle
+wiring, candidate-ready claims, paper/live/order/sizing/runtime, or promotion
+behavior. Focused validation passed with
+`tests\v2\test_gold_research_panel_materializer_phase74.py -q` at 5 passed;
+baseline validation passed with compileall, `tests\v2 -q` at 541 passed,
+`tests\contracts -q` at 463 passed, and `git diff --check` with expected
+LF-to-CRLF warnings only.
+Current WPR106-522 v2 backtest-data load worker loop wiring update: WPR106-522
+adds a durable `backtest_data_load` worker stage between `strategy_queue_scan`
+and `vectorized_backtest` in bounded research cycles. The worker builds a
+canonical `BacktestDataRequest`, calls `BacktestDataService.load_panel()`,
+writes the canonical backtest-data manifest, and returns archive snapshot,
+universe snapshot, coverage report, data-manifest ID/hash, manifest path/SHA,
+field, row-count, and window refs. Generated fixture/public cycle specs now
+bind those refs into vectorized backtests, and vectorized backtest jobs fail
+closed when expected data refs mismatch. The packet does not add collectors,
+provider downloads, accepted coverage evidence, accepted no-blocker real
+archive cycles, candidate-ready claims, paper/live/order/sizing/runtime, or
+promotion behavior. Focused validation passed with compileall and the WPR106-522
+worker/autopilot lane at 87 passed; baseline validation passed with compileall,
+`tests\v2 -q` at 543 passed, `tests\contracts -q` at 463 passed, and
+`git diff --check` with expected LF-to-CRLF warnings only.
+Current WPR106-523 v2 existing archive-ref cycle update: WPR106-523 adds
+`source=existing_ref` durable checks for as-of universe refs and local silver
+archive snapshot refs, plus `redx autopilot archive-cycle-spec` for generating
+bounded research cycles over already-built local archive evidence and uploaded
+local JSON/YAML strategy specs. The generated loop verifies existing universe
+and archive refs before coverage, strategy queue scan, backtest-data load,
+vectorized backtest, validation gate, ledger append/export, Lead Book upsert,
+and final audit. It performs no provider collection, writes no market archive
+rows or gold panels, and keeps `accepted_research_ready=false` with all
+promotion/candidate/paper-live/order/sizing/runtime flags false. Focused
+validation passed with compileall and
+`tests\v2\test_autopilot_archive_cycle_phase75.py tests\v2\test_workers_phase7.py -q`
+at 63 passed; the archive-ref fixture cycle completed with a passing final
+audit and no blockers as operational research evidence only. Baseline
+validation passed with compileall, `tests\v2 -q` at 548 passed,
+`tests\contracts -q` at 463 passed, and `git diff --check` with expected
+LF-to-CRLF warnings only.
+Current WPR106-524 v2 final-audit handoff update: WPR106-524 records the
+post-WPR106-523 handoff state for independent final audit. The checkout has no
+open P0 or P1 known issues, preserves `ISSUE-R106-030` as a P2 blocker only
+for old Hyperliquid public intraday accepted-evidence claims, accounts for the
+remote Hyperliquid data-venue roadmap merge, and keeps Python 3.11 as the
+authoritative local validation lane when default Python 3.14 reproduces the
+known Windows socketpair async setup failure. The handoff is ready for
+independent final audit only; agentic strategy testing, accepted research
+readiness, autonomous readiness, candidate packs, paper/live/order/sizing/
+runtime behavior, and promotion remain blocked until separate audit/readiness
+evidence passes.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

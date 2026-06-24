@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://researchenginedeluxe.local/schemas/v2_source_registry.schema.json",
+  "title": "ResearchEngineDeluxe v2 source registry entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_id",
+    "venue",
+    "market_type",
+    "native_to_hyperliquid",
+    "cost_class",
+    "auth_required",
+    "paid_required",
+    "data_families",
+    "history_mode",
+    "priority",
+    "research_role"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "source_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_]*$" },
+    "venue": { "type": "string", "minLength": 1 },
+    "market_type": { "type": "string", "minLength": 1 },
+    "native_to_hyperliquid": { "type": "boolean" },
+    "cost_class": {
+      "type": "string",
+      "enum": [
+        "zero_cost_public",
+        "public_rate_limited",
+        "free_sample_only",
+        "public_requester_pays_transfer",
+        "paid_or_keyed"
+      ]
+    },
+    "auth_required": { "type": "boolean" },
+    "secret_required": { "type": "boolean", "default": false },
+    "paid_required": { "type": "boolean" },
+    "strict_zero_dollar_allowed": { "type": "boolean", "default": true },
+    "accepted_under_strict_free": { "type": "boolean", "default": true },
+    "accepted_historical_coverage_proof": { "type": "boolean", "default": false },
+    "data_families": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "universe_metadata",
+          "universe_snapshot",
+          "asset_contexts",
+          "funding",
+          "funding_rate_history",
+          "candles",
+          "candles_1m",
+          "bars_1m",
+          "trades",
+          "fills",
+          "derived_trades",
+          "bbo",
+          "l2_order_book",
+          "l2_snapshots",
+          "open_interest",
+          "open_interest_statistics",
+          "mark_price_klines",
+          "index_price_klines",
+          "premium_index_klines",
+          "taker_buy_sell_volume",
+          "long_short_ratios",
+          "basis",
+          "liquidations",
+          "spot_oracle_context"
+        ]
+      }
+    },
+    "history_mode": { "type": "string", "minLength": 1 },
+    "priority": {
+      "type": "string",
+      "enum": ["P0", "P0_quarantined", "P1", "P2", "P3"]
+    },
+    "research_role": { "type": "string", "minLength": 1 },
+    "rate_limit_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_parallel_downloads": { "type": "integer", "minimum": 1 },
+        "retry_backoff_seconds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "page_cap": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "provenance_required": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "required_operator_gate": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "caveats": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "source_url_template": { "type": ["string", "null"] }
+  }
+}

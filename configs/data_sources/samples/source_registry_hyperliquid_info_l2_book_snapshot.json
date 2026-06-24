@@ -1,0 +1,48 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "one-shot L2 book snapshot only",
+    "20 levels per side response cap",
+    "not continuous BBO or L2 historical coverage proof"
+  ],
+  "cost_class": "zero_cost_public",
+  "data_families": [
+    "bbo",
+    "l2_order_book",
+    "l2_snapshots"
+  ],
+  "history_mode": "public_rest_one_shot_l2_book_snapshot",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": true,
+  "paid_required": false,
+  "priority": "P0",
+  "provenance_required": [
+    "raw_request_id",
+    "raw_response_id",
+    "raw_payload_sha256",
+    "source_coin",
+    "row_count",
+    "levels_per_side_cap",
+    "requested_at_utc"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 1,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "native_hyperliquid_l2_snapshot_intake",
+  "required_operator_gate": [],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "hyperliquid_info_l2_book_snapshot",
+  "source_url_template": "https://api.hyperliquid.xyz/info type=l2Book",
+  "strict_zero_dollar_allowed": true,
+  "venue": "hyperliquid"
+}

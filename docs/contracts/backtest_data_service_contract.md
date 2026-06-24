@@ -1,7 +1,7 @@
 # V2 Backtest Data Service Contract
 
-Status: v2 Phase 9 service contract with Phase 19 cross-venue fixture support
-Audit IDs: `V2-AUD-BTDATA-001`, `V2-AUD-XVENUE-001`
+Status: v2 Phase 9 service contract with Phase 19 cross-venue fixture support and explicit durable load-worker support
+Audit IDs: `V2-AUD-BTDATA-001`, `V2-AUD-BTDATA-005`, `V2-AUD-XVENUE-001`
 
 ## Purpose
 
@@ -40,6 +40,12 @@ The backtest data service is the only accepted read path for v2 backtests.
 - Each successful request returns and records a deterministic
   `BacktestDataManifest` with archive snapshot, universe snapshot, coverage
   report, source file IDs, loaded fields, and row counts.
+- Durable `backtest_data_load` worker jobs must create a
+  `BacktestDataRequest` from declared worker input, require
+  `write_manifest=true`, call `BacktestDataService.load_panel()`, write the
+  canonical backtest-data manifest, and surface archive snapshot, universe
+  snapshot, coverage report, data manifest, manifest path, and manifest hash
+  refs for later bounded-cycle bindings.
 - Current universe snapshots are allowed only when
   `BacktestEvidenceMode.sandbox_diagnostic` is requested. Accepted/reported
   evidence must use `UniverseMode.as_of`.
@@ -60,6 +66,9 @@ The backtest data service is the only accepted read path for v2 backtests.
 - Silent fallback to synthetic data.
 - Bypassing coverage reports or treating sandbox diagnostics as accepted
   evidence.
+- Treating durable backtest-data load refs as strategy performance,
+  validation, ledger, Lead Book, accepted research, or readiness evidence by
+  themselves.
 - Returning unrequested columns to downstream strategy code.
 - Counting warmup rows as reported PnL-window rows.
 - Falling back from one venue to another venue when a cross-venue request has no

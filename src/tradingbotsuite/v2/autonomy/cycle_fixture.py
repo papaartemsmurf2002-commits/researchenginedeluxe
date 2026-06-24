@@ -229,6 +229,7 @@ def _cycle_spec_payload(
     candles_job_id = f"JOB-{run_id}-candles"
     coverage_job_id = f"JOB-{run_id}-coverage"
     strategy_queue_job_id = f"JOB-{run_id}-strategy-queue"
+    backtest_data_job_id = f"JOB-{run_id}-backtest-data"
     backtest_job_id = f"JOB-{run_id}-backtest"
     validation_job_id = f"JOB-{run_id}-validation"
     ledger_job_id = f"JOB-{run_id}-ledger"
@@ -303,6 +304,22 @@ def _cycle_spec_payload(
                     "run_id": f"{run_id}-strategy-queue",
                     "max_files": 10,
                     "require_single_accepted": True,
+                },
+            },
+            {
+                "job_id": backtest_data_job_id,
+                "kind": "backtest_data_load",
+                "input_spec": {
+                    "archive_root": str(archive_root),
+                    "venue": config.venue,
+                    "instrument_id": config.instrument_id,
+                    "family": "bars",
+                    "timeframe": config.timeframe,
+                    "start_ts": start,
+                    "end_ts": end,
+                    "asof_date": config.asof_date.isoformat(),
+                    "evidence_mode": config.evidence_mode,
+                    "requested_fields": _fixture_requested_fields(),
                 },
             },
             {
@@ -398,7 +415,7 @@ def _cycle_spec_payload(
             },
             {
                 "source_job_id": universe_job_id,
-                "target_job_id": backtest_job_id,
+                "target_job_id": backtest_data_job_id,
                 "target_input_path": "universe_snapshot_id",
                 "source_ref_prefix": "universe_snapshot_id=",
             },
@@ -410,9 +427,51 @@ def _cycle_spec_payload(
             },
             {
                 "source_job_id": candles_job_id,
+                "target_job_id": backtest_data_job_id,
+                "target_input_path": "archive_snapshot_id",
+                "source_ref_prefix": "archive_snapshot_id=",
+            },
+            {
+                "source_job_id": backtest_data_job_id,
                 "target_job_id": backtest_job_id,
                 "target_input_path": "archive_snapshot_id",
                 "source_ref_prefix": "archive_snapshot_id=",
+            },
+            {
+                "source_job_id": backtest_data_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "universe_snapshot_id",
+                "source_ref_prefix": "universe_snapshot_id=",
+            },
+            {
+                "source_job_id": backtest_data_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "expected_archive_snapshot_id",
+                "source_ref_prefix": "archive_snapshot_id=",
+            },
+            {
+                "source_job_id": backtest_data_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "expected_universe_snapshot_id",
+                "source_ref_prefix": "universe_snapshot_id=",
+            },
+            {
+                "source_job_id": backtest_data_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "expected_coverage_report_id",
+                "source_ref_prefix": "coverage_report_id=",
+            },
+            {
+                "source_job_id": backtest_data_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "expected_data_manifest_id",
+                "source_ref_prefix": "data_manifest_id=",
+            },
+            {
+                "source_job_id": backtest_data_job_id,
+                "target_job_id": backtest_job_id,
+                "target_input_path": "expected_data_manifest_hash",
+                "source_ref_prefix": "data_manifest_hash=",
             },
             {
                 "source_job_id": strategy_queue_job_id,
@@ -474,6 +533,10 @@ def _fixture_strategy_spec() -> dict[str, Any]:
         for key, value in payload.items()
         if key not in _JOB_INPUT_BOUNDARY_KEYS
     }
+
+
+def _fixture_requested_fields() -> list[str]:
+    return ["ts", "instrument_id", "close", "volume", "open"]
 
 
 def _fixture_cost_model() -> dict[str, Any]:

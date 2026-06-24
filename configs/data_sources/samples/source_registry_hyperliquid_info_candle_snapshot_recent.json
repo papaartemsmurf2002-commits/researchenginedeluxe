@@ -1,0 +1,50 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "recent-window candle snapshot only",
+    "not full six-month historical candle coverage proof",
+    "accepted research still requires as-of universe, archive snapshot, coverage, validation, ledger, and audit gates"
+  ],
+  "cost_class": "zero_cost_public",
+  "data_families": [
+    "candles"
+  ],
+  "history_mode": "public_rest_recent_window_candle_snapshot",
+  "market_type": "perpetual",
+  "native_to_hyperliquid": true,
+  "paid_required": false,
+  "priority": "P0",
+  "provenance_required": [
+    "raw_request_id",
+    "raw_response_id",
+    "raw_payload_sha256",
+    "source_coin",
+    "interval",
+    "start_time_ms",
+    "end_time_ms",
+    "page_count",
+    "row_count",
+    "recent_window_cap",
+    "requested_at_utc"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 500,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "native_hyperliquid_recent_candle_intake",
+  "required_operator_gate": [],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "hyperliquid_info_candle_snapshot_recent",
+  "source_url_template": "https://api.hyperliquid.xyz/info type=candleSnapshot",
+  "strict_zero_dollar_allowed": true,
+  "venue": "hyperliquid"
+}

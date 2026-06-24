@@ -1,0 +1,53 @@
+{
+  "accepted_historical_coverage_proof": false,
+  "accepted_under_strict_free": true,
+  "auth_required": false,
+  "caveats": [
+    "DEX pair liquidity context only; never relabel rows as Hyperliquid-native data",
+    "chain, token, and pair-address mappings must be verified before use",
+    "DEX context rows are not centralized-exchange trade, fill, or order-book evidence",
+    "availability matrix and raw request/response preservation are required before download"
+  ],
+  "cost_class": "public_rate_limited",
+  "data_families": [
+    "asset_contexts",
+    "spot_oracle_context"
+  ],
+  "history_mode": "public_dex_pair_context_endpoint",
+  "market_type": "context",
+  "native_to_hyperliquid": false,
+  "paid_required": false,
+  "priority": "P2",
+  "provenance_required": [
+    "source_registry_source_id",
+    "context_map_ref",
+    "raw_request_id",
+    "raw_response_id",
+    "raw_payload_sha256",
+    "endpoint",
+    "params",
+    "chain_id",
+    "token_address",
+    "pair_address",
+    "row_count",
+    "rate_limit_metadata"
+  ],
+  "rate_limit_policy": {
+    "max_parallel_downloads": 1,
+    "page_cap": 30,
+    "retry_backoff_seconds": [
+      1,
+      2,
+      5,
+      10
+    ]
+  },
+  "research_role": "spot_or_oracle_context",
+  "required_operator_gate": [],
+  "schema_version": "v2.0",
+  "secret_required": false,
+  "source_id": "dexscreener_public",
+  "source_url_template": "https://api.dexscreener.com/{endpoint}",
+  "strict_zero_dollar_allowed": true,
+  "venue": "dexscreener"
+}

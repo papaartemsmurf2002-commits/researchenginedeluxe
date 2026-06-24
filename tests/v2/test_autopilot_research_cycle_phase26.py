@@ -42,6 +42,7 @@ def test_bounded_research_cycle_plan_writes_manifest_without_enqueue(tmp_path) -
         "recent_candle_bootstrap",
         "coverage_audit",
         "strategy_queue_scan",
+        "backtest_data_load",
         "vectorized_backtest",
         "validation_gate",
         "ledger_append_export",
@@ -55,6 +56,8 @@ def test_bounded_research_cycle_plan_writes_manifest_without_enqueue(tmp_path) -
         "accepted_spec_path=",
         "accepted_spec_sha256=",
         "strategy_spec_hash=",
+        "backtest_data_manifest_path=",
+        "data_manifest_id=",
         "run_manifest_path=",
         "validation_manifest_path=",
         "validation_manifest_id=",
@@ -78,12 +81,13 @@ def test_bounded_research_cycle_enqueue_adds_jobs_and_generated_audit(tmp_path) 
     audit = store.load_job(result.audit_job_id)
 
     assert result.status == AutopilotCyclePlanStatus.ENQUEUED
-    assert result.enqueued_job_count == 9
+    assert result.enqueued_job_count == 10
     assert [job.kind for job in jobs] == [
         WorkerJobKind.UNIVERSE_REFRESH,
         WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
         WorkerJobKind.COVERAGE_AUDIT,
         WorkerJobKind.STRATEGY_QUEUE_SCAN,
+        WorkerJobKind.BACKTEST_DATA_LOAD,
         WorkerJobKind.VECTORIZED_BACKTEST,
         WorkerJobKind.VALIDATION_GATE,
         WorkerJobKind.LEDGER_APPEND_EXPORT,
@@ -97,6 +101,7 @@ def test_bounded_research_cycle_enqueue_adds_jobs_and_generated_audit(tmp_path) 
         "JOB-cycle-enqueue-candles",
         "JOB-cycle-enqueue-coverage",
         "JOB-cycle-enqueue-strategy-queue",
+        "JOB-cycle-enqueue-backtest-data",
         "JOB-cycle-enqueue-backtest",
         "JOB-cycle-enqueue-validation",
         "JOB-cycle-enqueue-ledger",
@@ -107,6 +112,7 @@ def test_bounded_research_cycle_enqueue_adds_jobs_and_generated_audit(tmp_path) 
         "recent_candle_bootstrap",
         "coverage_audit",
         "strategy_queue_scan",
+        "backtest_data_load",
         "vectorized_backtest",
         "validation_gate",
         "ledger_append_export",
@@ -300,8 +306,8 @@ def test_autopilot_research_cycle_cli_enqueue_prints_plan_paths(tmp_path, capsys
 
     assert exit_code == 0
     assert values["status"] == "enqueued"
-    assert values["planned_job_count"] == "9"
-    assert values["enqueued_job_count"] == "9"
+    assert values["planned_job_count"] == "10"
+    assert values["enqueued_job_count"] == "10"
     assert values["accepted_research_ready"] == "false"
     assert values["promotion_ready"] == "false"
     assert Path(values["plan_manifest"]).exists()
@@ -333,6 +339,11 @@ def _cycle_spec(*, run_id: str = "cycle-plan") -> dict:
                 "job_id": f"JOB-{run_id}-strategy-queue",
                 "kind": "strategy_queue_scan",
                 "input_spec": {"strategy_root": "STRATEGY_ROOT", "output_root": "STRATEGY_QUEUE"},
+            },
+            {
+                "job_id": f"JOB-{run_id}-backtest-data",
+                "kind": "backtest_data_load",
+                "input_spec": {"archive_root": "ARCHIVE_ROOT", "evidence_mode": "accepted_research"},
             },
             {
                 "job_id": f"JOB-{run_id}-backtest",
