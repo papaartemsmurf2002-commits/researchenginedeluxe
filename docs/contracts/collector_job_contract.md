@@ -1,7 +1,7 @@
 # V2 Collector Job Contract
 
 Status: v2 contract foundation
-Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-004`, `V2-AUD-COLLECT-016`, `V2-AUD-COLLECT-019`, `V2-AUD-COLLECT-020`, `V2-AUD-COLLECT-021`
+Audit IDs: `V2-AUD-WORKER-001`, `V2-AUD-COLLECT-004`, `V2-AUD-COLLECT-016`, `V2-AUD-COLLECT-019`, `V2-AUD-COLLECT-020`, `V2-AUD-COLLECT-021`, `V2-AUD-COLLECT-022`
 
 ## Purpose
 
@@ -131,6 +131,17 @@ request handling and they do not place orders.
   coverage ratios, preserve `sandbox_diagnostic` evidence mode, and keep
   `accepted_research_ready=false` because the selection is current-public, not
   historical as-of universe evidence.
+- `redx collectors historical-perps --candle-source trusted_records` may read
+  operator-supplied Hyperliquid-native candle JSON/JSONL files for old
+  intraday windows that public `candleSnapshot` cannot supply. This mode must
+  require `trusted_candle_records_root`, resolve the configured per-coin file
+  template inside that root, reject secret/local-state/unsafe extensions before
+  archive writes, preserve records-file SHA-256 and row-count provenance, check
+  symbol and timeframe when present, filter rows to the requested half-open
+  window, and write only selected rows through the raw, bronze, silver, and
+  coverage pipeline. It is a trusted local intake route only; it does not make
+  public `candleSnapshot` a historical source and does not by itself create
+  accepted research readiness.
 - `redx collectors historical-perps --include-funding` may additionally write
   public Hyperliquid funding history through raw, bronze, and silver funding
   archive services for the same selected instruments. Funding collection is

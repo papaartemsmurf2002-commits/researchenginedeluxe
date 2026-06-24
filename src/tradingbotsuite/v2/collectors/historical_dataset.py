@@ -17,6 +17,7 @@ import httpx
 import pyarrow.parquet as pq
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.archive.layout import ArchiveLayout
 from tradingbotsuite.v2.archive.manifest_store import ArchiveManifestStore
 from tradingbotsuite.v2.archive.raw_writer import RawJsonlZstdWriter
@@ -33,6 +34,7 @@ from tradingbotsuite.v2.data_quality.coverage import coverage_report_for_bars, t
 from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore
 from tradingbotsuite.v2.data_quality.schemas import DEFAULT_COVERAGE_MIN, EvidenceMode
 from tradingbotsuite.v2.security.boundary import require_research_boundary
+from tradingbotsuite.v2.security.path_policy import resolve_within_root
 from tradingbotsuite.v2.universe.hyperliquid import load_universe_rows, refresh_hyperliquid_universe
 from tradingbotsuite.v2.universe.models import UniverseMode, UniverseRefreshResult, UniverseSnapshotRow
 from tradingbotsuite.v2.venues.hyperliquid import (
@@ -46,6 +48,17 @@ HISTORICAL_DATASET_REPORT_SCHEMA_VERSION = "historical_perp_dataset_report_v1"
 DEFAULT_BINANCE_BASE_URL = "https://fapi.binance.com"
 DEFAULT_MAX_INSTRUMENTS = 25
 DEFAULT_BINANCE_CLOSE_DIFF_WARN_BPS = 250.0
+TRUSTED_CANDLE_RECORDS_ADAPTER_ID = "trusted_hyperliquid_candle_records_file_v1"
+TRUSTED_CANDLE_RECORDS_SOURCE = "trusted_hyperliquid_candle_records_file"
+DEFAULT_TRUSTED_CANDLE_RECORDS_TEMPLATE = "{coin}_{timeframe}.jsonl"
+DEFAULT_MAX_CANDLE_RECORDS_FILE_BYTES = 512 * 1024 * 1024
+_CANDLE_SOURCES = frozenset({"public_api", "trusted_records"})
+_RECORDS_FILE_FORMATS = frozenset({"auto", "json", "jsonl", "ndjson"})
+_RECORDS_FILE_SUFFIXES = frozenset({".json", ".jsonl", ".ndjson"})
+_UNSAFE_RECORDS_FILE_NAMES = frozenset({".env", "credentials", "credentials.json", "secrets.json"})
+_UNSAFE_RECORDS_FILE_SUFFIXES = frozenset(
+    {".db", ".sqlite", ".sqlite3", ".pkl", ".pickle", ".joblib", ".dill", ".zip", ".gz", ".zst", ".exe", ".bat"}
+)
 
 BinanceKlineFetcher = Callable[[str, str, datetime, datetime], list[Mapping[str, Any]]]
 
@@ -68,6 +81,11 @@ class HistoricalPerpDatasetConfig(BaseModel):
     public_info_timeout: float = Field(default=20.0, gt=0.0)
     max_public_info_pages: int = Field(default=50, ge=1, le=5_000)
     max_candles_per_public_page: int = Field(default=5_000, ge=1, le=5_000)
+    candle_source: str = "public_api"
+    trusted_candle_records_root: str | None = None
+    trusted_candle_records_template: str = DEFAULT_TRUSTED_CANDLE_RECORDS_TEMPLATE
+    trusted_candle_records_format: str = "auto"
+    max_candle_records_file_bytes: int = Field(default=DEFAULT_MAX_CANDLE_RECORDS_FILE_BYTES, ge=1)
     include_funding: bool = False
     max_funding_pages: int = Field(default=100, ge=1, le=10_000)
     include_hip3_dexs: bool = False
@@ -112,11 +130,33 @@ class HistoricalPerpDatasetConfig(BaseModel):
             raise ValueError("historical public collection must remain sandbox_diagnostic")
         return normalized
 
+    @field_validator("candle_source")
+    @classmethod
+    def _known_candle_source(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in _CANDLE_SOURCES:
+            raise ValueError("candle_source must be public_api or trusted_records")
+        return normalized
+
+    @field_validator("trusted_candle_records_format")
+    @classmethod
+    def _known_records_format(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in _RECORDS_FILE_FORMATS:
+            raise ValueError("trusted_candle_records_format must be auto, json, jsonl, or ndjson")
+        return normalized
+
     @model_validator(mode="after")
     def _validate_config(self) -> "HistoricalPerpDatasetConfig":
         if self.end_ts <= self.start_ts:
             raise ValueError("end_ts must be greater than start_ts")
         timeframe_to_timedelta(self.timeframe)
+        if self.candle_source == "trusted_records" and not self.trusted_candle_records_root:
+            raise ValueError("trusted_records candle_source requires trusted_candle_records_root")
+        if self.candle_source == "public_api" and self.trusted_candle_records_root:
+            raise ValueError("trusted_candle_records_root requires candle_source=trusted_records")
+        if self.candle_source == "trusted_records" and not self.trusted_candle_records_template.strip():
+            raise ValueError("trusted_candle_records_template must be non-empty")
         require_research_boundary(self, context="historical perp dataset config")
         return self
 
@@ -127,8 +167,12 @@ class InstrumentCollectionSummary(BaseModel):
     instrument_id: str
     coin: str
     day_ntl_vlm_usd: float
+    candle_source: str = "public_api"
     status: str = "collected"
     reason: str | None = None
+    trusted_records_file: str | None = None
+    trusted_records_file_sha256: str | None = None
+    trusted_records_file_row_count: int = Field(default=0, ge=0)
     raw_file_id: str | None = None
     bronze_file_id: str | None = None
     silver_file_id: str | None = None
@@ -178,6 +222,7 @@ class HistoricalPerpDatasetResult(BaseModel):
     requested_start_ts: datetime
     requested_end_ts: datetime
     timeframe: str
+    candle_source: str = "public_api"
     universe_mode: str = UniverseMode.CURRENT_LABELED_SANDBOX.value
     evidence_mode: str = EvidenceMode.SANDBOX_DIAGNOSTIC.value
     universe_eligible_count: int = Field(ge=0)
@@ -297,6 +342,7 @@ def collect_historical_perp_dataset(
         requested_start_ts=parsed.start_ts,
         requested_end_ts=parsed.end_ts,
         timeframe=parsed.timeframe,
+        candle_source=parsed.candle_source,
         universe_eligible_count=_eligible_count(archive_root, universe.snapshot_id),
         selected_instrument_count=len(selected_rows),
         collected_instrument_count=len(collected),
@@ -364,30 +410,56 @@ def _collect_one_instrument(
     coin: str,
 ) -> tuple[InstrumentCollectionSummary, list[dict[str, Any]]]:
     instrument_id = universe_row.instrument_id
-    fetches = _fetch_hyperliquid_candle_pages(
-        client=client,
-        coin=coin,
-        timeframe=config.timeframe,
-        start_ts=config.start_ts,
-        end_ts=config.end_ts,
-        max_pages=config.max_public_info_pages,
-        page_limit=config.max_candles_per_public_page,
-    )
-    rows = [
-        row
-        for fetch in fetches
-        for row in _public_candle_records(fetch.payload if hasattr(fetch, "payload") else fetch)
-    ]
+    if config.candle_source == "trusted_records":
+        rows, source_refs = _trusted_candle_records(config, instrument_id=instrument_id, coin=coin)
+        fetches: list[Any] = []
+        adapter_id = TRUSTED_CANDLE_RECORDS_ADAPTER_ID
+        source_endpoint = f"{TRUSTED_CANDLE_RECORDS_SOURCE}:{Path(source_refs['trusted_records_file']).name}"
+    else:
+        fetches = _fetch_hyperliquid_candle_pages(
+            client=client,
+            coin=coin,
+            timeframe=config.timeframe,
+            start_ts=config.start_ts,
+            end_ts=config.end_ts,
+            max_pages=config.max_public_info_pages,
+            page_limit=config.max_candles_per_public_page,
+        )
+        rows = [
+            row
+            for fetch in fetches
+            for row in _public_candle_records(fetch.payload if hasattr(fetch, "payload") else fetch)
+        ]
+        source_refs = {
+            "candle_source": "public_api",
+            "trusted_records_file": None,
+            "trusted_records_file_sha256": None,
+            "trusted_records_file_row_count": 0,
+        }
+        adapter_id = HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID
+        source_endpoint = HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE
     if not rows:
         return (
             InstrumentCollectionSummary(
                 instrument_id=instrument_id,
                 coin=coin,
                 day_ntl_vlm_usd=universe_row.day_ntl_vlm_usd,
+                candle_source=config.candle_source,
                 status="skipped",
-                reason="hyperliquid_candle_window_empty",
+                reason=(
+                    "trusted_candle_records_window_empty"
+                    if config.candle_source == "trusted_records"
+                    else "hyperliquid_candle_window_empty"
+                ),
+                trusted_records_file=source_refs["trusted_records_file"],
+                trusted_records_file_sha256=source_refs["trusted_records_file_sha256"],
+                trusted_records_file_row_count=source_refs["trusted_records_file_row_count"],
                 fetched_page_count=len(fetches),
-                blocker_reasons=("hyperliquid_candle_window_empty",),
+                blocker_reasons=(
+                    ("trusted_candle_records_window_empty",)
+                    if config.candle_source == "trusted_records"
+                    else ("hyperliquid_candle_window_empty",)
+                ),
             ),
             [],
         )
@@ -401,8 +473,8 @@ def _collect_one_instrument(
         date=config.start_ts.date().isoformat(),
         run_id=config.run_id,
         job_id=f"{config.run_id}-{coin}-raw-candles",
-        adapter_id=HYPERLIQUID_PUBLIC_INFO_ADAPTER_ID,
-        source_endpoint_or_subscription=HYPERLIQUID_CANDLE_SNAPSHOT_SOURCE,
+        adapter_id=adapter_id,
+        source_endpoint_or_subscription=source_endpoint,
         symbols=(instrument_id,),
         start_ts=config.start_ts,
         end_ts=config.end_ts,
@@ -457,6 +529,10 @@ def _collect_one_instrument(
             instrument_id=instrument_id,
             coin=coin,
             day_ntl_vlm_usd=universe_row.day_ntl_vlm_usd,
+            candle_source=config.candle_source,
+            trusted_records_file=source_refs["trusted_records_file"],
+            trusted_records_file_sha256=source_refs["trusted_records_file_sha256"],
+            trusted_records_file_row_count=source_refs["trusted_records_file_row_count"],
             raw_file_id=raw_file.file_id,
             bronze_file_id=bronze.output_files[0].file_id,
             silver_file_id=silver_file.file_id,
@@ -620,6 +696,184 @@ def _public_candle_records(payload: Any) -> list[dict[str, Any]]:
             raise ValueError(f"Hyperliquid candleSnapshot row {index} must be an object")
         records.append(dict(row))
     return records
+
+
+def _trusted_candle_records(
+    config: HistoricalPerpDatasetConfig,
+    *,
+    instrument_id: str,
+    coin: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    path = _trusted_candle_records_path(config, instrument_id=instrument_id, coin=coin)
+    records = _read_trusted_records_file(
+        path,
+        records_format=config.trusted_candle_records_format,
+    )
+    selected: list[dict[str, Any]] = []
+    for index, record in enumerate(records):
+        payload = _trusted_record_payload(record)
+        row_ts = _trusted_record_timestamp(payload)
+        _validate_trusted_candle_record(
+            payload,
+            index=index,
+            coin=coin,
+            instrument_id=instrument_id,
+            timeframe=config.timeframe,
+        )
+        if config.start_ts <= row_ts < config.end_ts:
+            selected.append(dict(record))
+    refs = {
+        "candle_source": "trusted_records",
+        "trusted_records_file": str(path),
+        "trusted_records_file_sha256": file_sha256(path),
+        "trusted_records_file_row_count": len(records),
+    }
+    return selected, refs
+
+
+def _trusted_candle_records_path(
+    config: HistoricalPerpDatasetConfig,
+    *,
+    instrument_id: str,
+    coin: str,
+) -> Path:
+    if not config.trusted_candle_records_root:
+        raise ValueError("trusted candle records root is required")
+    try:
+        relative_path = config.trusted_candle_records_template.format(
+            coin=coin,
+            coin_upper=coin.upper(),
+            instrument_id=instrument_id,
+            timeframe=config.timeframe,
+            run_id=config.run_id,
+        )
+    except KeyError as exc:
+        raise ValueError(f"unsupported trusted_candle_records_template field: {exc}") from exc
+    resolved = resolve_within_root(config.trusted_candle_records_root, relative_path)
+    _validate_trusted_records_file_path(resolved)
+    if not resolved.exists():
+        raise ValueError(f"trusted candle records file does not exist: {relative_path}")
+    if not resolved.is_file():
+        raise ValueError(f"trusted candle records path is not a file: {relative_path}")
+    size_bytes = resolved.stat().st_size
+    if size_bytes > config.max_candle_records_file_bytes:
+        raise ValueError(
+            "trusted candle records file exceeds max_candle_records_file_bytes: "
+            f"{size_bytes}>{config.max_candle_records_file_bytes}"
+        )
+    return resolved
+
+
+def _validate_trusted_records_file_path(path: Path) -> None:
+    suffix = path.suffix.lower()
+    suffixes = {part.lower() for part in path.suffixes}
+    if path.name.lower() in _UNSAFE_RECORDS_FILE_NAMES:
+        raise ValueError("trusted candle records file name is reserved for secrets or local state")
+    if suffixes & _UNSAFE_RECORDS_FILE_SUFFIXES:
+        raise ValueError("trusted candle records file has an unsafe extension")
+    if suffix not in _RECORDS_FILE_SUFFIXES:
+        raise ValueError("trusted candle records file must use .json, .jsonl, or .ndjson")
+
+
+def _read_trusted_records_file(path: Path, *, records_format: str) -> list[dict[str, Any]]:
+    normalized = records_format.lower()
+    if normalized == "auto":
+        normalized = "json" if path.suffix.lower() == ".json" else "jsonl"
+    if normalized == "json":
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, list):
+            raise ValueError("trusted candle JSON records file must contain a list")
+        return _trusted_record_rows(payload)
+    if normalized in {"jsonl", "ndjson"}:
+        rows: list[Any] = []
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            try:
+                rows.append(json.loads(stripped))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"trusted candle JSONL line {line_number} is invalid JSON") from exc
+        return _trusted_record_rows(rows)
+    raise ValueError("trusted candle records format must be auto, json, jsonl, or ndjson")
+
+
+def _trusted_record_rows(values: Sequence[Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, value in enumerate(values):
+        if not isinstance(value, Mapping):
+            raise ValueError(f"trusted candle records row {index} must be an object")
+        rows.append(dict(value))
+    if not rows:
+        raise ValueError("trusted candle records file must contain at least one object")
+    return rows
+
+
+def _trusted_record_payload(record: Mapping[str, Any]) -> Mapping[str, Any]:
+    value = record.get("data")
+    if isinstance(value, Mapping):
+        return value
+    return record
+
+
+def _trusted_record_timestamp(payload: Mapping[str, Any]) -> datetime:
+    value = _trusted_first(payload, "ts", "start_ts", "t", "time")
+    if isinstance(value, datetime):
+        return ensure_utc(value)
+    if isinstance(value, int | float):
+        numeric = float(value)
+        if numeric > 10_000_000_000:
+            numeric = numeric / 1000.0
+        return datetime.fromtimestamp(numeric, tz=UTC)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return _trusted_record_timestamp({"ts": int(stripped)})
+        return ensure_utc(datetime.fromisoformat(stripped.replace("Z", "+00:00")))
+    raise ValueError(f"trusted candle record has unsupported timestamp: {value!r}")
+
+
+def _validate_trusted_candle_record(
+    payload: Mapping[str, Any],
+    *,
+    index: int,
+    coin: str,
+    instrument_id: str,
+    timeframe: str,
+) -> None:
+    row_timeframe = _trusted_first(payload, "timeframe", "interval", "i")
+    if row_timeframe is not None and str(row_timeframe) != timeframe:
+        raise ValueError(
+            f"trusted candle records row {index} timeframe {row_timeframe!r} does not match {timeframe!r}"
+        )
+    row_symbol = _trusted_first(payload, "instrument_id", "symbol", "coin", "s")
+    if row_symbol is not None and not _trusted_symbol_matches(str(row_symbol), coin=coin, instrument_id=instrument_id):
+        raise ValueError(
+            f"trusted candle records row {index} symbol {row_symbol!r} does not match {coin!r}"
+        )
+    for field_names in (
+        ("open", "o"),
+        ("high", "h"),
+        ("low", "l"),
+        ("close", "c"),
+        ("volume", "v"),
+    ):
+        value = _trusted_first(payload, *field_names)
+        if value is None:
+            raise ValueError(f"trusted candle records row {index} missing {field_names[0]}")
+        float(value)
+
+
+def _trusted_symbol_matches(value: str, *, coin: str, instrument_id: str) -> bool:
+    normalized = value.strip()
+    return normalized == instrument_id or normalized == coin or normalized.upper() == coin.upper()
+
+
+def _trusted_first(payload: Mapping[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
 
 
 def _public_funding_records(payload: Any) -> list[dict[str, Any]]:

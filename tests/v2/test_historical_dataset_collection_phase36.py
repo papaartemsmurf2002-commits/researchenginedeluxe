@@ -61,16 +61,93 @@ def test_historical_perp_dataset_config_rejects_accepted_research_mode(tmp_path:
         HistoricalPerpDatasetConfig(**payload)
 
 
-def _config(tmp_path: Path) -> HistoricalPerpDatasetConfig:
+def test_collect_historical_perp_dataset_accepts_trusted_intraday_records_file(tmp_path: Path) -> None:
+    trusted_root = tmp_path / "trusted-hyperliquid-candles"
+    trusted_root.mkdir()
+    _write_trusted_candle_records(trusted_root / "BTC_1h.jsonl", coin="BTC")
+    _write_trusted_candle_records(trusted_root / "ETH_1h.jsonl", coin="ETH")
+    config = _config(
+        tmp_path,
+        end_ts=datetime(2024, 1, 1, 3, tzinfo=UTC),
+        timeframe="1h",
+        candle_source="trusted_records",
+        trusted_candle_records_root=str(trusted_root),
+    )
+
+    result = collect_historical_perp_dataset(
+        config,
+        hyperliquid_client=_FakeTrustedRecordsHyperliquidClient(),
+        binance_fetcher=_fake_binance_fetcher,
+    )
+
+    assert result.candle_source == "trusted_records"
+    assert result.accepted_research_ready is False
+    assert result.collected_instrument_count == 2
+    assert result.technical_coverage_pass_count == 2
+    report = json.loads(Path(result.report_path).read_text(encoding="utf-8"))
+    assert {row["candle_source"] for row in report["instrument_summaries"]} == {"trusted_records"}
+    assert {row["source_row_count"] for row in report["instrument_summaries"]} == {3}
+    assert {row["trusted_records_file_row_count"] for row in report["instrument_summaries"]} == {4}
+    assert all(row["trusted_records_file_sha256"] for row in report["instrument_summaries"])
+
+
+def test_trusted_intraday_records_file_template_must_stay_inside_root(tmp_path: Path) -> None:
+    trusted_root = tmp_path / "trusted-hyperliquid-candles"
+    trusted_root.mkdir()
+    config = _config(
+        tmp_path,
+        end_ts=datetime(2024, 1, 1, 3, tzinfo=UTC),
+        timeframe="1h",
+        candle_source="trusted_records",
+        trusted_candle_records_root=str(trusted_root),
+        trusted_candle_records_template="../{coin}_{timeframe}.jsonl",
+        coins=("BTC",),
+        max_instruments=0,
+    )
+
+    result = collect_historical_perp_dataset(
+        config,
+        hyperliquid_client=_FakeTrustedRecordsHyperliquidClient(),
+        binance_fetcher=_fake_binance_fetcher,
+    )
+
+    assert result.collected_instrument_count == 0
+    report = json.loads(Path(result.report_path).read_text(encoding="utf-8"))
+    assert report["instrument_summaries"][0]["status"] == "skipped"
+    assert "collection_failed:path escapes configured root" in report["instrument_summaries"][0]["reason"]
+
+
+def test_trusted_intraday_records_mode_requires_a_root(tmp_path: Path) -> None:
+    payload = _config(tmp_path).model_dump()
+    payload["candle_source"] = "trusted_records"
+    with pytest.raises(ValueError, match="trusted_candle_records_root"):
+        HistoricalPerpDatasetConfig(**payload)
+
+
+def _config(
+    tmp_path: Path,
+    *,
+    end_ts: datetime | None = None,
+    timeframe: str = "1d",
+    candle_source: str = "public_api",
+    trusted_candle_records_root: str | None = None,
+    trusted_candle_records_template: str = "{coin}_{timeframe}.jsonl",
+    coins: tuple[str, ...] = (),
+    max_instruments: int = 2,
+) -> HistoricalPerpDatasetConfig:
     return HistoricalPerpDatasetConfig(
         output_root=str(tmp_path / "out"),
         archive_root=str(tmp_path / "out" / "archive"),
         run_id="unit-historical-perps",
         start_ts=datetime(2024, 1, 1, tzinfo=UTC),
-        end_ts=datetime(2024, 1, 4, tzinfo=UTC),
-        timeframe="1d",
+        end_ts=end_ts or datetime(2024, 1, 4, tzinfo=UTC),
+        timeframe=timeframe,
         asof_date=date(2026, 6, 22),
-        max_instruments=2,
+        max_instruments=max_instruments,
+        coins=coins,
+        candle_source=candle_source,
+        trusted_candle_records_root=trusted_candle_records_root,
+        trusted_candle_records_template=trusted_candle_records_template,
         validate_binance=True,
         include_funding=True,
     )
@@ -166,6 +243,18 @@ class _FakeHyperliquidClient:
         )
 
 
+class _FakeTrustedRecordsHyperliquidClient(_FakeHyperliquidClient):
+    def fetch_candle_snapshot(
+        self,
+        *,
+        coin: str,
+        interval: str,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> HyperliquidInfoFetchResult:
+        raise AssertionError("trusted_records mode must not call public candleSnapshot")
+
+
 def _fetch_result(
     *,
     source: str,
@@ -192,6 +281,31 @@ def _fetch_result(
         raw_response=response,
         payload=payload,
     )
+
+
+def _write_trusted_candle_records(path: Path, *, coin: str) -> None:
+    lines = [
+        json.dumps(_trusted_candle_row(coin=coin, index=index, ts=datetime(2024, 1, 1, index, tzinfo=UTC)))
+        for index in range(3)
+    ]
+    lines.append(json.dumps(_trusted_candle_row(coin=coin, index=99, ts=datetime(2024, 1, 2, tzinfo=UTC))))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _trusted_candle_row(*, coin: str, index: int, ts: datetime) -> dict[str, Any]:
+    close = (100.0 if coin == "BTC" else 200.0) + index
+    return {
+        "t": int(ts.timestamp() * 1000),
+        "T": int((ts + timedelta(hours=1)).timestamp() * 1000) - 1,
+        "s": coin,
+        "i": "1h",
+        "o": str(close - 1.0),
+        "h": str(close + 1.0),
+        "l": str(close - 2.0),
+        "c": str(close),
+        "v": "10",
+        "n": 1,
+    }
 
 
 def _fake_binance_fetcher(

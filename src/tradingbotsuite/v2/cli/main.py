@@ -269,13 +269,13 @@ def build_parser() -> argparse.ArgumentParser:
     data_quality.add_argument("--write-manifest", action="store_true")
     collectors = subparsers.add_parser(
         "collectors",
-        help="bounded research-only public data collection commands",
+        help="bounded research-only data collection commands",
         description=f"Collectors command group. {BOUNDARY_HELP}",
     )
     collectors_subparsers = collectors.add_subparsers(dest="collectors_command")
     historical_perps = collectors_subparsers.add_parser(
         "historical-perps",
-        help="collect historical Hyperliquid public perp candles and validate coverage/Binance overlap",
+        help="collect historical Hyperliquid perp candles and validate coverage/Binance overlap",
     )
     historical_perps.add_argument("--output-root", required=True)
     historical_perps.add_argument("--archive-root")
@@ -303,6 +303,20 @@ def build_parser() -> argparse.ArgumentParser:
     historical_perps.add_argument("--public-info-timeout", type=float, default=20.0)
     historical_perps.add_argument("--max-public-info-pages", type=int, default=50)
     historical_perps.add_argument("--max-candles-per-public-page", type=int, default=5_000)
+    historical_perps.add_argument(
+        "--candle-source",
+        choices=["public_api", "trusted_records"],
+        default="public_api",
+        help="candle source for historical-perps; trusted_records reads local Hyperliquid-native files",
+    )
+    historical_perps.add_argument("--trusted-candle-records-root")
+    historical_perps.add_argument("--trusted-candle-records-template", default="{coin}_{timeframe}.jsonl")
+    historical_perps.add_argument(
+        "--trusted-candle-records-format",
+        choices=["auto", "json", "jsonl", "ndjson"],
+        default="auto",
+    )
+    historical_perps.add_argument("--max-candle-records-file-bytes", type=int, default=512 * 1024 * 1024)
     historical_perps.add_argument("--include-funding", action="store_true")
     historical_perps.add_argument("--max-funding-pages", type=int, default=100)
     historical_perps.add_argument("--include-hip3-dexs", action="store_true")
@@ -933,6 +947,11 @@ def _handle_collectors(args: argparse.Namespace, parser: argparse.ArgumentParser
                 public_info_timeout=args.public_info_timeout,
                 max_public_info_pages=args.max_public_info_pages,
                 max_candles_per_public_page=args.max_candles_per_public_page,
+                candle_source=args.candle_source,
+                trusted_candle_records_root=args.trusted_candle_records_root,
+                trusted_candle_records_template=args.trusted_candle_records_template,
+                trusted_candle_records_format=args.trusted_candle_records_format,
+                max_candle_records_file_bytes=args.max_candle_records_file_bytes,
                 include_funding=args.include_funding,
                 max_funding_pages=args.max_funding_pages,
                 include_hip3_dexs=args.include_hip3_dexs,
@@ -947,6 +966,7 @@ def _handle_collectors(args: argparse.Namespace, parser: argparse.ArgumentParser
         print(f"archive_root={result.archive_root}")
         print(f"universe_snapshot_id={result.universe_snapshot_id}")
         print(f"archive_snapshot_id={result.archive_snapshot_id}")
+        print(f"candle_source={result.candle_source}")
         print(f"universe_eligible_count={result.universe_eligible_count}")
         print(f"selected_instrument_count={result.selected_instrument_count}")
         print(f"collected_instrument_count={result.collected_instrument_count}")

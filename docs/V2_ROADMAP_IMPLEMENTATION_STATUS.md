@@ -1,6 +1,6 @@
 # V2 Roadmap Implementation Status
 
-Status: v2 foundation, bounded-loop, and historical dataset/data-source surfaces self-checked through WPR106-524 final-audit handoff
+Status: v2 foundation, bounded-loop, and historical dataset/data-source surfaces self-checked through WPR106-526 trusted historical candle source resolution
 Source roadmap: `docs/REDX_V2_READY_TO_USE_IMPLEMENTATION_ROADMAP_2026_06_20.md`
 Closeout packet: `docs/work_packets/WPR106-414-v2-roadmap-milestone-status-closeout.md`
 Control-doc sync: `docs/work_packets/WPR106-415-v2-control-doc-sync-and-completion-audit.md`
@@ -9,6 +9,7 @@ Latest data collection sync: `docs/work_packets/WPR106-521-v2-gold-panel-materia
 Latest bounded-loop data-load sync: `docs/work_packets/WPR106-522-v2-backtest-data-load-worker-loop-wiring.md`
 Latest archive-ref cycle sync: `docs/work_packets/WPR106-523-v2-archive-ref-cycle-spec.md`
 Latest final-audit handoff sync: `docs/work_packets/WPR106-524-v2-final-audit-readiness-closeout.md`
+Latest historical candle issue sync: `docs/work_packets/WPR106-526-hyperliquid-historical-candle-trusted-source-resolution.md`
 
 ## Boundary Statement
 
@@ -18,10 +19,12 @@ sizing, runtime-mode, or promotion-ready claim. Research outputs remain
 `research_only`, `observe_only`, and `promotion_ready: false` unless a later
 explicit promotion process changes them.
 
-At closeout time, `docs/KNOWN_ISSUES.md` reports no open P0 issues and no open
-P1 issues. WPR106-473 opens one P2 operational data-source issue,
-`ISSUE-R106-030`, for old Hyperliquid public intraday candle windows returning
-empty while daily history works. Phase 22 UI is
+At closeout time, `docs/KNOWN_ISSUES.md` reports no open P0, P1, or P2 issues.
+WPR106-526 resolves the prior P2 operational data-source issue
+`ISSUE-R106-030`: public Hyperliquid `candleSnapshot` remains recent-window
+only, while old intraday Hyperliquid-native intake is now routed through
+explicit trusted local candle records with root containment, source hashes,
+archive writes, and coverage evidence. Phase 22 UI is
 self-checked as a read-only static visibility surface. WPR106-469 through
 WPR106-471 prove the bounded public diagnostic loop can execute all required
 durable stages while preserving blocker evidence; WPR106-472 closes the stale
@@ -29,9 +32,10 @@ README/CI/full-suite validation gaps. WPR106-473 adds bounded historical
 current-universe Hyperliquid candle/funding collection plus Binance kline
 sanity validation, but keeps the generated reports sandbox diagnostic because
 the universe is still current-public rather than historical as-of. WPR106-524
-records the final-audit handoff state: the foundation is ready for independent
-final audit after clean handoff validation, while agentic strategy testing
-remains blocked until that audit and separate readiness evidence pass.
+records the final-audit handoff state, and WPR106-526 removes the remaining
+known-issue audit caveat; the foundation is ready for independent final audit
+after clean handoff validation, while agentic strategy testing remains blocked
+until that audit and separate readiness evidence pass.
 
 ## Phase Coverage
 
@@ -117,7 +121,8 @@ remains blocked until that audit and separate readiness evidence pass.
 | Gold panel materializer | self_checked DATA-017 bridge | WPR106-521 adds an all-or-nothing materializer over ready preflight output and explicit per-symbol row-value inputs. It assembles every declared symbol and writes gold-layer artifacts only when every symbol is ready, complete, and source-row-hashed. Blocked preflights, missing inputs, duplicate or incomplete row values, missing source row hashes, and unknown input symbols fail before writes; output remains archive refs only with no accepted coverage evidence, candidate evidence, or promotion claims. |
 | Bounded loop backtest-data load wiring | self_checked worker/autonomy bridge | WPR106-522 adds a durable `backtest_data_load` worker stage between `strategy_queue_scan` and `vectorized_backtest`. The stage loads through `BacktestDataService`, returns archive/universe/coverage/data-manifest refs, and generated fixture/public cycles bind those refs into vectorized backtests with expected-ref verification. The loop remains research-only operational evidence and creates no accepted coverage evidence, candidate evidence, paper/live/order/sizing/runtime behavior, promotion claim, or readiness claim. |
 | Existing archive-ref bounded cycle | self_checked worker/autonomy bridge | WPR106-523 adds `source=existing_ref` durable universe/archive checks and `redx autopilot archive-cycle-spec` for local archive refs plus local declarative JSON/YAML strategy specs. The generated loop verifies refs before coverage, strategy queue scan, backtest-data load, vectorized backtest, validation, ledger, Lead Book, and audit; focused evidence includes a no-blocker final audit while `accepted_research_ready=false` and all promotion/candidate/paper-live/order/sizing/runtime flags remain false. |
-| Final-audit handoff | ready_for_independent_audit | WPR106-524 records the handoff state after WPR106-472 through WPR106-523, with no open P0/P1 known issues, one non-blocking P2 data-source caveat, Python 3.11 validation as the authoritative local lane, and explicit separation between final audit readiness and agentic strategy testing readiness. |
+| Final-audit handoff | ready_for_independent_audit | WPR106-524 records the handoff state after WPR106-472 through WPR106-523, and WPR106-526 removes the remaining known-issue caveat. The audit target has no open P0/P1/P2 known issues, uses Python 3.11 validation as the authoritative local lane, and keeps final audit readiness separate from agentic strategy testing readiness. |
+| Trusted historical Hyperliquid candle records | self_checked collector bridge | WPR106-526 resolves `ISSUE-R106-030` by adding `--candle-source trusted_records` to `redx collectors historical-perps`; public `candleSnapshot` remains recent-window only, while operator-supplied Hyperliquid-native old intraday candle files are root-contained, SHA-256 recorded, row-count recorded, symbol/timeframe checked, and written through raw/bronze/silver/coverage archive services with `accepted_research_ready=false`. |
 | Readiness blocker audit | self_checked | WPR106-455 and WPR106-462 require current loop evidence, a passing final audit report, nonempty ledger and Lead Book artifacts, and zero open P0/P1 counts before any autonomous-readiness report can pass. |
 | CI and full-suite evidence | self_checked | WPR106-472 adds `tests/v2 -q` to the checked-in CI baseline and records Python 3.11 full-suite evidence: 2235 passed, 2 skipped. |
 
@@ -853,6 +858,18 @@ contracts on Python 3.11: unsplit sweep hit local WinError 10055 pytest-asyncio 
 git diff --check: passed with expected LF-to-CRLF warnings only
 ```
 
+Latest WPR106-526 trusted historical candle/test-infrastructure validation:
+
+```text
+public Hyperliquid BTC 1h 2024-01-01 through 2024-01-08 probe: HTTP 200, 0 rows
+compile src/tradingbotsuite: passed
+focused historical dataset collector lane on Python 3.11: 5 passed, 1 warning
+focused fixture-pack contract lane on Python 3.11: 42 passed, 1 warning
+tests/v2 on Python 3.11: 551 passed, 1 warning
+tests/contracts on Python 3.11: 463 passed, 1 warning
+git diff --check: passed with expected LF-to-CRLF warnings only
+```
+
 Warnings observed in the Python 3.11 lanes are deprecation/runtime warnings
 only; no assertion failures were observed.
 
@@ -894,9 +911,10 @@ coverage, backtest data, validation, ledger, Lead Book, and audit evidence all
 pass; that evidence remains operational research evidence only.
 WPR106-473 proves current-public daily history can be collected and technically
 checked for many perps; it also proves older 1h Hyperliquid public windows can
-be empty even when Binance has 1h history, so intraday accepted evidence needs
-another trusted Hyperliquid/as-of source or a clearly labeled cross-venue/proxy
-path. WPR106-476 adds the manifest bridge needed for later availability
+be empty even when Binance has 1h history. WPR106-526 resolves the operational
+collector gap by adding trusted local Hyperliquid-native candle record intake
+for old intraday windows while keeping Binance data explicitly cross-venue/
+proxy only. WPR106-476 adds the manifest bridge needed for later availability
 scanners and backfill jobs to consume source-registry and symbol-map refs
 instead of ad hoc source/mapping assumptions. WPR106-477 adds Binance Vision
 availability manifests, WPR106-478 adds local ZIP parser/checksum validation,

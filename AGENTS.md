@@ -50,18 +50,20 @@ $env:PYTHONPATH='src'; python -m pytest tests/contracts -q
 
 ## Windows async validation caveat
 
-On local Windows sessions, `tests/contracts -q` can intermittently fail with
-`WinError 10055` while pytest-asyncio creates an event-loop self-pipe for the
-async fixture-pack contract. This happens before the affected test body runs
-and usually indicates local socket/buffer exhaustion, not a source assertion
-failure. `tests/conftest.py` prioritizes async contract tests on Windows to
-reduce the chance that broad sync-test socket churn trips the failure first.
+On local Windows sessions, broad pytest runs can intermittently fail with
+`WinError 10055` while pytest-asyncio or TestClient creates an event-loop
+self-pipe. This happens before the affected test body runs and usually
+indicates local socket/buffer exhaustion, not a source assertion failure.
+WPR106-526 converted the previous async fixture-pack contract to a synchronous
+collected-manifest fixture, so `tests/contracts -q` should no longer require a
+pytest-asyncio setup path.
 
-If the unsplit contract sweep still hits `WinError 10055`, run:
+If a broader suite still hits `WinError 10055`, isolate the affected test and
+rerun the remaining suite with `-k "not <test_name>"`, for example:
 
 ```powershell
-$env:PYTHONPATH='src'; py -3.11 -m pytest tests/contracts/test_historical_fixture_pack_contract.py::test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest -q
-$env:PYTHONPATH='src'; py -3.11 -m pytest tests/contracts -q -k "not test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest"
+$env:PYTHONPATH='src'; py -3.11 -m pytest path\to\test_file.py::test_name -q
+$env:PYTHONPATH='src'; py -3.11 -m pytest tests -q -k "not test_name"
 ```
 
 Record the split results and the setup failure in the work packet. Treat this

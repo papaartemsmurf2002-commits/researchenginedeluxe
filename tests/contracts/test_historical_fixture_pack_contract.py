@@ -19,7 +19,6 @@ from tradingbotsuite.data.historical_fixture_pack import (
 )
 from tradingbotsuite.main import _run_build_historical_fixture_pack_command
 from tradingbotsuite.research.deterministic_datasets import build_hmm_knn_sweep_dataset
-from tradingbotsuite.research.market_data import collect_binance_usdm_context
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -949,34 +948,16 @@ def test_historical_fixture_pack_rejects_context_provider_capability_mismatch(tm
     )
 
 
-@pytest.mark.asyncio
-async def test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest(tmp_path: Path) -> None:
+def test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest(tmp_path: Path) -> None:
     rows = _provider_kline_rows(row_count=6)
     source_manifest_path = _write_provider_kline_manifest(tmp_path, rows)
-    funding = await collect_binance_usdm_context(
-        symbol="BTCUSDT",
-        data_family="funding_rate",
-        start_time_ms=int(rows[0]["time_ms"]) - 60_000,
-        end_time_ms=int(rows[-1]["time_ms"]),
-        output_dir=tmp_path / "collected_context",
-        fetcher=_FakeContextFetcher(
-            [
-                {
-                    "symbol": "BTCUSDT",
-                    "fundingRate": "0.0001",
-                    "fundingTime": int(row["time_ms"]) - 60_000,
-                    "markPrice": str(row["close"]),
-                }
-                for row in rows
-            ]
-        ),
-    )
+    funding_manifest_path = _write_collected_binance_funding_context_manifest(tmp_path, rows)
 
     result = build_provider_kline_fixture_pack(
         source_manifest_path=source_manifest_path,
         output_dir=tmp_path / "fixture_pack",
         row_limit=4,
-        context_manifest_paths=[funding.manifest_path],
+        context_manifest_paths=[funding_manifest_path],
     )
 
     manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
@@ -1507,22 +1488,6 @@ def _write_provider_kline_manifest(tmp_path: Path, rows: list[dict[str, object]]
     return source_manifest_path
 
 
-class _FakeContextFetcher:
-    def __init__(self, rows: list[dict[str, object]]) -> None:
-        self.rows = rows
-
-    async def fetch_context_rows(
-        self,
-        *,
-        symbol: str,
-        data_family: str,
-        start_time_ms: int,
-        end_time_ms: int,
-        interval: str,
-    ) -> list[dict[str, object]]:
-        return self.rows
-
-
 def _write_provider_context_manifests(tmp_path: Path, rows: list[dict[str, object]]) -> list[Path]:
     return [
         _write_provider_context_manifest(tmp_path, "funding_rate", _provider_funding_context_rows(rows), source_name="crypto_lake"),
@@ -1565,6 +1530,52 @@ def _write_provider_context_manifest(
     manifest_path = tmp_path / f"{family}_context.manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
     return manifest_path
+
+
+def _write_collected_binance_funding_context_manifest(tmp_path: Path, rows: list[dict[str, object]]) -> Path:
+    normalized_rows = [
+        {
+            "source_name": "binance_usdm_rest",
+            "symbol": "BTCUSDT",
+            "data_family": "funding_rate",
+            "source_row_index": index,
+            "event_time_ms": int(row["time_ms"]) - 60_000,
+            "funding_rate": "0.0001",
+            "raw_payload": {
+                "symbol": "BTCUSDT",
+                "fundingRate": "0.0001",
+                "fundingTime": int(row["time_ms"]) - 60_000,
+                "markPrice": str(row["close"]),
+            },
+        }
+        for index, row in enumerate(rows)
+    ]
+    return _write_provider_context_manifest(
+        tmp_path / "collected_context",
+        "funding_rate",
+        normalized_rows,
+        source_name="binance_usdm_rest",
+        manifest_update={
+            "source_type": "rest_backfill",
+            "start_time_ms": int(rows[0]["time_ms"]) - 60_000,
+            "end_time_ms": int(rows[-1]["time_ms"]),
+            "first_event_time_ms": int(rows[0]["time_ms"]) - 60_000,
+            "last_event_time_ms": int(rows[-1]["time_ms"]) - 60_000,
+            "source_hash": "sha256:unit-collected-binance-funding-context",
+            "gap_count": 0,
+            "duplicate_count": 0,
+            "gap_check_applicable": True,
+            "gap_check_status": "checked_fixed_interval",
+            "duplicate_check_applicable": True,
+            "receive_time_field": None,
+            "receive_time_unavailable_reason": (
+                "Binance USD-M REST backfill rows include exchange event time but no original local receive timestamp."
+            ),
+            "schema_version": "binance-usdm-context-jsonl-v1",
+            "collector_version": "unit-collected-binance-context-v1",
+            "endpoint_family": "funding_rate_history",
+        },
+    )
 
 
 def _provider_funding_context_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:

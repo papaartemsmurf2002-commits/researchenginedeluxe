@@ -28,7 +28,10 @@ This is the first file to read after `AGENTS.md`.
   final-audit handoff: the WPR106-472 through WPR106-523 foundation is ready
   for independent final audit after clean validation and remote-roadmap
   accounting, but not ready for agentic strategy testing until that audit and
-  separate readiness evidence pass. WPR106-421 resolves
+  separate readiness evidence pass. WPR106-526 resolves the remaining open P2
+  `ISSUE-R106-030` by adding explicit trusted local Hyperliquid candle-record
+  intake for old intraday windows while preserving public `candleSnapshot` as a
+  recent-window source only. WPR106-421 resolves
   `ISSUE-R106-020` by tightening latest-window strategy gates, GMM detector
   metadata, lower-frame no-hit proof, exit-policy alias artifacts, static
   barrier canonical identity, and timestamped funding-path costs. WPR106-422

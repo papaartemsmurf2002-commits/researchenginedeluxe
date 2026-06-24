@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-06-22
+Last updated: 2026-06-24
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -23,7 +23,7 @@ Stage advancement stop rule:
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
 | P1 | 0 | 0 | 25 | 0 |
-| P2 | 1 | 0 | 8 | 0 |
+| P2 | 0 | 0 | 9 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
 
 ## ISSUE-R106-030: Hyperliquid public candleSnapshot old intraday windows return empty
@@ -31,7 +31,7 @@ Stage advancement stop rule:
 Severity: P2
 Stage discovered: WPR106-473 - V2 historical perp dataset collection validation
 Owner: Codex Research Agent
-Status: open
+Status: resolved by WPR106-526
 Paths affected: public Hyperliquid historical data operation,
 `src/tradingbotsuite/v2/collectors/historical_dataset.py`,
 generated `data/research/operator_runs/v2_historical_dataset/**` reports
@@ -72,6 +72,26 @@ import a manifest-backed official/vendor archive with provenance and coverage
 proof. If Binance is used for 1h/15m research iteration, label it explicitly
 as cross-venue/proxy data and do not treat it as accepted Hyperliquid
 execution or venue-specific evidence.
+
+### Resolution notes
+
+Resolved by WPR106-526 as an operational collector gap. A fresh public probe on
+2026-06-24 still returned zero BTC 1h rows for 2024-01-01 through 2024-01-08,
+so the public `candleSnapshot` endpoint remains recent-window only and is not
+the resolution path for old intraday coverage.
+
+`redx collectors historical-perps` now supports explicit
+`candle_source=trusted_records` / `--candle-source trusted_records` intake for
+operator-supplied Hyperliquid-native candle JSON/JSONL files. That mode
+requires a trusted source root, keeps file paths root-contained, rejects unsafe
+file names/extensions, records file SHA-256 and row-count provenance, filters
+rows to the requested window, validates symbol/timeframe/candle shape, writes
+selected rows through the existing raw -> bronze -> silver archive pipeline,
+and emits coverage evidence in the generated report. Reports remain
+`sandbox_diagnostic` and `accepted_research_ready=false`; final acceptance
+still requires as-of universe, archive snapshot, coverage, lockbox,
+backtest-data, validation, ledger, audit, and readiness gates. Binance remains
+cross-venue/proxy sanity data only.
 
 ## ISSUE-R106-029: Direct v2 worker-store import can hit data-quality circular import
 
@@ -253,6 +273,13 @@ source assertion failure. This resolution does not create a sandbox
 manifest-builder assertion change, candidate-pack write, paper/live signal,
 sizing instruction, order placement, runtime-mode change, autonomous-ready
 claim, or promotion claim.
+
+WPR106-526 further removes the last pytest-asyncio dependency from
+`tests/contracts` by converting the collected Binance context fixture-pack
+contract to a synchronous collected-manifest fixture. Broader async/TestClient
+suites can still hit host-level `WinError 10055` on exhausted local Windows
+sessions, but the contract baseline no longer requires event-loop setup for
+that fixture-pack assertion.
 
 ## ISSUE-R106-027: Official S3 backfill accepted arbitrary local source files
 

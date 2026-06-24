@@ -1188,6 +1188,25 @@ independent final audit only; agentic strategy testing, accepted research
 readiness, autonomous readiness, candidate packs, paper/live/order/sizing/
 runtime behavior, and promotion remain blocked until separate audit/readiness
 evidence passes.
+Current WPR106-526 v2 trusted historical candle source update: WPR106-526
+resolves `ISSUE-R106-030` without changing the public endpoint caveat. A fresh
+probe confirmed old BTC 1h `candleSnapshot` rows for 2024-01-01 through
+2024-01-08 still return an empty list, so public `candleSnapshot` remains a
+recent-window source only. `redx collectors historical-perps` now supports
+`--candle-source trusted_records` for operator-supplied Hyperliquid-native
+JSON/JSONL candle files under a trusted source root. The collector records
+source SHA-256 and row counts, rejects root escapes and unsafe file names or
+extensions, checks symbol/timeframe/candle shape, filters to the requested
+window, and writes selected rows through the raw/bronze/silver/coverage
+archive path while keeping `accepted_research_ready=false`. WPR106-526 also
+converts the previous async fixture-pack contract into a synchronous
+collected-manifest fixture, removing the last pytest-asyncio dependency from
+`tests/contracts -q` after local Windows `socket.socketpair()` setup failures
+recurred during validation. There are now no open P0, P1, or P2 known issues.
+The foundation remains ready for independent final audit only; agentic strategy
+testing, accepted research readiness, autonomous readiness, candidate packs,
+paper/live/order/sizing/runtime behavior, and promotion remain blocked until
+separate audit/readiness evidence passes.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`
