@@ -47,3 +47,22 @@ Use focused validation for scoped work and broaden tests when shared contracts c
 python -m compileall -q src/tradingbotsuite
 $env:PYTHONPATH='src'; python -m pytest tests/contracts -q
 ```
+
+## Windows async validation caveat
+
+On local Windows sessions, `tests/contracts -q` can intermittently fail with
+`WinError 10055` while pytest-asyncio creates an event-loop self-pipe for the
+async fixture-pack contract. This happens before the affected test body runs
+and usually indicates local socket/buffer exhaustion, not a source assertion
+failure. `tests/conftest.py` prioritizes async contract tests on Windows to
+reduce the chance that broad sync-test socket churn trips the failure first.
+
+If the unsplit contract sweep still hits `WinError 10055`, run:
+
+```powershell
+$env:PYTHONPATH='src'; py -3.11 -m pytest tests/contracts/test_historical_fixture_pack_contract.py::test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest -q
+$env:PYTHONPATH='src'; py -3.11 -m pytest tests/contracts -q -k "not test_provider_kline_fixture_pack_builder_accepts_collected_binance_context_manifest"
+```
+
+Record the split results and the setup failure in the work packet. Treat this
+as a local validation-host caveat unless a test assertion fails after setup.

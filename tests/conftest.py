@@ -22,6 +22,21 @@ if (
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    if sys.platform != "win32":
+        return
+
+    indexed_items = list(enumerate(items))
+
+    def _priority(indexed_item: tuple[int, pytest.Item]) -> tuple[int, int]:
+        index, item = indexed_item
+        item_path = str(item.path).replace("\\", "/")
+        is_contract_async = "/tests/contracts/" in item_path and item.get_closest_marker("asyncio") is not None
+        return (0 if is_contract_async else 1, index)
+
+    items[:] = [item for _, item in sorted(indexed_items, key=_priority)]
+
+
 class FakeBinanceCandleClient:
     def __init__(self, bars: list[Bar]):
         self.bars = bars
