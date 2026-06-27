@@ -2,8 +2,8 @@
 
 ## Status
 
-Strategy validation passed; formal manager readiness blocked only by repo-state
-checklist items not changed in this packet.
+Strategy validation passed; formal manager readiness passed after clean pushed
+baseline.
 
 ## Objective
 
@@ -96,15 +96,14 @@ total_turnover=7.850000000000044
 
 `ISSUE-R106-034` is resolved in `docs/KNOWN_ISSUES.md`.
 
-The formal autonomous-readiness manager report was generated at
+The formal autonomous-readiness manager report was generated and rerun at
 `data/research/wpr106_556_autonomous_readiness/autonomous_readiness_report.json`.
-It remains blocked only because the current desktop worktree is not clean and
-no commit/push was requested or performed:
+After the clean pushed baseline, it reports no blockers:
 
 ```text
-status=blocked
-autonomous_research_ready=false
-blocker_reasons=["check_failed:repo.clean_git_tree", "check_failed:repo.baseline_committed_and_pushed"]
+status=autonomous_research_ready
+autonomous_research_ready=true
+blocker_count=0
 ```
 
 ## Validation
@@ -115,5 +114,6 @@ Python 3.11 validation on 2026-06-27:
 py -3.11 -m compileall -q src\tradingbotsuite: passed
 PYTHONPATH=src; py -3.11 -m pytest tests\contracts -q: 463 passed, 1 warning
 PYTHONPATH=src; py -3.11 -m tradingbotsuite.v2.cli.main strategy-spec validate --spec-file configs\strategies\wpr106_556\accepted\first_passing_atlas_rank_strategy.json: passed
+PYTHONPATH=src; py -3.11 -m tradingbotsuite.v2.cli.main audit autonomous-readiness --evidence-file data\research\wpr106_556_autonomous_readiness\autonomous_readiness_evidence.json --output-path data\research\wpr106_556_autonomous_readiness\autonomous_readiness_report.json: autonomous_research_ready=true, blocker_count=0
 git diff --check: passed with existing LF-to-CRLF warnings only
 ```

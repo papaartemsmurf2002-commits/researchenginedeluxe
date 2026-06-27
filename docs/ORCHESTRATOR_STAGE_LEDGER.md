@@ -1528,10 +1528,9 @@ archive-ref cycle completes with no blockers, validation `pass`, audit `pass`,
 `stress_2x_net_return=0.01864770640252944`, and
 `stress_3x_net_return=0.008841803210934085`. `ISSUE-R106-034` is resolved; no
 candidate-pack, paper/live, order/sizing/runtime, promotion, production
-trading, or live-signal claim is created. The formal autonomous-readiness
-manager report remains blocked only on the local repo-state checklist because
-this desktop worktree is not clean and no commit/push was requested or
-performed.
+trading, or live-signal claim is created. After the clean pushed baseline, the
+formal autonomous-readiness manager report returns
+`autonomous_research_ready=true` with `blocker_count=0`.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

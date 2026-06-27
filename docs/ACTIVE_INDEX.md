@@ -15,10 +15,10 @@ This is the first file to read after `AGENTS.md`.
   `pass`, `net_return=0.02854830964529631`,
   `stress_2x_net_return=0.01864770640252944`, and
   `stress_3x_net_return=0.008841803210934085`. `ISSUE-R106-034` is resolved.
-  The formal autonomous-readiness manager report is still blocked only by the
-  local repo-state checklist because the desktop worktree is not clean and no
-  commit/push was requested or performed. All artifacts remain research-only,
-  observe-only, non-promotable, not candidate-pack eligible, not
+  After the clean pushed baseline, the formal autonomous-readiness manager
+  report now returns `autonomous_research_ready=true` with `blocker_count=0`.
+  All artifacts remain research-only, observe-only, non-promotable, not
+  candidate-pack eligible, not
   paper/live/order/sizing/runtime, and not a production trading claim.
 
 - WPR106-552 remains the current data/catalog/materialization authority handoff. Start with

@@ -130,11 +130,9 @@ validation gate passed with no blocker reasons. Metrics were
 `stress_3x_net_return=0.008841803210934085`, `trade_count=314`, and
 `total_turnover=7.850000000000044`.
 
-The formal autonomous-readiness manager report was generated, but it remains
-blocked only on local repo-state checklist items (`repo.clean_git_tree` and
-`repo.baseline_committed_and_pushed`) because this desktop worktree is not
-clean and no commit/push was requested or performed. No open P0/P1
-strategy-validation blocker remains.
+After the clean pushed baseline, the formal autonomous-readiness manager
+report was rerun and returns `autonomous_research_ready=true` with
+`blocker_count=0`. No open P0/P1 strategy-validation blocker remains.
 
 ## ISSUE-R106-033: LIT December 2025 official 1m archive gap blocks all-project strict bar readiness
 

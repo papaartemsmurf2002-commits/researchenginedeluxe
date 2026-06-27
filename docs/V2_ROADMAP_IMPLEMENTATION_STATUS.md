@@ -1,6 +1,6 @@
 # V2 Roadmap Implementation Status
 
-Status: v2 foundation, bounded-loop, historical dataset/data-source surfaces, free-venue data/materialization authority, final agentic-iteration audit, and atlas strategy autonomous-readiness pass self-checked through WPR106-556
+Status: v2 foundation, bounded-loop, historical dataset/data-source surfaces, free-venue data/materialization authority, final agentic-iteration audit, and atlas strategy autonomous-readiness manager pass self-checked through WPR106-556
 Source roadmap: `docs/REDX_V2_READY_TO_USE_IMPLEMENTATION_ROADMAP_2026_06_20.md`
 Closeout packet: `docs/work_packets/WPR106-414-v2-roadmap-milestone-status-closeout.md`
 Control-doc sync: `docs/work_packets/WPR106-415-v2-control-doc-sync-and-completion-audit.md`
@@ -102,9 +102,8 @@ BTC/ETH/SOL/XRP 1h panel with validation `pass`, audit `pass`, zero blockers,
 `stress_3x_net_return=0.008841803210934085`. The packet resolves
 `ISSUE-R106-034` while preserving research-only, observe-only,
 non-promotable, no candidate-pack, no paper/live/order/sizing/runtime
-boundaries. The formal autonomous-readiness manager report remains blocked
-only on the local repo-state checklist because this desktop worktree is not
-clean and no commit/push was requested or performed.
+boundaries. After the clean pushed baseline, the formal autonomous-readiness
+manager report returns `autonomous_research_ready=true` with `blocker_count=0`.
 WPR106-536 appends additional official no-paid BTC/ETH January 2024 trade,
 orderflow, spot-trade, premium-index, and spot-index history from Binance and
 Bybit. The central store now has 2,523,343 normalized rows and uses about
