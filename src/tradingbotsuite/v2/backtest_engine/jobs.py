@@ -13,11 +13,8 @@ import re
 from typing import Any
 
 from tradingbotsuite.v2.archive.hashing import canonical_json_hash, file_sha256
-from tradingbotsuite.v2.backtest_data import (
-    BacktestDataRequest,
-    BacktestDataService,
-    BacktestEvidenceMode,
-)
+from tradingbotsuite.v2.backtest_data.schemas import BacktestDataRequest, BacktestEvidenceMode
+from tradingbotsuite.v2.backtest_data.service import BacktestDataService
 from tradingbotsuite.v2.backtest_engine.artifacts import BacktestRunConfig, EngineLane
 from tradingbotsuite.v2.backtest_engine.engine import run_vectorized_backtest
 from tradingbotsuite.v2.config.time import utc_isoformat
@@ -148,6 +145,7 @@ def _data_request(
         universe_snapshot_id=_required_str(spec, "universe_snapshot_id"),
         venue=str(spec.get("venue") or strategy_spec.market_scope.venue),
         instrument_id=_required_str(spec, "instrument_id"),
+        instrument_ids=_instrument_ids(spec),
         family=str(spec.get("family", "bars")),
         timeframe=str(spec.get("timeframe") or strategy_spec.inputs.timeframe),
         start_ts=_parse_datetime(_required_str(spec, "start_ts")),
@@ -355,6 +353,8 @@ def _output_refs(
         f"data_manifest_hash={run_config.data_manifest_hash}",
         f"coverage_report_id={coverage_report_id}",
         f"evidence_mode={data_request.evidence_mode.value}",
+        f"instrument_id={data_request.instrument_id}",
+        f"instrument_ids={','.join(data_request.instrument_ids)}",
         f"start_ts={utc_isoformat(data_request.start_ts)}",
         f"end_ts={utc_isoformat(data_request.end_ts)}",
     ]
@@ -379,6 +379,27 @@ def _json_safe_mapping(row: Mapping[str, Any]) -> dict[str, Any]:
         else:
             output[key] = value
     return output
+
+
+def _instrument_ids(spec: Mapping[str, Any]) -> tuple[str, ...]:
+    raw = spec.get("instrument_ids")
+    if raw is None:
+        return (_required_str(spec, "instrument_id"),)
+    if isinstance(raw, str):
+        raise ValueError("instrument_ids must be a list of instrument ids")
+    normalized: list[str] = []
+    for item in raw:
+        text = str(item).strip()
+        if not text:
+            raise ValueError("instrument_ids must not contain empty values")
+        if text not in normalized:
+            normalized.append(text)
+    if not normalized:
+        raise ValueError("instrument_ids must not be empty when provided")
+    primary = _required_str(spec, "instrument_id")
+    if primary not in normalized:
+        normalized.insert(0, primary)
+    return tuple(normalized)
 
 
 def _required_str(spec: Mapping[str, Any], key: str) -> str:

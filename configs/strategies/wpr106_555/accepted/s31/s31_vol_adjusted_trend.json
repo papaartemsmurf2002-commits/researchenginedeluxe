@@ -1,0 +1,67 @@
+{
+  "execution": {
+    "fee_model": "conservative_hyperliquid_taker_v1",
+    "price_basis": "next_bar_open",
+    "slippage_model": "conservative_bps_v1"
+  },
+  "inputs": {
+    "fields": [
+      "open",
+      "high",
+      "low",
+      "close",
+      "volume",
+      "coverage_ratio"
+    ],
+    "timeframe": "1h"
+  },
+  "logic": {
+    "entry_threshold": 1.05,
+    "filters": {
+      "min_coverage": 0.98,
+      "min_volume": 1000
+    },
+    "lookback_bars": 120,
+    "rank_metric": "return_over_volatility",
+    "signal_type": "vol_adjusted_trend"
+  },
+  "market_scope": {
+    "market_type": "perp",
+    "universe_rule": "wpr106_555_binance_usdm_asof_panel",
+    "venue": "binance_usdm"
+  },
+  "metadata": {
+    "cost_assumption": "taker_4_32_bps_maker_reference_1_44_bps_slippage_8_bps_base_20_bps_worst_case_reference",
+    "data_interpretation": "bar_derived_realized_volatility_and_atr_from_ohlcv",
+    "uploaded_strategy_id": "S31",
+    "uploaded_theme_id": "vol_adjusted_trend"
+  },
+  "observe_only": true,
+  "owner": "codex-manager-agent",
+  "parameters": {
+    "atr_lookback_bars": 720,
+    "correlation_cap_note": "approximated_by_portfolio_gross_and_per_instrument_caps_for_this_vectorized_pass",
+    "target_volatility_per_bar": 0.001,
+    "volatility_floor": 0.0005,
+    "volatility_lookback_bars": 720,
+    "worst_case_slippage_bps_reference": 20
+  },
+  "promotion_ready": false,
+  "research_only": true,
+  "risk": {
+    "max_gross_leverage": 0.2,
+    "max_instrument_weight": 0.05,
+    "rebalance": "1h"
+  },
+  "schema_version": "strategy_spec_v1",
+  "strategy_family": "vol_adjusted_trend",
+  "strategy_id": "wpr106555_s31_vol_adjusted_trend_v1",
+  "validation": {
+    "earliest_start": "2024-01-01",
+    "evidence_mode": "accepted_research",
+    "exclude_lockbox": true,
+    "min_backtest_months": 6,
+    "universe_mode": "as_of"
+  },
+  "version": "0.1.0"
+}

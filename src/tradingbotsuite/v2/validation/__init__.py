@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from tradingbotsuite.v2.validation.final_hard_test import (
     FINAL_HARD_TEST_MAX_SLOTS,
     NON_LIVE_SURVIVOR_DISCLAIMER,
@@ -23,7 +25,6 @@ from tradingbotsuite.v2.validation.final_hard_test import (
     reject_parameter_edit_after_lockbox,
     start_deep_validation,
 )
-from tradingbotsuite.v2.validation.jobs import ValidationGateManifest, run_validation_job
 from tradingbotsuite.v2.validation.overfit import (
     SweepCompletenessReport,
     TrialFamilyReport,
@@ -43,6 +44,18 @@ from tradingbotsuite.v2.validation.walk_forward import (
     fold_rows_for_artifact,
     summarize_fold_stability,
 )
+
+
+def __getattr__(name: str) -> Any:
+    if name in {"ValidationGateManifest", "run_validation_job"}:
+        from tradingbotsuite.v2.validation.jobs import ValidationGateManifest, run_validation_job
+
+        return {
+            "ValidationGateManifest": ValidationGateManifest,
+            "run_validation_job": run_validation_job,
+        }[name]
+    raise AttributeError(name)
+
 
 __all__ = [
     "FoldMetric",

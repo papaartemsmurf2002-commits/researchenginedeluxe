@@ -373,7 +373,7 @@ def _run_existing_universe_ref_job(
     snapshot_id = _required_str(spec, "universe_snapshot_id")
     if len(snapshot_id) != 64:
         raise ValueError("universe_snapshot_id must be 64 hex characters")
-    expected_instrument = str(spec.get("instrument_id", "")).strip()
+    expected_instruments = _expected_instrument_ids(spec)
     expected_mode = UniverseMode(str(spec.get("mode", UniverseMode.AS_OF.value)))
     expected_asof_date = (
         _parse_date(str(spec["asof_date"]))
@@ -393,10 +393,16 @@ def _run_existing_universe_ref_job(
     if expected_asof_date is not None and any(row.asof_date != expected_asof_date for row in rows):
         raise ValueError(f"universe_snapshot_asof_date_mismatch: {expected_asof_date.isoformat()}")
     checked_rows = rows
-    if expected_instrument:
-        checked_rows = [row for row in rows if row.instrument_id == expected_instrument]
-        if len(checked_rows) != 1:
-            raise ValueError(f"instrument_not_in_universe_snapshot: {expected_instrument}")
+    if expected_instruments:
+        rows_by_instrument = {row.instrument_id: row for row in rows}
+        missing = [
+            instrument_id
+            for instrument_id in expected_instruments
+            if instrument_id not in rows_by_instrument
+        ]
+        if missing:
+            raise ValueError("instrument_not_in_universe_snapshot: " + ",".join(missing))
+        checked_rows = [rows_by_instrument[instrument_id] for instrument_id in expected_instruments]
     if evidence_mode in {"accepted_research", "reported_evidence"}:
         for row in checked_rows:
             if row.universe_mode != UniverseMode.AS_OF:
@@ -418,8 +424,9 @@ def _run_existing_universe_ref_job(
         f"raw_file_ids={_csv(raw_file_ids)}",
         f"raw_payload_sha256s={_csv(raw_payload_hashes)}",
     ]
-    if expected_instrument:
-        output_refs.append(f"instrument_id={expected_instrument}")
+    if expected_instruments:
+        output_refs.append(f"instrument_id={expected_instruments[0]}")
+        output_refs.append(f"instrument_ids={_csv(expected_instruments)}")
     archive_refs = (
         f"universe_snapshot_id={snapshot_id}",
         f"raw_file_ids={_csv(raw_file_ids)}",
@@ -479,7 +486,7 @@ def _run_existing_archive_ref_job(
     if not included_file_ids:
         raise ValueError("archive_snapshot_has_no_included_files")
     family = str(spec.get("family", spec.get("datatype", "bars"))).strip()
-    instrument_id = str(spec.get("instrument_id", "")).strip()
+    expected_instruments = _expected_instrument_ids(spec)
     timeframe = str(spec.get("timeframe", "")).strip()
     included_rows = [
         row
@@ -491,11 +498,20 @@ def _run_existing_archive_ref_job(
         for row in included_rows
         if (not venue or row.venue == venue)
         and (not family or row.datatype == family)
-        and (not instrument_id or row.instrument_id == instrument_id)
+        and (not expected_instruments or row.instrument_id in set(expected_instruments))
         and (not timeframe or row.timeframe == timeframe)
     ]
     if not matching_rows:
         raise ValueError("archive_snapshot_no_matching_silver_files")
+    if expected_instruments:
+        found_instruments = {str(row.instrument_id) for row in matching_rows}
+        missing = [
+            instrument_id
+            for instrument_id in expected_instruments
+            if instrument_id not in found_instruments
+        ]
+        if missing:
+            raise ValueError("archive_snapshot_no_matching_silver_files: " + ",".join(missing))
     missing_paths = [
         row.path
         for row in matching_rows
@@ -504,7 +520,7 @@ def _run_existing_archive_ref_job(
     if missing_paths:
         raise ValueError("archive_snapshot_file_missing: " + ",".join(missing_paths))
     silver_file_ids = tuple(row.file_id for row in matching_rows)
-    output_refs = (
+    output_refs = [
         "collector_mode=existing_archive_ref_check",
         "source_mode=existing_ref",
         "archive_ref_checked=true",
@@ -515,7 +531,10 @@ def _run_existing_archive_ref_job(
         f"snapshot_end_ts={utc_isoformat(snapshot.end_ts)}",
         f"matching_file_count={len(matching_rows)}",
         f"silver_file_ids={_csv(silver_file_ids)}",
-    )
+    ]
+    if expected_instruments:
+        output_refs.append(f"instrument_id={expected_instruments[0]}")
+        output_refs.append(f"instrument_ids={_csv(expected_instruments)}")
     archive_refs = (
         f"archive_snapshot_id={snapshot.archive_snapshot_id}",
         f"silver_file_ids={_csv(silver_file_ids)}",
@@ -524,7 +543,7 @@ def _run_existing_archive_ref_job(
     record = store.succeed_job(
         job.job_id,
         worker_id=worker_id,
-        output_refs=output_refs,
+        output_refs=tuple(output_refs),
         archive_manifest_refs=archive_refs,
         reason="recent_candle_bootstrap_existing_ref_succeeded",
     )
@@ -2152,6 +2171,25 @@ def _api_cap_warning(
         }
     )[:16]
     return f"api_cap_warning_id={warning_id}:latest_window_or_api_cap_must_not_support_accepted_evidence"
+
+
+def _expected_instrument_ids(spec: dict[str, Any]) -> tuple[str, ...]:
+    primary = str(spec.get("instrument_id", "")).strip()
+    raw = spec.get("instrument_ids")
+    if raw is None:
+        return (primary,) if primary else ()
+    if isinstance(raw, str):
+        raise ValueError("instrument_ids must be a list of instrument ids")
+    normalized: list[str] = []
+    for item in raw:
+        text = str(item).strip()
+        if not text:
+            raise ValueError("instrument_ids must not contain empty values")
+        if text not in normalized:
+            normalized.append(text)
+    if primary and primary not in normalized:
+        normalized.insert(0, primary)
+    return tuple(normalized)
 
 
 def _required_str(spec: dict[str, Any], key: str) -> str:

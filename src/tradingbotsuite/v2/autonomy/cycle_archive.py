@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,7 @@ class AutopilotArchiveCycleConfig(BaseModel):
     universe_snapshot_id: str = Field(min_length=64, max_length=64)
     venue: str = "hyperliquid"
     instrument_id: str = "hyperliquid:perp:BTC"
+    instrument_ids: tuple[str, ...] = ("hyperliquid:perp:BTC",)
     family: str = "bars"
     timeframe: str = "1d"
     start_ts: datetime = Field(default_factory=lambda: datetime(2024, 1, 1, tzinfo=UTC))
@@ -59,6 +61,12 @@ class AutopilotArchiveCycleConfig(BaseModel):
         "Local declarative strategy spec was tested by the bounded research loop "
         "against operator-supplied accepted archive refs."
     )
+    taker_fee_bps: float = Field(default=4.32, ge=0.0)
+    maker_fee_bps: float = Field(default=1.44, ge=0.0)
+    slippage_bps: float = Field(default=8.0, ge=0.0)
+    worst_case_slippage_bps: float = Field(default=20.0, ge=0.0)
+    spread_bps: float = Field(default=0.0, ge=0.0)
+    impact_bps: float = Field(default=0.0, ge=0.0)
     lead_avg_trades_per_month: float = Field(default=6.0, ge=0.0)
     lead_total_trades: int = Field(default=42, ge=0)
     lead_usable_months: int = Field(default=6, ge=0)
@@ -76,6 +84,36 @@ class AutopilotArchiveCycleConfig(BaseModel):
     sizing_instruction: bool = False
     order_placement_instruction: bool = False
     runtime_mode_change: bool = False
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_instrument_ids(cls, data: Any) -> Any:
+        if not isinstance(data, Mapping):
+            return data
+        payload = dict(data)
+        instrument_id = str(payload.get("instrument_id", "")).strip()
+        raw_instrument_ids = payload.get("instrument_ids")
+        if raw_instrument_ids is None or raw_instrument_ids == ():
+            if instrument_id:
+                payload["instrument_ids"] = (instrument_id,)
+            return payload
+        if isinstance(raw_instrument_ids, str):
+            raise ValueError("instrument_ids must be a list of instrument ids")
+        normalized: list[str] = []
+        for item in raw_instrument_ids:
+            text = str(item).strip()
+            if not text:
+                raise ValueError("instrument_ids must not contain empty values")
+            if text not in normalized:
+                normalized.append(text)
+        if not normalized:
+            raise ValueError("instrument_ids must not be empty when provided")
+        if not instrument_id:
+            payload["instrument_id"] = normalized[0]
+        elif instrument_id not in normalized:
+            normalized.insert(0, instrument_id)
+        payload["instrument_ids"] = tuple(normalized)
+        return payload
 
     @field_validator("start_ts", "end_ts")
     @classmethod
@@ -110,6 +148,10 @@ class AutopilotArchiveCycleConfig(BaseModel):
             )
         if self.family != "bars":
             raise ValueError("archive ref cycle currently supports family=bars for vectorized backtests")
+        if not self.instrument_ids:
+            raise ValueError("instrument_ids must not be empty")
+        if self.instrument_id != self.instrument_ids[0]:
+            raise ValueError("instrument_id must match the first instrument_ids entry")
         require_research_boundary(self, context="autopilot archive ref cycle config")
         return self
 
@@ -255,6 +297,7 @@ def _cycle_spec_payload(
                     "source": "existing_ref",
                     "universe_snapshot_id": config.universe_snapshot_id,
                     "instrument_id": config.instrument_id,
+                    "instrument_ids": list(config.instrument_ids),
                     "mode": "as_of",
                     "evidence_mode": config.evidence_mode,
                 },
@@ -268,6 +311,7 @@ def _cycle_spec_payload(
                     "archive_snapshot_id": config.archive_snapshot_id,
                     "venue": config.venue,
                     "instrument_id": config.instrument_id,
+                    "instrument_ids": list(config.instrument_ids),
                     "family": config.family,
                     "timeframe": config.timeframe,
                     "start_ts": start,
@@ -308,6 +352,7 @@ def _cycle_spec_payload(
                     "archive_root": str(archive_root),
                     "venue": config.venue,
                     "instrument_id": config.instrument_id,
+                    "instrument_ids": list(config.instrument_ids),
                     "family": config.family,
                     "timeframe": config.timeframe,
                     "start_ts": start,
@@ -329,6 +374,7 @@ def _cycle_spec_payload(
                     "agent_or_user": config.created_by_id,
                     "venue": config.venue,
                     "instrument_id": config.instrument_id,
+                    "instrument_ids": list(config.instrument_ids),
                     "family": config.family,
                     "timeframe": config.timeframe,
                     "start_ts": start,
@@ -337,7 +383,7 @@ def _cycle_spec_payload(
                     "evidence_mode": config.evidence_mode,
                     "universe_mode": "as_of",
                     "requested_fields": list(config.requested_fields),
-                    "cost_model": _archive_cost_model(),
+                    "cost_model": _archive_cost_model(config),
                 },
             },
             {
@@ -368,7 +414,7 @@ def _cycle_spec_payload(
                     "strategy_family": config.strategy_family,
                     "economic_thesis": config.economic_thesis,
                     "created_by_id": config.created_by_id,
-                    "instrument_scope": [config.instrument_id],
+                    "instrument_scope": list(config.instrument_ids),
                     "venue_scope": config.venue,
                     "universe_scope": "as_of_archive_ref",
                     "data_window_start": start,
@@ -406,7 +452,12 @@ def _cycle_spec_payload(
                     "notes": (
                         "Non-promotable archive-ref bounded research row. Do not use "
                         "as candidate-pack, paper/live, sizing, order, runtime, or "
-                        "promotion evidence."
+                        "promotion evidence. Cost assumptions use taker fee "
+                        f"{config.taker_fee_bps:.4f} bps, maker fee reference "
+                        f"{config.maker_fee_bps:.4f} bps, and constant slippage "
+                        f"{config.slippage_bps:.4f} bps. Worst-case slippage "
+                        f"reference is {config.worst_case_slippage_bps:.4f} bps; "
+                        "the stress matrix includes a stricter 3x base-cost case."
                     ),
                 },
             },
@@ -543,16 +594,16 @@ def _standard_bindings(
     ]
 
 
-def _archive_cost_model() -> dict[str, Any]:
+def _archive_cost_model(config: AutopilotArchiveCycleConfig) -> dict[str, Any]:
     return {
-        "cost_model_id": "archive_ref_conservative_hyperliquid_taker_v1",
+        "cost_model_id": "wpr106_555_hyperliquid_taker_median_costs_v1",
         "fee_side": "taker",
-        "fee_bps": 6.0,
-        "spread_bps": 2.0,
-        "slippage_bps": 3.0,
-        "impact_bps": 1.0,
+        "fee_bps": config.taker_fee_bps,
+        "spread_bps": config.spread_bps,
+        "slippage_bps": config.slippage_bps,
+        "impact_bps": config.impact_bps,
         "max_volume_participation": 0.05,
-        "slippage_model_id": "volume_participation_v1",
+        "slippage_model_id": "conservative_bps_v1",
         "impact_model_id": "impact_v1",
         "funding_required": False,
         "funding_source": "archive_ref_cycle_explicit_zero_funding",

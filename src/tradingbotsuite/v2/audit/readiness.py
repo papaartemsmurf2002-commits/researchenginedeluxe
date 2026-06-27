@@ -40,7 +40,9 @@ REQUIRED_AUTONOMOUS_READINESS_KEYS: tuple[str, ...] = (
     "audit.p1_blockers_open_false",
     "known_issues.issue_r106_026_resolved_or_ci_authority_documented",
     "known_issues.issue_r106_020_closed_with_regression_tests",
-    "data.hyperliquid_universe_snapshots_operational",
+    "data.free_venue_authority_documented",
+    "data.project_bar_coverage_authoritative",
+    "data.of_style_raw_archive_authoritative",
     "data.archive_collectors_operational",
     "data.coverage_reports_operational",
     "data.archive_snapshot_ids_required",
@@ -81,6 +83,7 @@ REQUIRED_CYCLE_JOB_KINDS: tuple[str, ...] = (
     "recent_candle_bootstrap",
     "coverage_audit",
     "strategy_queue_scan",
+    "backtest_data_load",
     "vectorized_backtest",
     "validation_gate",
     "ledger_append_export",
@@ -100,6 +103,10 @@ REQUIRED_CYCLE_ARTIFACT_REF_PREFIXES: tuple[str, ...] = (
     "accepted_spec_path=",
     "accepted_spec_sha256=",
     "strategy_spec_hash=",
+    "backtest_data_manifest_path=",
+    "backtest_data_manifest_sha256=",
+    "data_manifest_id=",
+    "data_manifest_hash=",
     "run_manifest_path=",
     "validation_manifest_path=",
     "validation_manifest_id=",
@@ -494,8 +501,8 @@ def _required_next_actions(blockers: tuple[str, ...]) -> tuple[str, ...]:
         "rerun_autonomous_readiness_audit",
         "do_not_claim_autonomous_research_ready_until_report_passes",
     ]
-    if any("real_hyperliquid" in blocker or blocker.startswith("data.") for blocker in blockers):
-        actions.append("provide_real_hyperliquid_archive_operation_evidence")
+    if any("real_hyperliquid" in blocker or "data." in blocker for blocker in blockers):
+        actions.append("provide_authoritative_free_venue_data_evidence")
     if any("full_suite" in blocker or "python_3_11" in blocker for blocker in blockers):
         actions.append("provide_authoritative_python311_validation_evidence")
     if any("independently_audited" in blocker for blocker in blockers):

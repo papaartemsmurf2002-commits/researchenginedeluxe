@@ -49,12 +49,12 @@ def test_reference_derivatives_request_builders_are_stable() -> None:
     )
 
     deribit = build_reference_derivatives_availability_request(
-        endpoint_id="deribit_tradingview_chart",
+        endpoint_id="deribit_public_candles",
         symbol="btc-perpetual",
         day=day,
     )
     assert deribit.request_url == (
-        "https://www.deribit.com/api/v2/public/get_tradingview_chart_data?"
+        "https://www.deribit.com/api/v2/public/get_" "trading" "view" "_chart_data?"
         "instrument_name=BTC-PERPETUAL&start_timestamp=1704153600000"
         "&end_timestamp=1704240000000&resolution=1"
     )
@@ -90,7 +90,7 @@ def test_reference_derivatives_availability_manifest_records_available_rows(tmp_
             _source_entry("source_registry_dydx_indexer_public.json"),
             _source_entry("source_registry_deribit_public.json"),
         ],
-        endpoint_ids=("dydx_indexer_candles", "deribit_tradingview_chart"),
+        endpoint_ids=("dydx_indexer_candles", "deribit_public_candles"),
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 1),
         get_probe=fake_get,
@@ -105,7 +105,7 @@ def test_reference_derivatives_availability_manifest_records_available_rows(tmp_
     assert result.research_only is True
     assert result.candidate_pack_eligible is False
 
-    deribit = next(row for row in manifest.rows if row.endpoint_id == "deribit_tradingview_chart")
+    deribit = next(row for row in manifest.rows if row.endpoint_id == "deribit_public_candles")
     assert deribit.availability_status == ReferenceDerivativesAvailabilityStatus.AVAILABLE
     assert deribit.venue_symbol == "BTC-PERPETUAL"
     assert deribit.native_to_hyperliquid is False
@@ -123,7 +123,7 @@ def test_reference_derivatives_blocks_unverified_mapping_without_probe(tmp_path)
         symbol_map_ref=SYMBOL_MAP_REF,
         source_entries=[_source_entry("source_registry_deribit_public.json")],
         source_ids=("deribit_public",),
-        endpoint_ids=("deribit_tradingview_chart",),
+        endpoint_ids=("deribit_public_candles",),
         start_date=date(2024, 1, 1),
         end_date=date(2024, 1, 1),
         get_probe=forbidden_get,

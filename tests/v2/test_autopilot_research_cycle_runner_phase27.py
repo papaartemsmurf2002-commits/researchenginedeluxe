@@ -303,6 +303,7 @@ def _seed_successful_loop_jobs(store: WorkerJobStore, *, run_id: str) -> None:
             f"JOB-{run_id}-backtest-data",
             (
                 "backtest_data_manifest_path=BACKTEST_DATA",
+                "backtest_data_manifest_sha256=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
                 "data_manifest_id=DATA",
                 "data_manifest_hash=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
                 "archive_snapshot_id=ARCH",

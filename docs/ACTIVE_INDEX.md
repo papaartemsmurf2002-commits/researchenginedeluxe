@@ -1,10 +1,43 @@
 # Active Index
 
-Last updated: 2026-06-24
+Last updated: 2026-06-27
 
 This is the first file to read after `AGENTS.md`.
 
 ## Immediate Next-Agent Handoff
+
+- WPR106-556 is the current autonomous-readiness strategy verdict. After the
+  WPR106-555 S31/S54 failures, WPR106-556 used the uploaded combined strategy
+  atlas as the next queue, classified data-unavailable strategies as skipped
+  rather than proxied, and found a blocker-free bar-testable S24/S65 long-only
+  cross-sectional momentum/top-gainer continuation spec. The durable
+  archive-ref cycle completed with no blockers, validation `pass`, audit
+  `pass`, `net_return=0.02854830964529631`,
+  `stress_2x_net_return=0.01864770640252944`, and
+  `stress_3x_net_return=0.008841803210934085`. `ISSUE-R106-034` is resolved.
+  The formal autonomous-readiness manager report is still blocked only by the
+  local repo-state checklist because the desktop worktree is not clean and no
+  commit/push was requested or performed. All artifacts remain research-only,
+  observe-only, non-promotable, not candidate-pack eligible, not
+  paper/live/order/sizing/runtime, and not a production trading claim.
+
+- WPR106-552 remains the current data/catalog/materialization authority handoff. Start with
+  `docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md` for a digestible
+  testing-agent catalog and `docs/index.html` for the matching read-only
+  local/GitHub Pages status page. The authoritative data-readiness state is:
+  WPR106-546 lifecycle-scoped official Binance USD-M 1m bars are ready for
+  bar-based proxy research tests over the 29 project symbols through 2026-05
+  subject to lockbox rules; WPR106-549 external raw-heavy OF-style archive
+  validation records 1,159,478 complete official Binance USD-M source files;
+  WPR106-552 materializes a compact feature proof pack from 251 source files
+  into 256,523 feature rows with zero blocked sources across all nine requested
+  OF-style families; and unavailable requester-pays/native Hyperliquid official
+  history is out of scope for data readiness. `ISSUE-R106-004` and the
+  data-source interpretation of `ISSUE-R106-032` are resolved. No open P0/P1
+  data-source or OF-style materialization proof blocker remains; future
+  strategy work must still use scoped materialized windows or open compute
+  packets and real readiness evidence before making autonomous, candidate,
+  paper/live, order/sizing/runtime, or promotion claims.
 
 - Read `docs/audit/V2_COMPLETION_AUDIT_ISSUES_AND_HOLES_2026_06_21.md`,
   `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`,
@@ -25,10 +58,19 @@ This is the first file to read after `AGENTS.md`.
   contract suites pass, and fixes deterministic v2 worker transition ordering.
   WPR106-472 later resolves `ISSUE-R106-026` with Python 3.11 monolithic
   full-suite evidence: 2235 passed and 2 skipped. WPR106-524 records the
-  final-audit handoff: the WPR106-472 through WPR106-523 foundation is ready
+  final-audit handoff: the WPR106-472 through WPR106-523 foundation was ready
   for independent final audit after clean validation and remote-roadmap
-  accounting, but not ready for agentic strategy testing until that audit and
-  separate readiness evidence pass. WPR106-526 resolves the remaining open P2
+  accounting. WPR106-553 completes the final repo audit and clears the narrow
+  research-only agentic iteration strategy testing gate while leaving
+  accepted research readiness, autonomous readiness, candidate packs,
+  paper/live/order/sizing/runtime behavior, and promotion blocked until
+  separate evidence passes. WPR106-555 updates the uploaded-strategy
+  autonomous-readiness pass with the 8 bps base/20 bps worst-case slippage
+  policy, adds S31, skips untestable S59 with evidence, and records the
+  strategy-validation blocker later resolved by WPR106-556. WPR106-556 finds
+  the first blocker-free atlas strategy cycle and preserves the research-only
+  boundary. WPR106-526 resolves the
+  remaining open P2
   `ISSUE-R106-030` by adding explicit trusted local Hyperliquid candle-record
   intake for old intraday windows while preserving public `candleSnapshot` as a
   recent-window source only. WPR106-421 resolves
@@ -38,9 +80,10 @@ This is the first file to read after `AGENTS.md`.
   adds `redx autonomy dry-run`, a fixture-backed sandbox loop that writes an
   autonomy manifest, blocker report, ledger row, and non-promotable Lead Book
   row while proving the wiring remains research-only. It is not accepted
-  research evidence and it explicitly reports real Hyperliquid archive
-  operation as a blocker. WPR106-423 upgrades that dry-run so the default path
-  creates a local archive root, silver bars, coverage report, archive snapshot,
+  research evidence; WPR106-551 supersedes the old native-Hyperliquid follow-up
+  with the authoritative free-venue data baseline. WPR106-423 upgrades that
+  dry-run so the default path creates a local archive root, silver bars,
+  coverage report, archive snapshot,
   fixture as-of universe, and `BacktestDataService` manifest before the
   backtest, while still staying `sandbox_diagnostic`. WPR106-424 adds a
   central v2 research-boundary policy and migrates autonomy, backtest,
@@ -2248,7 +2291,10 @@ Resolved P0 blockers in the active-index wave:
 - `ISSUE-R106-014`: live artifact validation was not fail-closed for unknown
   or mode-ambiguous manifests.
 
-Open P1 blockers: none.
+Open legacy R106 no-candidate gate P1 blockers: none. Current v2 known issues
+also have no open P0/P1 blockers after WPR106-551 resolves the legacy
+Hyperliquid-native data-source conflict; see `docs/KNOWN_ISSUES.md` for the
+global stage-gate source of truth.
 
 Resolved P1 blockers:
 

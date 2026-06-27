@@ -51,6 +51,8 @@ def test_autonomous_readiness_audit_blocks_missing_current_evidence(tmp_path) ->
     assert "missing_artifact:cycle_execution_manifest" in report.blocker_reasons
     assert "missing_artifact:ledger" in report.blocker_reasons
     assert "known_p1_open:1" in report.blocker_reasons
+    assert "provide_authoritative_free_venue_data_evidence" in report.required_next_actions
+    assert "provide_real_hyperliquid_archive_operation_evidence" not in report.required_next_actions
     assert report.promotion_ready is False
 
 
@@ -145,6 +147,32 @@ def test_autonomous_readiness_blocks_stale_cycle_missing_queue_and_validation(tm
     assert report.autonomous_research_ready is False
 
 
+def test_autonomous_readiness_blocks_stale_cycle_missing_backtest_data_load(tmp_path) -> None:
+    ledger_path = _write_ledger(tmp_path)
+    lead_book_path = _write_lead_book(tmp_path, source_artifact_path=ledger_path)
+    stale_cycle_jobs = tuple(
+        kind for kind in REQUIRED_CYCLE_JOB_KINDS if kind != "backtest_data_load"
+    )
+    cycle_path = _write_cycle_execution(tmp_path, job_kinds=stale_cycle_jobs)
+    audit_report_path = _write_audit_report(tmp_path)
+    evidence = _complete_evidence(
+        run_id="synthetic-stale-backtest-data-cycle",
+        cycle_path=cycle_path,
+        audit_report_path=audit_report_path,
+        ledger_path=ledger_path,
+        lead_book_path=lead_book_path,
+    )
+
+    report = run_autonomous_readiness_audit(
+        evidence,
+        output_path=tmp_path / "stale_backtest_data_cycle_readiness_report.json",
+    )
+
+    assert report.status == AutonomousReadinessStatus.BLOCKED
+    assert "cycle_execution_missing_job_kind:backtest_data_load" in report.blocker_reasons
+    assert report.autonomous_research_ready is False
+
+
 def test_autonomous_readiness_blocks_stale_final_audit_requirements(tmp_path) -> None:
     ledger_path = _write_ledger(tmp_path)
     lead_book_path = _write_lead_book(tmp_path, source_artifact_path=ledger_path)
@@ -152,7 +180,7 @@ def test_autonomous_readiness_blocks_stale_final_audit_requirements(tmp_path) ->
     stale_required_kinds = tuple(
         kind
         for kind in REQUIRED_CYCLE_AUDIT_JOB_KINDS
-        if kind not in {"strategy_queue_scan", "validation_gate"}
+        if kind not in {"strategy_queue_scan", "backtest_data_load", "validation_gate"}
     )
     stale_prefixes = tuple(
         prefix
@@ -162,6 +190,10 @@ def test_autonomous_readiness_blocks_stale_final_audit_requirements(tmp_path) ->
             "strategy_queue_manifest_id=",
             "accepted_spec_path=",
             "accepted_spec_sha256=",
+            "backtest_data_manifest_path=",
+            "backtest_data_manifest_sha256=",
+            "data_manifest_id=",
+            "data_manifest_hash=",
             "validation_manifest_path=",
             "validation_manifest_id=",
         }
@@ -196,7 +228,19 @@ def test_autonomous_readiness_blocks_stale_final_audit_requirements(tmp_path) ->
         in report.blocker_reasons
     )
     assert (
+        "final_audit_missing_required_successful_job_kind:backtest_data_load"
+        in report.blocker_reasons
+    )
+    assert (
         "final_audit_missing_required_artifact_ref_prefix:strategy_queue_manifest_id="
+        in report.blocker_reasons
+    )
+    assert (
+        "final_audit_missing_required_artifact_ref_prefix:backtest_data_manifest_path="
+        in report.blocker_reasons
+    )
+    assert (
+        "final_audit_missing_artifact_ref_prefix:data_manifest_hash="
         in report.blocker_reasons
     )
     assert (
@@ -324,7 +368,7 @@ def _write_audit_report(
         blocker_reasons=blockers,
         required_next_actions=()
         if not blockers
-        else ("provide_real_hyperliquid_archive_operation_evidence",),
+        else ("provide_authoritative_free_venue_data_evidence",),
         required_successful_job_kinds=required_successful_job_kinds,
         required_artifact_ref_prefixes=required_artifact_ref_prefixes,
         required_job_kind_order=required_job_kind_order,

@@ -30,12 +30,19 @@ Declarative strategy specs are the first-class v2 strategy interface.
 - Declarative specs use `schema_version: strategy_spec_v1`.
 - Inputs must use registered fields only.
 - Logic must use registered signal types, rank metrics, and filters only.
+- Cross-sectional rank logic may declare `rank_direction: momentum` or
+  `rank_direction: reversion`; the default is `momentum`.
 - The Phase 10 registry includes:
   - cross-sectional rank;
   - mean reversion;
   - funding carry;
   - volatility breakout;
+  - volatility-adjusted trend;
   - liquidity-filtered momentum.
+- Volatility-adjusted trend logic is a bar-derived portfolio signal. It may
+  use `rank_metric: return_over_volatility` or `rank_metric: breakout_over_atr`,
+  with realized volatility or ATR derived from candle fields and research-only
+  target weights capped by the declared risk limits.
 - Execution declarations must include supported `price_basis`, `fee_model`,
   and `slippage_model`.
 - Validation declarations must keep `exclude_lockbox: true`, earliest start on

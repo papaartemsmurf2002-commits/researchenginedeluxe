@@ -129,6 +129,88 @@ def test_valid_request_loads_only_requested_fields_and_writes_manifest(tmp_path)
     assert manifest_rows[0]["data_manifest_id"] == first.data_manifest.data_manifest_id
 
 
+def test_multi_instrument_request_loads_panel_with_coverage_provenance(tmp_path) -> None:
+    archive_root = tmp_path / "archive"
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    store = ArchiveManifestStore(layout)
+    start_ts = datetime(2024, 1, 1, tzinfo=UTC)
+    end_ts = datetime(2024, 7, 1, tzinfo=UTC)
+    instrument_ids = ("hyperliquid:perp:SOL", "hyperliquid:perp:BTC")
+    reports = []
+    for index, instrument_id in enumerate(instrument_ids):
+        rows = _daily_bar_rows(
+            start_ts,
+            end_ts,
+            missing_day_offsets=set(),
+            instrument_id=instrument_id,
+        )
+        write_parquet_rows(
+            layout=layout,
+            store=store,
+            rows=rows,
+            layer=ArchiveLayer.SILVER,
+            dataset="bars",
+            venue=VENUE,
+            datatype="bars",
+            date=start_ts.date().isoformat(),
+            timeframe="1d",
+            job_id=f"job-silver-bars-{index}",
+            source_file_ids=(f"source-fixture-{index}",),
+            instrument_id=instrument_id,
+        )
+        report = coverage_report_for_bars(
+            rows,
+            venue=VENUE,
+            instrument_id=instrument_id,
+            timeframe="1d",
+            start_ts=start_ts,
+            end_ts=end_ts,
+            evidence_mode=EvidenceMode.ACCEPTED_RESEARCH,
+        )
+        CoverageManifestStore(layout).append_coverage_report(report)
+        reports.append(report)
+    snapshot = create_archive_snapshot(
+        store=store,
+        layer=ArchiveLayer.SILVER,
+        venue_scope=VENUE,
+        start_ts=start_ts,
+        end_ts=end_ts,
+        coverage_rows=[report.model_dump(mode="json") for report in reports],
+        quality_rows=(),
+        lockbox_policy_id="dynamic_full_calendar_months_v1",
+        notes="phase9_multi_instrument_test_fixture",
+    )
+    universe = refresh_hyperliquid_universe(
+        archive_root=archive_root,
+        payload=_multi_payload(),
+        asof_date=start_ts.date(),
+        mode=UniverseMode.AS_OF,
+    )
+    request = BacktestDataRequest(
+        archive_root=str(archive_root),
+        archive_snapshot_id=snapshot.archive_snapshot_id,
+        universe_snapshot_id=universe.snapshot_id,
+        venue=VENUE,
+        instrument_id=instrument_ids[0],
+        instrument_ids=instrument_ids,
+        timeframe="1d",
+        start_ts=start_ts,
+        end_ts=end_ts,
+        requested_fields=("ts", "instrument_id", "close"),
+        evidence_mode=BacktestEvidenceMode.ACCEPTED_RESEARCH,
+    )
+
+    result = BacktestDataService().load_panel(request, asof_date=date(2026, 6, 21))
+
+    assert len(result.rows) == 364
+    assert {row["instrument_id"] for row in result.rows} == set(instrument_ids)
+    assert result.data_manifest.instrument_ids == instrument_ids
+    assert result.coverage_report_ids == tuple(report.coverage_report_id for report in reports)
+    assert len(result.coverage_report_id) == 64
+    assert result.coverage_report_id not in {report.coverage_report_id for report in reports}
+
+
 def test_warmup_rows_are_separate_from_reported_window(tmp_path) -> None:
     fixture = _archive_fixture(
         tmp_path,
@@ -304,6 +386,7 @@ def _daily_bar_rows(
     end_ts: datetime,
     *,
     missing_day_offsets: set[int],
+    instrument_id: str = INSTRUMENT,
 ) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     current = start_ts
@@ -314,7 +397,7 @@ def _daily_bar_rows(
             rows.append(
                 {
                     "venue": VENUE,
-                    "instrument_id": INSTRUMENT,
+                    "instrument_id": instrument_id,
                     "timeframe": "1d",
                     "ts": _iso(current),
                     "end_ts": _iso(current + timedelta(days=1)),
@@ -389,6 +472,33 @@ def _payload():
                 "markPx": "1",
                 "oraclePx": "1",
                 "funding": "0.0",
+            },
+        ],
+    ]
+
+
+def _multi_payload():
+    return [
+        {
+            "universe": [
+                {"name": "SOL", "szDecimals": 2, "maxLeverage": 20},
+                {"name": "BTC", "szDecimals": 5, "maxLeverage": 50},
+            ]
+        },
+        [
+            {
+                "dayNtlVlm": "12000000",
+                "openInterest": "20",
+                "markPx": "150",
+                "oraclePx": "151",
+                "funding": "0.0002",
+            },
+            {
+                "dayNtlVlm": "100000000",
+                "openInterest": "1000",
+                "markPx": "60000",
+                "oraclePx": "60001",
+                "funding": "0.0001",
             },
         ],
     ]

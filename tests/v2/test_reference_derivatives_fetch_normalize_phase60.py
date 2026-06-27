@@ -41,7 +41,7 @@ def test_reference_derivatives_fixture_fetch_normalizes_dydx_and_deribit_rows() 
             },
         ),
         (
-            "deribit_tradingview_chart",
+            "deribit_public_candles",
             "BTC-PERPETUAL",
             "source_registry_deribit_public.json",
             {
@@ -88,7 +88,7 @@ def test_reference_derivatives_fixture_fetch_normalizes_dydx_and_deribit_rows() 
 
 def test_reference_derivatives_fetch_empty_payload_fails_closed() -> None:
     request = build_reference_derivatives_availability_request(
-        endpoint_id="deribit_tradingview_chart",
+        endpoint_id="deribit_public_candles",
         symbol="BTC-PERPETUAL",
         day=date(2024, 1, 1),
     )
@@ -130,7 +130,7 @@ def test_reference_derivatives_fetch_malformed_payload_fails_closed_without_rows
 
 def test_reference_derivatives_fetch_api_error_fails_closed() -> None:
     request = build_reference_derivatives_availability_request(
-        endpoint_id="deribit_tradingview_chart",
+        endpoint_id="deribit_public_candles",
         symbol="BTC-PERPETUAL",
         day=date(2024, 1, 1),
     )

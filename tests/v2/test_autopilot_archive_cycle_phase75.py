@@ -160,6 +160,65 @@ def test_archive_cycle_spec_runs_existing_ref_bounded_chain(tmp_path) -> None:
     assert lead.source_artifact_path == str(Path(result.ledger_path).resolve())
 
 
+def test_archive_cycle_runs_cross_sectional_reversion_panel_with_user_costs(tmp_path) -> None:
+    fixture = _accepted_multi_archive_fixture(tmp_path)
+    strategy_root = _write_cross_sectional_reversion_strategy_root(tmp_path)
+    result = write_autopilot_archive_cycle_spec(
+        AutopilotArchiveCycleConfig(
+            output_root=str(tmp_path / "archive-cycle"),
+            run_id="cycle-cross-reversion",
+            archive_root=str(fixture["archive_root"]),
+            strategy_root=str(strategy_root),
+            archive_snapshot_id=str(fixture["archive_snapshot_id"]),
+            universe_snapshot_id=str(fixture["universe_snapshot_id"]),
+            instrument_id="hyperliquid:perp:BTC",
+            instrument_ids=("hyperliquid:perp:BTC", "hyperliquid:perp:ETH"),
+            asof_date=date(2026, 6, 21),
+            requested_fields=(
+                "ts",
+                "instrument_id",
+                "open",
+                "high",
+                "low",
+                "close",
+                "volume",
+                "coverage_ratio",
+            ),
+        )
+    )
+
+    config = load_autopilot_cycle_spec(result.cycle_spec_path)
+    plan = plan_autopilot_research_cycle(
+        config,
+        output_root=result.suggested_plan_output_root,
+        job_store_path=result.suggested_job_store_path,
+        enqueue=True,
+    )
+    execution = run_autopilot_cycle_plan(
+        plan.plan_manifest_path,
+        worker_id="archive-cycle-runner",
+    )
+    run_manifest_path = Path(result.backtest_output_root) / "cycle-cross-reversion-backtest" / "run_manifest.json"
+    run_manifest = _read_json(run_manifest_path)
+    cost_manifest = _read_json(run_manifest_path.parent / run_manifest["artifacts"]["cost_manifest"]["path"])
+
+    assert execution.status.value == "completed"
+    assert run_manifest["status"] == "succeeded"
+    assert run_manifest["instrument_count"] == 2
+    assert cost_manifest["cost_model_config"]["fee_bps"] == 4.32
+    assert cost_manifest["cost_model_config"]["slippage_bps"] == 8.0
+    assert cost_manifest["cost_model_config"]["fee_side"] == "taker"
+    assert cost_manifest["cost_model_config"]["slippage_model_id"] == "conservative_bps_v1"
+
+    store = WorkerJobStore(result.suggested_job_store_path)
+    backtest_data_job = store.load_job("JOB-cycle-cross-reversion-backtest-data")
+    backtest_job = store.load_job("JOB-cycle-cross-reversion-backtest")
+    assert backtest_data_job is not None
+    assert backtest_job is not None
+    assert "instrument_ids=hyperliquid:perp:BTC,hyperliquid:perp:ETH" in backtest_data_job.output_refs
+    assert "instrument_ids=hyperliquid:perp:BTC,hyperliquid:perp:ETH" in backtest_job.output_refs
+
+
 def test_archive_cycle_cli_writes_existing_ref_spec(tmp_path, capsys) -> None:
     fixture = _accepted_archive_fixture(tmp_path)
     strategy_root = _write_strategy_root(tmp_path)
@@ -255,6 +314,66 @@ def _accepted_archive_fixture(tmp_path: Path) -> dict[str, str | Path]:
     }
 
 
+def _accepted_multi_archive_fixture(tmp_path: Path) -> dict[str, str | Path]:
+    archive_root = tmp_path / "archive"
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    store = ArchiveManifestStore(layout)
+    start_ts = datetime(2024, 1, 1, tzinfo=UTC)
+    end_ts = datetime(2024, 8, 1, tzinfo=UTC)
+    instruments = ("hyperliquid:perp:BTC", "hyperliquid:perp:ETH")
+    reports = []
+    for offset, instrument_id in enumerate(instruments):
+        rows = _daily_rows_for_instrument(start_ts, end_ts, instrument_id=instrument_id, offset=offset)
+        write_parquet_rows(
+            layout=layout,
+            store=store,
+            rows=rows,
+            layer=ArchiveLayer.SILVER,
+            dataset="bars",
+            venue="hyperliquid",
+            datatype="bars",
+            date=start_ts.date().isoformat(),
+            timeframe="1d",
+            job_id=f"job-archive-cycle-silver-{offset}",
+            source_file_ids=(f"source-archive-cycle-{offset}",),
+            instrument_id=instrument_id,
+        )
+        report = coverage_report_for_bars(
+            rows,
+            venue="hyperliquid",
+            instrument_id=instrument_id,
+            timeframe="1d",
+            start_ts=start_ts,
+            end_ts=end_ts,
+            evidence_mode=EvidenceMode.ACCEPTED_RESEARCH,
+        )
+        CoverageManifestStore(layout).append_coverage_report(report)
+        reports.append(report)
+    snapshot = create_archive_snapshot(
+        store=store,
+        layer=ArchiveLayer.SILVER,
+        venue_scope="hyperliquid",
+        start_ts=start_ts,
+        end_ts=end_ts,
+        coverage_rows=[report.model_dump(mode="json") for report in reports],
+        quality_rows=(),
+        lockbox_policy_id="dynamic_full_calendar_months_v1",
+        notes="archive_ref_cycle_multi_instrument_fixture",
+    )
+    universe = refresh_hyperliquid_universe(
+        archive_root=archive_root,
+        payload=_multi_universe_payload(),
+        asof_date=date(2024, 1, 1),
+        mode=UniverseMode.AS_OF,
+    )
+    return {
+        "archive_root": archive_root,
+        "archive_snapshot_id": snapshot.archive_snapshot_id,
+        "universe_snapshot_id": universe.snapshot_id,
+    }
+
+
 def _write_strategy_root(tmp_path: Path) -> Path:
     strategy_root = tmp_path / "strategy_specs"
     strategy_root.mkdir()
@@ -272,6 +391,68 @@ def _write_strategy_root(tmp_path: Path) -> Path:
     validation = validate_strategy_spec(payload)
     assert validation.ok, validation.errors
     (strategy_root / "archive_funding_carry.json").write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return strategy_root
+
+
+def _write_cross_sectional_reversion_strategy_root(tmp_path: Path) -> Path:
+    strategy_root = tmp_path / "cross_sectional_strategy_specs"
+    strategy_root.mkdir()
+    payload = {
+        "schema_version": "strategy_spec_v1",
+        "strategy_id": "hl_wpr106554_cross_reversion_v1",
+        "strategy_family": "cross_sectional_reversion",
+        "version": "0.1.0",
+        "owner": "codex-manager-agent",
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "market_scope": {
+            "venue": "hyperliquid",
+            "market_type": "perp",
+            "universe_rule": "as_of_accepted_archive_ref_panel",
+        },
+        "inputs": {
+            "timeframe": "1d",
+            "fields": ["close", "volume", "coverage_ratio"],
+        },
+        "logic": {
+            "signal_type": "cross_sectional_rank",
+            "lookback_bars": 1,
+            "rank_metric": "return",
+            "rank_direction": "reversion",
+            "long_top_quantile": 0.5,
+            "short_bottom_quantile": 0.5,
+            "filters": {"min_volume": 1000, "min_coverage": 0.98},
+        },
+        "risk": {
+            "max_gross_leverage": 0.1,
+            "max_instrument_weight": 0.05,
+            "rebalance": "1d",
+        },
+        "execution": {
+            "price_basis": "next_bar_open",
+            "fee_model": "conservative_hyperliquid_taker_v1",
+            "slippage_model": "conservative_bps_v1",
+        },
+        "validation": {
+            "min_backtest_months": 6,
+            "earliest_start": "2024-01-01",
+            "exclude_lockbox": True,
+            "universe_mode": "as_of",
+            "evidence_mode": "accepted_research",
+        },
+        "metadata": {
+            "uploaded_strategy_id": "S54",
+            "uploaded_theme_id": "cross_sectional_reversion",
+            "cost_assumption": "taker_4_32_bps_slippage_100_bps",
+        },
+    }
+    validation = validate_strategy_spec(payload)
+    assert validation.ok, validation.errors
+    (strategy_root / "cross_sectional_reversion.json").write_text(
         json.dumps(payload, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
@@ -318,6 +499,52 @@ def _daily_rows(start_ts: datetime, end_ts: datetime) -> list[dict[str, object]]
     return rows
 
 
+def _daily_rows_for_instrument(
+    start_ts: datetime,
+    end_ts: datetime,
+    *,
+    instrument_id: str,
+    offset: int,
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    current = start_ts
+    index = 0
+    base = 1000.0 if instrument_id.endswith("BTC") else 100.0
+    drift = 0.8 if instrument_id.endswith("BTC") else -0.25
+    while current < end_ts:
+        close = base + (index * drift) + ((index + offset) % 5) * 0.1
+        rows.append(
+            {
+                "venue": "hyperliquid",
+                "instrument_id": instrument_id,
+                "timeframe": "1d",
+                "ts": current.isoformat().replace("+00:00", "Z"),
+                "end_ts": (current + timedelta(days=1)).isoformat().replace("+00:00", "Z"),
+                "open": close - 0.05,
+                "high": close + 0.4,
+                "low": close - 0.4,
+                "close": close,
+                "volume": 250_000.0 + index,
+                "trade_count": index + 1,
+                "open_interest": 10_000_000.0 + index,
+                "mark_price": close,
+                "oracle_price": close,
+                "spread": 0.001,
+                "coverage_ratio": 1.0,
+                "source_timeframe": "1d",
+                "source_file_id": "f" * 64,
+                "source_layer": "bronze",
+                "normalization_warnings": (),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        )
+        current += timedelta(days=1)
+        index += 1
+    return rows
+
+
 def _universe_payload() -> list[object]:
     return [
         {
@@ -338,6 +565,31 @@ def _universe_payload() -> list[object]:
                 "openInterest": "10",
                 "markPx": "100",
                 "funding": "0.0",
+            },
+        ],
+    ]
+
+
+def _multi_universe_payload() -> list[object]:
+    return [
+        {
+            "universe": [
+                {"name": "BTC", "szDecimals": 5, "maxLeverage": 50},
+                {"name": "ETH", "szDecimals": 4, "maxLeverage": 50},
+            ]
+        },
+        [
+            {
+                "dayNtlVlm": "100000000",
+                "openInterest": "1000",
+                "markPx": "60000",
+                "funding": "0.00001",
+            },
+            {
+                "dayNtlVlm": "80000000",
+                "openInterest": "5000",
+                "markPx": "3000",
+                "funding": "0.00002",
             },
         ],
     ]

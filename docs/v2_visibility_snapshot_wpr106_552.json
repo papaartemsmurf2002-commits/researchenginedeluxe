@@ -1,0 +1,320 @@
+{
+  "snapshot_id": "wpr106-552-of-style-materialization-2026-06-27",
+  "generated_at": "2026-06-27T11:20:00+00:00",
+  "title": "ResearchEngineDeluxe v2 Data And OF-Style Materialization Authority",
+  "research_only": true,
+  "observe_only": true,
+  "promotion_ready": false,
+  "read_only": true,
+  "command_controls_enabled": false,
+  "runtime_mutation_enabled": false,
+  "active_universe": [
+    {
+      "venue": "multi-provider-proxy",
+      "instrument_id": "project-lane:29-symbols",
+      "included": true,
+      "reason": "WPR106-546 lifecycle-scoped official Binance USD-M 1m bars pass for all project symbols",
+      "day_notional_usd": null,
+      "evidence_scope": "current-project-lifecycle",
+      "caveats": [
+        "research-only",
+        "strict-free data authority",
+        "lockbox applies"
+      ]
+    },
+    {
+      "venue": "hyperliquid",
+      "instrument_id": "current-volume-eligible:24-symbols",
+      "included": true,
+      "reason": "WPR106-547 found all 24 current volume-eligible symbols already inside project-complete lane",
+      "day_notional_usd": 5000000,
+      "evidence_scope": "current-public-snapshot",
+      "caveats": [
+        "provenance-labeled",
+        "not relabeled as native historical rows"
+      ]
+    },
+    {
+      "venue": "hyperliquid",
+      "instrument_id": "non-project-additions",
+      "included": false,
+      "reason": "zero non-project instruments certified; 178 rejected by volume/archive coverage reasons",
+      "day_notional_usd": null,
+      "evidence_scope": "certification-report",
+      "caveats": [
+        "below-threshold or missing archive coverage"
+      ]
+    }
+  ],
+  "collection_status": [
+    {
+      "source": "central_market_history",
+      "datatype": "1m_bars",
+      "status": "authoritative-ready",
+      "latest_event_ts": "2026-05-31T23:59:00+00:00",
+      "manifest_refs": [
+        "data/research/central_market_history/manifests/wpr106-546-project-needed-1m-current-lifecycle-validation-report.json"
+      ],
+      "gap_count": 0,
+      "notes": "29 project symbols, 715 manifests, 31,032,285 verified rows, zero partial files."
+    },
+    {
+      "source": "external_raw_heavy_archive",
+      "datatype": "binance_usdm_of_style_raw",
+      "status": "authoritative-raw-complete",
+      "latest_event_ts": "2026-05-31T23:59:59+00:00",
+      "manifest_refs": [
+        "M:/additional_archive/researchenginedeluxe/wpr106_549_of_style_raw/manifests/wpr106-549-heavy-raw-archive-validation-report.json"
+      ],
+      "gap_count": 0,
+      "notes": "1,159,478 complete official source files across nine requested available OF-style families; strict-free raw source authority."
+    },
+    {
+      "source": "central_market_history",
+      "datatype": "of_style_normalized",
+      "status": "partial-normalization",
+      "latest_event_ts": "2026-05-31T23:59:59+00:00",
+      "manifest_refs": [
+        "data/research/central_market_history/manifests/wpr106-549-of-style-overall-status-report.json"
+      ],
+      "gap_count": 21299,
+      "notes": "bookDepth partially normalized in central storage; WPR106-552 provides compact external-archive feature materialization proof without requiring full central row expansion."
+    },
+    {
+      "source": "of_style_feature_materialization",
+      "datatype": "binance_usdm_of_style_features",
+      "status": "bounded-materialized",
+      "latest_event_ts": "2026-05-31T23:59:59+00:00",
+      "manifest_refs": [
+        "data/research/of_style_feature_materialization/wpr106_552/manifests/wpr106-552-of-style-feature-materialization-report.json"
+      ],
+      "gap_count": 0,
+      "notes": "WPR106-552 materialized 251 official source files into 256,523 compact feature rows after parsing 81,093,159 input rows; zero blocked sources."
+    },
+    {
+      "source": "hyperliquid_official_s3_history",
+      "datatype": "native_historical_l2_trades_metadata",
+      "status": "out-of-scope-provenance",
+      "latest_event_ts": null,
+      "manifest_refs": [
+        "data/research/central_market_history/manifests/wpr106-544-central-market-history-exhaustive-coverage-v2-collection_ledger-ef0cfdcda209.json"
+      ],
+      "gap_count": 0,
+      "notes": "Requester-pays/operator-gated native history is outside the strict-free data baseline and is not a blocker."
+    }
+  ],
+  "archive_coverage": [
+    {
+      "venue": "binance_usdm",
+      "instrument_id": "project-lane:29-symbols",
+      "family": "ohlcv",
+      "timeframe": "1m",
+      "start_ts": "2024-01-01T00:00:00+00:00",
+      "end_ts": "2026-05-31T23:59:00+00:00",
+      "coverage_ratio": 1.0,
+      "status": "pass",
+      "missing_days": []
+    },
+    {
+      "venue": "binance_usdm",
+      "instrument_id": "project-lane:29-symbols",
+      "family": "of_style_raw_external",
+      "timeframe": "daily/monthly",
+      "start_ts": "2024-01-01T00:00:00+00:00",
+      "end_ts": "2026-05-31T23:59:59+00:00",
+      "coverage_ratio": 1.0,
+      "status": "authoritative-raw-complete",
+      "missing_days": []
+    },
+    {
+      "venue": "binance_usdm",
+      "instrument_id": "project-lane:29-symbols",
+      "family": "bookDepth_normalized_central",
+      "timeframe": "daily",
+      "start_ts": "2024-01-01T00:00:00+00:00",
+      "end_ts": "2026-05-31T23:59:59+00:00",
+      "coverage_ratio": 0.0421,
+      "status": "partial-normalization",
+      "missing_days": [
+        "central normalized bookDepth 937/22236 sources; external raw archive is complete"
+      ]
+    },
+    {
+      "venue": "binance_usdm",
+      "instrument_id": "project-lane:29-symbols",
+      "family": "of_style_feature_materialization",
+      "timeframe": "bounded-per-symbol/1m-context",
+      "start_ts": "2024-01-01T00:00:00+00:00",
+      "end_ts": "2026-05-31T23:59:59+00:00",
+      "coverage_ratio": 1.0,
+      "status": "bounded-materialized-pass",
+      "missing_days": []
+    },
+    {
+      "venue": "hyperliquid",
+      "instrument_id": "official-history",
+      "family": "native_l2_trades_metadata",
+      "timeframe": "historical",
+      "start_ts": "2024-01-01T00:00:00+00:00",
+      "end_ts": "2026-05-31T23:59:59+00:00",
+      "coverage_ratio": 0.0,
+      "status": "out-of-scope",
+      "missing_days": [
+        "not part of strict-free/no-paid data authority"
+      ]
+    }
+  ],
+  "gap_reports": [
+    {
+      "report_id": "wpr106-550-central-part-scan",
+      "venue": "multi-provider",
+      "instrument_id": "central_market_history",
+      "family": "all",
+      "timeframe": "all",
+      "gap_count": 0,
+      "severity": "pass",
+      "sample": []
+    },
+    {
+      "report_id": "wpr106-550-external-part-scan",
+      "venue": "binance_usdm",
+      "instrument_id": "external_raw_heavy",
+      "family": "all",
+      "timeframe": "all",
+      "gap_count": 0,
+      "severity": "pass",
+      "sample": []
+    },
+    {
+      "report_id": "wpr106-551-data-policy-resolution",
+      "venue": "free-venue-authority",
+      "instrument_id": "strict-free-baseline",
+      "family": "data-readiness-policy",
+      "timeframe": "2024-2026",
+      "gap_count": 0,
+      "severity": "resolved",
+      "sample": [
+        "unavailable native Hyperliquid official history is out of scope, not a blocker"
+      ]
+    },
+    {
+      "report_id": "wpr106-552-of-style-materialization",
+      "venue": "binance_usdm",
+      "instrument_id": "project-lane:29-symbols",
+      "family": "of_style_features",
+      "timeframe": "bounded-per-symbol/1m-context",
+      "gap_count": 0,
+      "severity": "pass",
+      "sample": [
+        "251 materialized sources",
+        "81,093,159 parsed input rows",
+        "256,523 feature rows",
+        "zero blocked sources"
+      ]
+    }
+  ],
+  "lockbox": {
+    "policy_id": "dynamic_full_calendar_months_v1",
+    "start_ts": "2026-05-01T00:00:00+00:00",
+    "end_ts": "2026-06-01T00:00:00+00:00",
+    "excluded_from_tuning": true,
+    "notes": "As of 2026-06-27, ordinary iteration must not tune on May 2026."
+  },
+  "lead_book": [],
+  "deep_validation": [],
+  "final_hard_tests": [],
+  "audit_chunks": [
+    {
+      "audit_id": "V2-AUD-COMPLETE-007",
+      "area": "data_catalog",
+      "status": "self_checked",
+      "purpose": "WPR106-550 final-audit data catalog and testing-agent handoff",
+      "evidence": "docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md"
+    },
+    {
+      "audit_id": "V2-AUD-COMPLETE-008",
+      "area": "data_policy",
+      "status": "self_checked",
+      "purpose": "WPR106-551 strict-free/free-venue data authority resolution",
+      "evidence": "docs/work_packets/WPR106-551-v2-free-venue-data-authority-resolution.md"
+    },
+    {
+      "audit_id": "V2-AUD-COMPLETE-009",
+      "area": "feature_materialization",
+      "status": "self_checked",
+      "purpose": "WPR106-552 compact OF-style feature materialization handoff",
+      "evidence": "data/research/of_style_feature_materialization/wpr106_552/manifests/wpr106-552-of-style-feature-materialization-report.json"
+    },
+    {
+      "audit_id": "V2-AUD-DATASRC-050",
+      "area": "data_sources",
+      "status": "self_checked",
+      "purpose": "Deterministic OF-style materializer over validated free raw archives",
+      "evidence": "src/tradingbotsuite/v2/data_sources/of_style_materialization.py"
+    },
+    {
+      "audit_id": "V2-AUD-UI-001",
+      "area": "ui",
+      "status": "self_checked",
+      "purpose": "Read-only static visibility renderer",
+      "evidence": "docs/index.html rendered from docs/v2_visibility_snapshot_wpr106_552.json"
+    }
+  ],
+  "worker_jobs": [
+    {
+      "job_id": "wpr106-550-report-consistency",
+      "kind": "docs_validation",
+      "status": "succeeded",
+      "terminal_state": true,
+      "attempts": 1,
+      "archive_manifest_refs": [
+        "wpr106-546-project-needed-1m-current-lifecycle-validation-report.json",
+        "wpr106-549-heavy-raw-archive-validation-report.json"
+      ],
+      "failure_reason": ""
+    },
+    {
+      "job_id": "wpr106-550-external-validator",
+      "kind": "archive_validation",
+      "status": "validated_with_timeout_caveat",
+      "terminal_state": true,
+      "attempts": 1,
+      "archive_manifest_refs": [
+        "M:/additional_archive/researchenginedeluxe/wpr106_549_of_style_raw/manifests/wpr106-549-heavy-raw-archive-validation-report.json"
+      ],
+      "failure_reason": "1.16M-file validator refreshed report but exceeded five-minute local shell timeout before normal command completion."
+    },
+    {
+      "job_id": "wpr106-551-data-policy-resolution",
+      "kind": "docs_validation",
+      "status": "succeeded",
+      "terminal_state": true,
+      "attempts": 1,
+      "archive_manifest_refs": [
+        "docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md",
+        "docs/KNOWN_ISSUES.md",
+        "docs/contracts/autonomous_readiness_contract.md"
+      ],
+      "failure_reason": ""
+    },
+    {
+      "job_id": "wpr106-552-of-style-materialization",
+      "kind": "feature_materialization",
+      "status": "succeeded",
+      "terminal_state": true,
+      "attempts": 1,
+      "archive_manifest_refs": [
+        "data/research/of_style_feature_materialization/wpr106_552/manifests/wpr106-552-of-style-feature-materialization-report.json",
+        "M:/additional_archive/researchenginedeluxe/wpr106_549_of_style_raw/manifests/wpr106-549-heavy-raw-archive-validation-report.json"
+      ],
+      "failure_reason": ""
+    }
+  ],
+  "notes": [
+    "This page is read-only and contains no command controls.",
+    "Strict-free/free-venue data is the authoritative baseline for final audit and agentic research handoff.",
+    "WPR106-552 provides compact OF-style feature materialization proof; full all-file panel expansion is compute scope, not a data-source blocker.",
+    "Unavailable requester-pays/native Hyperliquid historical official data is out of scope and not a blocker.",
+    "Data readiness is not candidate, paper/live, sizing, runtime, promotion, or autonomous strategy readiness."
+  ]
+}

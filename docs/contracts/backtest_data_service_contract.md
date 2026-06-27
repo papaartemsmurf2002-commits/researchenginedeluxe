@@ -33,6 +33,12 @@ The backtest data service is the only accepted read path for v2 backtests.
   reads.
 - `load_panel` reads only from local silver archive Parquet files included in
   the referenced archive snapshot.
+- `load_panel` may request a deterministic multi-instrument panel through
+  `instrument_ids`; `instrument_id` remains the primary compatibility field and
+  must match the first `instrument_ids` entry.
+- Multi-instrument panels must pass universe, archive snapshot, and coverage
+  checks for every requested instrument. The manifest records the primary
+  aggregate `coverage_report_id` plus full `coverage_report_ids` provenance.
 - The service may read internal timestamp fields needed for filtering, but the
   returned panel must expose only `requested_fields`.
 - Warmup rows may be loaded before `start_ts`, but usable-month checks and

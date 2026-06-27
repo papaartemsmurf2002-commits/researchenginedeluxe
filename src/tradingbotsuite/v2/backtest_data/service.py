@@ -75,17 +75,18 @@ class BacktestDataService:
         lockbox_window = self._enforce_temporal_policy(parsed, load_start=load_start, asof_date=asof_date)
         snapshot = self._load_archive_snapshot(store, parsed)
         self._enforce_snapshot_window(snapshot, parsed, load_start=load_start)
-        universe_row = self._load_universe_row(archive_root, parsed)
-        self._enforce_universe(parsed, universe_row)
-        coverage_report = self._select_coverage_report(layout, parsed, load_start=load_start)
+        universe_rows = self._load_universe_rows(archive_root, parsed)
+        self._enforce_universe(parsed, universe_rows)
+        coverage_reports = self._select_coverage_reports(layout, parsed, load_start=load_start)
         if parsed.evidence_mode in EVIDENCE_MODES:
-            try:
-                require_coverage_for_evidence(
-                    coverage_report,
-                    coverage_min=parsed.validation_config.coverage_min,
-                )
-            except CoverageGateError as exc:
-                raise BacktestDataError(str(exc)) from exc
+            for coverage_report in coverage_reports:
+                try:
+                    require_coverage_for_evidence(
+                        coverage_report,
+                        coverage_min=parsed.validation_config.coverage_min,
+                    )
+                except CoverageGateError as exc:
+                    raise BacktestDataError(str(exc)) from exc
         files = self._matching_snapshot_files(store, snapshot, parsed)
         rows, source_file_ids, warmup_count, reported_count = self._read_panel_rows(
             layout=layout,
@@ -98,7 +99,7 @@ class BacktestDataService:
         manifest = self._build_manifest(
             request=parsed,
             snapshot=snapshot,
-            coverage_report=coverage_report,
+            coverage_reports=coverage_reports,
             source_file_ids=source_file_ids,
             rows=rows,
             warmup_count=warmup_count,
@@ -113,7 +114,8 @@ class BacktestDataService:
             data_manifest=manifest,
             archive_snapshot_id=snapshot.archive_snapshot_id,
             universe_snapshot_id=parsed.universe_snapshot_id,
-            coverage_report_id=coverage_report.coverage_report_id,
+            coverage_report_id=manifest.coverage_report_id,
+            coverage_report_ids=manifest.coverage_report_ids,
             loaded_fields=parsed.requested_fields,
             warmup_row_count=warmup_count,
             reported_row_count=reported_count,
@@ -197,11 +199,11 @@ class BacktestDataService:
                 f"request={utc_isoformat(load_start)}..{utc_isoformat(request.end_ts)}"
             )
 
-    def _load_universe_row(
+    def _load_universe_rows(
         self,
         archive_root: Path,
         request: BacktestDataRequest,
-    ) -> UniverseSnapshotRow:
+    ) -> tuple[UniverseSnapshotRow, ...]:
         rows = [
             row
             for row in load_universe_rows(archive_root)
@@ -209,62 +211,69 @@ class BacktestDataService:
         ]
         if not rows:
             raise BacktestDataError(f"universe_snapshot_not_found: {request.universe_snapshot_id}")
-        matches = [row for row in rows if row.instrument_id == request.instrument_id]
-        if len(matches) != 1:
+        by_instrument = {row.instrument_id: row for row in rows}
+        missing = [instrument_id for instrument_id in request.instrument_ids if instrument_id not in by_instrument]
+        if missing:
             raise BacktestDataError(
-                f"instrument_not_in_universe_snapshot: {request.instrument_id}"
+                "instrument_not_in_universe_snapshot: " + ",".join(missing)
             )
-        return matches[0]
+        return tuple(by_instrument[instrument_id] for instrument_id in request.instrument_ids)
 
     def _enforce_universe(
         self,
         request: BacktestDataRequest,
-        universe_row: UniverseSnapshotRow,
+        universe_rows: tuple[UniverseSnapshotRow, ...],
     ) -> None:
         if request.evidence_mode in EVIDENCE_MODES:
+            for universe_row in universe_rows:
+                if universe_row.universe_mode != UniverseMode.AS_OF:
+                    raise BacktestDataError("current_universe_evidence_rejected")
+                if not universe_row.accepted_research_evidence_allowed:
+                    raise BacktestDataError("instrument_not_evidence_allowed")
+                if universe_row.evidence_scope != BacktestEvidenceMode.ACCEPTED_RESEARCH.value:
+                    raise BacktestDataError(f"universe_evidence_scope_not_accepted: {universe_row.evidence_scope}")
+            return
+        for universe_row in universe_rows:
+            if universe_row.universe_mode == UniverseMode.CURRENT_LABELED_SANDBOX:
+                continue
             if universe_row.universe_mode != UniverseMode.AS_OF:
-                raise BacktestDataError("current_universe_evidence_rejected")
-            if not universe_row.accepted_research_evidence_allowed:
-                raise BacktestDataError("instrument_not_evidence_allowed")
-            if universe_row.evidence_scope != BacktestEvidenceMode.ACCEPTED_RESEARCH.value:
-                raise BacktestDataError(f"universe_evidence_scope_not_accepted: {universe_row.evidence_scope}")
-            return
-        if universe_row.universe_mode == UniverseMode.CURRENT_LABELED_SANDBOX:
-            return
-        if universe_row.universe_mode == UniverseMode.AS_OF:
-            return
-        raise BacktestDataError(f"unsupported_sandbox_universe_mode: {universe_row.universe_mode.value}")
+                raise BacktestDataError(f"unsupported_sandbox_universe_mode: {universe_row.universe_mode.value}")
 
-    def _select_coverage_report(
+    def _select_coverage_reports(
         self,
         layout: ArchiveLayout,
         request: BacktestDataRequest,
         *,
         load_start: datetime,
-    ) -> CoverageReport:
+    ) -> tuple[CoverageReport, ...]:
         store = CoverageManifestStore(layout)
-        reports = [
-            report
-            for report in store.query_coverage_reports(
-                venue=request.venue,
-                instrument_id=request.instrument_id,
-                family=request.family,
-                timeframe=request.timeframe,
+        selected: list[CoverageReport] = []
+        for instrument_id in request.instrument_ids:
+            reports = [
+                report
+                for report in store.query_coverage_reports(
+                    venue=request.venue,
+                    instrument_id=instrument_id,
+                    family=request.family,
+                    timeframe=request.timeframe,
+                )
+                if ensure_utc(report.start_ts) <= load_start and ensure_utc(report.end_ts) >= request.end_ts
+            ]
+            if not reports:
+                raise BacktestDataError(f"coverage_report_not_found: {instrument_id}")
+            selected.append(
+                sorted(
+                    reports,
+                    key=lambda report: (
+                        report.coverage_ratio,
+                        ensure_utc(report.start_ts),
+                        ensure_utc(report.end_ts),
+                        report.coverage_report_id,
+                    ),
+                    reverse=True,
+                )[0]
             )
-            if ensure_utc(report.start_ts) <= load_start and ensure_utc(report.end_ts) >= request.end_ts
-        ]
-        if not reports:
-            raise BacktestDataError("coverage_report_not_found")
-        return sorted(
-            reports,
-            key=lambda report: (
-                report.coverage_ratio,
-                ensure_utc(report.start_ts),
-                ensure_utc(report.end_ts),
-                report.coverage_report_id,
-            ),
-            reverse=True,
-        )[0]
+        return tuple(selected)
 
     def _matching_snapshot_files(
         self,
@@ -280,12 +289,16 @@ class BacktestDataService:
             and row.layer == ArchiveLayer.SILVER
             and row.venue == request.venue
             and row.datatype == request.family
-            and row.instrument_id == request.instrument_id
+            and row.instrument_id in set(request.instrument_ids)
             and row.timeframe == request.timeframe
         ]
         if not rows:
             raise BacktestDataError("archive_snapshot_no_matching_files")
-        return sorted(rows, key=lambda row: (row.date or "", row.path, row.file_id))
+        found = {str(row.instrument_id) for row in rows}
+        missing = [instrument_id for instrument_id in request.instrument_ids if instrument_id not in found]
+        if missing:
+            raise BacktestDataError("archive_snapshot_no_matching_files: " + ",".join(missing))
+        return sorted(rows, key=lambda row: (row.instrument_id or "", row.date or "", row.path, row.file_id))
 
     def _read_panel_rows(
         self,
@@ -335,7 +348,7 @@ class BacktestDataService:
         *,
         request: BacktestDataRequest,
         snapshot: ArchiveSnapshotRecord,
-        coverage_report: CoverageReport,
+        coverage_reports: tuple[CoverageReport, ...],
         source_file_ids: tuple[str, ...],
         rows: list[dict[str, Any]],
         warmup_count: int,
@@ -343,11 +356,23 @@ class BacktestDataService:
         lockbox_window: LockboxWindow | None,
     ) -> BacktestDataManifest:
         request_hash = canonical_json_hash(request.model_dump(mode="json"))
+        coverage_report_ids = tuple(report.coverage_report_id for report in coverage_reports)
+        coverage_report_id = (
+            coverage_report_ids[0]
+            if len(coverage_report_ids) == 1
+            else canonical_json_hash(
+                {
+                    "coverage_report_ids": coverage_report_ids,
+                    "instrument_ids": request.instrument_ids,
+                }
+            )
+        )
         identity = {
             "request_hash": request_hash,
             "archive_snapshot_id": snapshot.archive_snapshot_id,
             "universe_snapshot_id": request.universe_snapshot_id,
-            "coverage_report_id": coverage_report.coverage_report_id,
+            "coverage_report_id": coverage_report_id,
+            "coverage_report_ids": coverage_report_ids,
             "source_file_ids": source_file_ids,
             "loaded_fields": request.requested_fields,
             "row_count": len(rows),
@@ -359,10 +384,12 @@ class BacktestDataService:
             request_hash=request_hash,
             archive_snapshot_id=snapshot.archive_snapshot_id,
             universe_snapshot_id=request.universe_snapshot_id,
-            coverage_report_id=coverage_report.coverage_report_id,
+            coverage_report_id=coverage_report_id,
+            coverage_report_ids=coverage_report_ids,
             source_file_ids=source_file_ids,
             venue=request.venue,
             instrument_id=request.instrument_id,
+            instrument_ids=request.instrument_ids,
             family=request.family,
             timeframe=request.timeframe,
             evidence_mode=request.evidence_mode,
@@ -372,7 +399,7 @@ class BacktestDataService:
             warmup_start_ts=request.warmup_start_ts,
             lockbox_start_ts=lockbox_window.start_ts if lockbox_window else None,
             lockbox_end_ts=lockbox_window.end_ts if lockbox_window else None,
-            coverage_ratio=coverage_report.coverage_ratio,
+            coverage_ratio=min(report.coverage_ratio for report in coverage_reports),
             coverage_min=request.validation_config.coverage_min,
             row_count=len(rows),
             warmup_row_count=warmup_count,

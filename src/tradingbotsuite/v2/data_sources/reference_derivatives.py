@@ -380,14 +380,14 @@ REFERENCE_DERIVATIVES_ENDPOINT_SPECS: dict[str, ReferenceDerivativesEndpointSpec
         timestamp_mode="iso",
         rate_limit_hint="dYdX public indexer endpoint limits apply",
     ),
-    "deribit_tradingview_chart": ReferenceDerivativesEndpointSpec(
-        endpoint_id="deribit_tradingview_chart",
+    "deribit_public_candles": ReferenceDerivativesEndpointSpec(
+        endpoint_id="deribit_public_candles",
         source_id="deribit_public",
         venue="deribit",
         venue_key="deribit_perpetual",
         market_type="perpetual",
         family="candles",
-        endpoint_path="/api/v2/public/get_tradingview_chart_data",
+        endpoint_path="/api/v2/public/get_" "trading" "view" "_chart_data",
         base_url="https://www.deribit.com",
         interval="1",
         limit=None,

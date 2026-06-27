@@ -84,11 +84,20 @@ class StrategyLogic(BaseModel):
     lookback_bars: int | None = Field(default=None, ge=1)
     lookback_hours: int | None = Field(default=None, ge=1)
     rank_metric: str | None = None
+    rank_direction: str = "momentum"
     long_top_quantile: float | None = Field(default=None, gt=0.0, le=0.5)
     short_bottom_quantile: float | None = Field(default=None, gt=0.0, le=0.5)
     entry_threshold: float | None = Field(default=None, ge=0.0)
     exit_threshold: float | None = Field(default=None, ge=0.0)
     filters: dict[str, float | int | bool] = Field(default_factory=dict)
+
+    @field_validator("rank_direction")
+    @classmethod
+    def _validate_rank_direction(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"momentum", "reversion"}:
+            raise ValueError("rank_direction must be momentum or reversion")
+        return normalized
 
     @model_validator(mode="after")
     def _validate_logic(self) -> "StrategyLogic":
@@ -201,6 +210,11 @@ class StrategySpec(BaseModel):
             if "funding_rate" in self.inputs.fields:
                 required = frozenset({"funding_rate"})
         missing = sorted(required - set(self.inputs.fields))
+        if (
+            self.logic.signal_type == StrategySignalType.VOL_ADJUSTED_TREND
+            and self.logic.rank_metric == "breakout_over_atr"
+        ):
+            missing = sorted(set(missing) | ({"high", "low"} - set(self.inputs.fields)))
         if missing:
             raise ValueError(
                 f"{self.logic.signal_type.value} requires input fields: " + ",".join(missing)

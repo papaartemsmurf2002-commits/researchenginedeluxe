@@ -14,6 +14,7 @@ class StrategySignalType(str, Enum):
     MEAN_REVERSION = "mean_reversion"
     FUNDING_CARRY = "funding_carry"
     VOLATILITY_BREAKOUT = "volatility_breakout"
+    VOL_ADJUSTED_TREND = "vol_adjusted_trend"
     LIQUIDITY_FILTERED = "liquidity_filtered"
 
 
@@ -94,6 +95,7 @@ REQUIRED_FIELDS_BY_SIGNAL_TYPE = {
     StrategySignalType.MEAN_REVERSION: frozenset({"close"}),
     StrategySignalType.FUNDING_CARRY: frozenset({"funding"}),
     StrategySignalType.VOLATILITY_BREAKOUT: frozenset({"close"}),
+    StrategySignalType.VOL_ADJUSTED_TREND: frozenset({"close"}),
     StrategySignalType.LIQUIDITY_FILTERED: frozenset({"close", "volume"}),
 }
 
@@ -103,6 +105,9 @@ RANK_METRICS_BY_SIGNAL_TYPE = {
     StrategySignalType.FUNDING_CARRY: frozenset({"funding"}),
     StrategySignalType.MEAN_REVERSION: frozenset({"return", "volatility"}),
     StrategySignalType.VOLATILITY_BREAKOUT: frozenset({"return", "volatility"}),
+    StrategySignalType.VOL_ADJUSTED_TREND: frozenset(
+        {"return_over_volatility", "breakout_over_atr"}
+    ),
 }
 
 FORBIDDEN_KEY_TOKENS = frozenset(

@@ -160,6 +160,76 @@ def test_strategy_spec_compiles_in_memory_panel_to_deterministic_signal_frame() 
     assert all(abs(row.target_weight) <= 0.05 for row in second_hour)
 
 
+def test_cross_sectional_rank_reversion_longs_bottom_and_shorts_top() -> None:
+    payload = _base_payload()
+    payload["logic"] = {
+        "signal_type": "cross_sectional_rank",
+        "lookback_bars": 1,
+        "rank_metric": "return",
+        "rank_direction": "reversion",
+        "long_top_quantile": 0.5,
+        "short_bottom_quantile": 0.5,
+        "filters": {"min_coverage": 0.98},
+    }
+    payload["inputs"]["fields"] = ["close", "volume", "coverage_ratio"]
+    rows = [
+        _panel_row("2024-01-01T00:00:00Z", "hyperliquid:perp:BTC", close=100, volume=10_000),
+        _panel_row("2024-01-01T00:00:00Z", "hyperliquid:perp:ETH", close=100, volume=10_000),
+        _panel_row("2024-01-01T01:00:00Z", "hyperliquid:perp:BTC", close=110, volume=10_000),
+        _panel_row("2024-01-01T01:00:00Z", "hyperliquid:perp:ETH", close=90, volume=10_000),
+    ]
+
+    frame = compile_signal_frame(payload, rows)
+    second_hour = [row for row in frame.rows if row.ts.hour == 1]
+
+    assert {row.instrument_id: row.side for row in second_hour} == {
+        "hyperliquid:perp:BTC": "short",
+        "hyperliquid:perp:ETH": "long",
+    }
+
+
+def test_vol_adjusted_trend_scales_portfolio_weights_by_realized_volatility() -> None:
+    payload = _base_payload()
+    payload["strategy_id"] = "hl_vol_adjusted_trend_test_v1"
+    payload["strategy_family"] = "vol_adjusted_trend"
+    payload["inputs"]["fields"] = ["open", "high", "low", "close", "volume", "coverage_ratio"]
+    payload["logic"] = {
+        "signal_type": "vol_adjusted_trend",
+        "lookback_bars": 2,
+        "rank_metric": "return_over_volatility",
+        "entry_threshold": 0.5,
+        "filters": {"min_coverage": 0.98, "min_volume": 1000},
+    }
+    payload["parameters"] = {
+        "volatility_lookback_bars": 2,
+        "target_volatility_per_bar": 0.001,
+        "volatility_floor": 0.0001,
+    }
+    payload["risk"] = {
+        "max_gross_leverage": 0.08,
+        "max_instrument_weight": 0.05,
+        "rebalance": "1h",
+    }
+    rows = [
+        _panel_row("2024-01-01T00:00:00Z", "hyperliquid:perp:BTC", close=100, volume=10_000),
+        _panel_row("2024-01-01T00:00:00Z", "hyperliquid:perp:ETH", close=100, volume=10_000),
+        _panel_row("2024-01-01T01:00:00Z", "hyperliquid:perp:BTC", close=101, volume=10_000),
+        _panel_row("2024-01-01T01:00:00Z", "hyperliquid:perp:ETH", close=99, volume=10_000),
+        _panel_row("2024-01-01T02:00:00Z", "hyperliquid:perp:BTC", close=103, volume=10_000),
+        _panel_row("2024-01-01T02:00:00Z", "hyperliquid:perp:ETH", close=97, volume=10_000),
+    ]
+
+    frame = compile_signal_frame(payload, rows)
+    third_hour = [row for row in frame.rows if row.ts.hour == 2]
+
+    assert {row.instrument_id: row.side for row in third_hour} == {
+        "hyperliquid:perp:BTC": "long",
+        "hyperliquid:perp:ETH": "short",
+    }
+    assert sum(abs(row.target_weight) for row in third_hour) <= 0.08
+    assert all(abs(row.target_weight) <= 0.05 for row in third_hour)
+
+
 def test_signal_row_rejects_forbidden_boundary_flags() -> None:
     payload = _base_payload()
     result = compile_signal_frame(
@@ -222,6 +292,7 @@ def test_registry_exposes_allowed_declarative_surface() -> None:
     summary = registry_summary()
 
     assert "cross_sectional_rank" in summary["signal_types"]
+    assert "vol_adjusted_trend" in summary["signal_types"]
     assert "close" in summary["input_fields"]
     assert "volume_participation_v1" in summary["slippage_models"]
 
@@ -280,6 +351,9 @@ def _panel_row(ts: str, instrument_id: str, *, close: float, volume: float):
     return {
         "ts": ts,
         "instrument_id": instrument_id,
+        "open": close,
+        "high": close,
+        "low": close,
         "close": close,
         "volume": volume,
         "funding": 0.0,

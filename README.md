@@ -45,13 +45,28 @@ read-only UI rendering, scheduler tick, and autonomous-readiness blocker audit.
 The latest archive-ref bounded cycle can run end-to-end through durable
 universe, archive-ref, coverage, strategy queue, backtest-data, vectorized
 backtest, validation, ledger, Lead Book, and audit workers when supplied
-passing local archive evidence. This state is ready for independent final
-audit, but not for agentic strategy testing yet: accepted historical as-of
-archive coverage, independent audit acceptance, and a separate readiness report
-with real evidence paths are still required before agent iteration can be
-called fully operational.
+passing local archive evidence. The current WPR106-552 data catalog is
+`docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md`: all 29 project symbols
+have lifecycle-scoped official Binance USD-M 1m bars normalized through
+2026-05 for bar-based proxy research testing, and the external WPR106-549
+raw-heavy OF-style archive is complete as authoritative raw source evidence
+under the strict-free/no-paid venue constraint. WPR106-552 also materializes a
+bounded per-symbol OF-style feature proof pack from that archive: 251 source
+files, 81,093,159 parsed input rows, 256,523 compact feature rows, and zero
+blocked materialized sources across all nine requested families.
+
+WPR106-553 completes the final repo audit and marks this state ready for
+research-only agentic iteration strategy testing under scoped packets. Legacy
+blockers that require unavailable requester-pays or native Hyperliquid
+historical official data are out of scope for this branch's current data
+readiness. Future autonomous-readiness claims still require real evidence
+paths, authoritative validation, and a passing readiness report.
 No output is candidate-ready, paper-ready, live-ready, order-ready,
 sizing-ready, runtime-ready, or promotion-ready.
+
+The local static status page is `docs/index.html`; `.github/workflows/pages.yml`
+publishes the same docs entrypoint through GitHub Pages after the branch is
+pushed and Pages is enabled.
 
 ## Install
 

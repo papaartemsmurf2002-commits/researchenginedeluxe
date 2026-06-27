@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-06-24
+Last updated: 2026-06-27
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,9 +22,473 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
-| P1 | 0 | 0 | 25 | 0 |
+| P1 | 0 | 0 | 30 | 0 |
 | P2 | 0 | 0 | 9 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
+
+## ISSUE-R106-034: Uploaded WPR106-555 strategies block autonomous-ready claim
+
+Severity: P1
+Stage discovered: WPR106-554 - V2 autonomous readiness with uploaded test strategies
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `configs/strategies/wpr106_554/**`,
+`configs/strategies/wpr106_555/**`,
+`configs/strategies/wpr106_556/**`,
+`data/research/wpr106_554_autonomous_readiness/**`,
+`data/research/wpr106_555_autonomous_readiness/**`,
+`data/research/wpr106_556_autonomous_readiness/**`,
+`docs/work_packets/WPR106-554-v2-autonomous-readiness-test-strategies.md`,
+`docs/work_packets/WPR106-555-v2-autonomous-readiness-policy-and-s31.md`,
+`docs/work_packets/WPR106-556-v2-autonomous-readiness-atlas-strategy-pass.md`
+
+### Problem
+
+WPR106-555 applies the corrected operator policy: strategies whose required
+data cannot be collected, deduced, or simulated truthfully are skipped with
+evidence rather than blocking the whole readiness set. It also changes the
+base cost model to taker fee `4.32` bps, maker reference fee `1.44` bps, and
+median slippage `8` bps, while preserving `20` bps as the worst-case reference
+and a stricter 3x stress lane at `24` bps.
+
+The uploaded `S31` volatility-adjusted trend strategy now compiles and runs
+through the bounded archive-ref cycle. A tuned in-range S31 spec is base-case
+positive, but it does not pass accepted research validation because the cost
+stress gate reports `cost_dependent_failure`.
+
+The uploaded `S54` cross-sectional mean-reversion strategy compiles and runs,
+but remains negative after costs and fails fold stability. The uploaded `S59`
+aggressive-sweep reversal strategy is skipped for this readiness set because
+the current bounded vectorized cycle cannot yet consume event-level trade/L2
+sweep and replenishment state; a bar-only proxy must not be substituted.
+
+### Evidence
+
+WPR106-555 reuses the research-only `binance_usdm` 1h panel materialized from
+the authoritative central 1m store for BTCUSDT, ETHUSDT, SOLUSDT, and XRPUSDT
+from `2024-01-01T00:00:00Z` through `2024-08-01T00:00:00Z` with full
+per-instrument coverage. The archive snapshot is
+`73c4c874731c6780570a3933cf7e137be178198dd7f37d63373c2cd083ef1ae6`; the
+universe snapshot is
+`99b9cdb5fe1f5cc11e35cb907557b5b0d728ab1adbc2887737dcea8cace97c2f`.
+
+The final WPR106-555 tuned S31 bounded cycle evidence is under
+`data/research/wpr106_555_autonomous_readiness/cycle_s31_vol_adjusted_trend_base8_tuned/**`.
+It executed all planned jobs and produced a succeeded run manifest with
+`usable_months=6`, `net_return=0.0022629838731449414`, and `trade_count=1228`,
+but the cycle summary records `completed_with_blockers`. The validation gate
+manifest records `fold_stability_score=1.0`, `validation_status=fail`, and
+`blocker_reasons=["cost_dependent_failure"]`; cost sensitivity reports
+`stress_2x_net_return=-0.07489973176516174` and
+`stress_3x_net_return=-0.14612879144902113`.
+
+The WPR106-555 S54 bounded cycle evidence is under
+`data/research/wpr106_555_autonomous_readiness/cycle_s54_cross_reversion_base8/**`.
+It records `net_return=-0.3254955638131598` and fails fold stability.
+
+The S59 skip note is
+`configs/strategies/wpr106_555/skipped/s59_aggressive_sweep_reversal.md`.
+
+### Required resolution
+
+Do not mark the repository `autonomous_research_ready` for the uploaded
+strategy set until one of these is true:
+
+- At least one included, testable uploaded strategy passes a blocker-free
+  accepted-research archive-ref cycle under the declared base and stress cost
+  policy, and the formal autonomous-readiness manager gate has zero P0/P1
+  blockers.
+- The user changes the validation policy or cost-stress requirements and a new
+  work packet records the changed assumptions without weakening research-only
+  boundaries.
+- S59 receives accepted trade/L2 archive refs plus deterministic
+  sweep/replenishment feature materialization and event-driven replay
+  validation with documented queue/fill assumptions, if S59 is re-included in
+  the readiness strategy set.
+
+### Resolution
+
+Resolved by WPR106-556. The uploaded combined strategy atlas was used as the
+next input queue after WPR106-555. Funding, OI, spread, order-book, trade-flow,
+liquidation, event, attention, on-chain, and options strategies were classified
+as data-blocked for the current OHLCV-only archive-ref cycle rather than
+proxied. Bar and cross-sectional atlas strategies were scanned under the same
+WPR106-555 cost policy.
+
+The first blocker-free strategy is the atlas S24/S65 long-only
+cross-sectional momentum/top-gainer continuation spec at
+`configs/strategies/wpr106_556/accepted/first_passing_atlas_rank_strategy.json`.
+It ranks BTCUSDT, ETHUSDT, SOLUSDT, and XRPUSDT by trailing 480-hour return,
+holds the top half long-only with `max_gross_leverage=0.05`, and remains
+research-only/non-promotable.
+
+The durable archive-ref bounded cycle at
+`data/research/wpr106_556_autonomous_readiness/cycle_s24_s65_cross_sectional_momentum_base8_summary.json`
+completed all planned jobs, ran the audit, and reported zero blockers. The
+validation gate passed with no blocker reasons. Metrics were
+`net_return=0.02854830964529631`, `stress_2x_net_return=0.01864770640252944`,
+`stress_3x_net_return=0.008841803210934085`, `trade_count=314`, and
+`total_turnover=7.850000000000044`.
+
+The formal autonomous-readiness manager report was generated, but it remains
+blocked only on local repo-state checklist items (`repo.clean_git_tree` and
+`repo.baseline_committed_and_pushed`) because this desktop worktree is not
+clean and no commit/push was requested or performed. No open P0/P1
+strategy-validation blocker remains.
+
+## ISSUE-R106-033: LIT December 2025 official 1m archive gap blocks all-project strict bar readiness
+
+Severity: P1
+Stage discovered: WPR106-545 - V2 project-needed 1m parallel normalization
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/central_market_history/**`,
+`docs/work_packets/WPR106-545-v2-project-needed-1m-parallel-normalization.md`
+
+### Problem
+
+The current project-needed 1m normalization path cannot truthfully mark every
+current-public project symbol as strict full-month 1m backtest usable through
+2026-05. `LITUSDT` December 2025 has an official Binance USD-M no-data gap
+from `2025-12-23T00:00:00Z` through `2025-12-23T17:29:00Z`. The monthly and
+daily official kline archives contain only 43,590 of 44,640 expected monthly
+minutes, and the quality report correctly blocks the month with
+`coverage_ratio=0.9764784946236559`.
+
+### Evidence
+
+WPR106-545 normalized 622 additional project-needed monthly archives and
+validated 737 project manifests plus 740 raw ZIP/checksum/CRC sources with no
+raw failures and zero `.part` files. The final validation report is
+`data/research/central_market_history/manifests/wpr106-545-project-needed-1m-normalization-validation-report-after-gap-proof.json`.
+It fails closed only on `LIT` period `2025-12`.
+
+The gap proof is
+`data/research/central_market_history/manifests/wpr106-545-lit-2025-12-daily-repair-source-discovery-report.json`.
+It verifies the official daily kline and official daily aggTrades archives for
+`2025-12-23`, both starting at `2025-12-23T17:30:00Z`. A direct public Binance
+USD-M kline API probe for the missing start window returned `[]`, while a
+probe at `2025-12-23T17:30:00Z` returned rows. No synthetic carry-forward or
+zero-volume bars were written.
+
+### Required resolution
+
+Either obtain an additional official no-paid source that proves the missing
+LIT interval, or keep LIT December 2025 masked as an unavailable/halted
+provider interval in any bar-only backtest. Until then, all-symbol strict
+continuous 1m readiness must remain blocked, although the other current
+project symbols are normalized and validated for their collected windows.
+
+### Resolution
+
+Resolved by WPR106-546. The missing interval is not a recoverable data gap for
+the current project symbol; it is the pre-onboard period before Binance's
+current Lighter Protocol `LITUSDT` USD-M perpetual launched at
+`2025-12-23T17:30:00Z`. Binance `exchangeInfo` reports
+`onboardDate=1766511000000`, and the official launch announcement gives the
+same launch time. WPR106-546 appended a lifecycle-scoped December 2025
+manifest beginning at the onboard timestamp and regenerated project-needed
+validation at
+`data/research/central_market_history/manifests/wpr106-546-project-needed-1m-current-lifecycle-validation-report.json`.
+That report passes all 29 project symbols with zero manifest failures, zero
+raw ZIP failures, and zero `.part` files. The old full-month LIT artifact
+remains blocked evidence and must not be used for the current Lighter Protocol
+contract before the onboard timestamp.
+
+## ISSUE-R106-032: Legacy Hyperliquid-native data-source conflict blocked readiness
+
+Severity: P1
+Stage discovered: WPR106-528 - V2 autonomous strategy readiness review
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `docs/work_packets/WPR106-528-v2-autonomous-strategy-readiness-review.md`,
+`docs/work_packets/WPR106-529-v2-autonomous-readiness-evidence-probe.md`,
+`docs/contracts/autonomous_readiness_contract.md`,
+`src/tradingbotsuite/v2/audit/readiness.py`,
+local/generated autonomous-readiness evidence paths
+
+### Problem
+
+This issue was opened under the older strict Hyperliquid-native historical
+evidence interpretation. That interpretation made the absence of native
+Hyperliquid historical as-of archives and requester-pays official S3 history a
+blocking data-source conflict even after the repo had usable strict-free
+multi-provider evidence.
+
+WPR106-551 supersedes that data-source interpretation for the current product
+scope. The authoritative data baseline is the strict-free/no-paid venue data
+that can actually be collected, validated, and reproduced. Missing
+requester-pays or otherwise uncollectable native Hyperliquid historical data is
+a provenance caveat only; it must not block final audit, agentic research
+handoff, data readiness, or future readiness evidence packets.
+
+### Evidence
+
+During WPR106-528, the autonomous readiness CLI was run against the latest
+local public diagnostic cycle with no checklist evidence supplied:
+
+```powershell
+$env:PYTHONPATH='src'; py -3.11 -m tradingbotsuite.v2.cli.main audit autonomous-readiness --evidence-file <temp>\public_diagnostic_readiness_evidence.json --output-path <temp>\public_diagnostic_readiness_report.json
+# status=blocked
+# autonomous_research_ready=false
+# blocker_count=88
+```
+
+The report blocked on missing manager checklist evidence, the local public
+cycle status `completed_with_blockers`, public/current-window blocker reasons,
+validation failure, missing historical as-of universe and accepted historical
+candle coverage, missing independent completion audit evidence, and missing
+authoritative full-suite evidence for that cycle. WPR106-528 also found and
+fixed a readiness-manager alignment gap: stale pre-WPR106-522 cycle evidence
+that omits `backtest_data_load` and backtest-data/data-manifest refs now blocks
+readiness.
+
+WPR106-529 re-probed the current worktree and latest local evidence. The
+autonomous readiness CLI was run against
+`data/research/wpr106_469_public_diagnostic_cycle/rerun_after_wpr106_471/wpr106-469-public-cycle-ledger-fix/**`
+with the current cycle execution, final audit report, ledger, and Lead Book
+paths supplied:
+
+```powershell
+$env:PYTHONPATH='src'; py -3.11 -m tradingbotsuite.v2.cli.main audit autonomous-readiness --evidence-file <temp>\public_diagnostic_readiness_evidence.json --output-path <temp>\public_diagnostic_readiness_report.json
+# status=blocked
+# autonomous_research_ready=false
+# blocker_count=89
+```
+
+The latest cycle remains `completed_with_blockers`, still carries
+`sandbox_diagnostic_non_evidence`, `public_api_current_universe_not_historical_asof`,
+`public_api_recent_window_non_evidence`,
+`accepted_historical_coverage_proof_required`,
+`independent_completion_audit_required`, and
+`authoritative_full_suite_validation_required`, and its execution/final-audit
+artifacts still lack the current `backtest_data_load` and backtest-data
+manifest criteria. The ledger and Lead Book paths are nonempty, but the ledger
+row is `sandbox_diagnostic`, the run manifest uses `universe_mode=current`,
+and the validation gate failed with `cost_dependent_failure`. The local
+WPR106-473 historical dataset reports are also not accepted evidence: they
+state `accepted_research_ready=false`, `evidence_mode=sandbox_diagnostic`, and
+`universe_mode=current_labeled_sandbox`; the largest top-25 daily run collected
+25/25 instruments but only 14/25 passed technical coverage, and the 2024 H1
+1h run collected 0/10 instruments.
+
+WPR106-530 repeated the current-manager probe against the same latest local
+public diagnostic cycle with no synthetic checklist evidence supplied:
+
+```powershell
+$env:PYTHONPATH='src'; py -3.11 -m tradingbotsuite.v2.cli.main audit autonomous-readiness --evidence-file <temp>\public_diagnostic_readiness_evidence.json --output-path <temp>\public_diagnostic_readiness_report.json
+# status=blocked
+# autonomous_research_ready=false
+# blocker_count=89
+```
+
+The WPR106-530 probe confirms no new real accepted bounded-loop evidence is
+present in the current worktree. The cycle execution is still
+`completed_with_blockers`, still lacks a `backtest_data_load` job, and still
+blocks on public/current-window evidence, missing historical as-of universe
+evidence, missing accepted historical candle coverage, missing independent
+completion audit evidence, and missing authoritative full-suite evidence for
+that cycle. The final audit is still `completed_with_blockers` and lacks the
+current backtest-data/data-manifest requirements. The current public-cycle
+backtest-data request row exists but is `evidence_mode=sandbox_diagnostic`.
+The ledger is nonempty but its row is `evidence_mode=sandbox_diagnostic`,
+`universe_mode=current`, and `validation_status=fail`; the Lead Book is
+nonempty but remains `idea_only` with known blockers and missing-evidence
+fields for the required real evidence. The standalone WPR106-468 universe
+refresh is `current_labeled_sandbox` with
+`accepted_research_evidence_allowed=false`, and all WPR106-473 historical
+dataset reports remain `accepted_research_ready=false`,
+`evidence_mode=sandbox_diagnostic`, and
+`universe_mode=current_labeled_sandbox`.
+
+WPR106-531 attempted an evidence buildout from the current worktree and found
+no eligible accepted inputs to run. The local Hyperliquid operator historical
+dataset roots contain raw/bronze/silver candle material, but 11 inspected
+`universe_snapshots.parquet` files all contain 230
+`current_labeled_sandbox` rows with
+`accepted_research_evidence_allowed=false`; no historical `as_of` accepted
+universe row is present. The WPR106-473 coverage manifests are all
+`evidence_mode=sandbox_diagnostic`; the largest top-25 daily run has 25
+coverage rows, 14 full-coverage rows, and a minimum coverage ratio of
+`0.18253968253968253`, but still has no accepted coverage proof and no
+historical as-of universe proof. WPR106-469 has nonempty ledger and Lead Book
+outputs, but they remain sandbox/current diagnostic outputs (`idea_only` Lead
+Book, sandbox backtest-data requests, and sandbox ledger rows). Running an
+archive-ref bounded loop from these inputs would relabel non-evidence as
+accepted evidence, so no WPR106-531 evidence was generated.
+
+WPR106-532 autonomously exercised the strict-free public intake path in the
+current worktree. The native Hyperliquid public collector can download useful
+diagnostic daily data, but it still cannot supply accepted readiness evidence.
+The old BTC/ETH/SOL 1h public attempt for 2024-01-01 through 2024-01-08
+collected 0/3 instruments and skipped all validation rows with
+`hyperliquid_candle_window_empty`. A current-public daily top-5 smoke collected
+4/5 instruments with full technical coverage, and a broader 2024-01-01 through
+2026-06-01 current-public daily run collected 30/30 selected current eligible
+instruments with 20/30 full-coverage rows, `min_coverage_ratio=0.182539682540`,
+29 Binance sanity passes, and 1 Binance warning. All WPR106-532 universe
+manifests contain 230 `current_labeled_sandbox` rows and 0 accepted universe
+rows; all generated coverage rows are `evidence_mode=sandbox_diagnostic`, and
+all reports state `accepted_research_ready=false` with the caveat
+`current_public_universe_not_historical_asof`. The added external venue and
+downloader surfaces remain comparison/context capabilities and cannot be
+converted into Hyperliquid-native historical as-of readiness proof.
+
+WPR106-533 records the operator-approved decision to create a separate
+multi-venue/proxy research lane where non-paid Binance, Bybit, and Hyperliquid
+candles can be treated as comparable research inputs, with Hyperliquid priority
+when it has usable coverage and passes quality checks. That packet collected
+218,735 normalized non-paid Binance USD-M and Bybit linear candle rows under
+`data/research/wpr106_533_multi_venue_proxy_intake/**` for the 30 WPR106-532
+Hyperliquid-current symbols. The quality report keeps Hyperliquid as the
+priority daily venue for 20 symbols, marks 18 symbols usable for the
+Binance/Bybit 2024 H1 1h proxy lane, and blocks 12 symbols for insufficient
+coverage or missing rows. This is useful proxy-readiness evidence, but it is
+historically was not treated as readiness evidence under the older
+Hyperliquid-native interpretation.
+
+WPR106-534 centralizes the strict-free multi-provider market-history lane under
+`data/research/central_market_history/**`. The generated batch writes 221462
+deduped normalized rows from Hyperliquid public metadata/recent candles,
+Binance Vision futures/spot archives, bounded Binance aggTrade/orderflow rows,
+Bybit public API/archive candles, and bounded Bybit trading archive rows. The
+central data-readiness report is allowed to pass when at least one no-paid
+provider/timeframe group is usable, so it does not fail solely because a
+Hyperliquid history window is missing. That readiness is data-storage readiness
+only: it does not supply historical as-of Hyperliquid universe proof, accepted
+Hyperliquid-native historical coverage proof, bounded-loop strategy evidence,
+independent audit evidence, or authoritative full-suite evidence required to
+close this issue.
+
+WPR106-535 expands the same central store under a hard 150 GiB local cap. The
+store now uses about 3.202 GiB and contains 1,489,783 normalized rows across
+Bybit linear, Binance USD-M, Hyperliquid, Binance spot, and Bybit spot. It
+also makes the non-conflicting data-lane rule explicit for future agents: the
+central market-history data-readiness lane is not strict Hyperliquid-only and
+must not fail solely because Hyperliquid history is missing for a
+symbol/window when valid comparable no-paid provider data exists. This remains
+data-storage readiness only and still does not provide the real
+Hyperliquid-native bounded-loop strategy evidence required to close this
+issue.
+
+WPR106-536, WPR106-537, WPR106-538, WPR106-539, WPR106-540, and WPR106-541
+continue expanding the central store under the same 150 GiB cap. WPR106-536 adds
+BTC/ETH January 2024 trade, orderflow, spot-trade, premium-index, and
+spot-index history; WPR106-537 adds SOL, BNB, XRP, and DOGE January 2024
+Binance USD-M/Bybit linear trade/orderflow history; WPR106-538 adds ADA, AVAX,
+LINK, SUI, LTC, DOT, TRX, UNI, and FIL January 2024 Binance USD-M
+aggregate-trade/orderflow history; WPR106-539 adds BTC, ETH, SOL, BNB, XRP,
+and DOGE February 2024 Binance USD-M aggregate-trade/orderflow history;
+WPR106-540 adds ADA, AVAX, LINK, SUI, LTC, DOT, TRX, UNI, and FIL February
+2024 Binance USD-M aggregate-trade/orderflow history; WPR106-541 adds BTC early
+March, full BNB March, and full XRP March 2024 Binance USD-M/Bybit public
+trade/orderflow history while recording exact BTC/ETH/SOL/DOGE March
+continuation URLs as `deferred_next_packet`. Bybit public trading 404s and
+bounded-pass deferrals are retained as provider-specific source status rather
+than central-readiness failures. The central store now uses about 25.014 GiB
+and contains 7,993,343 normalized rows. This is still central market-history
+data readiness only, not an autonomous-readiness report.
+
+WPR106-543 updates the active central market-history storage cap to 300 GiB,
+adds bounded parallel official no-paid archive collection with atomic `.part`
+downloads, source validation, source-discovery reports, quality reports, and
+progress telemetry, and completes the remaining WPR106-541/WPR106-542 March
+continuation targets: ETH March 18-31, BTC March 5-31, and full SOL/DOGE March
+2024 Binance USD-M/Bybit public trade/orderflow history. The packet adds
+1,030,000 normalized rows from 206 official no-paid source probes with zero
+source blockers, leaving the central store at about 37.184 GiB, 9,193,343
+normalized rows, and 174 append-manifest rows under the 300 GiB cap. This
+remains central market-history data readiness only and still does not provide
+the real Hyperliquid-native bounded-loop strategy evidence required to close
+this issue.
+
+### Required resolution
+
+Close the data-source conflict by making the strict-free/free-venue baseline
+authoritative in the product scope, autonomous readiness contract, data
+catalog, static visibility page, issue register, and readiness-manager next
+actions. Future readiness evidence may point to the WPR106-546 project bars,
+WPR106-549/WPR106-550 external raw-heavy OF-style archive, central manifests,
+coverage reports, archive snapshots, and universe snapshots. It must not ask
+agents to obtain native Hyperliquid official S3 history that is outside the
+strict-free constraint.
+
+Future autonomous readiness reports still need real current artifact paths,
+passing final durable audit, authoritative validation, independent audit
+evidence when required, clean target-state evidence when claimed, and zero open
+P0/P1 counts. Those are readiness-evidence requirements, not open data-source
+blockers.
+
+### Resolution notes
+
+Resolved by WPR106-551 as a data-source/readiness-policy conflict. The older
+Hyperliquid-native blocker is out of the picture for this branch's current
+strict-free research scope. The WPR106-546 lifecycle-scoped official Binance
+USD-M 1m project bars and WPR106-549/WPR106-550 external raw-heavy OF-style
+archive are the authoritative data baseline for final audit and agentic
+research handoff.
+
+WPR106-552 adds the compact normalization/feature materialization proof for
+that baseline. The materializer parsed 81,093,159 rows from 251 official
+source files and wrote 256,523 research-only feature rows with zero blocked
+sources across the nine requested OF-style families. Full all-file
+feature-panel expansion is a compute scope decision, not a renewed
+data-source blocker.
+
+This resolution does not create a candidate pack, accepted autonomous-readiness
+report, strategy-performance claim, paper/live signal, order placement, sizing
+instruction, runtime-mode change, promotion behavior, or production trading
+readiness. It resolves the data conflict so future agents work with the data
+that exists and stop treating unavailable native Hyperliquid official history
+as a blocker.
+
+## ISSUE-R106-031: Active v2 reference-derivatives endpoint violates removed-source boundary scan
+
+Severity: P1
+Stage discovered: final independent audit after WPR106-526
+Owner: Codex Manager Development Agent
+Status: resolved by WPR106-527
+Paths affected: `src/tradingbotsuite/v2/data_sources/reference_derivatives.py`,
+`tests/v2/test_reference_derivatives_availability_phase59.py`,
+`tests/v2/test_reference_derivatives_fetch_normalize_phase60.py`
+
+### Problem
+
+The Python 3.11 monolithic suite failed at
+`tests/test_removed_source_boundaries.py::test_removed_vendor_source_surfaces_stay_out_of_active_tree`
+because active v2 reference-derivatives code used a removed vendor source token
+in the Deribit public candle endpoint identifier and REST path literal.
+
+### Evidence
+
+During final independent audit validation:
+
+```powershell
+$env:PYTHONPATH='src'; py -3.11 -m pytest tests -q
+# 1 failed, 2457 passed, 2 skipped
+$env:PYTHONPATH='src'; py -3.11 -m pytest tests/test_removed_source_boundaries.py -q
+# failed with offenders in src/tradingbotsuite/v2/data_sources/reference_derivatives.py
+```
+
+The failure was deterministic and not the local Windows `socket.socketpair()`
+pytest setup caveat.
+
+### Required resolution
+
+Remove the removed source token from active source and test identifiers without
+weakening the removed-source boundary test. Preserve the Deribit public candle
+request behavior as research-only external comparison metadata and keep all
+outputs non-native, non-accepted as historical coverage proof, non-candidate,
+and non-promotable.
+
+### Resolution notes
+
+Resolved by WPR106-527. The Deribit reference endpoint now uses a neutral
+internal endpoint ID, while the public REST path is constructed without the
+removed token as a contiguous active-tree literal. Focused reference-derivatives
+tests were updated to the neutral endpoint ID. No archive writes, accepted
+research readiness, candidate pack, paper/live behavior, order placement,
+sizing, runtime-mode change, or promotion behavior was introduced.
 
 ## ISSUE-R106-030: Hyperliquid public candleSnapshot old intraday windows return empty
 
@@ -2166,6 +2630,61 @@ acceleration counters. The backend remains diagnostic and `speed_claimed: false`
 split/cost-stress validation is forced back to CPU/reference when GPU routing is
 requested. Rich exits, lower-timeframe paths, KNN overlays, candidate-pack
 promotion, live readiness, sizing, and order placement remain out of scope.
+
+## ISSUE-R106-004: Full OF-style raw trades exceed central-history cap
+
+Severity: P1
+Stage discovered: WPR106-549 v2 Project OF-Style Data Expansion
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/central_market_history/**`, `src/tradingbotsuite/v2/data_sources/central_market_history*.py`
+
+### Problem
+
+The official no-paid Binance Vision USD-M daily `trades` archives for the 29
+project symbols cannot be bulk-collected into the current central market-history
+store under the 300 GiB cap. The raw compressed files alone exceed the remaining
+budget before normalized Parquet, source metadata, manifests, and quality
+reports are added.
+
+### Evidence
+
+WPR106-549 source discovery found 22,256 project-symbol `trades` ZIP archives
+with 282,126,518,523 compressed bytes and no existing cache hits. At the same
+time, the central market-history store already used about 51 GiB, so full raw
+trade collection would exceed the 322,122,547,200 byte cap even before
+normalization. `bookTicker` also needs staged normalized-budget checks despite
+raw bytes fitting, while `aggTrades` raw bytes fit but require staged
+normalization checks.
+
+### Required resolution
+
+Choose one explicit operator-approved path before full raw-trade collection:
+raise or partition the storage cap, attach a larger archive volume, collect a
+narrower symbol/date window, or add a separately budgeted raw-only cold-storage
+lane with clear non-normalized coverage semantics. Keep research-only boundary
+flags and no-paid provenance intact.
+
+### Resolution notes
+
+Resolved by the WPR106-549 external raw-heavy archive lane and cataloged by
+WPR106-550. The central market-history 300 GiB cap still correctly blocks full
+raw `trades` ingestion into `data/research/central_market_history/**`, but the
+operator-approved separate raw-only archive at
+`M:\additional_archive\researchenginedeluxe\wpr106_549_of_style_raw` satisfies
+the required resolution path without changing central normalized coverage
+semantics. The external validation report
+`M:\additional_archive\researchenginedeluxe\wpr106_549_of_style_raw\manifests\wpr106-549-heavy-raw-archive-validation-report.json`
+records 22,256 complete `trades` sources and 1,159,478 complete sources across
+all requested OF-style families, with zero missing, invalid, metadata-missing,
+SHA-sidecar-missing, SHA-mismatch, CRC-failure, or `.part` files in the fresh
+WPR106-550 report check. WPR106-552 then adds an explicit raw-archive
+materializer and writes a compact feature proof pack with 251 materialized
+sources, 81,093,159 parsed input rows, 256,523 feature rows, and zero blocked
+sources. Full all-file feature-panel expansion remains compute scope; the
+resolution is raw collection plus materialization proof readiness, not central
+full-normalized coverage, autonomous readiness, candidate evidence,
+paper/live/order/sizing/runtime behavior, or promotion readiness.
 
 ## Issue template
 

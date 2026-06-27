@@ -1183,10 +1183,11 @@ open P0 or P1 known issues, preserves `ISSUE-R106-030` as a P2 blocker only
 for old Hyperliquid public intraday accepted-evidence claims, accounts for the
 remote Hyperliquid data-venue roadmap merge, and keeps Python 3.11 as the
 authoritative local validation lane when default Python 3.14 reproduces the
-known Windows socketpair async setup failure. The handoff is ready for
-independent final audit only; agentic strategy testing, accepted research
+known Windows socketpair async setup failure. The handoff was ready for
+independent final audit only at WPR106-524. WPR106-553 later clears the
+narrow research-only agentic iteration strategy testing gate; accepted research
 readiness, autonomous readiness, candidate packs, paper/live/order/sizing/
-runtime behavior, and promotion remain blocked until separate audit/readiness
+runtime behavior, and promotion remain blocked until separate readiness
 evidence passes.
 Current WPR106-526 v2 trusted historical candle source update: WPR106-526
 resolves `ISSUE-R106-030` without changing the public endpoint caveat. A fresh
@@ -1203,10 +1204,334 @@ converts the previous async fixture-pack contract into a synchronous
 collected-manifest fixture, removing the last pytest-asyncio dependency from
 `tests/contracts -q` after local Windows `socket.socketpair()` setup failures
 recurred during validation. There are now no open P0, P1, or P2 known issues.
-The foundation remains ready for independent final audit only; agentic strategy
-testing, accepted research readiness, autonomous readiness, candidate packs,
-paper/live/order/sizing/runtime behavior, and promotion remain blocked until
-separate audit/readiness evidence passes.
+WPR106-553 later clears research-only agentic iteration strategy testing under
+scoped packets; accepted research readiness, autonomous readiness, candidate
+packs, paper/live/order/sizing/runtime behavior, and promotion remain blocked
+until separate readiness evidence passes.
+Current WPR106-528 v2 autonomous strategy readiness review: WPR106-528 reviews
+the current final-audit handoff state against the strict autonomous readiness
+manager gate and blocks readiness. The packet tightens the gate so stale loop
+evidence that omits `backtest_data_load`, backtest-data manifests, or
+data-manifest refs cannot pass. A readiness CLI probe against the latest local
+public diagnostic cycle stays blocked because that evidence is sandbox/current
+window, completed with blockers, lacks independent completion audit and
+authoritative validation evidence for that cycle, and predates the explicit
+backtest-data-load stage. `ISSUE-R106-032` was recorded as a P1 real-evidence
+blocker under the older data-source interpretation and is resolved by
+WPR106-551/WPR106-552 for strict-free data and feature-materialization
+readiness. No accepted research readiness,
+autonomous-ready claim, candidate pack, paper/live behavior, order placement,
+sizing, runtime-mode change, promotion, or production trading readiness exists.
+Current WPR106-534 v2 centralized market-history store update: WPR106-534 adds
+`tradingbotsuite.v2.data_sources.central_market_history` and materializes the
+central strict-free research-only store under
+`data/research/central_market_history/**`. The generated batch ingests existing
+WPR106-533 public proxy candles, Hyperliquid public `metaAndAssetCtxs` and
+recent `candleSnapshot` rows, Binance Vision futures/spot kline archives,
+bounded Binance aggTrade/orderflow rows, Bybit public kline API rows, Bybit
+MT4 kline archive rows, and bounded Bybit trading archive rows. It writes raw
+downloads where practical, normalized Parquet, raw JSONL, source metadata,
+coverage/quality reports, source-discovery blockers, checksums, duplicate
+groups, and an append-only manifest row. The batch has 221462 deduped
+normalized rows, 98 duplicate rows preserved by manifest source hashes, 31
+equivalent OHLCV provider pairs, 30 provider-specific pairs,
+`hyperliquid_missing_not_blocking=true`, and
+`centralized_market_history_ready=true`. Source blockers are exact and limited
+to Bybit `premium_index` 404, Bybit `spot_index` 404, and the Bybit spot
+BTCUSDT January 2024 monthly file exceeding the bounded pass size budget. This
+is multi-provider research-only data readiness, not Hyperliquid-native
+autonomous strategy readiness, candidate evidence, paper/live readiness,
+order/sizing/runtime behavior, promotion, or production trading readiness.
+Current WPR106-535 v2 central market-history 150 GiB expansion update:
+WPR106-535 adds
+`tradingbotsuite.v2.data_sources.central_market_history_collection` and expands
+the append-only central store under a hard 150 GiB local cap. The central root
+now measures approximately 3.202 GiB and has 1,489,783 normalized rows across
+Bybit linear, Binance USD-M, Hyperliquid, Binance spot, and Bybit spot. Six
+additional central batches add Binance monthly 1h OHLCV, Bybit API 1h OHLCV,
+Hyperliquid public recent candles/metadata, BTC Jan 2-8 Binance/Bybit
+trade/orderflow rows, Bybit MT4 15m BTC/ETH rows with partial-coverage
+blockers, and Bybit spot BTC January 2024 rows from the previously deferred
+89,235,350-byte official public archive. The collector records exact source
+blockers for unavailable Binance symbol-months, Bybit empty/pre-listing API
+pages, Hyperliquid KPEPE HTTP 500, Bybit MT4 2025-12 through 2026-05 404s, and
+earlier corrected parser/path failures. The central market-history
+data-readiness lane is explicitly not strict Hyperliquid-only, so future agents
+must not fail that lane solely because Hyperliquid history is missing when
+valid comparable no-paid provider data is present. This does not create
+autonomous readiness, candidate evidence, paper/live readiness,
+order/sizing/runtime behavior, promotion, or production trading readiness.
+Current WPR106-536 v2 central market-history trade/orderflow continuation
+update: WPR106-536 appends 11 additional central batches under the same
+`data/research/central_market_history/**` 150 GiB cap. The store now measures
+approximately 8.419 GiB and has 2,523,343 normalized rows with 18 append
+manifest rows. Added official no-paid evidence includes BTC Jan 9-31 and ETH
+Jan 1-31 Binance USD-M/Bybit linear trade/orderflow rows, BTC/ETH January
+Binance spot aggregate trades, BTC/ETH Bybit inverse premium-index and
+spot-index minute metadata, and Bybit spot ETH January trades. WPR106-536 also
+adds focused parser/builders for Bybit index and spot-monthly archive files and
+keeps source discovery reports, raw compressed files, checksums, normalized
+Parquet/JSONL, quality reports, and provenance metadata append-only. The prior
+strict Hyperliquid-only interpretation remains out of the central
+market-history data-readiness lane; this packet creates no autonomous
+readiness, candidate evidence, paper/live readiness, order/sizing/runtime
+behavior, promotion, or production trading readiness.
+Current WPR106-537 v2 central market-history multi-instrument trade/orderflow
+update: WPR106-537 appends four additional central batches for SOL, BNB, XRP,
+and DOGE January 2024 Binance USD-M/Bybit linear trade/orderflow archives. All
+248 official public archives completed with zero blockers, adding 1,240,000
+normalized rows. The central store now measures approximately 13.592 GiB and
+has 3,763,343 normalized rows with 22 append manifest rows. The added data
+moves the central store beyond BTC/ETH reference-symbol coverage while
+preserving raw compressed files, checksums, normalized Parquet/JSONL, source
+metadata, source-discovery reports, and append-only manifests. The prior strict
+Hyperliquid-only interpretation remains out of the central market-history
+data-readiness lane; this packet still does not close Hyperliquid-native
+autonomous strategy readiness and creates no candidate evidence, paper/live
+readiness, order/sizing/runtime behavior, promotion, or production trading
+readiness.
+Current WPR106-538 v2 central market-history multi-instrument extension update:
+WPR106-538 appends nine additional central batches for ADA, AVAX, LINK, SUI,
+LTC, DOT, TRX, UNI, and FIL January 2024 Binance USD-M
+aggregate-trade/orderflow archives. All 279 Binance official public archives
+completed, while 279 Bybit public trading probes returned official-path 404
+blockers and are retained as provider-specific source status instead of
+central-readiness failures. The central store now measures approximately
+16.635 GiB and has 5,158,343 normalized rows with 31 append manifest rows,
+leaving approximately 133.365 GiB under the 150 GiB cap. The prior strict
+Hyperliquid-only interpretation remains out of the central market-history
+data-readiness lane; this packet still does not close Hyperliquid-native
+autonomous strategy readiness and creates no candidate evidence, paper/live
+readiness, order/sizing/runtime behavior, promotion, or production trading
+readiness.
+Current WPR106-539 v2 central market-history February time-depth update:
+WPR106-539 appends six additional central batches for BTC, ETH, SOL, BNB, XRP,
+and DOGE February 2024 Binance USD-M aggregate-trade/orderflow archives. All
+174 Binance official public archives completed, while 174 Bybit public trading
+probes returned official-path 404 blockers and are retained as
+provider-specific source status instead of central-readiness failures. The
+central store now measures approximately 19.389 GiB and has 6,028,343
+normalized rows with 37 append manifest rows, leaving approximately 130.611
+GiB under the 150 GiB cap. The prior strict Hyperliquid-only interpretation
+remains out of the central market-history data-readiness lane; this packet
+creates no autonomous readiness, candidate evidence, paper/live readiness,
+order/sizing/runtime behavior, promotion, or production trading readiness.
+Current WPR106-540 v2 central market-history February alt extension update:
+WPR106-540 appends nine additional central batches for ADA, AVAX, LINK, SUI,
+LTC, DOT, TRX, UNI, and FIL February 2024 Binance USD-M
+aggregate-trade/orderflow archives. All 261 Binance official public archives
+completed, while 261 Bybit public trading probes returned official-path 404
+blockers and are retained as provider-specific source status instead of
+central-readiness failures. The central store now measures approximately
+22.171 GiB and has 7,333,343 normalized rows with 46 append manifest rows,
+leaving approximately 127.829 GiB under the 150 GiB cap. The prior strict
+Hyperliquid-only interpretation remains out of the central market-history
+data-readiness lane; this packet still does not close Hyperliquid-native
+autonomous strategy readiness and creates no candidate evidence, paper/live
+readiness, order/sizing/runtime behavior, promotion, or production trading
+readiness.
+Current WPR106-541 v2 central market-history March time-depth update:
+WPR106-541 appends eight additional central batches for BTC early March, full
+BNB March, and full XRP March 2024 Binance USD-M aggregate-trade and Bybit
+public trading archives. The packet accepts 660,000 normalized rows from 132
+official no-paid archives, removes two interrupted partial raw archives before
+manifest acceptance, and records exact remaining BTC/ETH/SOL/DOGE March source
+URLs as `deferred_next_packet` continuation targets rather than
+central-readiness failures. The central store now measures approximately
+25.014 GiB and has 7,993,343 normalized rows with 54 append manifest rows,
+leaving approximately 124.986 GiB under the 150 GiB cap. The prior strict
+Hyperliquid-only interpretation remains out of the central market-history
+data-readiness lane; this packet still does not close Hyperliquid-native
+autonomous strategy readiness and creates no candidate evidence, paper/live
+readiness, order/sizing/runtime behavior, promotion, or production trading
+readiness.
+Current WPR106-543 v2 central market-history speedup and 300 GiB update:
+WPR106-543 updates the active central market-history storage cap to 300 GiB,
+adds bounded parallel official no-paid archive collection with atomic `.part`
+downloads, ZIP/GZIP/JSON source validation, partial-file cache rejection,
+worker-error source blockers, idempotent existing-run detection, and
+machine-readable progress telemetry. After focused speed/cap validation, the
+packet completes the remaining WPR106-541/WPR106-542 March continuation
+targets: ETH March 18-31, BTC March 5-31, and full SOL/DOGE March 2024
+Binance USD-M aggregate-trade plus Bybit public trading archives. The run
+completes 206 official no-paid source probes with zero blockers, appends 103
+daily central batches, and adds 1,030,000 normalized rows. The central store
+now has 9,193,343 normalized rows, 174 append manifest rows, 4,152 files, and
+uses approximately 37.184 GiB, leaving approximately 262.816 GiB under the 300
+GiB cap. The prior strict Hyperliquid-only interpretation remains out of the
+central market-history data-readiness lane; this packet creates no autonomous
+readiness, candidate evidence, paper/live readiness, order/sizing/runtime
+behavior, promotion, or production trading readiness.
+Current WPR106-544 v2 central market-history exhaustive coverage update:
+WPR106-544 adds a fast manifest-compatible OHLCV payload writer, fixes the
+central Parquet helper hot path, and writes a backtest-facing collection
+ledger for 2024+ bar/orderflow coverage. The packet runs bounded parallel
+official Binance USD-M monthly 1m kline discovery/downloads across the
+discovered 230-symbol universe, collecting 4,799 raw monthly ZIPs from 6,670
+source probes, retrying the three initial worker anomalies as official 404s,
+recording 1,871 official unavailable sources, and leaving zero `.part` files.
+BTC, ETH, SOL, and DOGE now have complete normalized 2024-01 through 2026-05
+1m bar manifests and are marked `backtest_usable=true` for bar-only requests
+in `data/research/central_market_history/manifests/wpr106-544-central-market-history-exhaustive-coverage-v2-collection_ledger-ef0cfdcda209.json`.
+Broad non-priority symbols are mostly raw-collected but not fully normalized;
+dense 2024+ orderflow beyond existing January-March row-limited evidence is
+budget-blocked unless narrowed; Hyperliquid official historical S3
+orderflow/book/history remains requester-pays/operator-gated. The central
+store now has 14,510,318 normalized rows, 296 append manifest rows, and uses
+approximately 44.4 GiB of the 300 GiB cap. Future backtest/strategy paths must
+consult the ledger, restrict partial runs to manifest-covered windows, or call
+off when a required data family is missing, unavailable, budget-blocked, or
+operator-gated. This remains research-only central data readiness and creates
+no autonomous strategy readiness, candidate evidence, paper/live readiness,
+order/sizing/runtime behavior, promotion, or production trading readiness.
+Current WPR106-545 v2 project-needed 1m parallel normalization update:
+WPR106-545 adds deferred append-manifest support to the fast OHLCV writer and
+uses a bounded four-worker process pool to normalize the current
+project-needed raw-collected Binance USD-M monthly 1m archives with serialized
+coordinator appends. The run appends 622 additional monthly normalized
+archives with 26,991,645 rows, leaving the central store with 918 normalized
+Parquet artifacts, 918 append-manifest rows, 41,501,963 normalized rows, zero
+`.part` files, and approximately 46.98 GiB used under the 300 GiB cap. The
+validation report
+`data/research/central_market_history/manifests/wpr106-545-project-needed-1m-normalization-validation-report-after-gap-proof.json`
+verifies 737 project-needed manifests and 740 raw/checksum/CRC official-source
+archives with zero raw failures, but strict all-symbol continuous 1m readiness
+fails closed on `ISSUE-R106-033`: LITUSDT official Binance USD-M kline,
+aggTrade, and public API sources have no rows for
+`2025-12-23T00:00:00Z` through `2025-12-23T17:29:00Z`. This remains
+research-only central data readiness and creates no autonomous strategy
+readiness, candidate evidence, paper/live readiness, order/sizing/runtime
+behavior, promotion, or production trading readiness.
+Current WPR106-546 v2 LIT current-contract lifecycle repair update:
+WPR106-546 resolves the WPR106-545 LIT blocker by using Binance's official
+current-contract lifecycle boundary instead of synthetic bars. Binance
+`exchangeInfo` reports `LITUSDT` `onboardDate=1766511000000`, matching the
+official Lighter Protocol LIT launch announcement at
+`2025-12-23T17:30:00Z`. The packet appends an 11,910-row December 2025 LIT
+lifecycle-sliced manifest from onboard time through month end and excludes
+31,680 pre-onboard static/legacy archive rows from current-project bars. The
+validation report
+`data/research/central_market_history/manifests/wpr106-546-project-needed-1m-current-lifecycle-validation-report.json`
+passes all 29 project symbols with 715 current-lifecycle manifests,
+31,032,285 verified project rows, 715 verified raw ZIPs, zero raw failures,
+and zero `.part` files. The central store now has 919 normalized Parquet
+artifacts, 919 append-manifest rows, 41,513,873 normalized rows, and about
+46.982 GiB used under the 300 GiB cap. This remains research-only central data
+readiness and creates no autonomous strategy readiness, candidate evidence,
+paper/live readiness, order/sizing/runtime behavior, promotion, or production
+trading readiness.
+Current WPR106-550 v2 data catalog and final-audit handoff update: WPR106-550
+adds `docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md` as the compact
+testing-agent catalog, renders the matching read-only local/GitHub Pages entry
+at `docs/index.html` from `docs/v2_visibility_snapshot_wpr106_550.json`, and
+adds `.github/workflows/pages.yml` so the docs entrypoint can be published by
+GitHub Pages after push and Pages enablement. The packet validates and
+documents the corrected readiness split: all 29 project symbols have
+lifecycle-scoped official Binance USD-M 1m bars normalized and backtest-usable
+for bar-based proxy research through 2026-05 subject to lockbox rules; the
+operator-approved external WPR106-549 raw-heavy archive has 1,159,478 complete
+official Binance USD-M OF-style source files with zero missing/invalid/partial
+files in the fresh report; central OF-style normalized coverage remains
+partial; and Hyperliquid official historical S3 history is
+requester-pays/operator-gated provenance outside the strict-free lane.
+`ISSUE-R106-004` is resolved by the separate raw-only external archive lane.
+No autonomous-ready, candidate-ready, paper/live, order/sizing/runtime,
+promotion, or production trading claim exists.
+Current WPR106-551 v2 free-venue data authority update: WPR106-551 resolves the
+remaining data-source policy conflict for final-audit and agentic-research
+handoff. The authoritative data baseline is the strict-free/no-paid venue data
+that can actually be collected, validated, and reproduced. WPR106-546
+lifecycle-scoped official Binance USD-M 1m bars remain ready for all 29 project
+symbols through 2026-05, and the WPR106-549/WPR106-550 external raw-heavy
+archive remains complete with 1,159,478 official Binance USD-M OF-style source
+files. Unavailable requester-pays or native Hyperliquid historical official
+data is out of scope for data readiness and must not be treated as a blocker.
+`ISSUE-R106-032` is resolved as a data-source/readiness-policy conflict,
+`docs/index.html` is rendered from
+`docs/v2_visibility_snapshot_wpr106_551.json`, and `docs/KNOWN_ISSUES.md`
+reports zero open P0/P1 issues. Raw OF-style source completeness still does
+not by itself create autonomous-readiness reports, candidate evidence,
+paper/live, order/sizing/runtime, promotion, or production trading claims.
+Current WPR106-552 v2 OF-style normalization feature materialization update:
+WPR106-552 adds a deterministic research-only materializer at
+`src/tradingbotsuite/v2/data_sources/of_style_materialization.py` and validates
+it with `tests/v2/test_of_style_materialization_phase78.py`. The real
+bounded per-symbol archive pass reads the authoritative WPR106-549 external
+raw-heavy archive, materializes 251 official source files across all nine
+requested OF-style families, parses 81,093,159 input rows, writes 256,523
+compact feature rows under
+`data/research/of_style_feature_materialization/wpr106_552/**`, and records
+zero blocked sources in
+`data/research/of_style_feature_materialization/wpr106_552/manifests/wpr106-552-of-style-feature-materialization-report.json`.
+The WPR106-549 validation report remains the full 1,159,478-source data
+completeness authority; full all-file feature-panel expansion is compute
+scope, not a data-source blocker. `docs/index.html` is rendered from
+`docs/v2_visibility_snapshot_wpr106_552.json`. No autonomous-ready,
+candidate-ready, paper/live, order/sizing/runtime, promotion, or production
+trading claim exists.
+Current WPR106-553 v2 final repo audit update: WPR106-553 runs the final repo
+audit for research-only agentic iteration strategy testing readiness. The
+audit verifies zero open P0/P1/P2/P3 known issues, confirms WPR106-546
+project 1m bars, WPR106-549 external raw-heavy archive, WPR106-552 compact
+OF-style materialization, and WPR106-544 collection-ledger evidence with
+research-only boundary flags, confirms zero central/external `.part` files,
+and validates the authoritative Python 3.11 lane with pip check, compile,
+contracts, v2, focused data/materialization/UI/removed-source/import-boundary
+tests, and the monolithic suite at 2482 passed and 2 skipped. The repo is ready
+for research-only agentic iteration strategy testing under scoped packets. No
+autonomous-ready, accepted-research-ready, candidate-ready, candidate-pack,
+paper/live, order/sizing/runtime, promotion, production-trading, or
+strategy-performance claim exists.
+Current WPR106-554 v2 uploaded-strategy autonomous-readiness update:
+WPR106-554 ingests the uploaded S54/S59 test strategies and hardcodes the
+user-corrected cost assumptions for this pass: taker fee 4.32 bps, maker fee
+reference 1.44 bps, and highest-expected constant slippage 20 bps. S54
+cross-sectional reversion is represented as a research-only declarative spec,
+and the v2 archive-ref loop now supports deterministic multi-instrument panels
+and full instrument-list archive checks. The final `slip20_accepted` cycle
+runs all planned jobs over a Jan-Aug 2024 `binance_usdm` BTC/ETH/SOL/XRP 1h
+panel, but it remains `completed_with_blockers` because the validation gate
+fails fold stability. S59 is deferred because it requires accepted trade/L2
+sweep-reversal replay, replenishment features, and queue/fill assumptions. The
+repo remains ready only for research-only agentic iteration strategy testing
+under scoped packets; it is not `autonomous_research_ready`, and
+`ISSUE-R106-034` remains open.
+Current WPR106-555 v2 uploaded-strategy policy/S31 update: WPR106-555 applies
+the corrected operator policy that untestable strategies are skipped only when
+their required data cannot be collected, deduced, or simulated truthfully. The
+archive-ref cycle base slippage is now 8 bps with 20 bps retained as the
+worst-case reference and the existing 3x stress lane stricter at 24 bps. S31
+volatility-adjusted trend has first-class declarative support through
+`vol_adjusted_trend`; it derives trend strength from return over realized
+volatility, uses candle-derived volatility/ATR inputs, and caps research
+weights through declared risk limits. S59 is skipped for this readiness set
+because the current bounded vectorized cycle cannot yet consume event-level
+trade/L2 sweep and replenishment replay. The tuned S31 cycle is base-case
+positive at 8 bps but remains `completed_with_blockers` on
+`cost_dependent_failure`; S54 remains negative and fails fold stability. The
+repo remains ready only for research-only agentic iteration strategy testing
+under scoped packets; it is not `autonomous_research_ready`, and
+`ISSUE-R106-034` remains open.
+Current WPR106-556 v2 atlas strategy autonomous-readiness update: WPR106-556
+uses the uploaded combined strategy atlas as the next strategy queue, classifies
+data-unavailable funding/OI/spread/order-book/trade-flow/liquidation/event/
+attention/on-chain/options families as skipped rather than proxied for the
+current OHLCV-only archive-ref cycle, and scans the bar-testable atlas
+families under the WPR106-555 cost policy. The first blocker-free survivor is
+the S24/S65 long-only cross-sectional momentum/top-gainer continuation spec at
+`configs/strategies/wpr106_556/accepted/first_passing_atlas_rank_strategy.json`.
+It ranks the accepted Jan-Aug 2024 `binance_usdm` BTC/ETH/SOL/XRP 1h panel by
+trailing 480-hour return, holds the top half long-only with 5% max gross
+research exposure, and remains research-only/non-promotable. The durable
+archive-ref cycle completes with no blockers, validation `pass`, audit `pass`,
+`net_return=0.02854830964529631`,
+`stress_2x_net_return=0.01864770640252944`, and
+`stress_3x_net_return=0.008841803210934085`. `ISSUE-R106-034` is resolved; no
+candidate-pack, paper/live, order/sizing/runtime, promotion, production
+trading, or live-signal claim is created. The formal autonomous-readiness
+manager report remains blocked only on the local repo-state checklist because
+this desktop worktree is not clean and no commit/push was requested or
+performed.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`
@@ -8191,7 +8516,7 @@ WPR105-107 implementation note:
 | WPR106-425-v2-collector-candle-funding-archive-writes | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-425-v2-collector-candle-funding-archive-writes.md`, `docs/contracts/collector_job_contract.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/v2/collectors/jobs.py`, `tests/v2/test_workers_phase7.py` | Makes durable recent-candle and funding collector jobs write local source records through the archive pipeline: raw, bronze, silver, normalization refs, candle coverage/snapshot refs, and funding interval evidence. Focused worker/archive validation passed with 14 tests, full v2 passed with 187 tests, contracts passed with 463 tests, and compile/diff hygiene passed; no venue/API fetch, accepted-evidence, autonomous-ready, candidate-ready, paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-424-v2-central-boundary-policy | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-424-v2-central-boundary-policy.md`, `docs/contracts/security_boundary_contract.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/v2/security/boundary.py`, `src/tradingbotsuite/v2/security/__init__.py`, `src/tradingbotsuite/v2/autonomy/schemas.py`, `src/tradingbotsuite/v2/backtest_engine/artifacts.py`, `src/tradingbotsuite/v2/backtest_data/schemas.py`, `src/tradingbotsuite/v2/ledger/schemas.py`, `src/tradingbotsuite/v2/ledger/service.py`, `src/tradingbotsuite/v2/lead_book/schemas.py`, `src/tradingbotsuite/v2/strategy_specs/schemas.py`, `tests/v2/test_boundary_policy_phase24.py`, focused migrated-context tests | Adds a central v2 research-boundary policy and migrates high-risk artifacts to fail closed through it. Focused boundary/migrated-context, full v2, contracts, and compile validation passed; no accepted-evidence, autonomous-ready, candidate-ready, paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-423-v2-archive-backed-autonomy-dry-run | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-423-v2-archive-backed-autonomy-dry-run.md`, `docs/contracts/autonomy_loop_contract.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/v2/autonomy/**`, `src/tradingbotsuite/v2/cli/main.py`, `tests/v2/test_autonomy_phase23.py` | Makes `redx autonomy dry-run` archive-backed by default using local fixtures only: silver bar archive write, coverage report, archive snapshot, fixture as-of universe, backtest-data preflight, vectorized backtest, sandbox ledger row, non-promotable Lead Book row, and blocker report. Focused autonomy/backtest-data/CLI, full v2, contracts, compile, and diff-hygiene validation passed; no accepted-evidence, autonomous-ready, candidate-ready, paper/live/order/sizing/runtime/promotion claim exists. |
-| WPR106-422-v2-autonomy-dry-run-loop | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-422-v2-autonomy-dry-run-loop.md`, `docs/contracts/autonomy_loop_contract.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/audit/V2_COMPLETION_AUDIT_ISSUES_AND_HOLES_2026_06_21.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/v2/autonomy/**`, `src/tradingbotsuite/v2/cli/main.py`, `src/tradingbotsuite/v2/config/schemas.py`, `tests/v2/test_autonomy_phase23.py` | Adds a fixture-backed sandbox autonomy dry-run that exercises universe/archive/coverage/spec/backtest/validation/ledger/Lead Book/blocker-report wiring, writes dry-run artifacts only under the requested output root, appends ledger evidence as `sandbox_diagnostic`, creates non-promotable Lead Book rows, and reports real Hyperliquid archive operation as a blocker. Focused autonomy+CLI, full v2, contracts, compile, and diff-hygiene validation passed; no accepted-evidence, autonomous-ready, candidate-ready, paper/live/order/sizing/runtime/promotion claim exists. |
+| WPR106-422-v2-autonomy-dry-run-loop | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-422-v2-autonomy-dry-run-loop.md`, `docs/contracts/autonomy_loop_contract.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/audit/V2_COMPLETION_AUDIT_ISSUES_AND_HOLES_2026_06_21.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `src/tradingbotsuite/v2/autonomy/**`, `src/tradingbotsuite/v2/cli/main.py`, `src/tradingbotsuite/v2/config/schemas.py`, `tests/v2/test_autonomy_phase23.py` | Adds a fixture-backed sandbox autonomy dry-run that exercises universe/archive/coverage/spec/backtest/validation/ledger/Lead Book/blocker-report wiring, writes dry-run artifacts only under the requested output root, appends ledger evidence as `sandbox_diagnostic`, and creates non-promotable Lead Book rows. WPR106-551 supersedes the old native-Hyperliquid follow-up with authoritative free-venue data evidence. Focused autonomy+CLI, full v2, contracts, compile, and diff-hygiene validation passed; no accepted-evidence, autonomous-ready, candidate-ready, paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-421-strategy-exit-semantics-closeout | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-421-strategy-exit-semantics-closeout.md`, `docs/KNOWN_ISSUES.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `docs/contracts/strategy_contract.md`, `docs/contracts/backtest_engine_contract.md`, `src/tradingbotsuite/strategies/**`, `src/tradingbotsuite/backtesting/**`, `tests/contracts/test_strategy_contracts.py`, `tests/contracts/test_backtest_contracts.py`, `tests/backtesting/**`, `tests/unit/test_execution_simulator.py` | Resolves `ISSUE-R106-020`: latest-window context is blocked for perp-context strategy evidence, GMM exits require detector metadata, lower-frame no-hit exits use lower-frame horizon proof, fixed-holding aliases preserve requested/canonical identity, static close-barrier canonical identity is explicit, and timestamped funding-path costs are used by reference/vector/CUDA fixed-holding lanes. Focused strategy, backtesting, unit execution, combined contracts/backtesting, and v2 validation passed; no autonomous-ready, candidate-ready, paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-420-python311-windows-pytest-certification | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-420-python311-windows-pytest-certification.md`, `docs/KNOWN_ISSUES.md`, `docs/audit/V2_AUDIT_INDEX.md`, `docs/ACTIVE_INDEX.md`, `docs/ORCHESTRATOR_STAGE_LEDGER.md`, `tests/conftest.py`, `src/tradingbotsuite/v2/workers/job_store.py` | Installs local Python 3.11 dev dependencies, adds Windows test selector event-loop policy, and fixes v2 worker transition audit ordering. Python 3.11 exact async contract reproduction, exact worker transition reproduction, contracts, and v2 tests passed. Monolithic `py -3.11 -m pytest tests -q` remains blocked by local Windows/Python 3.11.0 `socket.socketpair()` exhaustion under `ISSUE-R106-026`; no autonomous-ready or paper/live/order/sizing/runtime/promotion claim exists. |
 | WPR106-419-v2-boundary-p1-fixes | Codex Manager Development Agent | closed | `docs/work_packets/WPR106-419-v2-boundary-p1-fixes.md`, `docs/KNOWN_ISSUES.md`, `docs/audit/V2_AUDIT_INDEX.md`, `src/tradingbotsuite/v2/archive/microstructure.py`, `src/tradingbotsuite/v2/collectors/jobs.py`, `src/tradingbotsuite/v2/strategy_specs/schemas.py`, `src/tradingbotsuite/v2/backtest_engine/engine.py`, `tests/v2/test_microstructure_collection_phase17.py`, `tests/v2/test_strategy_specs_phase10.py`, `tests/v2/test_backtest_engine_phase11.py` | Resolves `ISSUE-R106-027` and `ISSUE-R106-028`: official-file backfill requires a trusted source root and rejects secret/local-state/traversal sources before archive writes; signal rows/frames and vectorized trades/positions carry the full canonical false boundary invariant. Validation passed with 28 focused tests, 173 v2 tests, Python 3.11 compile, 462 default-Python contracts, and cached diff hygiene. No live/runtime/order/sizing/promotion/candidate-pack path was touched. |

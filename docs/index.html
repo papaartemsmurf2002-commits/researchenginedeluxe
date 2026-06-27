@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ResearchEngineDeluxe v2 Data And OF-Style Materialization Authority</title>
+<style>
+
+:root {
+  color-scheme: light;
+  --bg: #f5f7f8;
+  --panel: #ffffff;
+  --ink: #182026;
+  --muted: #5d6a72;
+  --line: #d9e0e4;
+  --accent: #0f766e;
+  --warn: #a16207;
+  --bad: #b42318;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 Arial, Helvetica, sans-serif;
+}
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 28px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+.meta { margin: 6px 0 0; color: var(--muted); }
+.boundary {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 360px;
+}
+.boundary span, .metric, .badge, .status {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8fafb;
+}
+.boundary span {
+  padding: 6px 10px;
+  color: var(--muted);
+}
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 16px 28px;
+}
+.metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 10px 12px;
+}
+.metric span { color: var(--muted); }
+.metric strong { font-size: 20px; }
+.panel {
+  margin: 12px 28px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+th, td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.empty { color: var(--muted); text-align: center; }
+.badge, .status {
+  display: inline-block;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
+.yes { color: var(--accent); }
+.no, .status-fail, .status-blocked, .status-rejected { color: var(--bad); }
+.status-warn, .status-warning { color: var(--warn); }
+.notes ul { margin: 0; padding-left: 20px; }
+@media (max-width: 720px) {
+  .topbar { display: block; padding: 18px; }
+  .boundary { justify-content: flex-start; margin-top: 12px; }
+  .summary { padding: 12px 18px; }
+  .panel { margin: 10px 18px; padding: 12px; }
+  h1 { font-size: 22px; }
+}
+
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div>
+    <p class="eyebrow">research-only visibility</p>
+    <h1>ResearchEngineDeluxe v2 Data And OF-Style Materialization Authority</h1>
+    <p class="meta">Snapshot wpr106-552-of-style-materialization-2026-06-27 - 2026-06-27T11:20:00+00:00</p>
+  </div>
+  <div class="boundary">
+    <span>read-only</span>
+    <span>observe-only</span>
+    <span>promotion false</span>
+  </div>
+</header>
+<section class="summary" aria-label="Snapshot summary">
+<span class="metric"><span>Active Universe</span><strong>3</strong></span>
+<span class="metric"><span>Collection</span><strong>5</strong></span>
+<span class="metric"><span>Coverage</span><strong>5</strong></span>
+<span class="metric"><span>Gaps</span><strong>4</strong></span>
+<span class="metric"><span>Lockbox</span><strong>1</strong></span>
+<span class="metric"><span>Lead Book</span><strong>0</strong></span>
+<span class="metric"><span>Deep Validation</span><strong>0</strong></span>
+<span class="metric"><span>Final Hard Tests</span><strong>0</strong></span>
+<span class="metric"><span>Audit</span><strong>5</strong></span>
+<span class="metric"><span>Workers</span><strong>4</strong></span>
+</section>
+
+
+<section class="panel" aria-labelledby="active-universe">
+  <h2 id="active-universe">Active Universe</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>venue</th><th>instrument</th><th>included</th><th>reason</th><th>notional</th><th>scope</th><th>caveats</th></tr></thead>
+      <tbody>
+<tr><td>multi-provider-proxy</td><td>project-lane:29-symbols</td><td><span class="badge yes">true</span></td><td>WPR106-546 lifecycle-scoped official Binance USD-M 1m bars pass for all project symbols</td><td></td><td>current-project-lifecycle</td><td>research-only, strict-free data authority, lockbox applies</td></tr>
+<tr><td>hyperliquid</td><td>current-volume-eligible:24-symbols</td><td><span class="badge yes">true</span></td><td>WPR106-547 found all 24 current volume-eligible symbols already inside project-complete lane</td><td>5,000,000</td><td>current-public-snapshot</td><td>provenance-labeled, not relabeled as native historical rows</td></tr>
+<tr><td>hyperliquid</td><td>non-project-additions</td><td><span class="badge no">false</span></td><td>zero non-project instruments certified; 178 rejected by volume/archive coverage reasons</td><td></td><td>certification-report</td><td>below-threshold or missing archive coverage</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="collection">
+  <h2 id="collection">Collection</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>source</th><th>datatype</th><th>status</th><th>latest event</th><th>manifests</th><th>gaps</th><th>notes</th></tr></thead>
+      <tbody>
+<tr><td>central_market_history</td><td>1m_bars</td><td><span class="status status-authoritative-ready">authoritative-ready</span></td><td>2026-05-31T23:59:00+00:00</td><td>data/research/central_market_history/manifests/wpr106-546-project-needed-1m-current-lifecycle-validation-report.json</td><td>0</td><td>29 project symbols, 715 manifests, 31,032,285 verified rows, zero partial files.</td></tr>
+<tr><td>external_raw_heavy_archive</td><td>binance_usdm_of_style_raw</td><td><span class="status status-authoritative-raw-complete">authoritative-raw-complete</span></td><td>2026-05-31T23:59:59+00:00</td><td>M:/additional_archive/researchenginedeluxe/wpr106_549_of_style_raw/manifests/wpr106-549-heavy-raw-archive-validation-report.json</td><td>0</td><td>1,159,478 complete official source files across nine requested available OF-style families; strict-free raw source authority.</td></tr>
+<tr><td>central_market_history</td><td>of_style_normalized</td><td><span class="status status-partial-normalization">partial-normalization</span></td><td>2026-05-31T23:59:59+00:00</td><td>data/research/central_market_history/manifests/wpr106-549-of-style-overall-status-report.json</td><td>21299</td><td>bookDepth partially normalized in central storage; WPR106-552 provides compact external-archive feature materialization proof without requiring full central row expansion.</td></tr>
+<tr><td>of_style_feature_materialization</td><td>binance_usdm_of_style_features</td><td><span class="status status-bounded-materialized">bounded-materialized</span></td><td>2026-05-31T23:59:59+00:00</td><td>data/research/of_style_feature_materialization/wpr106_552/manifests/wpr106-552-of-style-feature-materialization-report.json</td><td>0</td><td>WPR106-552 materialized 251 official source files into 256,523 compact feature rows after parsing 81,093,159 input rows; zero blocked sources.</td></tr>
+<tr><td>hyperliquid_official_s3_history</td><td>native_historical_l2_trades_metadata</td><td><span class="status status-out-of-scope-provenance">out-of-scope-provenance</span></td><td></td><td>data/research/central_market_history/manifests/wpr106-544-central-market-history-exhaustive-coverage-v2-collection_ledger-ef0cfdcda209.json</td><td>0</td><td>Requester-pays/operator-gated native history is outside the strict-free data baseline and is not a blocker.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="coverage">
+  <h2 id="coverage">Coverage</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>venue</th><th>instrument</th><th>family</th><th>timeframe</th><th>window</th><th>coverage</th><th>status</th><th>missing days</th></tr></thead>
+      <tbody>
+<tr><td>binance_usdm</td><td>project-lane:29-symbols</td><td>ohlcv</td><td>1m</td><td>2024-01-01T00:00:00+00:00 to 2026-05-31T23:59:00+00:00</td><td>1.0000</td><td><span class="status status-pass">pass</span></td><td></td></tr>
+<tr><td>binance_usdm</td><td>project-lane:29-symbols</td><td>of_style_raw_external</td><td>daily/monthly</td><td>2024-01-01T00:00:00+00:00 to 2026-05-31T23:59:59+00:00</td><td>1.0000</td><td><span class="status status-authoritative-raw-complete">authoritative-raw-complete</span></td><td></td></tr>
+<tr><td>binance_usdm</td><td>project-lane:29-symbols</td><td>bookDepth_normalized_central</td><td>daily</td><td>2024-01-01T00:00:00+00:00 to 2026-05-31T23:59:59+00:00</td><td>0.0421</td><td><span class="status status-partial-normalization">partial-normalization</span></td><td>central normalized bookDepth 937/22236 sources; external raw archive is complete</td></tr>
+<tr><td>binance_usdm</td><td>project-lane:29-symbols</td><td>of_style_feature_materialization</td><td>bounded-per-symbol/1m-context</td><td>2024-01-01T00:00:00+00:00 to 2026-05-31T23:59:59+00:00</td><td>1.0000</td><td><span class="status status-bounded-materialized-pass">bounded-materialized-pass</span></td><td></td></tr>
+<tr><td>hyperliquid</td><td>official-history</td><td>native_l2_trades_metadata</td><td>historical</td><td>2024-01-01T00:00:00+00:00 to 2026-05-31T23:59:59+00:00</td><td>0.0000</td><td><span class="status status-out-of-scope">out-of-scope</span></td><td>not part of strict-free/no-paid data authority</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="gaps">
+  <h2 id="gaps">Gaps</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>report</th><th>venue</th><th>instrument</th><th>family</th><th>timeframe</th><th>count</th><th>severity</th><th>sample</th></tr></thead>
+      <tbody>
+<tr><td>wpr106-550-central-part-scan</td><td>multi-provider</td><td>central_market_history</td><td>all</td><td>all</td><td>0</td><td><span class="status status-pass">pass</span></td><td></td></tr>
+<tr><td>wpr106-550-external-part-scan</td><td>binance_usdm</td><td>external_raw_heavy</td><td>all</td><td>all</td><td>0</td><td><span class="status status-pass">pass</span></td><td></td></tr>
+<tr><td>wpr106-551-data-policy-resolution</td><td>free-venue-authority</td><td>strict-free-baseline</td><td>data-readiness-policy</td><td>2024-2026</td><td>0</td><td><span class="status status-resolved">resolved</span></td><td>unavailable native Hyperliquid official history is out of scope, not a blocker</td></tr>
+<tr><td>wpr106-552-of-style-materialization</td><td>binance_usdm</td><td>project-lane:29-symbols</td><td>of_style_features</td><td>bounded-per-symbol/1m-context</td><td>0</td><td><span class="status status-pass">pass</span></td><td>251 materialized sources, 81,093,159 parsed input rows, 256,523 feature rows, zero blocked sources</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="lockbox">
+  <h2 id="lockbox">Lockbox</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>policy</th><th>start</th><th>end</th><th>excluded</th><th>notes</th></tr></thead>
+      <tbody><tr><td>dynamic_full_calendar_months_v1</td><td>2026-05-01T00:00:00+00:00</td><td>2026-06-01T00:00:00+00:00</td><td><span class="badge yes">true</span></td><td>As of 2026-06-27, ordinary iteration must not tune on May 2026.</td></tr></tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="lead-book">
+  <h2 id="lead-book">Lead Book</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>lead</th><th>family</th><th>state</th><th>inspection</th><th>approval</th><th>promotion</th><th>blockers</th></tr></thead>
+      <tbody>
+<tr><td colspan="7" class="empty">No rows</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="deep-validation">
+  <h2 id="deep-validation">Deep Validation</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>lead</th><th>status</th><th>active</th><th>scorecard</th><th>blockers</th></tr></thead>
+      <tbody>
+<tr><td colspan="5" class="empty">No rows</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="final-hard-tests">
+  <h2 id="final-hard-tests">Final Hard Tests</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>slot</th><th>lead</th><th>status</th><th>frozen evidence</th><th>disclaimer</th></tr></thead>
+      <tbody>
+<tr><td colspan="5" class="empty">No rows</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="audit">
+  <h2 id="audit">Audit</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>audit</th><th>area</th><th>status</th><th>purpose</th><th>evidence</th></tr></thead>
+      <tbody>
+<tr><td>V2-AUD-COMPLETE-007</td><td>data_catalog</td><td><span class="status status-self-checked">self_checked</span></td><td>WPR106-550 final-audit data catalog and testing-agent handoff</td><td>docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md</td></tr>
+<tr><td>V2-AUD-COMPLETE-008</td><td>data_policy</td><td><span class="status status-self-checked">self_checked</span></td><td>WPR106-551 strict-free/free-venue data authority resolution</td><td>docs/work_packets/WPR106-551-v2-free-venue-data-authority-resolution.md</td></tr>
+<tr><td>V2-AUD-COMPLETE-009</td><td>feature_materialization</td><td><span class="status status-self-checked">self_checked</span></td><td>WPR106-552 compact OF-style feature materialization handoff</td><td>data/research/of_style_feature_materialization/wpr106_552/manifests/wpr106-552-of-style-feature-materialization-report.json</td></tr>
+<tr><td>V2-AUD-DATASRC-050</td><td>data_sources</td><td><span class="status status-self-checked">self_checked</span></td><td>Deterministic OF-style materializer over validated free raw archives</td><td>src/tradingbotsuite/v2/data_sources/of_style_materialization.py</td></tr>
+<tr><td>V2-AUD-UI-001</td><td>ui</td><td><span class="status status-self-checked">self_checked</span></td><td>Read-only static visibility renderer</td><td>docs/index.html rendered from docs/v2_visibility_snapshot_wpr106_552.json</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel" aria-labelledby="workers">
+  <h2 id="workers">Workers</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>job</th><th>kind</th><th>status</th><th>terminal</th><th>attempts</th><th>manifests</th><th>failure</th></tr></thead>
+      <tbody>
+<tr><td>wpr106-550-report-consistency</td><td>docs_validation</td><td><span class="status status-succeeded">succeeded</span></td><td><span class="badge yes">true</span></td><td>1</td><td>wpr106-546-project-needed-1m-current-lifecycle-validation-report.json, wpr106-549-heavy-raw-archive-validation-report.json</td><td></td></tr>
+<tr><td>wpr106-550-external-validator</td><td>archive_validation</td><td><span class="status status-validated-with-timeout-caveat">validated_with_timeout_caveat</span></td><td><span class="badge yes">true</span></td><td>1</td><td>M:/additional_archive/researchenginedeluxe/wpr106_549_of_style_raw/manifests/wpr106-549-heavy-raw-archive-validation-report.json</td><td>1.16M-file validator refreshed report but exceeded five-minute local shell timeout before normal command completion.</td></tr>
+<tr><td>wpr106-551-data-policy-resolution</td><td>docs_validation</td><td><span class="status status-succeeded">succeeded</span></td><td><span class="badge yes">true</span></td><td>1</td><td>docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md, docs/KNOWN_ISSUES.md, docs/contracts/autonomous_readiness_contract.md</td><td></td></tr>
+<tr><td>wpr106-552-of-style-materialization</td><td>feature_materialization</td><td><span class="status status-succeeded">succeeded</span></td><td><span class="badge yes">true</span></td><td>1</td><td>data/research/of_style_feature_materialization/wpr106_552/manifests/wpr106-552-of-style-feature-materialization-report.json, M:/additional_archive/researchenginedeluxe/wpr106_549_of_style_raw/manifests/wpr106-549-heavy-raw-archive-validation-report.json</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<section class="panel notes" aria-labelledby="notes">
+  <h2 id="notes">Notes</h2>
+  <ul><li>This page is read-only and contains no command controls.</li>
+<li>Strict-free/free-venue data is the authoritative baseline for final audit and agentic research handoff.</li>
+<li>WPR106-552 provides compact OF-style feature materialization proof; full all-file panel expansion is compute scope, not a data-source blocker.</li>
+<li>Unavailable requester-pays/native Hyperliquid historical official data is out of scope and not a blocker.</li>
+<li>Data readiness is not candidate, paper/live, sizing, runtime, promotion, or autonomous strategy readiness.</li></ul>
+</section>
+
+</body>
+</html>
