@@ -80,7 +80,8 @@ def create_lead_from_source(
     notes: str = "",
 ) -> LeadBookRow:
     source_path = Path(source_artifact_path).resolve()
-    if not source_path.exists():
+    source_hash_path = _source_hash_path(source_path)
+    if source_hash_path is None:
         raise LeadBookError("lead_source_artifact_missing")
     start = data_window_start or datetime(2024, 1, 1, tzinfo=UTC)
     end = data_window_end or datetime(2024, 7, 1, tzinfo=UTC)
@@ -91,7 +92,7 @@ def create_lead_from_source(
         created_by_id=created_by_id,
         source_type=source_type,
         source_artifact_path=str(source_path),
-        source_artifact_sha256=file_sha256(source_path),
+        source_artifact_sha256=file_sha256(source_hash_path),
         strategy_family=strategy_family,
         economic_thesis=economic_thesis,
         venue_scope=venue_scope,
@@ -137,6 +138,16 @@ def create_lead_from_source(
             }
         )
     return lead
+
+
+def _source_hash_path(source_path: Path) -> Path | None:
+    if source_path.suffix.lower() == ".parquet":
+        part_index_path = source_path.with_suffix(".index.json")
+        if part_index_path.exists():
+            return part_index_path
+    if source_path.exists():
+        return source_path
+    return None
 
 
 class LeadBookStore:
@@ -379,10 +390,13 @@ def scan_lead_book_queue(
 
 
 def _lead_id(source_path: Path, strategy_family: str, thesis: str) -> str:
+    source_hash_path = _source_hash_path(source_path)
+    if source_hash_path is None:
+        raise LeadBookError("lead_source_artifact_missing")
     digest = canonical_json_hash(
         {
             "source": str(source_path),
-            "source_sha256": file_sha256(source_path),
+            "source_sha256": file_sha256(source_hash_path),
             "strategy_family": strategy_family,
             "economic_thesis": thesis,
         }

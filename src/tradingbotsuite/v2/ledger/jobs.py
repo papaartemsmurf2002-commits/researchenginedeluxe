@@ -106,6 +106,10 @@ def _run_ledger_append_export_job(
                 f"export_xlsx_sha256={file_sha256(export_xlsx_path)}",
             ]
         )
+    ledger_part_index_path = ledger_path.with_suffix(".index.json")
+    ledger_storage_path = ledger_part_index_path if ledger_part_index_path.exists() else ledger_path
+    if not ledger_storage_path.exists():
+        raise ValueError("ledger storage index missing after append")
     output_refs = (
         "job_kind=ledger_append_export",
         f"run_id={row.run_id}",
@@ -113,7 +117,8 @@ def _run_ledger_append_export_job(
         f"validation_status={row.validation_status}",
         f"evidence_mode={row.evidence_mode}",
         f"ledger_path={ledger_path}",
-        f"ledger_sha256={file_sha256(ledger_path)}",
+        f"ledger_storage_path={ledger_storage_path}",
+        f"ledger_storage_sha256={file_sha256(ledger_storage_path)}",
         f"ledger_index={row.ledger_index}",
         f"row_hash={row.row_hash}",
         f"blocker_reasons={','.join(row.blocker_reasons)}",

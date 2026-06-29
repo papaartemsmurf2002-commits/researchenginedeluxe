@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -236,3 +237,24 @@ class BacktestDataSlice(BaseModel):
         if len(self.rows) != self.warmup_row_count + self.reported_row_count:
             raise ValueError("slice row count must match warmup + reported counts")
         return self
+
+
+@dataclass(frozen=True)
+class BacktestColumnarDataSlice:
+    request: BacktestDataRequest
+    table: Any
+    data_manifest: BacktestDataManifest
+    archive_snapshot_id: str
+    universe_snapshot_id: str
+    coverage_report_id: str
+    coverage_report_ids: tuple[str, ...]
+    loaded_fields: tuple[str, ...]
+    warmup_row_count: int
+    reported_row_count: int
+
+    def __post_init__(self) -> None:
+        if self.table.num_rows != self.warmup_row_count + self.reported_row_count:
+            raise ValueError("columnar slice row count must match warmup + reported counts")
+
+    def to_rows(self) -> tuple[dict[str, Any], ...]:
+        return tuple(dict(row) for row in self.table.to_pylist())

@@ -1789,7 +1789,7 @@ def test_ledger_append_export_worker_records_backtest_run_and_generated_exports(
     assert "run_id=worker-ledger-source-run" in loaded.output_refs
     assert "row_status=succeeded" in loaded.output_refs
     assert any(ref.startswith("row_hash=") for ref in loaded.output_refs)
-    assert any(ref.startswith("ledger_sha256=") for ref in loaded.output_refs)
+    assert any(ref.startswith("ledger_storage_sha256=") for ref in loaded.output_refs)
     assert any(ref.startswith("export_csv_sha256=") for ref in loaded.output_refs)
     assert any(ref.startswith("export_xlsx_sha256=") for ref in loaded.output_refs)
     assert any(ref.startswith("archive_snapshot_id=") for ref in loaded.archive_manifest_refs)
@@ -1970,7 +1970,7 @@ def test_lead_book_upsert_worker_records_ledger_backed_non_promotable_lead(tmp_p
     assert any(ref.startswith("source_artifact_sha256=") for ref in loaded.archive_manifest_refs)
     assert len(leads) == 1
     assert leads[0].source_artifact_path == str(ledger_path.resolve())
-    assert leads[0].source_artifact_sha256 == file_sha256(ledger_path)
+    assert leads[0].source_artifact_sha256 == file_sha256(ledger_path.with_suffix(".index.json"))
     assert leads[0].promotion_ready is False
     assert leads[0].candidate_evidence is False
     assert leads[0].human_inspection_status.value == "not_requested"

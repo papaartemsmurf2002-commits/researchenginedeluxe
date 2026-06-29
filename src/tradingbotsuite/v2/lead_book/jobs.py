@@ -294,11 +294,15 @@ def _validate_path(
         )
     resolved = path.resolve(strict=False)
     if require_file:
-        if not resolved.exists():
+        if not resolved.exists() and not _part_backed_parquet_exists(resolved):
             raise ValueError(f"{field_name} missing: {path}")
-        if not resolved.is_file():
+        if resolved.exists() and not resolved.is_file():
             raise ValueError(f"{field_name} must be a file: {path}")
     return resolved
+
+
+def _part_backed_parquet_exists(path: Path) -> bool:
+    return path.suffix.lower() == ".parquet" and path.with_suffix(".index.json").exists()
 
 
 def _required_string(spec: dict[str, Any], key: str) -> str:

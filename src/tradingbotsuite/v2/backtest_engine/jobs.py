@@ -54,8 +54,8 @@ def _run_vectorized_backtest_job(
     worker_id: str,
 ) -> WorkerRunResult:
     spec = dict(job.input_spec)
-    requested_lane = str(spec.get("engine_lane", EngineLane.VECTORIZED.value))
-    if requested_lane != EngineLane.VECTORIZED.value:
+    requested_lane = EngineLane(str(spec.get("engine_lane", EngineLane.VECTORIZED.value)))
+    if requested_lane not in {EngineLane.VECTORIZED, EngineLane.FAST_VECTORIZED}:
         raise ValueError(f"unsupported durable backtest engine_lane: {requested_lane}")
     strategy_payload, strategy_source_refs = _strategy_payload_and_refs(spec)
 
@@ -66,11 +66,23 @@ def _run_vectorized_backtest_job(
     cost_model = _cost_model(spec)
     data_request = _data_request(spec, strategy_spec=strategy_spec, cost_model=cost_model)
     asof_date = _optional_date(spec.get("asof_date"))
-    data_slice = BacktestDataService(data_request.archive_root).load_panel(
-        data_request,
-        asof_date=asof_date,
-        write_manifest=bool(spec.get("write_data_manifest", True)),
-    )
+    data_service = BacktestDataService(data_request.archive_root)
+    if requested_lane == EngineLane.FAST_VECTORIZED:
+        data_slice = data_service.load_panel_columnar(
+            data_request,
+            asof_date=asof_date,
+            write_manifest=bool(spec.get("write_data_manifest", True)),
+        )
+        panel_rows = None
+        panel_table = data_slice.table
+    else:
+        data_slice = data_service.load_panel(
+            data_request,
+            asof_date=asof_date,
+            write_manifest=bool(spec.get("write_data_manifest", True)),
+        )
+        panel_rows = _json_safe_rows(data_slice.rows)
+        panel_table = None
     data_manifest = data_slice.data_manifest.model_dump(mode="json")
     data_manifest_hash = canonical_json_hash(data_manifest)
     _verify_expected_data_refs(
@@ -81,7 +93,6 @@ def _run_vectorized_backtest_job(
         data_manifest_id=data_slice.data_manifest.data_manifest_id,
         data_manifest_hash=data_manifest_hash,
     )
-    panel_rows = _json_safe_rows(data_slice.rows)
     run_config = _run_config(
         spec,
         job=job,
@@ -89,11 +100,13 @@ def _run_vectorized_backtest_job(
         strategy_spec=strategy_spec,
         cost_model=cost_model,
         data_manifest=data_manifest,
+        engine_lane=requested_lane,
     )
     result = run_vectorized_backtest(
         config=run_config,
         strategy_spec=strategy_spec,
         panel_rows=panel_rows,
+        panel_table=panel_table,
         params=dict(spec.get("params", {})),
     )
     run_manifest_path = Path(result.run_dir) / "run_manifest.json"
@@ -165,6 +178,7 @@ def _run_config(
     strategy_spec: StrategySpec,
     cost_model: CostModelConfig,
     data_manifest: dict[str, Any],
+    engine_lane: EngineLane,
 ) -> BacktestRunConfig:
     validation_payload = {
         "validation_config": data_request.validation_config.model_dump(mode="json"),
@@ -178,6 +192,8 @@ def _run_config(
             else utc_isoformat(data_request.warmup_start_ts),
         },
     }
+    if data_request.evidence_mode == BacktestEvidenceMode.ACCEPTED_RESEARCH:
+        cost_model = cost_model.model_copy(update={"spread_observation_policy": "accepted_research_strict"})
     cost_payload = {
         "cost_model_config": cost_model.model_dump(mode="json"),
         "cost_stress_scenarios": tuple(
@@ -200,7 +216,7 @@ def _run_config(
         validation_policy_id=data_request.validation_config.validation_policy_id,
         cost_model_id=cost_model.cost_model_id,
         cost_model=cost_model,
-        engine_lane=EngineLane.VECTORIZED,
+        engine_lane=engine_lane,
         lockbox_policy_id=data_request.validation_config.lockbox_policy.policy_id,
         lockbox_start=None if data_manifest.get("lockbox_start_ts") is None else _parse_datetime(str(data_manifest["lockbox_start_ts"])),
         lockbox_end=None if data_manifest.get("lockbox_end_ts") is None else _parse_datetime(str(data_manifest["lockbox_end_ts"])),

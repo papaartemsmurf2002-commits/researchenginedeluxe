@@ -15,6 +15,7 @@ from tradingbotsuite.v2.ledger.schemas import (
 from tradingbotsuite.v2.ledger.service import (
     LedgerError,
     append_run_to_ledger,
+    compact_ledger_parts,
     export_ledger,
     leaderboard,
     ledger_row_from_manifest,
@@ -30,6 +31,7 @@ __all__ = [
     "LedgerError",
     "LedgerRow",
     "append_run_to_ledger",
+    "compact_ledger_parts",
     "export_ledger",
     "leaderboard",
     "ledger_row_from_manifest",

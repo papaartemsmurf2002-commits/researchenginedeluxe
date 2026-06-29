@@ -66,9 +66,13 @@ class OFStyleMaterializationSourceResult(BaseModel):
     day: str | None = None
     source_ref: str = Field(min_length=1)
     raw_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    output_format: Literal["jsonl", "parquet_parts"] = "jsonl"
     output_ref: str = Field(min_length=1)
     output_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     output_bytes: int = Field(ge=0)
+    output_part_refs: tuple[str, ...] = ()
+    output_part_count: int = Field(default=0, ge=0)
+    output_part_manifest_hash: str | None = Field(default=None, min_length=64, max_length=64)
     status: Literal["materialized", "blocked"] = "materialized"
     input_row_count: int = Field(ge=0)
     feature_row_count: int = Field(ge=0)
@@ -99,6 +103,13 @@ class OFStyleMaterializationSourceResult(BaseModel):
                 raise ValueError("materialized source results cannot include blocker reasons")
             if self.feature_row_count <= 0:
                 raise ValueError("materialized source results require feature rows")
+            if self.output_format == "parquet_parts":
+                if self.output_part_count <= 0 or not self.output_part_refs:
+                    raise ValueError("parquet part materializations require output parts")
+                if self.output_part_count != len(self.output_part_refs):
+                    raise ValueError("output_part_count must match output_part_refs")
+                if self.output_part_manifest_hash is None:
+                    raise ValueError("parquet part materializations require output_part_manifest_hash")
         if self.status == "blocked" and not self.blocker_reasons:
             raise ValueError("blocked source results require blocker reasons")
         PurePosixPath(self.output_ref)
@@ -122,6 +133,8 @@ class OFStyleMaterializationReport(BaseModel):
     requested_families: tuple[str, ...] = Field(min_length=1)
     requested_symbols: tuple[str, ...] = ()
     requested_intervals: tuple[str, ...] = ()
+    output_format: Literal["jsonl", "parquet_parts"] = "jsonl"
+    output_chunk_row_limit: int | None = Field(default=None, ge=1)
     max_sources_per_family: int | None = Field(default=None, ge=1)
     max_sources_per_symbol_per_family: int | None = Field(default=None, ge=1)
     archive_source_count: int = Field(ge=0)
@@ -193,6 +206,8 @@ class OFStyleMaterializationConfig:
     max_sources_per_family: int | None = None
     max_sources_per_symbol_per_family: int | None = 1
     require_complete_archive: bool = True
+    output_format: Literal["jsonl", "parquet_parts"] = "jsonl"
+    output_chunk_row_limit: int | None = None
 
 
 def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = None) -> OFStyleMaterializationReport:
@@ -211,6 +226,8 @@ def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = N
                 archive_root=parsed.archive_root,
                 output_root=parsed.output_root,
                 bucket_seconds=parsed.bucket_seconds,
+                output_format=parsed.output_format,
+                output_chunk_row_limit=parsed.output_chunk_row_limit,
             )
         )
 
@@ -232,6 +249,8 @@ def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = N
         "requested_families": tuple(parsed.families),
         "requested_symbols": tuple(parsed.symbols),
         "requested_intervals": tuple(parsed.intervals),
+        "output_format": parsed.output_format,
+        "output_chunk_row_limit": parsed.output_chunk_row_limit,
         "max_sources_per_family": parsed.max_sources_per_family,
         "max_sources_per_symbol_per_family": parsed.max_sources_per_symbol_per_family,
         "archive_source_count": int(validation_report["source_count"]),
@@ -271,7 +290,13 @@ def materialize_of_style_source(
     archive_root: str | Path,
     output_root: str | Path,
     bucket_seconds: int = 60,
+    output_format: Literal["jsonl", "parquet_parts"] = "jsonl",
+    output_chunk_row_limit: int | None = None,
 ) -> OFStyleMaterializationSourceResult:
+    if output_format not in {"jsonl", "parquet_parts"}:
+        raise ValueError("output_format must be jsonl or parquet_parts")
+    if output_chunk_row_limit is not None and output_chunk_row_limit < 1:
+        raise ValueError("output_chunk_row_limit must be at least 1")
     path = Path(source_path)
     archive_root_path = Path(archive_root)
     output_root_path = Path(output_root)
@@ -288,13 +313,35 @@ def materialize_of_style_source(
         blockers = (f"materialization_failed:{type(exc).__name__}",)
 
     feature_family = _feature_family_for(family)
-    output_ref = _output_ref_for_source(metadata, feature_family=feature_family, source_path=path)
+    output_ref = _output_ref_for_source(
+        metadata,
+        feature_family=feature_family,
+        source_path=path,
+        output_format=output_format,
+    )
     output_path = output_root_path / output_ref
     row_manifest_hash = manifest_rows_hash(rows)
+    output_part_refs: tuple[str, ...] = ()
+    output_part_manifest_hash: str | None = None
     if rows:
-        _write_jsonl_with_sha(output_path, rows)
-        output_sha256 = _sha256_file(output_path)
-        output_bytes = output_path.stat().st_size
+        if output_format == "jsonl":
+            _write_jsonl_with_sha(output_path, rows)
+            output_sha256 = _sha256_file(output_path)
+            output_bytes = output_path.stat().st_size
+        else:
+            part_result = _write_parquet_parts_with_index(
+                output_root=output_root_path,
+                index_ref=output_ref,
+                metadata=metadata,
+                feature_family=feature_family,
+                rows=rows,
+                row_manifest_hash=row_manifest_hash,
+                chunk_row_limit=output_chunk_row_limit or 100_000,
+            )
+            output_sha256 = part_result["index_sha256"]
+            output_bytes = int(part_result["output_bytes"])
+            output_part_refs = tuple(part_result["part_refs"])
+            output_part_manifest_hash = str(part_result["part_manifest_hash"])
     else:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text("", encoding="utf-8")
@@ -312,9 +359,13 @@ def materialize_of_style_source(
         "day": metadata.get("day"),
         "source_ref": str(metadata.get("raw_ref") or _relative_ref(path, archive_root_path)),
         "raw_sha256": metadata.get("raw_sha256") or metadata.get("checksum_sha256"),
+        "output_format": output_format,
         "output_ref": output_ref,
         "output_sha256": output_sha256,
         "output_bytes": output_bytes,
+        "output_part_refs": output_part_refs,
+        "output_part_count": len(output_part_refs),
+        "output_part_manifest_hash": output_part_manifest_hash,
         "status": status,
         "input_row_count": sum(int(row.get("source_row_count", 0)) for row in rows),
         "feature_row_count": len(rows),
@@ -362,9 +413,26 @@ def of_style_materialization_source_results_hash(
     rows: Iterable[OFStyleMaterializationSourceResult | Mapping[str, Any]],
 ) -> str:
     return manifest_rows_hash(
-        row.model_dump(mode="json") if isinstance(row, OFStyleMaterializationSourceResult) else dict(row)
+        _source_result_manifest_payload(row)
         for row in rows
     )
+
+
+def _source_result_manifest_payload(
+    row: OFStyleMaterializationSourceResult | Mapping[str, Any],
+) -> dict[str, Any]:
+    payload = row.model_dump(mode="json") if isinstance(row, OFStyleMaterializationSourceResult) else dict(row)
+    if (
+        payload.get("output_format", "jsonl") == "jsonl"
+        and not payload.get("output_part_refs")
+        and int(payload.get("output_part_count", 0) or 0) == 0
+        and payload.get("output_part_manifest_hash") is None
+    ):
+        payload.pop("output_format", None)
+        payload.pop("output_part_refs", None)
+        payload.pop("output_part_count", None)
+        payload.pop("output_part_manifest_hash", None)
+    return payload
 
 
 def of_style_materialization_report_id_for(report: OFStyleMaterializationReport | Mapping[str, Any]) -> str:
@@ -984,11 +1052,21 @@ def _metadata_from_path(path: Path, *, archive_root: Path) -> dict[str, Any]:
     }
 
 
-def _output_ref_for_source(metadata: Mapping[str, Any], *, feature_family: str, source_path: Path) -> str:
+def _output_ref_for_source(
+    metadata: Mapping[str, Any],
+    *,
+    feature_family: str,
+    source_path: Path,
+    output_format: Literal["jsonl", "parquet_parts"] = "jsonl",
+) -> str:
     family = str(metadata["family"])
     venue_symbol = str(metadata["venue_symbol"])
     interval = str(metadata.get("interval") or "native")
-    filename = source_path.name.removesuffix(".zip") + ".jsonl"
+    stem = source_path.name.removesuffix(".zip")
+    if output_format == "jsonl":
+        filename = stem + ".jsonl"
+    else:
+        filename = f"{stem}.parts/index.json"
     return f"features/{feature_family}/{family}/{venue_symbol}/{interval}/{filename}"
 
 
@@ -1059,6 +1137,84 @@ def _write_json_with_sha(path: Path, payload: Mapping[str, Any]) -> None:
     tmp.write_text(json.dumps(dict(payload), indent=2, sort_keys=True, ensure_ascii=True, allow_nan=False) + "\n", encoding="utf-8")
     tmp.replace(path)
     _write_text_sha(path)
+
+
+def _write_parquet_parts_with_index(
+    *,
+    output_root: Path,
+    index_ref: str,
+    metadata: Mapping[str, Any],
+    feature_family: str,
+    rows: Sequence[Mapping[str, Any]],
+    row_manifest_hash: str,
+    chunk_row_limit: int,
+) -> dict[str, Any]:
+    if chunk_row_limit < 1:
+        raise ValueError("chunk_row_limit must be at least 1")
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError as exc:  # pragma: no cover - pyarrow is part of the v2 runtime.
+        raise RuntimeError("pyarrow is required for parquet_parts output") from exc
+
+    index_path = output_root / index_ref
+    parts_dir = index_path.parent
+    parts_dir.mkdir(parents=True, exist_ok=True)
+    part_rows: list[dict[str, Any]] = []
+    for part_index, start in enumerate(range(0, len(rows), chunk_row_limit)):
+        chunk = [dict(row) for row in rows[start : start + chunk_row_limit]]
+        part_path = parts_dir / f"part-{part_index:06d}.parquet"
+        table = pa.Table.from_pylist(chunk)
+        pq.write_table(table, part_path)
+        _write_text_sha(part_path)
+        row_hashes = tuple(str(row["row_hash"]) for row in chunk if row.get("row_hash"))
+        part_ref = _relative_ref(part_path, output_root)
+        part_rows.append(
+            {
+                "part_index": part_index,
+                "part_ref": part_ref,
+                "part_sha256": _sha256_file(part_path),
+                "part_bytes": part_path.stat().st_size,
+                "row_count": len(chunk),
+                "first_row_hash": row_hashes[0] if row_hashes else None,
+                "last_row_hash": row_hashes[-1] if row_hashes else None,
+            }
+        )
+
+    part_manifest_hash = manifest_rows_hash(part_rows)
+    part_refs = tuple(str(row["part_ref"]) for row in part_rows)
+    payload = {
+        "schema_version": V2_SCHEMA_VERSION,
+        "manifest_type": "of_style_feature_part_index_v1",
+        "output_format": "parquet_parts",
+        "feature_family": feature_family,
+        "source_family": str(metadata["family"]),
+        "dataset": str(metadata.get("dataset") or metadata["family"]),
+        "symbol": str(metadata.get("symbol") or _symbol_from_venue(str(metadata["venue_symbol"]))),
+        "venue": "binance_usdm",
+        "venue_symbol": str(metadata["venue_symbol"]),
+        "interval": metadata.get("interval"),
+        "day": metadata.get("day"),
+        "source_ref": str(metadata.get("raw_ref") or ""),
+        "raw_sha256": metadata.get("raw_sha256") or metadata.get("checksum_sha256"),
+        "chunk_row_limit": chunk_row_limit,
+        "part_count": len(part_rows),
+        "part_refs": part_refs,
+        "parts": tuple(part_rows),
+        "part_manifest_hash": part_manifest_hash,
+        "row_manifest_hash": row_manifest_hash,
+        "feature_row_count": len(rows),
+        "input_row_count": sum(int(row.get("source_row_count", 0)) for row in rows),
+        "accepted_historical_coverage_proof": False,
+        **dict(RESEARCH_BOUNDARY),
+    }
+    _write_json_with_sha(index_path, payload)
+    return {
+        "index_sha256": _sha256_file(index_path),
+        "output_bytes": index_path.stat().st_size + sum(int(row["part_bytes"]) for row in part_rows),
+        "part_refs": part_refs,
+        "part_manifest_hash": part_manifest_hash,
+    }
 
 
 def _write_text_sha(path: Path) -> None:

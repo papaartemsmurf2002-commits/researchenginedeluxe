@@ -33,6 +33,7 @@ from tradingbotsuite.v2.backtest_data.lockbox import (
     windows_overlap,
 )
 from tradingbotsuite.v2.backtest_data.schemas import (
+    BacktestColumnarDataSlice,
     EVIDENCE_MODES,
     BacktestDataManifest,
     BacktestDataRequest,
@@ -64,6 +65,81 @@ class BacktestDataService:
         asof_date: date | None = None,
         write_manifest: bool = True,
     ) -> BacktestDataSlice:
+        (
+            parsed,
+            table,
+            manifest,
+            snapshot,
+            source_file_ids,
+            warmup_count,
+            reported_count,
+        ) = self._load_panel_table_and_manifest(
+            request,
+            asof_date=asof_date,
+            write_manifest=write_manifest,
+        )
+        rows = _table_to_panel_rows(table, parsed.requested_fields)
+        return BacktestDataSlice(
+            request=parsed,
+            rows=tuple(rows),
+            data_manifest=manifest,
+            archive_snapshot_id=snapshot.archive_snapshot_id,
+            universe_snapshot_id=parsed.universe_snapshot_id,
+            coverage_report_id=manifest.coverage_report_id,
+            coverage_report_ids=manifest.coverage_report_ids,
+            loaded_fields=parsed.requested_fields,
+            warmup_row_count=warmup_count,
+            reported_row_count=reported_count,
+        )
+
+    def load_panel_columnar(
+        self,
+        request: BacktestDataRequest | Mapping[str, Any],
+        *,
+        asof_date: date | None = None,
+        write_manifest: bool = True,
+    ) -> BacktestColumnarDataSlice:
+        (
+            parsed,
+            table,
+            manifest,
+            snapshot,
+            _source_file_ids,
+            warmup_count,
+            reported_count,
+        ) = self._load_panel_table_and_manifest(
+            request,
+            asof_date=asof_date,
+            write_manifest=write_manifest,
+        )
+        return BacktestColumnarDataSlice(
+            request=parsed,
+            table=table,
+            data_manifest=manifest,
+            archive_snapshot_id=snapshot.archive_snapshot_id,
+            universe_snapshot_id=parsed.universe_snapshot_id,
+            coverage_report_id=manifest.coverage_report_id,
+            coverage_report_ids=manifest.coverage_report_ids,
+            loaded_fields=parsed.requested_fields,
+            warmup_row_count=warmup_count,
+            reported_row_count=reported_count,
+        )
+
+    def _load_panel_table_and_manifest(
+        self,
+        request: BacktestDataRequest | Mapping[str, Any],
+        *,
+        asof_date: date | None,
+        write_manifest: bool,
+    ) -> tuple[
+        BacktestDataRequest,
+        pa.Table,
+        BacktestDataManifest,
+        ArchiveSnapshotRecord,
+        tuple[str, ...],
+        int,
+        int,
+    ]:
         parsed = (
             request
             if isinstance(request, BacktestDataRequest)
@@ -91,7 +167,7 @@ class BacktestDataService:
                 except CoverageGateError as exc:
                     raise BacktestDataError(str(exc)) from exc
         files = self._matching_snapshot_files(store, snapshot, parsed)
-        rows, source_file_ids, warmup_count, reported_count = self._read_panel_rows(
+        table, source_file_ids, warmup_count, reported_count = self._read_panel_table(
             layout=layout,
             files=files,
             request=parsed,
@@ -104,25 +180,14 @@ class BacktestDataService:
             snapshot=snapshot,
             coverage_reports=coverage_reports,
             source_file_ids=source_file_ids,
-            rows=rows,
+            row_count=table.num_rows,
             warmup_count=warmup_count,
             reported_count=reported_count,
             lockbox_window=lockbox_window,
         )
         if write_manifest:
             self._append_data_manifest(layout, manifest)
-        return BacktestDataSlice(
-            request=parsed,
-            rows=tuple(rows),
-            data_manifest=manifest,
-            archive_snapshot_id=snapshot.archive_snapshot_id,
-            universe_snapshot_id=parsed.universe_snapshot_id,
-            coverage_report_id=manifest.coverage_report_id,
-            coverage_report_ids=manifest.coverage_report_ids,
-            loaded_fields=parsed.requested_fields,
-            warmup_row_count=warmup_count,
-            reported_row_count=reported_count,
-        )
+        return parsed, table, manifest, snapshot, source_file_ids, warmup_count, reported_count
 
     def _enforce_temporal_policy(
         self,
@@ -303,15 +368,15 @@ class BacktestDataService:
             raise BacktestDataError("archive_snapshot_no_matching_files: " + ",".join(missing))
         return sorted(rows, key=lambda row: (row.instrument_id or "", row.date or "", row.path, row.file_id))
 
-    def _read_panel_rows(
+    def _read_panel_table(
         self,
         *,
         layout: ArchiveLayout,
         files: list[FileManifestRow],
         request: BacktestDataRequest,
         load_start: datetime,
-    ) -> tuple[list[dict[str, Any]], tuple[str, ...], int, int]:
-        output_rows: list[tuple[datetime, str, dict[str, Any]]] = []
+    ) -> tuple[pa.Table, tuple[str, ...], int, int]:
+        output_tables: list[pa.Table] = []
         source_file_ids: list[str] = []
         read_fields = set(request.requested_fields) | {"ts"}
         for file_row in files:
@@ -324,30 +389,29 @@ class BacktestDataService:
                 raise BacktestDataError(
                     "requested_field_not_found: " + ",".join(missing_fields)
                 )
-            file_had_rows = False
-            for row in _scan_parquet_rows(
+            table = _scan_parquet_table(
                 path,
                 columns=tuple(sorted(read_fields)),
                 request=request,
                 load_start=load_start,
-            ):
-                ts = parse_timestamp(row["ts"])
-                if load_start <= ts < request.end_ts:
-                    file_had_rows = True
-                    output = {
-                        field: ts if field == "ts" else row.get(field)
-                        for field in request.requested_fields
-                    }
-                    output_rows.append((ts, file_row.file_id, output))
-            if file_had_rows:
+            )
+            if table.num_rows > 0:
+                table = _normalize_table_ts(table)
+                table = table.append_column(
+                    "__source_file_id",
+                    pa.array([file_row.file_id] * table.num_rows, type=pa.string()),
+                )
+                output_tables.append(table)
                 source_file_ids.append(file_row.file_id)
-        if not output_rows:
+        if not output_tables:
             raise BacktestDataError("no_archive_rows_loaded")
-        output_rows.sort(key=lambda item: (item[0], item[1]))
-        rows = [row for _ts, _file_id, row in output_rows]
-        warmup_count = sum(1 for ts, _file_id, _row in output_rows if ts < request.start_ts)
-        reported_count = sum(1 for ts, _file_id, _row in output_rows if request.start_ts <= ts < request.end_ts)
-        return rows, tuple(dict.fromkeys(source_file_ids)), warmup_count, reported_count
+        table = pa.concat_tables(output_tables, promote_options="default")
+        table = _sort_table_multi(table, (("ts", "ascending"), ("__source_file_id", "ascending")))
+        timestamps = [parse_timestamp(value) for value in table.column("ts").to_pylist()]
+        warmup_count = sum(1 for ts in timestamps if ts < request.start_ts)
+        reported_count = sum(1 for ts in timestamps if request.start_ts <= ts < request.end_ts)
+        table = table.select(list(request.requested_fields))
+        return table, tuple(dict.fromkeys(source_file_ids)), warmup_count, reported_count
 
     def _build_manifest(
         self,
@@ -356,7 +420,7 @@ class BacktestDataService:
         snapshot: ArchiveSnapshotRecord,
         coverage_reports: tuple[CoverageReport, ...],
         source_file_ids: tuple[str, ...],
-        rows: list[dict[str, Any]],
+        row_count: int,
         warmup_count: int,
         reported_count: int,
         lockbox_window: LockboxWindow | None,
@@ -381,7 +445,7 @@ class BacktestDataService:
             "coverage_report_ids": coverage_report_ids,
             "source_file_ids": source_file_ids,
             "loaded_fields": request.requested_fields,
-            "row_count": len(rows),
+            "row_count": row_count,
             "warmup_row_count": warmup_count,
             "reported_row_count": reported_count,
         }
@@ -407,7 +471,7 @@ class BacktestDataService:
             lockbox_end_ts=lockbox_window.end_ts if lockbox_window else None,
             coverage_ratio=min(report.coverage_ratio for report in coverage_reports),
             coverage_min=request.validation_config.coverage_min,
-            row_count=len(rows),
+            row_count=row_count,
             warmup_row_count=warmup_count,
             reported_row_count=reported_count,
         )
@@ -456,23 +520,39 @@ def _add_calendar_months(value: datetime, months: int) -> datetime:
     return value.replace(year=year, month=month, day=day)
 
 
-def _scan_parquet_rows(
+def _scan_parquet_table(
     path: Path,
     *,
     columns: tuple[str, ...],
     request: BacktestDataRequest,
     load_start: datetime,
-) -> list[dict[str, Any]]:
+) -> pa.Table:
     try:
         dataset = ds.dataset(path, format="parquet")
         filter_expr = _scanner_filter(dataset.schema, request=request, load_start=load_start)
-        rows: list[dict[str, Any]] = []
         scanner = dataset.scanner(columns=list(columns), filter=filter_expr)
-        for batch in scanner.to_batches():
-            rows.extend(batch.to_pylist())
-        return rows
+        return scanner.to_table()
     except Exception:
-        return pq.read_table(path, columns=list(columns)).to_pylist()
+        table = pq.read_table(path, columns=list(columns))
+        names = set(table.schema.names)
+        keep = [True] * table.num_rows
+        if "ts" in names:
+            keep = [
+                current and load_start <= parse_timestamp(value) < request.end_ts
+                for current, value in zip(keep, table.column("ts").to_pylist())
+            ]
+        if "instrument_id" in names:
+            allowed = set(request.instrument_ids)
+            keep = [
+                current and str(value) in allowed
+                for current, value in zip(keep, table.column("instrument_id").to_pylist())
+            ]
+        if "timeframe" in names:
+            keep = [
+                current and str(value) == request.timeframe
+                for current, value in zip(keep, table.column("timeframe").to_pylist())
+            ]
+        return table.filter(pa.array(keep, type=pa.bool_()))
 
 
 def _scanner_filter(
@@ -581,6 +661,31 @@ def _sort_table(table: pa.Table, column: str) -> pa.Table:
         return table
     order = pc.sort_indices(table, sort_keys=[(column, "ascending")])
     return table.take(order)
+
+
+def _sort_table_multi(table: pa.Table, sort_keys: tuple[tuple[str, str], ...]) -> pa.Table:
+    if table.num_rows <= 1:
+        return table
+    order = pc.sort_indices(table, sort_keys=list(sort_keys))
+    return table.take(order)
+
+
+def _normalize_table_ts(table: pa.Table) -> pa.Table:
+    if "ts" not in table.schema.names:
+        return table
+    timestamps = [parse_timestamp(value) for value in table.column("ts").to_pylist()]
+    ts_array = pa.array(timestamps, type=pa.timestamp("us", tz="UTC"))
+    index = table.schema.get_field_index("ts")
+    return table.set_column(index, "ts", ts_array)
+
+
+def _table_to_panel_rows(table: pa.Table, requested_fields: tuple[str, ...]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row in table.select(list(requested_fields)).to_pylist():
+        if "ts" in row:
+            row["ts"] = parse_timestamp(row["ts"])
+        rows.append(row)
+    return rows
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:

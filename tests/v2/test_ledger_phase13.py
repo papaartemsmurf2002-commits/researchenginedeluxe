@@ -5,6 +5,7 @@ import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pyarrow.parquet as pq
 import pytest
 
 from tradingbotsuite.v2.archive.hashing import file_sha256
@@ -12,6 +13,7 @@ from tradingbotsuite.v2.ledger import (
     LedgerAppendRequest,
     LedgerError,
     append_run_to_ledger,
+    compact_ledger_parts,
     export_ledger,
     leaderboard,
     read_ledger,
@@ -151,11 +153,38 @@ def test_ledger_append_maintains_sidecar_index(tmp_path) -> None:
     index_path = ledger_path.with_suffix(".index.json")
     payload = json.loads(index_path.read_text(encoding="utf-8"))
     rows = read_ledger(ledger_path)
+    append_log = ledger_path.with_suffix(".parts") / "append_log.jsonl"
 
-    assert payload["schema_version"] == "ledger_index_v1"
+    assert payload["schema_version"] == "ledger_part_index_v1"
+    assert payload["storage_mode"] == "append_parts"
     assert payload["row_count"] == 2
     assert payload["run_ids"] == {"indexed-run-a": 0, "indexed-run-b": 1}
+    assert len(payload["parts"]) == 2
+    assert ledger_path.exists()
+    assert pq.read_table(ledger_path).num_rows == 0
+    assert append_log.exists()
+    assert len(append_log.read_text(encoding="utf-8").strip().splitlines()) == 2
     assert [row.run_id for row in rows] == ["indexed-run-a", "indexed-run-b"]
+
+
+def test_ledger_parts_compact_to_current_parquet_and_keep_appending(tmp_path) -> None:
+    first = _write_run_manifest(tmp_path, "compact-run-a")
+    second = _write_run_manifest(tmp_path, "compact-run-b")
+    third = _write_run_manifest(tmp_path, "compact-run-c")
+    ledger_path = tmp_path / "ledger.parquet"
+
+    append_run_to_ledger(LedgerAppendRequest(run_manifest_path=str(first), ledger_path=str(ledger_path)))
+    append_run_to_ledger(LedgerAppendRequest(run_manifest_path=str(second), ledger_path=str(ledger_path)))
+    compacted = compact_ledger_parts(ledger_path)
+    append_run_to_ledger(LedgerAppendRequest(run_manifest_path=str(third), ledger_path=str(ledger_path)))
+    payload = json.loads(ledger_path.with_suffix(".index.json").read_text(encoding="utf-8"))
+    rows = read_ledger(ledger_path)
+
+    assert compacted.exists()
+    assert payload["compacted_path"] == str(compacted)
+    assert payload["row_count"] == 3
+    assert len(payload["parts"]) == 1
+    assert [row.run_id for row in rows] == ["compact-run-a", "compact-run-b", "compact-run-c"]
 
 
 def test_xlsx_export_is_generated_from_canonical_ledger(tmp_path) -> None:

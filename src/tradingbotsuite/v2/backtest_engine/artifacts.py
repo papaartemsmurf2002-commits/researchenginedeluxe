@@ -19,6 +19,7 @@ from tradingbotsuite.v2.security.boundary import require_research_boundary
 
 class EngineLane(str, Enum):
     VECTORIZED = "vectorized"
+    FAST_VECTORIZED = "fast_vectorized"
     EVENT_DRIVEN = "event_driven"
 
 
@@ -119,6 +120,7 @@ class BacktestRunConfig(BaseModel):
     initial_equity: float = Field(default=1.0, gt=0.0)
     fee_bps: float = Field(default=6.0, ge=0.0)
     spread_bps: float = Field(default=5.0, ge=0.0)
+    spread_observation_policy: str = "lenient"
     slippage_bps: float = Field(default=3.0, ge=0.0)
     impact_bps: float = Field(default=1.0, ge=0.0)
     account_notional_usd: float = Field(default=10_000.0, gt=0.0)
@@ -144,6 +146,14 @@ class BacktestRunConfig(BaseModel):
         if value is None:
             return None
         return ensure_utc(value)
+
+    @field_validator("spread_observation_policy")
+    @classmethod
+    def _known_spread_observation_policy(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"lenient", "accepted_research_strict"}:
+            raise ValueError("spread_observation_policy must be lenient or accepted_research_strict")
+        return normalized
 
     @model_validator(mode="after")
     def _validate_cost_identity(self) -> "BacktestRunConfig":
