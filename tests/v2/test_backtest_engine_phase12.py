@@ -65,6 +65,38 @@ def test_backtest_writes_monthly_validation_folds_capped_at_four(tmp_path) -> No
     assert diagnostic_rows[0]["fold_id"] == "full_window"
 
 
+def test_accepted_research_strict_spread_units_rejects_ambiguous_raw_spread(tmp_path) -> None:
+    rows = [dict(row, spread=0.001) for row in _daily_rows(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 1, 4, tzinfo=UTC))]
+
+    result = run_vectorized_backtest(
+        config=_strict_spread_config(tmp_path / "runs", run_id="strict-ambiguous-spread"),
+        strategy_spec=_funding_carry_spec(),
+        panel_rows=rows,
+    )
+
+    assert result.metrics is None
+    assert result.manifest.failure_reason == "ambiguous_spread_units_for_accepted_research"
+
+
+def test_accepted_research_strict_spread_units_accepts_explicit_units(tmp_path) -> None:
+    rows = [
+        dict(row, spread=0.001, spread_units="fraction")
+        for row in _daily_rows(datetime(2024, 1, 1, tzinfo=UTC), datetime(2024, 1, 4, tzinfo=UTC))
+    ]
+
+    result = run_vectorized_backtest(
+        config=_strict_spread_config(tmp_path / "runs", run_id="strict-explicit-spread"),
+        strategy_spec=_funding_carry_spec(),
+        panel_rows=rows,
+    )
+    cost_manifest = json.loads((Path(result.run_dir) / "cost_manifest.json").read_text(encoding="utf-8"))
+
+    assert result.metrics is not None
+    assert result.manifest.failure_reason is None
+    assert cost_manifest["spread_model"]["spread_observation_policy"] == "accepted_research_strict"
+    assert cost_manifest["spread_observation_summary"]["counts_by_source"] == {"explicit_units_fraction": 3}
+
+
 def _config(output_root: Path, *, run_id: str) -> BacktestRunConfig:
     cost_model = CostModelConfig(
         cost_model_id="zero_research_costs_v1",
@@ -91,6 +123,15 @@ def _config(output_root: Path, *, run_id: str) -> BacktestRunConfig:
         venue_scope="hyperliquid",
         git_sha="test-git-sha",
     )
+
+
+def _strict_spread_config(output_root: Path, *, run_id: str) -> BacktestRunConfig:
+    base = _config(output_root, run_id=run_id)
+    assert base.cost_model is not None
+    strict_cost_model = base.cost_model.model_copy(
+        update={"spread_observation_policy": "accepted_research_strict"}
+    )
+    return base.model_copy(update={"cost_model": strict_cost_model})
 
 
 def _funding_carry_spec() -> dict[str, object]:

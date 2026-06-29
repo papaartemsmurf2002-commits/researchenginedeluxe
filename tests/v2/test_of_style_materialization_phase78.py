@@ -4,6 +4,8 @@ import json
 import zipfile
 from pathlib import Path
 
+import pyarrow.parquet as pq
+
 from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.config.schemas import RESEARCH_BOUNDARY
 from tradingbotsuite.v2.data_sources.of_style_materialization import (
@@ -46,7 +48,52 @@ def test_materializes_agg_trades_orderflow_rows(tmp_path):
     assert rows[0]["vwap"] == 10.333333333333
     assert rows[0]["research_only"] is True
     assert rows[0]["promotion_ready"] is False
+    assert result.output_format == "jsonl"
+    assert result.output_part_refs == ()
     assert (output_root / result.output_ref).with_name(Path(result.output_ref).name + ".sha256").exists()
+
+
+def test_materializes_parquet_part_index_when_requested(tmp_path):
+    archive_root = tmp_path / "archive"
+    output_root = tmp_path / "out"
+    path = _write_source(
+        archive_root,
+        family="aggTrades",
+        venue_symbol="BTCUSDT",
+        header=("agg_trade_id", "price", "quantity", "first_trade_id", "last_trade_id", "transact_time", "is_buyer_maker"),
+        rows=(
+            ("1", "10", "2", "1", "1", "1704067200000", "false"),
+            ("2", "11", "1", "2", "2", "1704067260000", "true"),
+        ),
+    )
+
+    result = materialize_of_style_source(
+        path,
+        archive_root=archive_root,
+        output_root=output_root,
+        output_format="parquet_parts",
+        output_chunk_row_limit=1,
+    )
+
+    assert result.status == "materialized"
+    assert result.output_format == "parquet_parts"
+    assert result.output_ref.endswith(".parts/index.json")
+    assert result.output_part_count == 2
+    assert len(result.output_part_refs) == 2
+    index_path = output_root / result.output_ref
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    assert index["manifest_type"] == "of_style_feature_part_index_v1"
+    assert index["part_count"] == 2
+    assert index["row_manifest_hash"] == result.row_manifest_hash
+    assert index["part_manifest_hash"] == result.output_part_manifest_hash
+    assert index["research_only"] is True
+    assert index["promotion_ready"] is False
+    first_part_rows = pq.read_table(output_root / result.output_part_refs[0]).to_pylist()
+    second_part_rows = pq.read_table(output_root / result.output_part_refs[1]).to_pylist()
+    assert first_part_rows[0]["bucket_start_ms"] == 1704067200000
+    assert second_part_rows[0]["bucket_start_ms"] == 1704067260000
+    assert index_path.with_name("index.json.sha256").exists()
+    assert (output_root / result.output_part_refs[0]).with_name("part-000000.parquet.sha256").exists()
 
 
 def test_materializes_all_of_style_family_shapes_for_archive_report(tmp_path):

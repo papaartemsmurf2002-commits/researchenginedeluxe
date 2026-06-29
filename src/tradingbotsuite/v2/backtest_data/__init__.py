@@ -17,6 +17,7 @@ from tradingbotsuite.v2.backtest_data.lockbox import (
     windows_overlap,
 )
 from tradingbotsuite.v2.backtest_data.schemas import (
+    BacktestColumnarDataSlice,
     BacktestDataManifest,
     BacktestDataRequest,
     BacktestDataSlice,
@@ -26,6 +27,7 @@ from tradingbotsuite.v2.backtest_data.service import BacktestDataError, Backtest
 
 __all__ = [
     "BacktestDataError",
+    "BacktestColumnarDataSlice",
     "BacktestDataManifest",
     "BacktestDataRequest",
     "BacktestDataService",

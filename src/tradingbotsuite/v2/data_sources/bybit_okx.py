@@ -109,6 +109,50 @@ class BybitOkxAvailabilityRequest(BaseModel):
         return self
 
 
+class BybitOkxPaginatedRequestPlan(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: str = V2_SCHEMA_VERSION
+    plan_type: str = "bybit_okx_paginated_request_plan"
+    endpoint_id: str = Field(min_length=1)
+    source_id: str = Field(min_length=1)
+    venue: str = Field(min_length=1)
+    venue_symbol: str = Field(min_length=1)
+    day: date
+    page_span_ms: int | None = Field(default=None, ge=1)
+    max_pages: int = Field(ge=1)
+    requests: tuple[BybitOkxAvailabilityRequest, ...] = ()
+    request_count: int = Field(ge=0)
+    truncated: bool = False
+    truncation_reasons: tuple[str, ...] = ()
+    blocked_reasons: tuple[str, ...] = ()
+    research_only: bool = True
+    observe_only: bool = True
+    promotion_ready: bool = False
+    candidate_evidence: bool = False
+    candidate_pack_eligible: bool = False
+    live_signal: bool = False
+    paper_signal: bool = False
+    sizing_instruction: bool = False
+    order_placement_instruction: bool = False
+    runtime_mode_change: bool = False
+
+    @model_validator(mode="after")
+    def _validate_plan(self) -> "BybitOkxPaginatedRequestPlan":
+        require_research_boundary(self, context="Bybit/OKX paginated request plan")
+        if self.plan_type != "bybit_okx_paginated_request_plan":
+            raise ValueError("plan_type must be bybit_okx_paginated_request_plan")
+        if self.request_count != len(self.requests):
+            raise ValueError("request_count must match requests")
+        if self.truncated and not self.truncation_reasons:
+            raise ValueError("truncated plans require truncation_reasons")
+        if self.blocked_reasons and self.requests:
+            raise ValueError("blocked plans cannot include requests")
+        if not self.blocked_reasons and not self.requests:
+            raise ValueError("unblocked paginated plans require requests")
+        return self
+
+
 class BybitOkxAvailabilityRow(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -539,6 +583,102 @@ def build_bybit_okx_availability_request(
 ) -> BybitOkxAvailabilityRequest:
     spec = bybit_okx_endpoint_spec(endpoint_id)
     start_ms, end_ms = _day_window_ms(day)
+    return _build_bybit_okx_window_request(
+        spec=spec,
+        symbol=symbol,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        base_url=base_url,
+    )
+
+
+def build_bybit_okx_paginated_request_plan(
+    *,
+    endpoint_id: str,
+    symbol: str,
+    day: date,
+    max_pages: int,
+    base_url: str | None = None,
+) -> BybitOkxPaginatedRequestPlan:
+    if max_pages < 1:
+        raise ValueError("max_pages must be at least 1")
+    spec = bybit_okx_endpoint_spec(endpoint_id)
+    venue_symbol = _normalize_symbol(symbol, spec.venue)
+    if not spec.supports_date_window:
+        return BybitOkxPaginatedRequestPlan(
+            endpoint_id=spec.endpoint_id,
+            source_id=spec.source_id,
+            venue=spec.venue,
+            venue_symbol=venue_symbol,
+            day=day,
+            max_pages=max_pages,
+            requests=(),
+            request_count=0,
+            blocked_reasons=("endpoint_does_not_support_date_window",),
+        )
+    start_ms, end_ms = _day_window_ms(day)
+    page_span_ms = _page_span_ms_for_spec(spec)
+    requests: list[BybitOkxAvailabilityRequest] = []
+    cursor = start_ms
+    while cursor < end_ms and len(requests) < max_pages:
+        page_end_ms = min(end_ms, cursor + page_span_ms)
+        requests.append(
+            _build_bybit_okx_window_request(
+                spec=spec,
+                symbol=venue_symbol,
+                start_ms=cursor,
+                end_ms=page_end_ms,
+                base_url=base_url,
+            )
+        )
+        cursor = page_end_ms
+    truncated = cursor < end_ms
+    return BybitOkxPaginatedRequestPlan(
+        endpoint_id=spec.endpoint_id,
+        source_id=spec.source_id,
+        venue=spec.venue,
+        venue_symbol=venue_symbol,
+        day=day,
+        page_span_ms=page_span_ms,
+        max_pages=max_pages,
+        requests=tuple(requests),
+        request_count=len(requests),
+        truncated=truncated,
+        truncation_reasons=("page_cap_exceeded",) if truncated else (),
+    )
+
+
+def fetch_bybit_okx_public_market_pages(
+    *,
+    plan: BybitOkxPaginatedRequestPlan | Mapping[str, Any],
+    source_entry: SourceRegistryEntry | Mapping[str, Any],
+    get_probe: BybitOkxGetProbe | None = None,
+) -> tuple[BybitOkxFetchResult, ...]:
+    parsed_plan = (
+        plan
+        if isinstance(plan, BybitOkxPaginatedRequestPlan)
+        else BybitOkxPaginatedRequestPlan.model_validate(dict(plan))
+    )
+    if parsed_plan.blocked_reasons:
+        return ()
+    return tuple(
+        fetch_bybit_okx_public_market_request(
+            request=request,
+            source_entry=source_entry,
+            get_probe=get_probe,
+        )
+        for request in parsed_plan.requests
+    )
+
+
+def _build_bybit_okx_window_request(
+    *,
+    spec: BybitOkxEndpointSpec,
+    symbol: str,
+    start_ms: int,
+    end_ms: int,
+    base_url: str | None = None,
+) -> BybitOkxAvailabilityRequest:
     params = _request_params_for_spec(spec=spec, symbol=symbol, start_ms=start_ms, end_ms=end_ms)
     root = (base_url or spec.base_url).rstrip("/")
     query = urlencode(params)
@@ -1284,6 +1424,37 @@ def _row_from_request(
         probe_error=probe_error,
         endpoint_caveats=spec.endpoint_caveats,
     )
+
+
+def _page_span_ms_for_spec(spec: BybitOkxEndpointSpec) -> int:
+    day_ms = 24 * 60 * 60 * 1000
+    limit = spec.limit or 1
+    if spec.endpoint_id in {"bybit_kline", "okx_history_candles"}:
+        return min(day_ms, limit * _interval_ms(str(spec.interval)))
+    if spec.endpoint_id == "bybit_open_interest":
+        return min(day_ms, limit * _interval_ms(str(spec.interval)))
+    if spec.endpoint_id in {"bybit_funding_history", "okx_funding_rate_history"}:
+        return day_ms
+    return day_ms
+
+
+def _interval_ms(interval: str) -> int:
+    normalized = interval.strip().lower()
+    if not normalized:
+        raise ValueError("interval cannot be empty")
+    if normalized.isdigit():
+        return int(normalized) * 60 * 1000
+    for suffix, multiplier in (
+        ("min", 60 * 1000),
+        ("m", 60 * 1000),
+        ("h", 60 * 60 * 1000),
+        ("d", 24 * 60 * 60 * 1000),
+    ):
+        if normalized.endswith(suffix):
+            amount = normalized[: -len(suffix)]
+            if amount.isdigit():
+                return int(amount) * multiplier
+    raise ValueError(f"unsupported interval for pagination: {interval!r}")
 
 
 def _request_params_for_spec(

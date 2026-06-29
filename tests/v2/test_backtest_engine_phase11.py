@@ -3,15 +3,19 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
+import pytest
 
 from tradingbotsuite.v2.backtest_engine import (
     BacktestRunConfig,
+    EngineLane,
     RunStatus,
     recompute_metrics_from_run_manifest,
     run_event_driven_placeholder,
     run_vectorized_backtest,
 )
+from tradingbotsuite.v2.strategy_specs import compile_signal_frame
 from tradingbotsuite.v2.strategy_specs import example_strategy_payloads
 
 
@@ -127,6 +131,57 @@ def test_same_run_manifest_reproduces_metrics_on_fixture_data(tmp_path) -> None:
 
     assert result.metrics is not None
     assert recomputed.model_dump(mode="json") == result.metrics.model_dump(mode="json")
+
+
+def test_fast_vectorized_lane_matches_reference_metrics_and_artifacts(tmp_path) -> None:
+    panel = _panel_rows()
+    spec = _short_spec("hl_cross_sectional_momentum_v1")
+    signal_frame = compile_signal_frame(spec, panel)
+
+    reference = run_vectorized_backtest(
+        config=_config(tmp_path / "runs", run_id="reference-lane"),
+        strategy_spec=spec,
+        panel_rows=panel,
+    )
+    fast = run_vectorized_backtest(
+        config=_config(tmp_path / "runs", run_id="fast-lane").model_copy(
+            update={"engine_lane": EngineLane.FAST_VECTORIZED}
+        ),
+        strategy_spec=spec,
+        panel_table=pa.Table.from_pylist(panel),
+        signal_frame=signal_frame,
+    )
+
+    assert reference.manifest.status == RunStatus.SUCCEEDED
+    assert fast.manifest.status == RunStatus.SUCCEEDED
+    assert fast.manifest.engine_lane == EngineLane.FAST_VECTORIZED
+    assert fast.metrics is not None
+    assert reference.metrics is not None
+    for field in (
+        "gross_return",
+        "net_return",
+        "gross_equity_final",
+        "net_equity_final",
+        "total_fee_cost",
+        "total_spread_cost",
+        "total_slippage_cost",
+        "total_impact_cost",
+        "total_transaction_cost",
+        "total_funding_pnl",
+        "total_turnover",
+    ):
+        assert getattr(fast.metrics, field) == pytest.approx(getattr(reference.metrics, field), abs=1e-12)
+    assert fast.metrics.trade_count == reference.metrics.trade_count
+    assert fast.metrics.position_row_count == reference.metrics.position_row_count
+
+    reference_equity = pq.read_table(Path(reference.run_dir) / "equity_curve.parquet").to_pylist()
+    fast_equity = pq.read_table(Path(fast.run_dir) / "equity_curve.parquet").to_pylist()
+    assert len(fast_equity) == len(reference_equity)
+    for fast_row, reference_row in zip(fast_equity, reference_equity):
+        assert fast_row["ts"] == reference_row["ts"]
+        assert fast_row["gross_return"] == pytest.approx(reference_row["gross_return"], abs=1e-12)
+        assert fast_row["net_return"] == pytest.approx(reference_row["net_return"], abs=1e-12)
+        assert fast_row["turnover"] == pytest.approx(reference_row["turnover"], abs=1e-12)
 
 
 def test_funding_and_fees_affect_net_results(tmp_path) -> None:

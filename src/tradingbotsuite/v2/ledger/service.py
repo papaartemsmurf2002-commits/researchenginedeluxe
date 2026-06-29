@@ -60,17 +60,34 @@ def append_run_to_ledger(request: LedgerAppendRequest | dict[str, Any]) -> Ledge
             manifest=manifest,
             manifest_path=manifest_path,
         )
-    ledger_index = _read_valid_ledger_index(ledger_path)
+    part_index = _read_valid_ledger_part_index(ledger_path)
+    ledger_index = None if part_index is not None else _read_valid_ledger_index(ledger_path)
+    if part_index is not None and manifest.run_id in part_index["run_ids"]:
+        raise LedgerError(f"duplicate_run_id: {manifest.run_id}")
     if ledger_index is not None and manifest.run_id in ledger_index["run_ids"]:
         raise LedgerError(f"duplicate_run_id: {manifest.run_id}")
     rows: list[LedgerRow] = []
-    if ledger_index is None:
+    if part_index is None and ledger_index is None:
         rows = read_ledger(ledger_path)
         if any(row.run_id == manifest.run_id for row in rows):
             raise LedgerError(f"duplicate_run_id: {manifest.run_id}")
         next_index = len(rows)
+        part_index = _bootstrap_ledger_part_index(
+            ledger_path,
+            compacted_path=ledger_path if ledger_path.exists() else None,
+            rows=rows,
+        )
+    elif part_index is not None:
+        next_index = int(part_index["row_count"])
     else:
         next_index = int(ledger_index["row_count"])
+        part_index = _bootstrap_ledger_part_index(
+            ledger_path,
+            compacted_path=ledger_path,
+            rows=None,
+            row_count=int(ledger_index["row_count"]),
+            run_ids=dict(ledger_index["run_ids"]),
+        )
     row = ledger_row_from_manifest(
         manifest=manifest,
         manifest_path=manifest_path,
@@ -81,13 +98,17 @@ def append_run_to_ledger(request: LedgerAppendRequest | dict[str, Any]) -> Ledge
         notes=parsed_request.notes,
     )
     row = row.model_copy(update={"row_hash": ledger_row_hash(row)})
-    if ledger_index is None or not _append_ledger_row_with_index(ledger_path, row, ledger_index):
-        _write_ledger_rows(ledger_path, [*rows, row])
+    if part_index is None or not _append_ledger_row_part(ledger_path, row, part_index):
+        if ledger_index is None or not _append_ledger_row_with_index(ledger_path, row, ledger_index):
+            _write_ledger_rows(ledger_path, [*rows, row])
     return row
 
 
 def read_ledger(ledger_path: str | Path) -> list[LedgerRow]:
     path = Path(ledger_path)
+    part_index = _read_valid_ledger_part_index(path)
+    if part_index is not None:
+        return _read_ledger_parts(path, part_index)
     if not path.exists():
         return []
     table = pq.read_table(path)
@@ -99,6 +120,29 @@ def read_ledger(ledger_path: str | Path) -> list[LedgerRow]:
         if row.row_hash != expected_hash:
             raise LedgerError(f"ledger_row_hash_mismatch: {row.run_id}")
     return rows
+
+
+def compact_ledger_parts(ledger_path: str | Path, output_path: str | Path | None = None) -> Path:
+    path = Path(ledger_path).resolve()
+    rows = read_ledger(path)
+    output = Path(output_path).resolve() if output_path is not None else _ledger_part_root(path) / "compacted" / "current.parquet"
+    _write_ledger_rows(output, rows)
+    part_index = _read_valid_ledger_part_index(path)
+    if part_index is None:
+        part_index = _bootstrap_ledger_part_index(
+            path,
+            compacted_path=output,
+            rows=rows,
+        )
+    else:
+        _write_ledger_part_index(
+            path,
+            row_count=len(rows),
+            run_ids={row.run_id: row.ledger_index for row in rows},
+            compacted_path=output,
+            parts=[],
+        )
+    return output
 
 
 def export_ledger(
@@ -374,6 +418,127 @@ def _append_ledger_row_with_index(
         return False
 
 
+def _append_ledger_row_part(
+    path: Path,
+    row: LedgerRow,
+    index: dict[str, Any],
+) -> bool:
+    try:
+        row_count = int(index["row_count"])
+        if row.ledger_index != row_count:
+            return False
+        if row.run_id in index["run_ids"]:
+            raise LedgerError(f"duplicate_run_id: {row.run_id}")
+        part_dir = _ledger_part_root(path) / "parts"
+        part_dir.mkdir(parents=True, exist_ok=True)
+        part_path = part_dir / f"ledger_part_{row.ledger_index:06d}.parquet"
+        table = pa.Table.from_pylist([row.model_dump(mode="json")], schema=_ledger_schema())
+        pq.write_table(table, part_path, compression="zstd")
+        part_ref = {
+            "path": str(part_path),
+            "sha256": file_sha256(part_path),
+            "start_index": row.ledger_index,
+            "row_count": 1,
+            "run_ids": [row.run_id],
+        }
+        run_ids = dict(index["run_ids"])
+        run_ids[row.run_id] = row.ledger_index
+        parts = [*index.get("parts", ()), part_ref]
+        _append_ledger_log(
+            path,
+            {
+                "event": "append_part",
+                "run_id": row.run_id,
+                "ledger_index": row.ledger_index,
+                "row_hash": row.row_hash,
+                "part_path": str(part_path),
+                "part_sha256": part_ref["sha256"],
+                "created_at": utc_isoformat(datetime.now(tz=UTC)),
+            },
+        )
+        _write_ledger_part_index(
+            path,
+            row_count=row_count + 1,
+            run_ids=run_ids,
+            compacted_path=index.get("compacted_path"),
+            parts=parts,
+        )
+        return True
+    except LedgerError:
+        raise
+    except Exception:
+        return False
+
+
+def _read_ledger_parts(path: Path, index: dict[str, Any]) -> list[LedgerRow]:
+    tables: list[pa.Table] = []
+    compacted_path = index.get("compacted_path")
+    if compacted_path:
+        compacted = Path(str(compacted_path))
+        if compacted.exists():
+            tables.append(pq.read_table(compacted))
+    for part in index.get("parts", ()):
+        part_path = Path(str(part["path"]))
+        if not part_path.exists():
+            raise LedgerError(f"ledger_part_missing: {part_path}")
+        if file_sha256(part_path) != part.get("sha256"):
+            raise LedgerError(f"ledger_part_hash_mismatch: {part_path}")
+        tables.append(pq.read_table(part_path))
+    if not tables:
+        return []
+    table = pa.concat_tables(tables, promote_options="default")
+    if table.num_rows > 1:
+        order = pa.compute.sort_indices(table, sort_keys=[("ledger_index", "ascending")])
+        table = table.take(order)
+    rows = [LedgerRow.model_validate(row) for row in table.to_pylist()]
+    for row_index, row in enumerate(rows):
+        if row.ledger_index != row_index:
+            raise LedgerError(f"ledger_index_mismatch: expected={row_index} observed={row.ledger_index}")
+        expected_hash = ledger_row_hash(row)
+        if row.row_hash != expected_hash:
+            raise LedgerError(f"ledger_row_hash_mismatch: {row.run_id}")
+    if len(rows) != int(index["row_count"]):
+        raise LedgerError("ledger_part_index_row_count_mismatch")
+    return rows
+
+
+def _bootstrap_ledger_part_index(
+    path: Path,
+    *,
+    compacted_path: Path | None,
+    rows: list[LedgerRow] | None,
+    row_count: int | None = None,
+    run_ids: dict[str, int] | None = None,
+) -> dict[str, Any]:
+    if rows is not None:
+        row_count = len(rows)
+        run_ids = {row.run_id: row.ledger_index for row in rows}
+    if compacted_path is None and not path.exists():
+        _write_empty_ledger_placeholder(path)
+        compacted_path = path
+    resolved_count = int(row_count or 0)
+    resolved_run_ids = dict(run_ids or {})
+    _write_ledger_part_index(
+        path,
+        row_count=resolved_count,
+        run_ids=resolved_run_ids,
+        compacted_path=compacted_path,
+        parts=[],
+    )
+    return {
+        "row_count": resolved_count,
+        "run_ids": resolved_run_ids,
+        "compacted_path": None if compacted_path is None else str(compacted_path),
+        "parts": [],
+    }
+
+
+def _write_empty_ledger_placeholder(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pylist([], schema=_ledger_schema())
+    pq.write_table(table, path, compression="zstd")
+
+
 def _read_valid_ledger_index(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
@@ -398,6 +563,71 @@ def _read_valid_ledger_index(path: Path) -> dict[str, Any] | None:
     if row_count < 0 or any(index < 0 for index in run_ids.values()):
         return None
     return {"row_count": row_count, "run_ids": run_ids}
+
+
+def _read_valid_ledger_part_index(path: Path) -> dict[str, Any] | None:
+    index_path = _ledger_index_path(path)
+    if not index_path.exists():
+        return None
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != "ledger_part_index_v1":
+            return None
+        row_count = int(payload["row_count"])
+        run_ids = {
+            str(run_id): int(ledger_index)
+            for run_id, ledger_index in dict(payload["run_ids"]).items()
+        }
+        compacted_path = payload.get("compacted_path")
+        parts = list(payload.get("parts", ()))
+    except Exception:
+        return None
+    if row_count < 0 or any(index < 0 for index in run_ids.values()):
+        return None
+    if len(run_ids) != row_count:
+        return None
+    return {
+        "row_count": row_count,
+        "run_ids": run_ids,
+        "compacted_path": compacted_path,
+        "parts": parts,
+    }
+
+
+def _write_ledger_part_index(
+    path: Path,
+    *,
+    row_count: int,
+    run_ids: dict[str, int],
+    compacted_path: str | Path | None,
+    parts: list[dict[str, Any]],
+) -> None:
+    payload = {
+        "schema_version": "ledger_part_index_v1",
+        "ledger_path": str(path),
+        "storage_mode": "append_parts",
+        "row_count": row_count,
+        "run_ids": dict(sorted(run_ids.items(), key=lambda item: item[1])),
+        "compacted_path": None if compacted_path is None else str(compacted_path),
+        "parts": parts,
+        "append_log_path": str(_ledger_append_log_path(path)),
+    }
+    _write_json_atomic(_ledger_index_path(path), payload)
+
+
+def _append_ledger_log(path: Path, payload: dict[str, Any]) -> None:
+    log_path = _ledger_append_log_path(path)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def _ledger_part_root(path: Path) -> Path:
+    return path.with_suffix(".parts")
+
+
+def _ledger_append_log_path(path: Path) -> Path:
+    return _ledger_part_root(path) / "append_log.jsonl"
 
 
 def _write_ledger_index(path: Path, *, row_count: int, run_ids: dict[str, int]) -> None:

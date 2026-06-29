@@ -135,6 +135,35 @@ def test_valid_request_loads_only_requested_fields_and_writes_manifest(tmp_path)
     assert manifest_index["data_manifest_ids"] == {first.data_manifest.data_manifest_id: 0}
 
 
+def test_columnar_request_matches_row_slice_without_duplicate_manifest(tmp_path) -> None:
+    fixture = _archive_fixture(
+        tmp_path,
+        start_ts=datetime(2024, 1, 1, tzinfo=UTC),
+        end_ts=datetime(2024, 7, 1, tzinfo=UTC),
+    )
+    request = _request(
+        archive_root=str(fixture.archive_root),
+        archive_snapshot_id=fixture.archive_snapshot_id,
+        universe_snapshot_id=fixture.universe_snapshot_id,
+        start_ts=datetime(2024, 1, 1, tzinfo=UTC),
+        end_ts=datetime(2024, 7, 1, tzinfo=UTC),
+        requested_fields=("ts", "instrument_id", "open", "close"),
+    )
+
+    row_slice = BacktestDataService().load_panel(request, asof_date=date(2026, 6, 21))
+    columnar_slice = BacktestDataService().load_panel_columnar(request, asof_date=date(2026, 6, 21))
+    manifest_path = fixture.archive_root / "manifests" / "backtest_data_requests.parquet"
+    manifest_rows = pq.read_table(manifest_path).to_pylist()
+
+    assert columnar_slice.table.num_rows == len(row_slice.rows)
+    assert columnar_slice.table.schema.names == ["ts", "instrument_id", "open", "close"]
+    assert columnar_slice.data_manifest.data_manifest_id == row_slice.data_manifest.data_manifest_id
+    assert columnar_slice.warmup_row_count == row_slice.warmup_row_count
+    assert columnar_slice.reported_row_count == row_slice.reported_row_count
+    assert columnar_slice.to_rows() == row_slice.rows
+    assert len(manifest_rows) == 1
+
+
 def test_multi_instrument_request_loads_panel_with_coverage_provenance(tmp_path) -> None:
     archive_root = tmp_path / "archive"
     layout = ArchiveLayout(archive_root)

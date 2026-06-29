@@ -42,6 +42,7 @@ class CostModelConfig(BaseModel):
     fee_bps: float = Field(default=6.0, ge=0.0)
     spread_bps: float = Field(default=5.0, ge=0.0)
     spread_units: str = "bps"
+    spread_observation_policy: str = "lenient"
     slippage_bps: float = Field(default=3.0, ge=0.0)
     impact_bps: float = Field(default=1.0, ge=0.0)
     account_notional_usd: float = Field(default=10_000.0, gt=0.0)
@@ -86,6 +87,14 @@ class CostModelConfig(BaseModel):
         if normalized not in {"bps", "basis_points"}:
             raise ValueError("spread_units must be bps or basis_points")
         return "bps"
+
+    @field_validator("spread_observation_policy")
+    @classmethod
+    def _known_spread_observation_policy(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"lenient", "accepted_research_strict"}:
+            raise ValueError("spread_observation_policy must be lenient or accepted_research_strict")
+        return normalized
 
     @model_validator(mode="after")
     def _validate_cost_model(self) -> "CostModelConfig":
@@ -253,6 +262,8 @@ def build_cost_manifest(
             "explicit_spread_bps_preferred": True,
             "observed_field_precedence": ("spread_bps", "spread_with_explicit_units", "spread_lenient"),
             "lenient_raw_spread_policy": "fraction_when_abs_lte_1_else_bps",
+            "spread_observation_policy": config.spread_observation_policy,
+            "accepted_research_strict_requires_units": config.spread_observation_policy == "accepted_research_strict",
         },
         "slippage_model": {
             "id": config.slippage_model_id,

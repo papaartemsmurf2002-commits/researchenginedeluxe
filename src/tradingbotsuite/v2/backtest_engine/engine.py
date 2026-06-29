@@ -20,7 +20,9 @@ from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
+import numpy as np
 
 from tradingbotsuite.v2.backtest_engine.artifacts import (
     BacktestMetrics,
@@ -62,36 +64,73 @@ def run_vectorized_backtest(
     *,
     config: BacktestRunConfig | Mapping[str, Any],
     strategy_spec: StrategySpec | Mapping[str, Any],
-    panel_rows: Iterable[Mapping[str, Any]],
+    panel_rows: Iterable[Mapping[str, Any]] | None = None,
+    panel_table: pa.Table | None = None,
+    signal_frame: SignalFrame | None = None,
     params: Mapping[str, Any] | None = None,
 ) -> BacktestRunResult:
     parsed_config = (
         config if isinstance(config, BacktestRunConfig) else BacktestRunConfig.model_validate(config)
     )
     parsed_spec = parse_strategy_spec(strategy_spec)
-    materialized_panel = [dict(row) for row in panel_rows]
+    if panel_rows is None and panel_table is None:
+        raise BacktestEngineError("panel_rows_or_panel_table_required")
+    materialized_panel: list[dict[str, Any]] | None = None
+    normalized_table: pa.Table | None = None
+    if panel_table is not None:
+        normalized_table = _normalize_panel_table(panel_table)
+    if panel_rows is not None:
+        materialized_panel = [dict(row) for row in panel_rows]
+    elif parsed_config.engine_lane != EngineLane.FAST_VECTORIZED or signal_frame is None:
+        assert normalized_table is not None
+        materialized_panel = _table_to_rows(normalized_table)
+    panel_identity = (
+        _table_hash(normalized_table)
+        if normalized_table is not None and materialized_panel is None
+        else _canonical_json_hash(materialized_panel or [])
+    )
+    panel_row_count = (
+        normalized_table.num_rows
+        if normalized_table is not None and materialized_panel is None
+        else len(materialized_panel or [])
+    )
     run_id = parsed_config.run_id or _deterministic_run_id(
         parsed_config,
         parsed_spec,
         params or {},
-        materialized_panel,
+        panel_identity,
     )
     run_dir = _run_dir(parsed_config.output_root, run_id)
     run_dir.mkdir(parents=True, exist_ok=True)
     try:
-        if parsed_config.engine_lane != EngineLane.VECTORIZED:
+        if parsed_config.engine_lane not in {EngineLane.VECTORIZED, EngineLane.FAST_VECTORIZED}:
             raise BacktestEngineError(f"unsupported vectorized lane: {parsed_config.engine_lane.value}")
         if parsed_config.require_net_metrics is not True:
             raise BacktestEngineError("gross_only_metrics_rejected")
-        signal_frame = compile_signal_frame(parsed_spec, materialized_panel)
-        simulation = _simulate_vectorized(
-            parsed_config,
-            parsed_spec,
-            signal_frame,
-            materialized_panel,
-            run_id=run_id,
-            cost_scenario=CostStressScenario.BASE,
-        )
+        if signal_frame is None:
+            signal_frame = compile_signal_frame(parsed_spec, materialized_panel or _table_to_rows(normalized_table))
+        if parsed_config.engine_lane == EngineLane.FAST_VECTORIZED:
+            if normalized_table is None:
+                normalized_table = _normalize_panel_table(pa.Table.from_pylist(materialized_panel or []))
+            simulation = _simulate_fast_vectorized(
+                parsed_config,
+                parsed_spec,
+                signal_frame,
+                normalized_table,
+                run_id=run_id,
+                cost_scenario=CostStressScenario.BASE,
+            )
+        else:
+            if materialized_panel is None:
+                materialized_panel = _table_to_rows(normalized_table)
+            simulation = _simulate_vectorized(
+                parsed_config,
+                parsed_spec,
+                signal_frame,
+                materialized_panel,
+                run_id=run_id,
+                cost_scenario=CostStressScenario.BASE,
+            )
         stress_rows = _cost_stress_rows(
             config=parsed_config,
             base_simulation=simulation,
@@ -101,7 +140,8 @@ def run_vectorized_backtest(
             config=parsed_config,
             strategy_spec=parsed_spec,
             params=dict(params or {}),
-            panel_rows=materialized_panel,
+            panel_row_count=panel_row_count,
+            panel_hash=panel_identity,
             run_id=run_id,
             run_dir=run_dir,
             status=RunStatus.SUCCEEDED,
@@ -113,9 +153,12 @@ def run_vectorized_backtest(
             strategy_spec=parsed_spec,
             params=dict(params or {}),
             panel_rows=materialized_panel,
+            panel_table=normalized_table,
+            panel_hash=panel_identity,
+            panel_row_count=panel_row_count,
             run_id=run_id,
             run_dir=run_dir,
-            engine_lane=EngineLane.VECTORIZED,
+            engine_lane=parsed_config.engine_lane,
             failure_reason=str(exc),
         )
 
@@ -196,7 +239,8 @@ def run_event_driven_backtest(
             config=parsed_config,
             strategy_spec=parsed_spec,
             params=dict(params or {}),
-            panel_rows=materialized_panel,
+            panel_row_count=len(materialized_panel),
+            panel_hash=_canonical_json_hash(materialized_panel),
             run_id=run_id,
             run_dir=run_dir,
             status=RunStatus.SUCCEEDED,
@@ -276,6 +320,7 @@ class _SimulationResult:
         per_instrument_metrics: list[dict[str, Any]],
         fold_metrics: list[dict[str, Any]],
         cost_stress: list[dict[str, Any]],
+        spread_observation_summary: dict[str, Any],
         context: StrategyContext,
     ) -> None:
         self.metrics = metrics
@@ -286,6 +331,7 @@ class _SimulationResult:
         self.per_instrument_metrics = per_instrument_metrics
         self.fold_metrics = fold_metrics
         self.cost_stress = cost_stress
+        self.spread_observation_summary = spread_observation_summary
         self.context = context
 
 
@@ -334,6 +380,7 @@ def _simulate_vectorized(
         }
         for instrument_id in instruments
     }
+    spread_observation_counts: dict[str, int] = defaultdict(int)
     timestamps = sorted({row.ts for row in rows})
     row_lookup = {(row.ts, row.instrument_id): row for row in rows}
     prior_row_by_instrument: dict[str, _PanelRow | None] = {instrument_id: None for instrument_id in instruments}
@@ -370,9 +417,10 @@ def _simulate_vectorized(
                 applied_weight=applied_weight,
                 funding_rate=funding_rate,
                 volume_notional=_volume_notional(panel_row),
-                observed_spread_bps=_observed_spread_bps(panel_row),
+                observed_spread_bps=(observed_spread := _observed_spread(panel_row, cost_model)).bps,
                 scenario=cost_scenario,
             )
+            spread_observation_counts[observed_spread.source] += 1
             if cost_breakdown.capacity_blocked:
                 reason = cost_breakdown.capacity_reason or "liquidity_participation_blocked"
                 raise BacktestEngineError(
@@ -578,8 +626,522 @@ def _simulate_vectorized(
         per_instrument_metrics=per_instrument_metrics,
         fold_metrics=fold_metrics,
         cost_stress=[],
+        spread_observation_summary=_spread_observation_summary(spread_observation_counts),
         context=context,
     )
+
+
+def _simulate_fast_vectorized(
+    config: BacktestRunConfig,
+    strategy_spec: StrategySpec,
+    signal_frame: SignalFrame,
+    panel_table: pa.Table,
+    *,
+    run_id: str,
+    cost_scenario: CostStressScenario,
+) -> _SimulationResult:
+    cost_model = _effective_cost_model(config)
+    table = _normalize_panel_table(panel_table)
+    ts_values = [_parse_timestamp(value) for value in table.column("ts").to_pylist()]
+    instrument_values = [str(value) for value in table.column("instrument_id").to_pylist()]
+    timestamps = tuple(dict.fromkeys(ts_values))
+    instruments = tuple(sorted(set(instrument_values)))
+    _enforce_common_clock_keys(ts_values, instrument_values, instruments, config.missing_data_policy)
+    ts_index = {ts: index for index, ts in enumerate(timestamps)}
+    instrument_index = {instrument_id: index for index, instrument_id in enumerate(instruments)}
+    shape = (len(timestamps), len(instruments))
+    row_positions = [(ts_index[ts], instrument_index[instrument_id]) for ts, instrument_id in zip(ts_values, instrument_values)]
+
+    open_prices = _numeric_matrix(table, "open", shape, row_positions)
+    close_prices = _numeric_matrix(table, "close", shape, row_positions)
+    mark_prices = _numeric_matrix(table, "mark_price", shape, row_positions)
+    oracle_prices = _numeric_matrix(table, "oracle_price", shape, row_positions)
+    volume_notional = _volume_notional_matrix(table, shape, row_positions, close_prices)
+    funding_rates = _funding_matrix(table, shape, row_positions, cost_model)
+    observed_spread_bps, spread_observation_counts = _spread_matrix(
+        table,
+        shape,
+        row_positions,
+        close_prices=close_prices,
+        mark_prices=mark_prices,
+        oracle_prices=oracle_prices,
+        cost_model=cost_model,
+    )
+
+    signal_values = np.zeros(shape, dtype=float)
+    target_weights = np.zeros(shape, dtype=float)
+    for signal in signal_frame.rows:
+        key = (signal.ts, signal.instrument_id)
+        if key[0] not in ts_index or key[1] not in instrument_index:
+            continue
+        row_index = ts_index[key[0]]
+        column_index = instrument_index[key[1]]
+        signal_values[row_index, column_index] = float(signal.signal)
+        target_weights[row_index, column_index] = float(signal.target_weight)
+
+    applied_weights = np.zeros(shape, dtype=float)
+    if len(timestamps) > 1:
+        applied_weights[1:, :] = target_weights[:-1, :]
+    price_returns = _price_return_matrix(
+        strategy_spec.execution.price_basis.value,
+        open_prices=open_prices,
+        close_prices=close_prices,
+        mark_prices=mark_prices,
+        oracle_prices=oracle_prices,
+    )
+    turnover_matrix = np.abs(target_weights - applied_weights)
+    participation_rate = np.zeros(shape, dtype=float)
+    trade_notional_usd = turnover_matrix * cost_model.account_notional_usd
+    volume_missing_for_trade = (turnover_matrix > 0.0) & ~np.isfinite(volume_notional)
+    if np.any(volume_missing_for_trade) and cost_model.liquidity_stress_required:
+        _raise_first_capacity_error(
+            "volume_notional_missing_for_turnover",
+            volume_missing_for_trade,
+            timestamps,
+            instruments,
+            participation_rate,
+            cost_model.max_volume_participation,
+        )
+    valid_volume = np.isfinite(volume_notional) & (volume_notional > 0.0)
+    participation_rate = np.where(
+        (turnover_matrix > 0.0) & valid_volume,
+        trade_notional_usd / volume_notional,
+        0.0,
+    )
+    capacity_exceeded = participation_rate > cost_model.max_volume_participation
+    if np.any(capacity_exceeded):
+        _raise_first_capacity_error(
+            "liquidity_participation_cap_exceeded",
+            capacity_exceeded,
+            timestamps,
+            instruments,
+            participation_rate,
+            cost_model.max_volume_participation,
+        )
+
+    multiplier = scenario_multiplier(cost_scenario)
+    spread_component_bps = np.maximum(
+        np.full(shape, cost_model.spread_bps, dtype=float),
+        np.where(np.isfinite(observed_spread_bps), observed_spread_bps, cost_model.spread_bps),
+    )
+    fee_cost = turnover_matrix * (cost_model.fee_bps * multiplier / 10_000.0)
+    spread_cost = turnover_matrix * (spread_component_bps * multiplier / 10_000.0)
+    slippage_cost = turnover_matrix * (cost_model.slippage_bps * multiplier / 10_000.0)
+    impact_scale = np.where(
+        participation_rate > 0.0,
+        np.maximum(1.0, participation_rate / cost_model.max_volume_participation),
+        1.0,
+    )
+    impact_cost = turnover_matrix * (cost_model.impact_bps * multiplier * impact_scale / 10_000.0)
+    transaction_cost = fee_cost + spread_cost + slippage_cost + impact_cost
+    funding_pnl = -applied_weights * funding_rates
+    gross_pnl = applied_weights * price_returns
+    net_pnl = gross_pnl + funding_pnl - transaction_cost
+
+    positions: list[dict[str, Any]] = []
+    trades: list[dict[str, Any]] = []
+    equity_curve: list[dict[str, Any]] = []
+    gross_equity = config.initial_equity
+    net_equity = config.initial_equity
+    for row_index, ts in enumerate(timestamps):
+        gross_return = float(np.sum(gross_pnl[row_index, :]))
+        net_return = float(np.sum(net_pnl[row_index, :]))
+        gross_equity *= 1.0 + gross_return
+        net_equity *= 1.0 + net_return
+        for column_index, instrument_id in enumerate(instruments):
+            applied_weight = float(applied_weights[row_index, column_index])
+            target_weight = float(target_weights[row_index, column_index])
+            weight_turnover = float(turnover_matrix[row_index, column_index])
+            side = "long" if applied_weight > 0 else "short" if applied_weight < 0 else "flat"
+            volume_value = _none_if_nan(volume_notional[row_index, column_index])
+            participation_value = float(participation_rate[row_index, column_index])
+            position = {
+                "ts": utc_isoformat(ts),
+                "instrument_id": instrument_id,
+                "applied_weight": applied_weight,
+                "target_weight": target_weight,
+                "signal": float(signal_values[row_index, column_index]),
+                "side": side,
+                "price_basis": strategy_spec.execution.price_basis.value,
+                "price_return": float(price_returns[row_index, column_index]),
+                "gross_pnl": float(gross_pnl[row_index, column_index]),
+                "funding_pnl": float(funding_pnl[row_index, column_index]),
+                "funding_rate": float(funding_rates[row_index, column_index]),
+                "account_notional_usd": cost_model.account_notional_usd,
+                "trade_notional_usd": float(trade_notional_usd[row_index, column_index]),
+                "fee_cost": float(fee_cost[row_index, column_index]),
+                "spread_cost": float(spread_cost[row_index, column_index]),
+                "slippage_cost": float(slippage_cost[row_index, column_index]),
+                "impact_cost": float(impact_cost[row_index, column_index]),
+                "transaction_cost": float(transaction_cost[row_index, column_index]),
+                "volume_notional": volume_value,
+                "participation_rate": participation_value,
+                "capacity_blocked": False,
+                "capacity_reason": None,
+                "cost_scenario": cost_scenario.value,
+                "net_pnl": float(net_pnl[row_index, column_index]),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+                "candidate_evidence": False,
+                "candidate_pack_eligible": False,
+                "live_signal": False,
+                "paper_signal": False,
+                "sizing_instruction": False,
+                "order_placement_instruction": False,
+                "runtime_mode_change": False,
+            }
+            positions.append(position)
+            if weight_turnover > 0.0:
+                trades.append(
+                    {
+                        "ts": utc_isoformat(ts),
+                        "instrument_id": instrument_id,
+                        "from_weight": float(applied_weights[row_index, column_index]),
+                        "to_weight": target_weight,
+                        "turnover": weight_turnover,
+                        "account_notional_usd": cost_model.account_notional_usd,
+                        "trade_notional_usd": float(trade_notional_usd[row_index, column_index]),
+                        "side": "long" if target_weight > 0 else "short" if target_weight < 0 else "flat",
+                        "price_basis": strategy_spec.execution.price_basis.value,
+                        "fee_cost": float(fee_cost[row_index, column_index]),
+                        "spread_cost": float(spread_cost[row_index, column_index]),
+                        "slippage_cost": float(slippage_cost[row_index, column_index]),
+                        "impact_cost": float(impact_cost[row_index, column_index]),
+                        "transaction_cost": float(transaction_cost[row_index, column_index]),
+                        "participation_rate": participation_value,
+                        "capacity_blocked": False,
+                        "capacity_reason": None,
+                        "cost_scenario": cost_scenario.value,
+                        "research_only": True,
+                        "observe_only": True,
+                        "promotion_ready": False,
+                        "candidate_evidence": False,
+                        "candidate_pack_eligible": False,
+                        "live_signal": False,
+                        "paper_signal": False,
+                        "sizing_instruction": False,
+                        "order_placement_instruction": False,
+                        "runtime_mode_change": False,
+                    }
+                )
+        equity_curve.append(
+            {
+                "ts": utc_isoformat(ts),
+                "gross_return": gross_return,
+                "net_return": net_return,
+                "gross_equity": gross_equity,
+                "net_equity": net_equity,
+                "turnover": float(np.sum(turnover_matrix[row_index, :])),
+                "fee_cost": float(np.sum(fee_cost[row_index, :])),
+                "spread_cost": float(np.sum(spread_cost[row_index, :])),
+                "slippage_cost": float(np.sum(slippage_cost[row_index, :])),
+                "impact_cost": float(np.sum(impact_cost[row_index, :])),
+                "transaction_cost": float(np.sum(transaction_cost[row_index, :])),
+                "funding_pnl": float(np.sum(funding_pnl[row_index, :])),
+                "capacity_blocked_count": 0,
+                "cost_scenario": cost_scenario.value,
+                "gross_exposure": float(np.sum(np.abs(applied_weights[row_index, :]))),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        )
+
+    daily_returns = _daily_returns(equity_curve)
+    per_instrument_metrics: list[dict[str, Any]] = []
+    for column_index, instrument_id in enumerate(instruments):
+        per_instrument_metrics.append(
+            {
+                "instrument_id": instrument_id,
+                "gross_pnl": float(np.sum(gross_pnl[:, column_index])),
+                "net_pnl": float(np.sum(net_pnl[:, column_index])),
+                "fee_cost": float(np.sum(fee_cost[:, column_index])),
+                "spread_cost": float(np.sum(spread_cost[:, column_index])),
+                "slippage_cost": float(np.sum(slippage_cost[:, column_index])),
+                "impact_cost": float(np.sum(impact_cost[:, column_index])),
+                "transaction_cost": float(np.sum(transaction_cost[:, column_index])),
+                "funding_pnl": float(np.sum(funding_pnl[:, column_index])),
+                "turnover": float(np.sum(turnover_matrix[:, column_index])),
+                "trade_count": float(np.count_nonzero(turnover_matrix[:, column_index] > 0.0)),
+                "capacity_blocked_count": 0.0,
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        )
+    fold_metrics = _fold_metrics(
+        equity_curve=equity_curve,
+        full_window_start=timestamps[0],
+        full_window_end=timestamps[-1],
+        gross_return=gross_equity - config.initial_equity,
+        net_return=net_equity - config.initial_equity,
+    )
+    metrics = BacktestMetrics(
+        run_id=run_id,
+        status=RunStatus.SUCCEEDED,
+        gross_return=gross_equity - config.initial_equity,
+        net_return=net_equity - config.initial_equity,
+        gross_equity_final=gross_equity,
+        net_equity_final=net_equity,
+        total_fee_cost=float(np.sum(fee_cost)),
+        total_spread_cost=float(np.sum(spread_cost)),
+        total_slippage_cost=float(np.sum(slippage_cost)),
+        total_impact_cost=float(np.sum(impact_cost)),
+        total_transaction_cost=float(np.sum(transaction_cost)),
+        total_funding_pnl=float(np.sum(funding_pnl)),
+        total_turnover=float(np.sum(turnover_matrix)),
+        trade_count=len(trades),
+        position_row_count=len(positions),
+        capacity_blocked_count=0,
+        gross_only=False,
+    )
+    context = StrategyContext(
+        run_id=run_id,
+        experiment_id=config.experiment_id,
+        trial_index=config.trial_index,
+        archive_snapshot_id=config.archive_snapshot_id,
+        universe_snapshot_id=config.universe_snapshot_id,
+        data_manifest_id=config.data_manifest_id,
+        validation_policy_id=config.validation_policy_id,
+        cost_model_id=config.cost_model_id,
+        timeframe=strategy_spec.inputs.timeframe,
+        venue_scope=config.venue_scope,
+        universe_mode=config.universe_mode,
+        instrument_count=len(instruments),
+        backtest_start=timestamps[0],
+        backtest_end=timestamps[-1],
+        lockbox_policy_id=config.lockbox_policy_id,
+        lockbox_start=config.lockbox_start,
+        lockbox_end=config.lockbox_end,
+        data_coverage_min=config.data_coverage_min,
+    )
+    return _SimulationResult(
+        metrics=metrics,
+        equity_curve=equity_curve,
+        daily_returns=daily_returns,
+        trades=trades,
+        positions=positions,
+        per_instrument_metrics=per_instrument_metrics,
+        fold_metrics=fold_metrics,
+        cost_stress=[],
+        spread_observation_summary=_spread_observation_summary(spread_observation_counts),
+        context=context,
+    )
+
+
+def _enforce_common_clock_keys(
+    timestamps: list[datetime],
+    instrument_ids: list[str],
+    instruments: tuple[str, ...],
+    policy: MissingDataPolicy,
+) -> None:
+    if policy != MissingDataPolicy.FAIL_CLOSED:
+        raise BacktestEngineError(f"unsupported_missing_data_policy: {policy.value}")
+    by_ts: dict[datetime, set[str]] = defaultdict(set)
+    for ts, instrument_id in zip(timestamps, instrument_ids):
+        by_ts[ts].add(instrument_id)
+    expected = set(instruments)
+    for ts, observed in by_ts.items():
+        missing = sorted(expected - observed)
+        if missing:
+            raise BacktestEngineError(
+                f"missing_data_policy_fail_closed: {utc_isoformat(ts)} missing {','.join(missing)}"
+            )
+
+
+def _numeric_matrix(
+    table: pa.Table,
+    field: str,
+    shape: tuple[int, int],
+    row_positions: list[tuple[int, int]],
+) -> np.ndarray:
+    matrix = np.full(shape, np.nan, dtype=float)
+    if field not in table.schema.names:
+        return matrix
+    for (row_index, column_index), value in zip(row_positions, table.column(field).to_pylist()):
+        parsed = _numeric_or_nan(value)
+        matrix[row_index, column_index] = parsed
+    return matrix
+
+
+def _volume_notional_matrix(
+    table: pa.Table,
+    shape: tuple[int, int],
+    row_positions: list[tuple[int, int]],
+    close_prices: np.ndarray,
+) -> np.ndarray:
+    matrix = np.full(shape, np.nan, dtype=float)
+    for field in ("volume_notional", "volume_usd", "dollar_volume", "notional_volume"):
+        if field in table.schema.names:
+            values = _numeric_matrix(table, field, shape, row_positions)
+            matrix = np.where(np.isfinite(values), values, matrix)
+    if "volume" not in table.schema.names:
+        return matrix
+    volume = _numeric_matrix(table, "volume", shape, row_positions)
+    volume_times_close = np.where(np.isfinite(close_prices) & (close_prices > 0.0), volume * close_prices, volume)
+    return np.where(np.isfinite(matrix), matrix, volume_times_close)
+
+
+def _funding_matrix(
+    table: pa.Table,
+    shape: tuple[int, int],
+    row_positions: list[tuple[int, int]],
+    cost_model: CostModelConfig,
+) -> np.ndarray:
+    funding = _numeric_matrix(table, "funding", shape, row_positions)
+    funding_rate = _numeric_matrix(table, "funding_rate", shape, row_positions)
+    resolved = np.where(np.isfinite(funding), funding, funding_rate)
+    missing = ~np.isfinite(resolved)
+    if np.any(missing):
+        if cost_model.funding_required or cost_model.funding_missing_policy == "fail":
+            raise BacktestEngineError("funding_required_missing")
+        resolved = np.where(missing, 0.0, resolved)
+    return resolved
+
+
+def _spread_matrix(
+    table: pa.Table,
+    shape: tuple[int, int],
+    row_positions: list[tuple[int, int]],
+    *,
+    close_prices: np.ndarray,
+    mark_prices: np.ndarray,
+    oracle_prices: np.ndarray,
+    cost_model: CostModelConfig,
+) -> tuple[np.ndarray, dict[str, int]]:
+    spread_bps_values = table.column("spread_bps").to_pylist() if "spread_bps" in table.schema.names else [None] * table.num_rows
+    spread_values = table.column("spread").to_pylist() if "spread" in table.schema.names else [None] * table.num_rows
+    units_values: list[Any] = [None] * table.num_rows
+    for field in ("spread_units", "spread_unit", "spread_value_units"):
+        if field in table.schema.names:
+            units_values = table.column(field).to_pylist()
+            break
+    matrix = np.full(shape, np.nan, dtype=float)
+    counts: dict[str, int] = defaultdict(int)
+    for index, ((row_index, column_index), spread_bps, spread, units) in enumerate(
+        zip(row_positions, spread_bps_values, spread_values, units_values)
+    ):
+        reference_price = _first_finite(
+            close_prices[row_index, column_index],
+            mark_prices[row_index, column_index],
+            oracle_prices[row_index, column_index],
+        )
+        observed = _observed_spread_from_values(
+            spread_bps=spread_bps,
+            spread=spread,
+            units=units,
+            reference_price=reference_price,
+            cost_model=cost_model,
+        )
+        counts[observed.source] += 1
+        if observed.bps is not None:
+            matrix[row_index, column_index] = observed.bps
+    return matrix, counts
+
+
+def _observed_spread_from_values(
+    *,
+    spread_bps: Any,
+    spread: Any,
+    units: Any,
+    reference_price: float | None,
+    cost_model: CostModelConfig,
+) -> _ObservedSpread:
+    parsed_spread_bps = _numeric_value(spread_bps)
+    if parsed_spread_bps is not None:
+        return _ObservedSpread(parsed_spread_bps, "explicit_spread_bps")
+    parsed_spread = _numeric_value(spread)
+    if parsed_spread is None:
+        return _ObservedSpread(None, "missing_uses_configured_fallback")
+    normalized_units = None if units is None else str(units).strip().lower()
+    if normalized_units in {"bps", "bp", "basis_point", "basis_points"}:
+        return _ObservedSpread(parsed_spread, "explicit_units_bps")
+    if normalized_units in {"fraction", "decimal", "ratio", "return_fraction"}:
+        return _ObservedSpread(parsed_spread * 10_000.0, "explicit_units_fraction")
+    if normalized_units in {"price", "quote", "absolute", "usd"}:
+        if reference_price is not None and reference_price > 0.0:
+            return _ObservedSpread((parsed_spread / reference_price) * 10_000.0, "explicit_units_absolute")
+        return _ObservedSpread(None, "explicit_units_absolute_missing_reference_price")
+    if cost_model.spread_observation_policy == "accepted_research_strict":
+        raise BacktestEngineError("ambiguous_spread_units_for_accepted_research")
+    if parsed_spread <= 1.0:
+        return _ObservedSpread(parsed_spread * 10_000.0, "lenient_fraction_inferred")
+    return _ObservedSpread(parsed_spread, "lenient_bps_inferred")
+
+
+def _price_return_matrix(
+    price_basis: str,
+    *,
+    open_prices: np.ndarray,
+    close_prices: np.ndarray,
+    mark_prices: np.ndarray,
+    oracle_prices: np.ndarray,
+) -> np.ndarray:
+    if price_basis == "next_bar_open":
+        if np.any(~np.isfinite(open_prices)) or np.any(~np.isfinite(close_prices)) or np.any(open_prices <= 0.0):
+            raise BacktestEngineError("pnl_price_missing_for_next_bar_open")
+        return (close_prices / open_prices) - 1.0
+    if price_basis == "close":
+        values = close_prices
+    elif price_basis == "mark":
+        values = mark_prices
+    elif price_basis == "oracle":
+        values = oracle_prices
+    else:
+        raise BacktestEngineError(f"unsupported_price_basis: {price_basis}")
+    returns = np.zeros_like(values, dtype=float)
+    if values.shape[0] <= 1:
+        return returns
+    previous = values[:-1, :]
+    current = values[1:, :]
+    if np.any(~np.isfinite(previous)) or np.any(~np.isfinite(current)) or np.any(previous <= 0.0):
+        raise BacktestEngineError(f"pnl_price_missing_for_{price_basis}")
+    returns[1:, :] = (current / previous) - 1.0
+    return returns
+
+
+def _raise_first_capacity_error(
+    reason: str,
+    mask: np.ndarray,
+    timestamps: tuple[datetime, ...],
+    instruments: tuple[str, ...],
+    participation_rate: np.ndarray,
+    cap: float,
+) -> None:
+    row_index, column_index = np.argwhere(mask)[0]
+    raise BacktestEngineError(
+        f"{reason}: {instruments[int(column_index)]} {utc_isoformat(timestamps[int(row_index)])} "
+        f"participation={participation_rate[int(row_index), int(column_index)]:.12g} cap={cap:.12g}"
+    )
+
+
+def _numeric_value(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(parsed):
+        return None
+    return parsed
+
+
+def _numeric_or_nan(value: Any) -> float:
+    parsed = _numeric_value(value)
+    return np.nan if parsed is None else parsed
+
+
+def _first_finite(*values: float) -> float | None:
+    for value in values:
+        if np.isfinite(value):
+            return float(value)
+    return None
+
+
+def _none_if_nan(value: float) -> float | None:
+    return None if not np.isfinite(value) else float(value)
 
 
 def _cost_stress_rows(
@@ -772,6 +1334,69 @@ def _reject_undocumented_maker_assumption(
         raise BacktestEngineError("maker_assumption_requires_queue_model")
 
 
+def _normalize_panel_table(table: pa.Table) -> pa.Table:
+    if table.num_rows == 0:
+        raise BacktestEngineError("panel_rows_empty")
+    missing = sorted({"ts", "instrument_id"} - set(table.schema.names))
+    if missing:
+        raise BacktestEngineError("panel_table_missing_fields: " + ",".join(missing))
+    normalized = table
+    timestamps = [_parse_timestamp(value) for value in normalized.column("ts").to_pylist()]
+    normalized = normalized.set_column(
+        normalized.schema.get_field_index("ts"),
+        "ts",
+        pa.array(timestamps, type=pa.timestamp("us", tz="UTC")),
+    )
+    if normalized.num_rows > 1:
+        order = pc.sort_indices(normalized, sort_keys=[("ts", "ascending"), ("instrument_id", "ascending")])
+        normalized = normalized.take(order)
+    return normalized
+
+
+def _table_to_rows(table: pa.Table | None) -> list[dict[str, Any]]:
+    if table is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for row in table.to_pylist():
+        if "ts" in row:
+            row["ts"] = _parse_timestamp(row["ts"])
+        rows.append(dict(row))
+    return rows
+
+
+def _table_hash(table: pa.Table | None) -> str:
+    if table is None:
+        return _canonical_json_hash([])
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as writer:
+        writer.write_table(table)
+    return hashlib.sha256(sink.getvalue().to_pybytes()).hexdigest()
+
+
+def _panel_timestamps(
+    *,
+    panel_rows: list[dict[str, Any]] | None,
+    panel_table: pa.Table | None,
+) -> list[datetime]:
+    if panel_rows is not None:
+        return [_parse_timestamp(row["ts"]) for row in panel_rows if "ts" in row]
+    if panel_table is None or "ts" not in panel_table.schema.names:
+        return []
+    return [_parse_timestamp(value) for value in panel_table.column("ts").to_pylist()]
+
+
+def _panel_instruments(
+    *,
+    panel_rows: list[dict[str, Any]] | None,
+    panel_table: pa.Table | None,
+) -> list[str]:
+    if panel_rows is not None:
+        return sorted({str(row.get("instrument_id", "unknown")) for row in panel_rows})
+    if panel_table is None or "instrument_id" not in panel_table.schema.names:
+        return []
+    return sorted({str(value) for value in panel_table.column("instrument_id").to_pylist()})
+
+
 class _PanelRow:
     def __init__(self, row: Mapping[str, Any]) -> None:
         self.row = dict(row)
@@ -854,26 +1479,62 @@ def _volume_notional(row: _PanelRow) -> float | None:
     return volume
 
 
-def _observed_spread_bps(row: _PanelRow) -> float | None:
+class _ObservedSpread:
+    def __init__(self, bps: float | None, source: str) -> None:
+        self.bps = bps
+        self.source = source
+
+
+def _observed_spread(row: _PanelRow, cost_model: CostModelConfig) -> _ObservedSpread:
     spread_bps = row.numeric("spread_bps")
     if spread_bps is not None:
-        return spread_bps
+        return _ObservedSpread(spread_bps, "explicit_spread_bps")
     spread = row.numeric("spread")
     if spread is None:
-        return None
+        return _ObservedSpread(None, "missing_uses_configured_fallback")
     units = _spread_units(row)
     if units in {"bps", "bp", "basis_point", "basis_points"}:
-        return spread
+        return _ObservedSpread(spread, "explicit_units_bps")
     if units in {"fraction", "decimal", "ratio", "return_fraction"}:
-        return spread * 10_000.0
+        return _ObservedSpread(spread * 10_000.0, "explicit_units_fraction")
     if units in {"price", "quote", "absolute", "usd"}:
         close = row.numeric("close") or row.numeric("mark_price") or row.numeric("oracle_price")
         if close is not None and close > 0.0:
-            return (spread / close) * 10_000.0
-        return None
+            return _ObservedSpread((spread / close) * 10_000.0, "explicit_units_absolute")
+        return _ObservedSpread(None, "explicit_units_absolute_missing_reference_price")
+    if cost_model.spread_observation_policy == "accepted_research_strict":
+        raise BacktestEngineError("ambiguous_spread_units_for_accepted_research")
     if spread <= 1.0:
-        return spread * 10_000.0
-    return spread
+        return _ObservedSpread(spread * 10_000.0, "lenient_fraction_inferred")
+    return _ObservedSpread(spread, "lenient_bps_inferred")
+
+
+def _observed_spread_bps(row: _PanelRow) -> float | None:
+    return _observed_spread(row, CostModelConfig()).bps
+
+
+def _spread_observation_summary(counts: Mapping[str, int]) -> dict[str, Any]:
+    counts_by_source = {str(key): int(value) for key, value in sorted(counts.items())}
+    inferred_count = sum(
+        count
+        for source, count in counts_by_source.items()
+        if source.startswith("lenient_")
+    )
+    explicit_count = sum(
+        count
+        for source, count in counts_by_source.items()
+        if source.startswith("explicit_")
+    )
+    return {
+        "schema_version": "spread_observation_summary_v1",
+        "counts_by_source": counts_by_source,
+        "explicit_observation_count": explicit_count,
+        "lenient_inferred_count": inferred_count,
+        "missing_observation_count": counts_by_source.get("missing_uses_configured_fallback", 0),
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+    }
 
 
 def _spread_units(row: _PanelRow) -> str | None:
@@ -893,6 +1554,7 @@ def _effective_cost_model(config: BacktestRunConfig) -> CostModelConfig:
         cost_model_id=config.cost_model_id,
         fee_bps=config.fee_bps,
         spread_bps=config.spread_bps,
+        spread_observation_policy=config.spread_observation_policy,
         slippage_bps=config.slippage_bps,
         impact_bps=config.impact_bps,
         account_notional_usd=config.account_notional_usd,
@@ -941,7 +1603,8 @@ def _write_run_artifacts(
     config: BacktestRunConfig,
     strategy_spec: StrategySpec,
     params: dict[str, Any],
-    panel_rows: list[dict[str, Any]],
+    panel_row_count: int,
+    panel_hash: str,
     run_id: str,
     run_dir: Path,
     status: RunStatus,
@@ -951,9 +1614,14 @@ def _write_run_artifacts(
         run_dir=run_dir,
         strategy_spec=strategy_spec,
         params=params,
-        panel_rows=panel_rows,
+        panel_row_count=panel_row_count,
+        panel_hash=panel_hash,
         validation_manifest=_validation_manifest(config, status=status),
-        cost_manifest=_cost_manifest(config, cost_stress=simulation.cost_stress),
+        cost_manifest=_cost_manifest(
+            config,
+            cost_stress=simulation.cost_stress,
+            spread_observation_summary=simulation.spread_observation_summary,
+        ),
         metrics=simulation.metrics.model_dump(mode="json"),
         equity_curve=simulation.equity_curve,
         daily_returns=simulation.daily_returns,
@@ -989,14 +1657,19 @@ def _write_failure_artifacts(
     config: BacktestRunConfig,
     strategy_spec: StrategySpec,
     params: dict[str, Any],
-    panel_rows: list[dict[str, Any]],
+    panel_rows: list[dict[str, Any]] | None,
+    panel_table: pa.Table | None = None,
+    panel_hash: str | None = None,
+    panel_row_count: int | None = None,
     run_id: str,
     run_dir: Path,
     engine_lane: EngineLane,
     failure_reason: str,
 ) -> BacktestRunResult:
-    timestamps = [_parse_timestamp(row["ts"]) for row in panel_rows if "ts" in row] or [datetime.now(tz=UTC)]
-    instruments = sorted({str(row.get("instrument_id", "unknown")) for row in panel_rows}) or ["unknown"]
+    timestamps = _panel_timestamps(panel_rows=panel_rows, panel_table=panel_table) or [datetime.now(tz=UTC)]
+    instruments = _panel_instruments(panel_rows=panel_rows, panel_table=panel_table) or ["unknown"]
+    resolved_panel_hash = panel_hash or _canonical_json_hash(panel_rows or [])
+    resolved_panel_row_count = panel_row_count if panel_row_count is not None else len(panel_rows or [])
     metrics = {
         "schema_version": V2_SCHEMA_VERSION,
         "run_id": run_id,
@@ -1011,9 +1684,10 @@ def _write_failure_artifacts(
         run_dir=run_dir,
         strategy_spec=strategy_spec,
         params=params,
-        panel_rows=panel_rows,
+        panel_row_count=resolved_panel_row_count,
+        panel_hash=resolved_panel_hash,
         validation_manifest=_validation_manifest(config, status=RunStatus.FAILED, failure_reason=failure_reason),
-        cost_manifest=_cost_manifest(config, cost_stress=[]),
+        cost_manifest=_cost_manifest(config, cost_stress=[], spread_observation_summary=None),
         metrics=metrics,
         equity_curve=[],
         daily_returns=[],
@@ -1064,7 +1738,8 @@ def _write_common_artifacts(
     run_dir: Path,
     strategy_spec: StrategySpec,
     params: dict[str, Any],
-    panel_rows: list[dict[str, Any]],
+    panel_row_count: int,
+    panel_hash: str,
     validation_manifest: dict[str, Any],
     cost_manifest: dict[str, Any],
     metrics: dict[str, Any],
@@ -1082,7 +1757,7 @@ def _write_common_artifacts(
     artifacts: dict[str, RunArtifactRef] = {}
     artifacts["strategy_spec"] = _write_json_artifact(run_dir, "strategy_spec.json", strategy_spec.model_dump(mode="json"), "strategy_spec")
     artifacts["params"] = _write_json_artifact(run_dir, "params.json", params, "params")
-    artifacts["data_manifest"] = _write_json_artifact(run_dir, "data_manifest.json", _data_manifest(panel_rows), "data_manifest")
+    artifacts["data_manifest"] = _write_json_artifact(run_dir, "data_manifest.json", _data_manifest(panel_row_count, panel_hash), "data_manifest")
     artifacts["validation_manifest"] = _write_json_artifact(run_dir, "validation_manifest.json", validation_manifest, "validation_manifest")
     artifacts["cost_manifest"] = _write_json_artifact(run_dir, "cost_manifest.json", cost_manifest, "cost_manifest")
     artifacts["metrics"] = _write_json_artifact(run_dir, "metrics.json", metrics, "metrics")
@@ -1156,11 +1831,11 @@ def _manifest(
     )
 
 
-def _data_manifest(panel_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _data_manifest(panel_row_count: int, panel_hash: str) -> dict[str, Any]:
     return {
         "schema_version": V2_SCHEMA_VERSION,
-        "row_count": len(panel_rows),
-        "panel_hash": _canonical_json_hash(panel_rows),
+        "row_count": panel_row_count,
+        "panel_hash": panel_hash,
         "research_only": True,
         "observe_only": True,
         "promotion_ready": False,
@@ -1185,13 +1860,20 @@ def _validation_manifest(
     }
 
 
-def _cost_manifest(config: BacktestRunConfig, *, cost_stress: list[dict[str, Any]]) -> dict[str, Any]:
+def _cost_manifest(
+    config: BacktestRunConfig,
+    *,
+    cost_stress: list[dict[str, Any]],
+    spread_observation_summary: dict[str, Any] | None,
+) -> dict[str, Any]:
     manifest = build_cost_manifest(
         config=_effective_cost_model(config),
         stress_rows=tuple(cost_stress),
     )
     manifest["gross_and_net_required"] = config.require_net_metrics
     manifest["phase"] = "phase12_cost_funding_slippage_impact_capacity"
+    if spread_observation_summary is not None:
+        manifest["spread_observation_summary"] = spread_observation_summary
     return manifest
 
 
@@ -1250,8 +1932,9 @@ def _deterministic_run_id(
     config: BacktestRunConfig,
     strategy_spec: StrategySpec,
     params: Mapping[str, Any],
-    panel_rows: list[dict[str, Any]],
+    panel_identity: str | list[dict[str, Any]],
 ) -> str:
+    panel_hash = panel_identity if isinstance(panel_identity, str) else _canonical_json_hash(panel_identity)
     identity = {
         "experiment_id": config.experiment_id,
         "trial_index": config.trial_index,
@@ -1260,7 +1943,7 @@ def _deterministic_run_id(
         "data_manifest_id": config.data_manifest_id,
         "strategy_spec_hash": strategy_spec.spec_hash,
         "params_hash": _canonical_json_hash(params),
-        "panel_hash": _canonical_json_hash(panel_rows),
+        "panel_hash": panel_hash,
         "engine_lane": config.engine_lane.value,
         "cost_model_id": config.cost_model_id,
         "cost_model_hash": _effective_cost_model(config).config_hash,
