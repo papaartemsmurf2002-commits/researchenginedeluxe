@@ -21,7 +21,7 @@ from tradingbotsuite.v2.data_quality.coverage import (
     expected_bar_count,
     iter_expected_bar_timestamps,
 )
-from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore
+from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore, write_coverage_manifest
 from tradingbotsuite.v2.data_quality.schemas import EvidenceMode, QualityStatus
 
 
@@ -65,6 +65,37 @@ def test_coverage_report_manifest_is_queryable_by_instrument_date_timeframe(tmp_
     assert queried == [report]
     assert queried[0].missing_days == ("2026-01-02",)
     assert queried[0].missing_timestamp_count == 1
+
+
+def test_coverage_manifest_batch_append_dedupes_and_orders_reports(tmp_path) -> None:
+    archive_root = tmp_path / "archive"
+    layout = ArchiveLayout(archive_root)
+    layout.initialize()
+    sol_report = coverage_report_for_bars(
+        [_bar("2026-01-01T00:00:00Z", close=100)],
+        venue="hyperliquid",
+        instrument_id="hyperliquid:perp:SOL",
+        timeframe="1d",
+        start_ts=START,
+        end_ts=START + timedelta(days=1),
+    )
+    btc_report = coverage_report_for_bars(
+        [_bar("2026-01-01T00:00:00Z", close=200)],
+        venue="hyperliquid",
+        instrument_id="hyperliquid:perp:BTC",
+        timeframe="1d",
+        start_ts=START,
+        end_ts=START + timedelta(days=1),
+    )
+    sol_replacement = sol_report.model_copy(update={"coverage_min": 0.75})
+
+    materialized = write_coverage_manifest(archive_root, (sol_report, btc_report, sol_replacement))
+    stored = CoverageManifestStore(layout).load_coverage_reports()
+
+    assert materialized == [sol_report, btc_report, sol_replacement]
+    assert len(stored) == 2
+    assert [report.instrument_id for report in stored] == sorted(report.instrument_id for report in stored)
+    assert next(report for report in stored if report.coverage_report_id == sol_report.coverage_report_id).coverage_min == 0.75
 
 
 def test_coverage_below_098_fails_accepted_evidence_gate() -> None:

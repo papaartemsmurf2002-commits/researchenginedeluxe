@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+import tradingbotsuite.v2.data_sources.of_style_materialization as of_style_materialization
 from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.config.schemas import RESEARCH_BOUNDARY
 from tradingbotsuite.v2.data_sources.of_style_materialization import (
@@ -40,6 +41,7 @@ def test_materializes_agg_trades_orderflow_rows(tmp_path):
     assert result.feature_row_count == 1
     rows = _read_jsonl(output_root / result.output_ref)
     assert rows[0]["trade_count"] == 2
+    assert rows[0]["aggregation_mode"] == "streaming_sorted_buckets_v1"
     assert rows[0]["total_volume"] == 3.0
     assert rows[0]["total_quote_volume"] == 31.0
     assert rows[0]["buy_volume"] == 2.0
@@ -51,6 +53,107 @@ def test_materializes_agg_trades_orderflow_rows(tmp_path):
     assert result.output_format == "jsonl"
     assert result.output_part_refs == ()
     assert (output_root / result.output_ref).with_name(Path(result.output_ref).name + ".sha256").exists()
+
+
+def test_materialization_uses_spill_merge_for_non_monotonic_buckets(tmp_path):
+    archive_root = tmp_path / "archive"
+    output_root = tmp_path / "out"
+    path = _write_source(
+        archive_root,
+        family="aggTrades",
+        venue_symbol="BTCUSDT",
+        header=("agg_trade_id", "price", "quantity", "first_trade_id", "last_trade_id", "transact_time", "is_buyer_maker"),
+        rows=(
+            ("1", "20", "1", "1", "1", "1704067260000", "false"),
+            ("2", "10", "2", "2", "2", "1704067200000", "true"),
+            ("3", "11", "1", "3", "3", "1704067201000", "false"),
+        ),
+    )
+
+    result = materialize_of_style_source(path, archive_root=archive_root, output_root=output_root)
+    rows = _read_jsonl(output_root / result.output_ref)
+
+    assert result.status == "materialized"
+    assert result.input_row_count == 3
+    assert result.feature_row_count == 2
+    assert [row["bucket_start_ms"] for row in rows] == [1704067200000, 1704067260000]
+    assert rows[0]["aggregation_mode"] == "bounded_spill_bucket_merge_v1"
+    assert rows[0]["trade_count"] == 2
+    assert rows[0]["total_volume"] == 3.0
+    assert rows[1]["trade_count"] == 1
+
+
+def test_materialization_spill_merges_repeated_non_monotonic_buckets(tmp_path, monkeypatch):
+    monkeypatch.setattr(of_style_materialization, "NON_MONOTONIC_BUCKET_SPILL_BUCKET_LIMIT", 1)
+    archive_root = tmp_path / "archive"
+    output_root = tmp_path / "out"
+    path = _write_source(
+        archive_root,
+        family="aggTrades",
+        venue_symbol="BTCUSDT",
+        header=("agg_trade_id", "price", "quantity", "first_trade_id", "last_trade_id", "transact_time", "is_buyer_maker"),
+        rows=(
+            ("1", "20", "1", "1", "1", "1704067260000", "false"),
+            ("2", "10", "2", "2", "2", "1704067200000", "true"),
+            ("3", "11", "1", "3", "3", "1704067201000", "false"),
+            ("4", "21", "3", "4", "4", "1704067261000", "true"),
+        ),
+    )
+
+    result = materialize_of_style_source(path, archive_root=archive_root, output_root=output_root)
+    rows = _read_jsonl(output_root / result.output_ref)
+
+    assert result.status == "materialized"
+    assert result.input_row_count == 4
+    assert result.feature_row_count == 2
+    assert [row["bucket_start_ms"] for row in rows] == [1704067200000, 1704067260000]
+    assert all(row["aggregation_mode"] == "bounded_spill_bucket_merge_v1" for row in rows)
+    assert rows[0]["trade_count"] == 2
+    assert rows[0]["total_volume"] == 3.0
+    assert rows[0]["total_quote_volume"] == 31.0
+    assert rows[1]["trade_count"] == 2
+    assert rows[1]["total_volume"] == 4.0
+    assert rows[1]["total_quote_volume"] == 83.0
+
+
+def test_materialization_spill_merges_non_monotonic_book_ticker_last_quote(tmp_path, monkeypatch):
+    monkeypatch.setattr(of_style_materialization, "NON_MONOTONIC_BUCKET_SPILL_BUCKET_LIMIT", 1)
+    archive_root = tmp_path / "archive"
+    output_root = tmp_path / "out"
+    path = _write_source(
+        archive_root,
+        family="bookTicker",
+        venue_symbol="BTCUSDT",
+        header=(
+            "update_id",
+            "best_bid_price",
+            "best_bid_qty",
+            "best_ask_price",
+            "best_ask_qty",
+            "transaction_time",
+            "event_time",
+        ),
+        rows=(
+            ("1", "19", "2", "21", "1", "1704067260000", "1704067260000"),
+            ("2", "9", "4", "11", "2", "1704067200000", "1704067200000"),
+            ("3", "10", "6", "12", "3", "1704067201000", "1704067201000"),
+            ("4", "20", "8", "22", "4", "1704067261000", "1704067261000"),
+        ),
+    )
+
+    result = materialize_of_style_source(path, archive_root=archive_root, output_root=output_root)
+    rows = _read_jsonl(output_root / result.output_ref)
+
+    assert result.status == "materialized"
+    assert result.feature_row_count == 2
+    assert [row["bucket_start_ms"] for row in rows] == [1704067200000, 1704067260000]
+    assert all(row["aggregation_mode"] == "bounded_spill_bucket_merge_v1" for row in rows)
+    assert rows[0]["book_ticker_count"] == 2
+    assert rows[0]["last_bid"] == 10.0
+    assert rows[0]["last_ask"] == 12.0
+    assert rows[1]["book_ticker_count"] == 2
+    assert rows[1]["last_bid"] == 20.0
+    assert rows[1]["last_ask"] == 22.0
 
 
 def test_materializes_parquet_part_index_when_requested(tmp_path):
@@ -83,14 +186,18 @@ def test_materializes_parquet_part_index_when_requested(tmp_path):
     index_path = output_root / result.output_ref
     index = json.loads(index_path.read_text(encoding="utf-8"))
     assert index["manifest_type"] == "of_style_feature_part_index_v1"
+    assert index["writer"] == "streaming_feature_rows_v1"
     assert index["part_count"] == 2
     assert index["row_manifest_hash"] == result.row_manifest_hash
     assert index["part_manifest_hash"] == result.output_part_manifest_hash
+    assert index["feature_row_count"] == result.feature_row_count
+    assert index["input_row_count"] == result.input_row_count
     assert index["research_only"] is True
     assert index["promotion_ready"] is False
     first_part_rows = pq.read_table(output_root / result.output_part_refs[0]).to_pylist()
     second_part_rows = pq.read_table(output_root / result.output_part_refs[1]).to_pylist()
     assert first_part_rows[0]["bucket_start_ms"] == 1704067200000
+    assert first_part_rows[0]["aggregation_mode"] == "streaming_sorted_buckets_v1"
     assert second_part_rows[0]["bucket_start_ms"] == 1704067260000
     assert index_path.with_name("index.json.sha256").exists()
     assert (output_root / result.output_part_refs[0]).with_name("part-000000.parquet.sha256").exists()
@@ -172,10 +279,12 @@ def test_materializes_all_of_style_family_shapes_for_archive_report(tmp_path):
             symbols=("BTC",),
             intervals=("1m",),
             max_sources_per_symbol_per_family=1,
+            parallel_workers=2,
         )
     )
 
     assert report.final_audit_data_ready is True
+    assert report.parallel_workers == 2
     assert report.blocker_reasons == ()
     assert report.materialized_source_count == len(sources)
     assert report.blocked_source_count == 0

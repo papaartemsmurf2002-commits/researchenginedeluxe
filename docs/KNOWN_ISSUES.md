@@ -1,6 +1,6 @@
 # Known Issues
 
-Last updated: 2026-06-27
+Last updated: 2026-06-29
 
 This registry is the blocking issue source for orchestrator stage gates.
 
@@ -22,9 +22,85 @@ Stage advancement stop rule:
 | Severity | Open | In progress | Resolved | Accepted debt |
 | --- | ---: | ---: | ---: | ---: |
 | P0 | 0 | 0 | 8 | 0 |
-| P1 | 0 | 0 | 30 | 0 |
+| P1 | 0 | 0 | 31 | 0 |
 | P2 | 0 | 0 | 9 | 0 |
 | P3 | 0 | 0 | 1 | 0 |
+
+## ISSUE-R106-035: Central archive lacks v2 snapshot bridge for larger-panel benchmark evidence
+
+Severity: P1
+Stage discovered: WPR106-569 - V2 autonomous research systems closure
+Owner: Codex Research Agent
+Status: resolved
+Paths affected: `data/research/central_market_history/**`,
+`src/tradingbotsuite/v2/archive_inventory/**`,
+`src/tradingbotsuite/v2/backtest_engine/**`,
+`docs/work_packets/WPR106-570-v2-central-archive-snapshot-bridge-and-benchmark-closure.md`,
+`docs/work_packets/WPR106-569-v2-autonomous-research-end-to-end-systems-closure.md`,
+`docs/stage_reports/STAGE_R106_WPR106_569_SYSTEMS_CLOSURE_REPORT.md`
+
+### Problem
+
+The local central archive can be inventoried and feature-cataloged, but it
+does not currently expose the v2 snapshot-backed manifest records required by
+the benchmark runner. This blocks real larger-local-panel benchmark evidence
+and any speedup claim for the current fast/reference path.
+
+### Evidence
+
+On 2026-06-29, `archive-inventory --summary` reported 492 local research
+records and 8,633,194 rows across `binance_usdm` and `hyperliquid`.
+`archive-inventory --feature-catalog --summary` reported 251 feature-catalog
+entries and 256,523 feature rows.
+
+The BTCUSDT/ETHUSDT six-month strategy data-requirement resolver run exited
+non-zero with `ready=false` and emitted bounded `DataGapRequest` objects for
+missing usable `bars` and `coverage` windows. A direct
+`fast-lane benchmark-run` against `data/research/central_market_history`
+rejected deterministic placeholder snapshot IDs with
+`archive_snapshot_not_found`. A manifest-store probe found zero v2
+`file_manifest` rows, zero archive snapshots, and no
+`manifests/archive_snapshots.parquet` or `manifests/file_manifest.parquet`.
+
+### Required resolution
+
+Create a research-only v2 snapshot bridge or equivalent snapshot/coverage
+export from existing central archive evidence, without collecting new data or
+rewriting historical ledgers. Then rerun the strategy data-requirement
+resolver, larger local panel benchmark, reference audit, and full replay
+verification with real snapshot IDs before making any runtime or speedup
+claim.
+
+### Resolution notes
+
+Resolved by WPR106-570. The read-only central archive snapshot bridge converts
+existing central project validation, batch manifests, and normalized Parquet
+files into a packet-local v2 snapshot-backed benchmark input root without
+mutating `data/research/central_market_history/**`.
+
+The bridge report at
+`data/research/wpr106_570_central_archive_snapshot_bridge/bridge_archive/manifests/central_archive_snapshot_bridge_report.json`
+records a BTCUSDT/ETHUSDT 1m bridge over `2024-01-01T00:00:00Z` through
+`2024-07-01T00:00:00Z` with 12 derived file-manifest rows, 524,160 rows,
+accepted-research coverage reports, real archive/universe snapshot IDs, and
+`central_archive_mutated=false`.
+
+The archive-first resolver over the bridge returned `ready=true`, usable
+archive refs for BTCUSDT and ETHUSDT, and no `DataGapRequest`. The completed
+larger 1m benchmark report at
+`data/research/wpr106_570_central_archive_snapshot_bridge/benchmark_runs/wpr106570-btc-1m-jan-feb2024-smoke-tol1e9/benchmark_report.json`
+uses real central archive BTCUSDT 1m rows for `2024-01-01T00:00:00Z` through
+`2024-03-01T00:00:00Z` with 86,400 reported rows, metrics-only artifacts,
+reference-vs-fast parity `pass` at `tolerance_abs=1e-9`, complete runtime,
+data-load, artifact-write, memory, panel-size, instrument-count, timeframe,
+artifact-mode, and runtime-context observations, and all research-only
+boundary flags non-promotable.
+
+The attempted BTCUSDT/ETHUSDT six-month panel benchmark exceeded the local
+validation host timeout and was not used as resolution evidence. The completed
+BTCUSDT two-month benchmark measured `speedup_ratio=0.07996443360632331`,
+`speedup_claimed=false`; therefore WPR106-570 resolves the snapshot/coverage
+bridge blocker but does not support any broad speedup claim.
 
 ## ISSUE-R106-034: Uploaded WPR106-555 strategies block autonomous-ready claim
 

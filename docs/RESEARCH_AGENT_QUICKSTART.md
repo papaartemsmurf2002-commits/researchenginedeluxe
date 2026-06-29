@@ -23,6 +23,60 @@ python -m tradingbotsuite.v2.cli.main autonomy agent-context --repo-root .
 
 Run that command at the start of a research packet and use its JSON as the
 current instrument/data/path/policy map.
+- WPR106-567 adds the archive-first preflight:
+
+```powershell
+python -m tradingbotsuite.v2.cli.main archive-inventory --summary
+python -m tradingbotsuite.v2.cli.main archive-inventory --feature-catalog --summary
+python -m tradingbotsuite.v2.cli.main archive-inventory --feature-catalog --feature-family <family> --instrument-id <instrument> --timeframe <tf> --accepted-only
+python -m tradingbotsuite.v2.cli.main archive-inventory --missing-for-strategy <spec.json> --start-ts <ts> --end-ts <ts>
+```
+
+Run inventory/resolver before collecting data, materializing a new feature
+slice, writing a collector, or adding venue support.
+Use `--feature-catalog` to inspect existing OF/funding/OI/spread/derived
+feature refs directly before planning new materialization work.
+Resolver reports include `recommended_engine_lane`, `reference_audit_required`,
+and `fast_lane_reason`; large sweeps and explicit fast-lane requests should use
+the recommended fast lane only as triage until reference audit/parity evidence
+exists. Every `DataGapRequest` includes the archive refs and coverage report
+IDs checked before the gap was opened.
+
+WPR106-567 also adds fast-lane audit/rerun tools:
+
+```powershell
+python -m tradingbotsuite.v2.cli.main fast-lane sample-reference-audits --sample-rate 0.05 --run-id <fast-run-id>
+python -m tradingbotsuite.v2.cli.main fast-lane parity-report --reference-run <reference-run_manifest.json> --fast-run <fast-run_manifest.json>
+python -m tradingbotsuite.v2.cli.main fast-lane reference-rerun-plan --fast-run <fast-run_manifest.json>
+python -m tradingbotsuite.v2.cli.main fast-lane full-artifact-replay-plan --run <summary-or-metrics-run_manifest.json>
+python -m tradingbotsuite.v2.cli.main fast-lane verify-full-artifact-replay --source-run <summary-or-metrics-run_manifest.json> --full-run <full-run_manifest.json>
+python -m tradingbotsuite.v2.cli.main fast-lane benchmark-run --benchmark-tier smoke --strategy-spec-file <spec.json> --archive-root <archive> --output-root <out> --archive-snapshot-id <snapshot> --universe-snapshot-id <universe> --venue hyperliquid --instrument-id <instrument> --timeframe 1m --start-ts <ts> --end-ts <ts>
+```
+
+Use these before treating fast-lane sweep output as more than triage evidence.
+Benchmark runs read existing archive refs, write under the requested output
+root, and do not append archive data-request manifests.
+Use `--benchmark-tier smoke` for one-off checks. `panel` and `sweep` tiers are
+reserved for broader scopes and fail closed when the requested instrument/window
+is too small for that label.
+Use `full-artifact-replay-plan` for promising summary/metrics-only runs before
+promoting them to full artifact replay; it preserves the source engine lane and
+requires the same spec/data/config identity.
+After the full replay is written, use `verify-full-artifact-replay` to confirm
+the replay run preserves the light run's spec/data/config identity, matching
+metrics, and full artifact set.
+
+For proven raw-data gaps, convert resolver JSON to a bounded collector template
+before writing any collector packet:
+
+```powershell
+python -m tradingbotsuite.v2.cli.main collectors gap-template --gap-request-file <resolver-report-or-gap.json>
+```
+
+This command emits template-only plans. It does not fetch data or authorize
+collection, and it skips gaps that have no suggested collector. Venue-probe
+templates require checked archive refs or coverage-report evidence from the
+`DataGapRequest`; hand-written bare gaps fail closed.
 
 ## What To Read
 
@@ -83,6 +137,17 @@ BTC and ETH are fixtures/reference symbols, not the full product scope.
 - Preserve provider provenance. Do not relabel Binance/Bybit rows as
   Hyperliquid-native rows.
 - Do not silently substitute bars for missing OF/L2/trade inputs.
+- Use existing archive refs first. If data is missing, act only on the bounded
+  `DataGapRequest` instrument/family/time range after a scoped work packet
+  allows it; do not add venues proactively.
+- Large sweeps may use `fast_vectorized` and `artifact_mode=summary` or
+  `artifact_mode=metrics_only` for triage, but promising or suspicious results
+  need sampled reference audit, parity reports, and full-artifact replay plans.
+- Set benchmark capture explicitly when measuring runtime. Do not claim speedup
+  unless a manifest or parity report contains measured benchmark evidence.
+  Benchmark reports must include reference/fast runtime, data-load,
+  artifact-write, and memory observations before they are accepted as benchmark
+  evidence.
 - Treat skipped strategies, missing windows, budget blockers, and failed gates
   as useful evidence.
 - Keep the latest full calendar month out of ordinary tuning unless a packet

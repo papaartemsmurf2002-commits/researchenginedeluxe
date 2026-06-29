@@ -8,6 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 
 from tradingbotsuite.v2.backtest_engine import (
+    ArtifactMode,
     BacktestRunConfig,
     EngineLane,
     RunStatus,
@@ -182,6 +183,63 @@ def test_fast_vectorized_lane_matches_reference_metrics_and_artifacts(tmp_path) 
         assert fast_row["gross_return"] == pytest.approx(reference_row["gross_return"], abs=1e-12)
         assert fast_row["net_return"] == pytest.approx(reference_row["net_return"], abs=1e-12)
         assert fast_row["turnover"] == pytest.approx(reference_row["turnover"], abs=1e-12)
+
+
+def test_metrics_only_artifact_mode_writes_replayable_light_artifacts(tmp_path) -> None:
+    result = run_vectorized_backtest(
+        config=_config(tmp_path / "runs", run_id="metrics-only-run").model_copy(
+            update={"artifact_mode": ArtifactMode.METRICS_ONLY}
+        ),
+        strategy_spec=_short_spec("hl_cross_sectional_momentum_v1"),
+        panel_rows=_panel_rows(),
+    )
+    run_dir = Path(result.run_dir)
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+
+    assert result.manifest.status == RunStatus.SUCCEEDED
+    assert manifest["artifact_mode"] == "metrics_only"
+    assert manifest["replayable_to_full_artifacts"] is True
+    assert "metrics" in manifest["artifacts"]
+    assert "replay_manifest" in manifest["artifacts"]
+    assert "trades" not in manifest["artifacts"]
+    assert "positions" not in manifest["artifacts"]
+    assert (run_dir / "metrics.json").exists()
+    assert (run_dir / "replay_manifest.json").exists()
+    assert not (run_dir / "trades.parquet").exists()
+    replay = json.loads((run_dir / "replay_manifest.json").read_text(encoding="utf-8"))
+    assert replay["full_replay_requires_same_spec_data_config"] is True
+    assert replay["panel_hash"]
+
+
+def test_benchmark_enabled_run_records_manifest_observations(tmp_path) -> None:
+    result = run_vectorized_backtest(
+        config=_config(tmp_path / "runs", run_id="benchmark-run").model_copy(
+            update={"benchmark_enabled": True}
+        ),
+        strategy_spec=_short_spec("hl_cross_sectional_momentum_v1"),
+        panel_rows=_panel_rows(),
+    )
+    run_dir = Path(result.run_dir)
+    manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+    observations = manifest["benchmark_observations"]
+
+    assert result.manifest.status == RunStatus.SUCCEEDED
+    assert observations["panel_prepare_seconds"] >= 0.0
+    assert observations["signal_compile_seconds"] >= 0.0
+    assert observations["reference_runtime_seconds"] >= 0.0
+    assert observations["artifact_write_seconds"] >= 0.0
+    assert observations["total_run_seconds"] >= observations["reference_runtime_seconds"]
+    assert observations["memory_peak_bytes"] >= 0.0
+    assert manifest["speedup_claimed"] is False
+
+
+def test_speedup_claim_requires_complete_benchmark_observations(tmp_path) -> None:
+    payload = _config(tmp_path / "runs", run_id="incomplete-speedup-claim").model_dump(mode="python")
+    payload["speedup_claimed"] = True
+    payload["benchmark_observations"] = {"speedup_ratio": 2.0}
+
+    with pytest.raises(ValueError, match="reference_artifact_write_seconds"):
+        BacktestRunConfig.model_validate(payload)
 
 
 def test_funding_and_fees_affect_net_results(tmp_path) -> None:

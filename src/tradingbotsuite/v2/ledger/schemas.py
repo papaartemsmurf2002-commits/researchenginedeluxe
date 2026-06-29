@@ -25,6 +25,7 @@ class LedgerAppendRequest(BaseModel):
     ledger_path: str = Field(min_length=1)
     evidence_mode: str = "sandbox_diagnostic"
     notes: str = ""
+    max_part_rows: int = Field(default=128, ge=1)
 
     @field_validator("evidence_mode")
     @classmethod

@@ -34,12 +34,19 @@ class CoverageManifestStore:
         return self.layout.resolve("manifests", "data_quality_checks.parquet")
 
     def append_coverage_report(self, report: CoverageReport) -> None:
+        self.append_coverage_reports((report,))
+
+    def append_coverage_reports(self, reports: Iterable[CoverageReport]) -> None:
+        incoming_by_id = {report.coverage_report_id: report for report in reports}
+        incoming = list(incoming_by_id.values())
+        if not incoming:
+            return
         records = [
             existing
             for existing in self.load_coverage_reports()
-            if existing.coverage_report_id != report.coverage_report_id
+            if existing.coverage_report_id not in incoming_by_id
         ]
-        records.append(report)
+        records.extend(incoming)
         records.sort(
             key=lambda item: (
                 item.venue,
@@ -117,8 +124,7 @@ def write_coverage_manifest(
 ) -> list[CoverageReport]:
     store = CoverageManifestStore(ArchiveLayout(archive_root))
     materialized = list(reports)
-    for report in materialized:
-        store.append_coverage_report(report)
+    store.append_coverage_reports(materialized)
     return materialized
 
 

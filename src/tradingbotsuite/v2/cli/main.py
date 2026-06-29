@@ -32,6 +32,15 @@ from tradingbotsuite.v2.archive.rebuild import (
 )
 from tradingbotsuite.v2.archive.schemas import ArchiveLayer
 from tradingbotsuite.v2.archive.snapshots import create_archive_snapshot
+from tradingbotsuite.v2.archive_inventory import (
+    ArchiveInventoryService,
+    ArtifactMode,
+    CentralArchiveSnapshotBridgeConfig,
+    CentralArchiveSnapshotBridgeError,
+    DataGapRequest,
+    StrategyDataRequirementRequest,
+    build_central_archive_snapshot_bridge,
+)
 from tradingbotsuite.v2.autonomy import (
     AutopilotArchiveCycleConfig,
     AutopilotCyclePlanError,
@@ -61,24 +70,39 @@ from tradingbotsuite.v2.backtest_data import (
     BacktestDataService,
     BacktestEvidenceMode,
 )
+from tradingbotsuite.v2.backtest_engine import (
+    BacktestBenchmarkConfig,
+    BenchmarkTier,
+    RunManifest,
+    audit_fast_lane_parity,
+    build_full_artifact_replay_plan,
+    build_reference_rerun_plan,
+    run_archive_backtest_benchmark,
+    select_reference_audit_sample,
+    verify_full_artifact_replay,
+)
 from tradingbotsuite.v2.config.schemas import (
     BOUNDED_CONTEXTS,
     RESEARCH_BOUNDARY,
     V2_SCHEMA_VERSION,
 )
+from tradingbotsuite.v2.costs.models import CostModelConfig
 from tradingbotsuite.v2.collectors.historical_dataset import (
     DEFAULT_MAX_INSTRUMENTS,
     HistoricalPerpDatasetConfig,
     collect_historical_perp_dataset,
 )
+from tradingbotsuite.v2.collectors.templates import collector_template_from_gap_request
 from tradingbotsuite.v2.data_quality.checks import build_quality_checks
 from tradingbotsuite.v2.data_quality.coverage import coverage_report_for_bars
 from tradingbotsuite.v2.data_quality.reports import CoverageManifestStore
 from tradingbotsuite.v2.data_quality.schemas import DEFAULT_COVERAGE_MIN, EvidenceMode
+from tradingbotsuite.v2.feature_store import FeatureStoreCatalogService
 from tradingbotsuite.v2.ledger import (
     LedgerAppendRequest,
     LedgerError,
     append_run_to_ledger,
+    compact_ledger_parts,
     export_ledger,
     leaderboard,
 )
@@ -197,6 +221,54 @@ def build_parser() -> argparse.ArgumentParser:
     archive_market_snapshot.add_argument("--start-ts", required=True)
     archive_market_snapshot.add_argument("--end-ts", required=True)
     archive_market_snapshot.add_argument("--notes")
+    archive_inventory = subparsers.add_parser(
+        "archive-inventory",
+        help="read-only archive inventory and strategy data-gap resolver",
+        description=f"Archive inventory command. {BOUNDARY_HELP}",
+    )
+    archive_inventory.add_argument("--repo-root", default=".")
+    archive_inventory.add_argument("--archive-root", default="data/research/central_market_history")
+    archive_inventory.add_argument("--summary", action="store_true")
+    archive_inventory.add_argument("--symbol")
+    archive_inventory.add_argument("--instrument-id", action="append", dest="instrument_ids", default=[])
+    archive_inventory.add_argument("--venue")
+    archive_inventory.add_argument("--family")
+    archive_inventory.add_argument("--feature-catalog", action="store_true")
+    archive_inventory.add_argument("--feature-family")
+    archive_inventory.add_argument("--source-family")
+    archive_inventory.add_argument("--evidence-scope")
+    archive_inventory.add_argument("--coverage-report-id")
+    archive_inventory.add_argument("--accepted-only", action="store_true")
+    archive_inventory.add_argument("--timeframe")
+    archive_inventory.add_argument("--start-ts")
+    archive_inventory.add_argument("--end-ts")
+    archive_inventory.add_argument(
+        "--bridge-central-snapshot",
+        action="store_true",
+        help="build a read-only v2 snapshot bridge from existing central archive evidence",
+    )
+    archive_inventory.add_argument("--bridge-archive-root")
+    archive_inventory.add_argument("--project-validation-report")
+    archive_inventory.add_argument("--bridge-coverage-min", type=float, default=0.98)
+    archive_inventory.add_argument("--replace-existing-bridge", action="store_true")
+    archive_inventory.add_argument(
+        "--missing-for-strategy",
+        "--strategy-spec-file",
+        dest="strategy_spec_file",
+        help="strategy spec JSON/YAML to resolve against existing archive refs",
+    )
+    archive_inventory.add_argument(
+        "--evidence-mode",
+        choices=[mode.value for mode in BacktestEvidenceMode],
+    )
+    archive_inventory.add_argument(
+        "--artifact-mode",
+        default=ArtifactMode.FULL.value,
+        choices=[mode.value for mode in ArtifactMode],
+    )
+    archive_inventory.add_argument("--prefer-fast-lane", action="store_true")
+    archive_inventory.add_argument("--require-reference-audit", action="store_true")
+    archive_inventory.add_argument("--asof-date")
     universe = subparsers.add_parser(
         "universe",
         help="local universe commands; fixture-backed by default for repeatability",
@@ -276,6 +348,14 @@ def build_parser() -> argparse.ArgumentParser:
         description=f"Collectors command group. {BOUNDARY_HELP}",
     )
     collectors_subparsers = collectors.add_subparsers(dest="collectors_command")
+    gap_template = collectors_subparsers.add_parser(
+        "gap-template",
+        help="convert resolver DataGapRequest JSON into research-only collector templates",
+    )
+    gap_template.add_argument("--gap-request-file", required=True)
+    gap_template.add_argument("--gap-request-id")
+    gap_template.add_argument("--requested-family")
+    gap_template.add_argument("--adapter-id")
     historical_perps = collectors_subparsers.add_parser(
         "historical-perps",
         help="collect historical Hyperliquid perp candles and validate coverage/Binance overlap",
@@ -363,6 +443,94 @@ def build_parser() -> argparse.ArgumentParser:
     backtest_load.add_argument("--asof-date")
     backtest_load.add_argument("--include-lockbox", action="store_true")
     backtest_load.add_argument("--no-write-manifest", action="store_true")
+    fast_lane = subparsers.add_parser(
+        "fast-lane",
+        help="fast-lane parity, sampled reference audit, and rerun planning tools",
+        description=f"Fast-lane audit command group. {BOUNDARY_HELP}",
+    )
+    fast_lane_subparsers = fast_lane.add_subparsers(dest="fast_lane_command")
+    fast_lane_parity = fast_lane_subparsers.add_parser(
+        "parity-report",
+        help="compare a reference manifest with a fast-vectorized manifest",
+    )
+    fast_lane_parity.add_argument("--reference-run", required=True, help="path to reference run_manifest.json")
+    fast_lane_parity.add_argument("--fast-run", required=True, help="path to fast run_manifest.json")
+    fast_lane_parity.add_argument("--tolerance-abs", type=float, default=1e-12)
+    fast_lane_rerun = fast_lane_subparsers.add_parser(
+        "reference-rerun-plan",
+        help="build a full-artifact reference rerun plan for a fast result",
+    )
+    fast_lane_rerun.add_argument("--fast-run", required=True, help="path to fast run_manifest.json")
+    fast_lane_rerun.add_argument("--reason", default="suspicious_fast_result_reference_audit")
+    full_replay = fast_lane_subparsers.add_parser(
+        "full-artifact-replay-plan",
+        help="build a full-artifact replay plan for a summary or metrics-only run",
+    )
+    full_replay.add_argument("--run", required=True, help="path to summary/metrics-only run_manifest.json")
+    full_replay.add_argument("--reason", default="artifact_light_full_replay")
+    full_replay_verify = fast_lane_subparsers.add_parser(
+        "verify-full-artifact-replay",
+        help="verify a full replay run preserves a light run's spec/data/config identity",
+    )
+    full_replay_verify.add_argument("--source-run", required=True, help="path to summary/metrics-only run_manifest.json")
+    full_replay_verify.add_argument("--full-run", required=True, help="path to full replay run_manifest.json")
+    full_replay_verify.add_argument("--tolerance-abs", type=float, default=1e-12)
+    fast_lane_sample = fast_lane_subparsers.add_parser(
+        "sample-reference-audits",
+        help="deterministically select fast run IDs for sampled reference audit",
+    )
+    fast_lane_sample.add_argument("--sample-rate", type=float, required=True)
+    fast_lane_sample.add_argument("--seed", default="fast_lane_reference_authority_v1")
+    fast_lane_sample.add_argument("--minimum-count", type=int, default=1)
+    fast_lane_sample.add_argument("--run-id", action="append", dest="run_ids", default=[])
+    fast_lane_benchmark = fast_lane_subparsers.add_parser(
+        "benchmark-run",
+        help="run an archive-backed reference/fast benchmark over the same strategy/data slice",
+    )
+    fast_lane_benchmark.add_argument("--benchmark-id", default="archive_fast_lane_benchmark")
+    fast_lane_benchmark.add_argument(
+        "--benchmark-tier",
+        default=BenchmarkTier.SMOKE.value,
+        choices=[tier.value for tier in BenchmarkTier],
+    )
+    fast_lane_benchmark.add_argument("--strategy-spec-file", required=True)
+    fast_lane_benchmark.add_argument("--archive-root", required=True)
+    fast_lane_benchmark.add_argument("--output-root", required=True)
+    fast_lane_benchmark.add_argument("--report-path")
+    fast_lane_benchmark.add_argument("--archive-snapshot-id", required=True)
+    fast_lane_benchmark.add_argument("--universe-snapshot-id", required=True)
+    fast_lane_benchmark.add_argument("--venue", required=True)
+    fast_lane_benchmark.add_argument("--instrument-id", action="append", dest="benchmark_instrument_ids", required=True)
+    fast_lane_benchmark.add_argument("--family", default="bars")
+    fast_lane_benchmark.add_argument("--timeframe", required=True)
+    fast_lane_benchmark.add_argument("--start-ts", required=True)
+    fast_lane_benchmark.add_argument("--end-ts", required=True)
+    fast_lane_benchmark.add_argument("--warmup-start-ts")
+    fast_lane_benchmark.add_argument(
+        "--field",
+        action="append",
+        dest="benchmark_fields",
+        default=[],
+        help="optional loaded field override; repeat for multiple fields",
+    )
+    fast_lane_benchmark.add_argument(
+        "--evidence-mode",
+        default=BacktestEvidenceMode.ACCEPTED_RESEARCH.value,
+        choices=[mode.value for mode in BacktestEvidenceMode],
+    )
+    fast_lane_benchmark.add_argument(
+        "--artifact-mode",
+        default=ArtifactMode.METRICS_ONLY.value,
+        choices=[mode.value for mode in ArtifactMode],
+    )
+    fast_lane_benchmark.add_argument("--asof-date")
+    fast_lane_benchmark.add_argument("--include-lockbox", action="store_true")
+    fast_lane_benchmark.add_argument("--tolerance-abs", type=float, default=1e-12)
+    fast_lane_benchmark.add_argument("--claim-speedup", action="store_true")
+    fast_lane_benchmark.add_argument(
+        "--cost-model-file",
+        help="optional CostModelConfig JSON; useful for archive slices without funding fields",
+    )
     strategy_spec = subparsers.add_parser(
         "strategy-spec",
         help="declarative strategy spec validation and registry inspection",
@@ -401,6 +569,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["sandbox_diagnostic", "accepted_research"],
     )
     ledger_append.add_argument("--notes", default="")
+    ledger_append.add_argument("--max-part-rows", type=int, default=128)
     ledger_export = ledger_subparsers.add_parser(
         "export",
         help="generate CSV/XLSX from canonical Parquet ledger",
@@ -408,6 +577,12 @@ def build_parser() -> argparse.ArgumentParser:
     ledger_export.add_argument("--ledger", required=True, help="canonical Parquet ledger path")
     ledger_export.add_argument("--format", required=True, choices=["csv", "xlsx"])
     ledger_export.add_argument("--output", required=True)
+    ledger_compact = ledger_subparsers.add_parser(
+        "compact",
+        help="compact part-backed ledger storage into a current Parquet artifact",
+    )
+    ledger_compact.add_argument("--ledger", required=True, help="canonical Parquet ledger path")
+    ledger_compact.add_argument("--output", help="optional compacted Parquet output path")
     ledger_leaderboard = ledger_subparsers.add_parser(
         "leaderboard",
         help="print a conservative research leaderboard from the canonical ledger",
@@ -699,6 +874,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "archive":
         return _handle_archive(args, parser)
+    if args.command == "archive-inventory":
+        return _handle_archive_inventory(args, parser)
     if args.command == "universe":
         return _handle_universe(args, parser)
     if args.command == "collectors":
@@ -707,6 +884,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _handle_data(args, parser)
     if args.command == "backtest-data":
         return _handle_backtest_data(args, parser)
+    if args.command == "fast-lane":
+        return _handle_fast_lane(args, parser)
     if args.command == "strategy-spec":
         return _handle_strategy_spec(args, parser)
     if args.command == "ledger":
@@ -724,6 +903,105 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "ui":
         return _handle_ui(args, parser)
     parser.print_help()
+    return 0
+
+
+def _handle_archive_inventory(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    service = ArchiveInventoryService(repo_root=args.repo_root, archive_root=args.archive_root)
+    start_ts = _parse_datetime(args.start_ts) if args.start_ts else None
+    end_ts = _parse_datetime(args.end_ts) if args.end_ts else None
+    if args.bridge_central_snapshot:
+        if args.bridge_archive_root is None:
+            print("central_archive_snapshot_bridge_rejected=bridge_archive_root_required")
+            return 1
+        if start_ts is None or end_ts is None:
+            print("central_archive_snapshot_bridge_rejected=start_ts_and_end_ts_required")
+            return 1
+        try:
+            result = build_central_archive_snapshot_bridge(
+                CentralArchiveSnapshotBridgeConfig(
+                    central_archive_root=args.archive_root,
+                    bridge_archive_root=args.bridge_archive_root,
+                    project_validation_report_path=args.project_validation_report,
+                    instrument_ids=tuple(args.instrument_ids),
+                    venue=args.venue or "binance_usdm",
+                    family=args.family or "bars",
+                    timeframe=args.timeframe or "1m",
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                    asof_date=_parse_date(args.asof_date) if args.asof_date else None,
+                    coverage_min=args.bridge_coverage_min,
+                    replace_existing=args.replace_existing_bridge,
+                )
+            )
+        except (OSError, CentralArchiveSnapshotBridgeError, ValueError, ValidationError) as exc:
+            print(f"central_archive_snapshot_bridge_rejected={exc}")
+            return 1
+        print(json.dumps(result.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0
+    if args.feature_catalog:
+        feature_service = FeatureStoreCatalogService(repo_root=args.repo_root, archive_root=args.archive_root)
+        if args.summary:
+            catalog = feature_service.build_catalog()
+            print(json.dumps(catalog.model_dump(mode="json", exclude={"entries"}), sort_keys=True, indent=2))
+            return 0
+        entries = feature_service.query(
+            feature_family=args.feature_family,
+            source_family=args.source_family,
+            venue=args.venue,
+            symbol=args.symbol,
+            instrument_ids=tuple(args.instrument_ids),
+            timeframe=args.timeframe,
+            evidence_scope=args.evidence_scope,
+            accepted_only=args.accepted_only,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
+        print(json.dumps([entry.model_dump(mode="json") for entry in entries], sort_keys=True, indent=2))
+        return 0
+    if args.strategy_spec_file:
+        if start_ts is None or end_ts is None:
+            print("archive_inventory_rejected=start_ts_and_end_ts_required_for_strategy_resolution")
+            return 1
+        try:
+            report = service.resolve_strategy_data_requirements(
+                StrategyDataRequirementRequest(
+                    strategy_spec=load_strategy_spec_file(args.strategy_spec_file),
+                    archive_root=args.archive_root,
+                    repo_root=args.repo_root,
+                    instrument_ids=tuple(args.instrument_ids),
+                    venue=args.venue,
+                    start_ts=start_ts,
+                    end_ts=end_ts,
+                    evidence_mode=args.evidence_mode,
+                    artifact_mode=ArtifactMode(args.artifact_mode),
+                    prefer_fast_lane=args.prefer_fast_lane,
+                    require_reference_audit=args.require_reference_audit,
+                ),
+                asof_date=_parse_date(args.asof_date) if args.asof_date else None,
+            )
+        except (ValueError, ValidationError) as exc:
+            print(f"archive_inventory_rejected={exc}")
+            return 1
+        print(json.dumps(report.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0 if report.ready else 1
+    if args.summary:
+        inventory = service.build_inventory()
+        print(json.dumps(inventory.summary.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0
+    records = service.query(
+        symbol=args.symbol,
+        instrument_ids=tuple(args.instrument_ids),
+        venue=args.venue,
+        family=args.family,
+        timeframe=args.timeframe,
+        evidence_scope=args.evidence_scope,
+        coverage_report_id=args.coverage_report_id,
+        accepted_only=args.accepted_only,
+        start_ts=start_ts,
+        end_ts=end_ts,
+    )
+    print(json.dumps([record.model_dump(mode="json") for record in records], sort_keys=True, indent=2))
     return 0
 
 
@@ -934,6 +1212,44 @@ def _handle_collectors(args: argparse.Namespace, parser: argparse.ArgumentParser
     if args.collectors_command is None:
         parser.parse_args(["collectors", "--help"])
         return 0
+    if args.collectors_command == "gap-template":
+        try:
+            gap_requests = _load_data_gap_requests(args.gap_request_file)
+        except (OSError, json.JSONDecodeError, ValueError, ValidationError) as exc:
+            print(f"collector_gap_template_rejected={exc}")
+            return 1
+        selected = []
+        for gap in gap_requests:
+            if args.gap_request_id and gap.data_gap_request_id != args.gap_request_id:
+                continue
+            if args.requested_family and gap.requested_family != args.requested_family:
+                continue
+            selected.append(gap)
+        templates = []
+        skipped = []
+        for gap in selected:
+            try:
+                template = collector_template_from_gap_request(gap, adapter_id=args.adapter_id)
+            except ValueError as exc:
+                skipped.append(
+                    {
+                        "data_gap_request_id": gap.data_gap_request_id,
+                        "requested_family": gap.requested_family,
+                        "reason": str(exc),
+                    }
+                )
+                continue
+            templates.append(template.model_dump(mode="json"))
+        payload = {
+            "schema_version": V2_SCHEMA_VERSION,
+            "template_count": len(templates),
+            "skipped_gap_count": len(skipped),
+            "templates": templates,
+            "skipped_gap_requests": skipped,
+            **dict(RESEARCH_BOUNDARY),
+        }
+        print(json.dumps(payload, sort_keys=True, indent=2))
+        return 0 if templates or not selected else 1
     if args.collectors_command == "historical-perps":
         output_root = (Path(args.output_root).resolve(strict=False) / args.run_id).resolve(strict=False)
         archive_root = (
@@ -995,6 +1311,19 @@ def _handle_collectors(args: argparse.Namespace, parser: argparse.ArgumentParser
         return 0
     parser.error(f"unsupported collectors command: {args.collectors_command}")
     return 2
+
+
+def _load_data_gap_requests(path: str) -> tuple[DataGapRequest, ...]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict) and isinstance(payload.get("data_gap_requests"), list):
+        rows = payload["data_gap_requests"]
+    elif isinstance(payload, dict):
+        rows = [payload]
+    else:
+        raise ValueError("gap request file must contain a DataGapRequest, list, or resolver report")
+    return tuple(DataGapRequest.model_validate(row) for row in rows)
 
 
 def _universe_refresh_source(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str:
@@ -1177,6 +1506,144 @@ def _handle_backtest_data(args: argparse.Namespace, parser: argparse.ArgumentPar
     return 2
 
 
+def _handle_fast_lane(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
+    if args.fast_lane_command is None:
+        parser.parse_args(["fast-lane", "--help"])
+        return 0
+    if args.fast_lane_command == "parity-report":
+        try:
+            report = audit_fast_lane_parity(
+                reference_manifest=_load_run_manifest(args.reference_run),
+                fast_manifest=_load_run_manifest(args.fast_run),
+                tolerance_abs=args.tolerance_abs,
+            )
+        except (OSError, ValueError, ValidationError) as exc:
+            print(f"fast_lane_parity_report_rejected={exc}")
+            return 1
+        print(json.dumps(report.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0 if report.status.value == "pass" else 1
+    if args.fast_lane_command == "reference-rerun-plan":
+        try:
+            plan = build_reference_rerun_plan(
+                _load_run_manifest(args.fast_run),
+                run_manifest_ref=args.fast_run,
+                reason=args.reason,
+            )
+        except (OSError, ValueError, ValidationError) as exc:
+            print(f"fast_lane_reference_rerun_plan_rejected={exc}")
+            return 1
+        print(json.dumps(plan.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0
+    if args.fast_lane_command == "full-artifact-replay-plan":
+        try:
+            plan = build_full_artifact_replay_plan(
+                _load_run_manifest(args.run),
+                run_manifest_ref=args.run,
+                reason=args.reason,
+            )
+        except (OSError, ValueError, ValidationError) as exc:
+            print(f"full_artifact_replay_plan_rejected={exc}")
+            return 1
+        print(json.dumps(plan.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0
+    if args.fast_lane_command == "verify-full-artifact-replay":
+        try:
+            source = _load_run_manifest(args.source_run)
+            full = _load_run_manifest(args.full_run)
+            report = verify_full_artifact_replay(
+                source_manifest=source,
+                replay_manifest=full,
+                source_replay_manifest=_load_replay_manifest_for_run(
+                    source,
+                    run_manifest_path=Path(args.source_run),
+                ),
+                full_replay_manifest=_load_replay_manifest_for_run(
+                    full,
+                    run_manifest_path=Path(args.full_run),
+                ),
+                tolerance_abs=args.tolerance_abs,
+            )
+        except (OSError, ValueError, ValidationError) as exc:
+            print(f"full_artifact_replay_verification_rejected={exc}")
+            return 1
+        print(json.dumps(report.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0 if report.status.value == "pass" else 1
+    if args.fast_lane_command == "sample-reference-audits":
+        try:
+            selected = select_reference_audit_sample(
+                tuple(args.run_ids),
+                sample_rate=args.sample_rate,
+                seed=args.seed,
+                minimum_count=args.minimum_count,
+            )
+        except ValueError as exc:
+            print(f"fast_lane_reference_audit_sample_rejected={exc}")
+            return 1
+        print(json.dumps({"selected_run_ids": selected}, sort_keys=True, indent=2))
+        return 0
+    if args.fast_lane_command == "benchmark-run":
+        try:
+            report = run_archive_backtest_benchmark(
+                BacktestBenchmarkConfig(
+                    benchmark_id=args.benchmark_id,
+                    benchmark_tier=BenchmarkTier(args.benchmark_tier),
+                    strategy_spec=load_strategy_spec_file(args.strategy_spec_file),
+                    archive_root=args.archive_root,
+                    output_root=args.output_root,
+                    report_path=args.report_path,
+                    archive_snapshot_id=args.archive_snapshot_id,
+                    universe_snapshot_id=args.universe_snapshot_id,
+                    venue=args.venue,
+                    instrument_id=args.benchmark_instrument_ids[0],
+                    instrument_ids=tuple(args.benchmark_instrument_ids),
+                    family=args.family,
+                    timeframe=args.timeframe,
+                    start_ts=_parse_datetime(args.start_ts),
+                    end_ts=_parse_datetime(args.end_ts),
+                    warmup_start_ts=_parse_datetime(args.warmup_start_ts)
+                    if args.warmup_start_ts
+                    else None,
+                    requested_fields=tuple(args.benchmark_fields),
+                    evidence_mode=BacktestEvidenceMode(args.evidence_mode),
+                    asof_date=_parse_date(args.asof_date) if args.asof_date else None,
+                    include_lockbox=args.include_lockbox,
+                    artifact_mode=ArtifactMode(args.artifact_mode),
+                    cost_model=_load_cost_model(args.cost_model_file),
+                    tolerance_abs=args.tolerance_abs,
+                    claim_speedup=args.claim_speedup,
+                )
+            )
+        except (OSError, ValueError, ValidationError) as exc:
+            print(f"fast_lane_benchmark_run_rejected={exc}")
+            return 1
+        print(json.dumps(report.model_dump(mode="json"), sort_keys=True, indent=2))
+        return 0 if report.parity_report.status.value == "pass" else 1
+    parser.error(f"unsupported fast-lane command: {args.fast_lane_command}")
+    return 2
+
+
+def _load_run_manifest(path: str) -> RunManifest:
+    return RunManifest.model_validate(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def _load_cost_model(path: str | None) -> CostModelConfig:
+    if path is None:
+        return CostModelConfig()
+    return CostModelConfig.model_validate(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def _load_replay_manifest_for_run(
+    manifest: RunManifest,
+    *,
+    run_manifest_path: Path,
+) -> dict[str, object]:
+    replay_artifact = manifest.artifacts.get("replay_manifest")
+    if replay_artifact is None:
+        raise ValueError(f"run manifest is missing replay_manifest artifact: {run_manifest_path}")
+    replay_path = (run_manifest_path.parent / replay_artifact.path).resolve()
+    return json.loads(replay_path.read_text(encoding="utf-8"))
+
+
 def _handle_strategy_spec(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.strategy_spec_command is None:
         parser.parse_args(["strategy-spec", "--help"])
@@ -1223,6 +1690,7 @@ def _handle_ledger(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
                     ledger_path=args.ledger,
                     evidence_mode=args.evidence_mode,
                     notes=args.notes,
+                    max_part_rows=args.max_part_rows,
                 )
             )
             print(f"ledger_row_appended={row.run_id}")
@@ -1237,6 +1705,15 @@ def _handle_ledger(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
                 export_format=args.format,
             )
             print(f"ledger_export={path}")
+            print(f"source_ledger={args.ledger}")
+            print("generated_from_canonical=true")
+            return 0
+        if args.ledger_command == "compact":
+            path = compact_ledger_parts(
+                ledger_path=args.ledger,
+                output_path=args.output,
+            )
+            print(f"ledger_compacted={path}")
             print(f"source_ledger={args.ledger}")
             print("generated_from_canonical=true")
             return 0

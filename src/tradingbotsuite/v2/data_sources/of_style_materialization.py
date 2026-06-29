@@ -7,11 +7,14 @@
 from __future__ import annotations
 
 import csv
+import heapq
 import hashlib
 import io
 import json
 import math
+import tempfile
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
@@ -21,7 +24,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from tradingbotsuite.v2.archive.hashing import canonical_json_hash, manifest_rows_hash
+from tradingbotsuite.v2.archive.hashing import canonical_json_bytes, canonical_json_hash, manifest_rows_hash
 from tradingbotsuite.v2.config.schemas import RESEARCH_BOUNDARY, V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import utc_now
 from tradingbotsuite.v2.security.boundary import require_research_boundary
@@ -50,6 +53,10 @@ TRADE_FAMILIES: frozenset[str] = frozenset({"aggTrades", "trades"})
 SUPPORTED_FEATURE_FAMILIES: frozenset[str] = frozenset(
     {"orderflow", "bbo_spread", "l2_depth", "derivatives_context", "kline_context"}
 )
+STREAMING_BUCKET_AGGREGATION_MODE = "streaming_sorted_buckets_v1"
+SPILL_BUCKET_MERGE_AGGREGATION_MODE = "bounded_spill_bucket_merge_v1"
+DIRECT_ROW_AGGREGATION_MODE = "direct_row_v1"
+NON_MONOTONIC_BUCKET_SPILL_BUCKET_LIMIT = 50_000
 
 
 class OFStyleMaterializationSourceResult(BaseModel):
@@ -135,6 +142,7 @@ class OFStyleMaterializationReport(BaseModel):
     requested_intervals: tuple[str, ...] = ()
     output_format: Literal["jsonl", "parquet_parts"] = "jsonl"
     output_chunk_row_limit: int | None = Field(default=None, ge=1)
+    parallel_workers: int = Field(default=1, ge=1)
     max_sources_per_family: int | None = Field(default=None, ge=1)
     max_sources_per_symbol_per_family: int | None = Field(default=None, ge=1)
     archive_source_count: int = Field(ge=0)
@@ -208,6 +216,18 @@ class OFStyleMaterializationConfig:
     require_complete_archive: bool = True
     output_format: Literal["jsonl", "parquet_parts"] = "jsonl"
     output_chunk_row_limit: int | None = None
+    parallel_workers: int = 1
+
+
+@dataclass(frozen=True)
+class _FeatureWriteResult:
+    output_sha256: str
+    output_bytes: int
+    output_part_refs: tuple[str, ...] = ()
+    output_part_manifest_hash: str | None = None
+    input_row_count: int = 0
+    feature_row_count: int = 0
+    row_manifest_hash: str = ""
 
 
 def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = None) -> OFStyleMaterializationReport:
@@ -217,19 +237,8 @@ def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = N
         _require_complete_archive(validation_report)
 
     parsed.output_root.mkdir(parents=True, exist_ok=True)
-    selected_sources = list(_iter_selected_sources(parsed))
-    source_results: list[OFStyleMaterializationSourceResult] = []
-    for source_path in selected_sources:
-        source_results.append(
-            materialize_of_style_source(
-                source_path,
-                archive_root=parsed.archive_root,
-                output_root=parsed.output_root,
-                bucket_seconds=parsed.bucket_seconds,
-                output_format=parsed.output_format,
-                output_chunk_row_limit=parsed.output_chunk_row_limit,
-            )
-        )
+    selected_sources = tuple(_iter_selected_sources(parsed))
+    source_results = list(_materialize_selected_sources(parsed, selected_sources))
 
     family_counts = _family_counts(source_results)
     materialized = sum(1 for row in source_results if row.status == "materialized")
@@ -251,6 +260,7 @@ def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = N
         "requested_intervals": tuple(parsed.intervals),
         "output_format": parsed.output_format,
         "output_chunk_row_limit": parsed.output_chunk_row_limit,
+        "parallel_workers": parsed.parallel_workers,
         "max_sources_per_family": parsed.max_sources_per_family,
         "max_sources_per_symbol_per_family": parsed.max_sources_per_symbol_per_family,
         "archive_source_count": int(validation_report["source_count"]),
@@ -270,6 +280,7 @@ def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = N
         "notes": (
             "WPR106-549 archive validation remains the authoritative full-source completeness proof.",
             "This pass materializes compact research features directly from raw ZIP/CSV sources without central row-level expansion.",
+            "Bucketed trade, BBO, and depth sources use streaming sorted-bucket aggregation when source bucket order is monotonic, with bounded spill/merge aggregation for non-monotonic inputs.",
             "Requester-pays or unavailable Hyperliquid-native historical data is outside this strict-free data baseline.",
             "Generated rows are research-only and are not strategy, candidate, paper, live, order, sizing, or promotion evidence.",
         ),
@@ -282,6 +293,29 @@ def materialize_of_style_archive(config: OFStyleMaterializationConfig | None = N
     report_path = parsed.output_root / "manifests" / "wpr106-552-of-style-feature-materialization-report.json"
     _write_json_with_sha(report_path, report.model_dump(mode="json"))
     return report
+
+
+def _materialize_selected_sources(
+    config: OFStyleMaterializationConfig,
+    selected_sources: Sequence[Path],
+) -> tuple[OFStyleMaterializationSourceResult, ...]:
+    if config.parallel_workers < 1:
+        raise ValueError("parallel_workers must be at least 1")
+
+    def materialize(source_path: Path) -> OFStyleMaterializationSourceResult:
+        return materialize_of_style_source(
+            source_path,
+            archive_root=config.archive_root,
+            output_root=config.output_root,
+            bucket_seconds=config.bucket_seconds,
+            output_format=config.output_format,
+            output_chunk_row_limit=config.output_chunk_row_limit,
+        )
+
+    if config.parallel_workers == 1 or len(selected_sources) <= 1:
+        return tuple(materialize(source_path) for source_path in selected_sources)
+    with ThreadPoolExecutor(max_workers=config.parallel_workers) as executor:
+        return tuple(executor.map(materialize, selected_sources))
 
 
 def materialize_of_style_source(
@@ -302,16 +336,6 @@ def materialize_of_style_source(
     output_root_path = Path(output_root)
     metadata = _load_source_metadata(path, archive_root=archive_root_path)
     family = str(metadata["family"])
-
-    try:
-        rows = _feature_rows_for_source(path, metadata=metadata, bucket_seconds=bucket_seconds)
-        status: Literal["materialized", "blocked"] = "materialized" if rows else "blocked"
-        blockers: tuple[str, ...] = () if rows else ("no_feature_rows",)
-    except Exception as exc:
-        rows = []
-        status = "blocked"
-        blockers = (f"materialization_failed:{type(exc).__name__}",)
-
     feature_family = _feature_family_for(family)
     output_ref = _output_ref_for_source(
         metadata,
@@ -320,34 +344,26 @@ def materialize_of_style_source(
         output_format=output_format,
     )
     output_path = output_root_path / output_ref
-    row_manifest_hash = manifest_rows_hash(rows)
-    output_part_refs: tuple[str, ...] = ()
-    output_part_manifest_hash: str | None = None
-    if rows:
-        if output_format == "jsonl":
-            _write_jsonl_with_sha(output_path, rows)
-            output_sha256 = _sha256_file(output_path)
-            output_bytes = output_path.stat().st_size
-        else:
-            part_result = _write_parquet_parts_with_index(
-                output_root=output_root_path,
-                index_ref=output_ref,
-                metadata=metadata,
-                feature_family=feature_family,
-                rows=rows,
-                row_manifest_hash=row_manifest_hash,
-                chunk_row_limit=output_chunk_row_limit or 100_000,
-            )
-            output_sha256 = part_result["index_sha256"]
-            output_bytes = int(part_result["output_bytes"])
-            output_part_refs = tuple(part_result["part_refs"])
-            output_part_manifest_hash = str(part_result["part_manifest_hash"])
-    else:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text("", encoding="utf-8")
-        _write_text_sha(output_path)
-        output_sha256 = _sha256_file(output_path)
-        output_bytes = 0
+    try:
+        write_result = _write_feature_rows(
+            output_root=output_root_path,
+            output_ref=output_ref,
+            output_path=output_path,
+            metadata=metadata,
+            feature_family=feature_family,
+            rows=_feature_rows_for_source(path, metadata=metadata, bucket_seconds=bucket_seconds),
+            output_format=output_format,
+            chunk_row_limit=output_chunk_row_limit or 100_000,
+        )
+        status: Literal["materialized", "blocked"] = "materialized" if write_result.feature_row_count else "blocked"
+        blockers: tuple[str, ...] = () if write_result.feature_row_count else ("no_feature_rows",)
+    except Exception as exc:
+        write_result = _write_empty_feature_output(
+            output_path=output_path,
+            output_format=output_format,
+        )
+        status = "blocked"
+        blockers = (f"materialization_failed:{type(exc).__name__}",)
 
     result_payload = {
         "family": family,
@@ -361,21 +377,53 @@ def materialize_of_style_source(
         "raw_sha256": metadata.get("raw_sha256") or metadata.get("checksum_sha256"),
         "output_format": output_format,
         "output_ref": output_ref,
-        "output_sha256": output_sha256,
-        "output_bytes": output_bytes,
-        "output_part_refs": output_part_refs,
-        "output_part_count": len(output_part_refs),
-        "output_part_manifest_hash": output_part_manifest_hash,
+        "output_sha256": write_result.output_sha256,
+        "output_bytes": write_result.output_bytes,
+        "output_part_refs": write_result.output_part_refs,
+        "output_part_count": len(write_result.output_part_refs),
+        "output_part_manifest_hash": write_result.output_part_manifest_hash,
         "status": status,
-        "input_row_count": sum(int(row.get("source_row_count", 0)) for row in rows),
-        "feature_row_count": len(rows),
-        "row_manifest_hash": row_manifest_hash,
+        "input_row_count": write_result.input_row_count,
+        "feature_row_count": write_result.feature_row_count,
+        "row_manifest_hash": write_result.row_manifest_hash,
         "blocker_reasons": blockers,
         **dict(RESEARCH_BOUNDARY),
     }
     return OFStyleMaterializationSourceResult(
         **result_payload,
         source_result_id=of_style_materialization_source_result_id_from_payload(result_payload),
+    )
+
+
+def _write_feature_rows(
+    *,
+    output_root: Path,
+    output_ref: str,
+    output_path: Path,
+    metadata: Mapping[str, Any],
+    feature_family: str,
+    rows: Iterable[Mapping[str, Any]],
+    output_format: Literal["jsonl", "parquet_parts"],
+    chunk_row_limit: int,
+) -> _FeatureWriteResult:
+    if output_format == "jsonl":
+        return _write_jsonl_stream_with_sha(output_path, rows)
+    part_result = _write_parquet_parts_with_index(
+        output_root=output_root,
+        index_ref=output_ref,
+        metadata=metadata,
+        feature_family=feature_family,
+        rows=rows,
+        chunk_row_limit=chunk_row_limit,
+    )
+    return _FeatureWriteResult(
+        output_sha256=str(part_result["index_sha256"]),
+        output_bytes=int(part_result["output_bytes"]),
+        output_part_refs=tuple(part_result["part_refs"]),
+        output_part_manifest_hash=str(part_result["part_manifest_hash"]),
+        input_row_count=int(part_result["input_row_count"]),
+        feature_row_count=int(part_result["feature_row_count"]),
+        row_manifest_hash=str(part_result["row_manifest_hash"]),
     )
 
 
@@ -472,244 +520,823 @@ def of_style_materialization_report_id_from_payload(payload: Mapping[str, Any]) 
     )
 
 
-def _feature_rows_for_source(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> list[dict[str, Any]]:
+def _feature_rows_for_source(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> Iterator[dict[str, Any]]:
     family = str(metadata["family"])
     if family in TRADE_FAMILIES:
-        return _trade_orderflow_rows(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        yield from _trade_orderflow_rows(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        return
     if family == "bookTicker":
-        return _book_ticker_rows(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        yield from _book_ticker_rows(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        return
     if family == "bookDepth":
-        return _book_depth_rows(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        yield from _book_depth_rows(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        return
     if family == "metrics":
-        return _metrics_rows(path, metadata=metadata)
+        yield from _metrics_rows(path, metadata=metadata)
+        return
     if family in KLINE_CONTEXT_FAMILIES:
-        return _kline_context_rows(path, metadata=metadata)
+        yield from _kline_context_rows(path, metadata=metadata)
+        return
     raise ValueError(f"unsupported OF-style family: {family}")
 
 
-def _trade_orderflow_rows(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> list[dict[str, Any]]:
+def _trade_orderflow_rows(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> Iterator[dict[str, Any]]:
     family = str(metadata["family"])
-    buckets: dict[int, dict[str, float | int]] = defaultdict(
-        lambda: {
-            "source_row_count": 0,
-            "trade_count": 0,
-            "total_volume": 0.0,
-            "total_quote_volume": 0.0,
-            "buy_volume": 0.0,
-            "sell_volume": 0.0,
-            "unknown_side_volume": 0.0,
-            "buy_quote_volume": 0.0,
-            "sell_quote_volume": 0.0,
-            "unknown_side_quote_volume": 0.0,
-        }
-    )
+    if _source_bucket_order_is_monotonic(path, family=family, bucket_seconds=bucket_seconds):
+        yield from _trade_orderflow_rows_streaming(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        return
+    yield from _trade_orderflow_rows_full_sort(path, metadata=metadata, bucket_seconds=bucket_seconds)
+
+
+def _trade_orderflow_rows_streaming(
+    path: Path,
+    *,
+    metadata: Mapping[str, Any],
+    bucket_seconds: int,
+) -> Iterator[dict[str, Any]]:
+    family = str(metadata["family"])
+    current_bucket_start: int | None = None
+    current_bucket: dict[str, float | int] | None = None
     for record in _zip_csv_dict_rows(path, family=family):
-        price = _to_float(record.get("price"))
-        quantity = _to_float(record.get("quantity") if family == "aggTrades" else record.get("qty"))
+        parsed = _parse_trade_record(record, family=family, bucket_seconds=bucket_seconds)
+        if parsed is None:
+            continue
+        bucket_start_ms, price, quantity, quote_quantity, side = parsed
+        if current_bucket_start is None:
+            current_bucket_start = bucket_start_ms
+            current_bucket = _new_trade_bucket()
+        elif bucket_start_ms != current_bucket_start:
+            if current_bucket is not None:
+                yield from _trade_feature_row_from_bucket(
+                    metadata,
+                    bucket_start_ms=current_bucket_start,
+                    bucket_seconds=bucket_seconds,
+                    bucket=current_bucket,
+                    aggregation_mode=STREAMING_BUCKET_AGGREGATION_MODE,
+                )
+            current_bucket_start = bucket_start_ms
+            current_bucket = _new_trade_bucket()
+        _accumulate_trade_bucket(
+            current_bucket,
+            price=price,
+            quantity=quantity,
+            quote_quantity=quote_quantity,
+            side=side,
+        )
+    if current_bucket_start is not None and current_bucket is not None:
+        yield from _trade_feature_row_from_bucket(
+            metadata,
+            bucket_start_ms=current_bucket_start,
+            bucket_seconds=bucket_seconds,
+            bucket=current_bucket,
+            aggregation_mode=STREAMING_BUCKET_AGGREGATION_MODE,
+        )
+
+
+def _trade_orderflow_rows_full_sort(
+    path: Path,
+    *,
+    metadata: Mapping[str, Any],
+    bucket_seconds: int,
+) -> Iterator[dict[str, Any]]:
+    family = str(metadata["family"])
+    buckets: dict[int, dict[str, float | int]] = defaultdict(_new_trade_bucket)
+    spill_paths: list[Path] = []
+    with tempfile.TemporaryDirectory(prefix="of_style_trade_spill_") as spill_root:
+        spill_dir = Path(spill_root)
+        for record in _zip_csv_dict_rows(path, family=family):
+            parsed = _parse_trade_record(record, family=family, bucket_seconds=bucket_seconds)
+            if parsed is None:
+                continue
+            bucket_start_ms, price, quantity, quote_quantity, side = parsed
+            _accumulate_trade_bucket(
+                buckets[bucket_start_ms],
+                price=price,
+                quantity=quantity,
+                quote_quantity=quote_quantity,
+                side=side,
+            )
+            if len(buckets) >= NON_MONOTONIC_BUCKET_SPILL_BUCKET_LIMIT:
+                spill_paths.append(
+                    _write_bucket_spill(
+                        spill_dir,
+                        spill_index=len(spill_paths),
+                        buckets=buckets,
+                        serializer=_serialize_trade_bucket,
+                    )
+                )
+                buckets.clear()
+        if buckets:
+            spill_paths.append(
+                _write_bucket_spill(
+                    spill_dir,
+                    spill_index=len(spill_paths),
+                    buckets=buckets,
+                    serializer=_serialize_trade_bucket,
+                )
+            )
+            buckets.clear()
+        for bucket_start_ms, bucket in _merge_bucket_spills(
+            spill_paths,
+            new_bucket=_new_trade_bucket,
+            deserializer=_deserialize_trade_bucket,
+            merge_bucket=_merge_trade_bucket,
+        ):
+            yield from _trade_feature_row_from_bucket(
+                metadata,
+                bucket_start_ms=bucket_start_ms,
+                bucket_seconds=bucket_seconds,
+                bucket=bucket,
+                aggregation_mode=SPILL_BUCKET_MERGE_AGGREGATION_MODE,
+            )
+
+
+def _new_trade_bucket() -> dict[str, float | int]:
+    return {
+        "source_row_count": 0,
+        "trade_count": 0,
+        "total_volume": 0.0,
+        "total_quote_volume": 0.0,
+        "buy_volume": 0.0,
+        "sell_volume": 0.0,
+        "unknown_side_volume": 0.0,
+        "buy_quote_volume": 0.0,
+        "sell_quote_volume": 0.0,
+        "unknown_side_quote_volume": 0.0,
+    }
+
+
+def _parse_trade_record(
+    record: Mapping[str, Any],
+    *,
+    family: str,
+    bucket_seconds: int,
+) -> tuple[int, float, float, float, str] | None:
+    price = _to_float(record.get("price"))
+    quantity = _to_float(record.get("quantity") if family == "aggTrades" else record.get("qty"))
+    ts = _to_int(record.get("transact_time") if family == "aggTrades" else record.get("time"))
+    if price is None or quantity is None or ts is None or price <= 0:
+        return None
+    quote_quantity = _to_float(record.get("quote_qty"))
+    if quote_quantity is None:
+        quote_quantity = price * quantity
+    side = _side_from_buyer_maker(record.get("is_buyer_maker"))
+    return _bucket_start_ms(ts, bucket_seconds), price, quantity, quote_quantity, side
+
+
+def _accumulate_trade_bucket(
+    bucket: dict[str, float | int] | None,
+    *,
+    price: float,
+    quantity: float,
+    quote_quantity: float,
+    side: str,
+) -> None:
+    if bucket is None:
+        return
+    bucket["source_row_count"] = int(bucket["source_row_count"]) + 1
+    bucket["trade_count"] = int(bucket["trade_count"]) + 1
+    bucket["total_volume"] = float(bucket["total_volume"]) + quantity
+    bucket["total_quote_volume"] = float(bucket["total_quote_volume"]) + quote_quantity
+    bucket[f"{side}_volume"] = float(bucket[f"{side}_volume"]) + quantity
+    bucket[f"{side}_quote_volume"] = float(bucket[f"{side}_quote_volume"]) + quote_quantity
+
+
+def _trade_feature_row_from_bucket(
+    metadata: Mapping[str, Any],
+    *,
+    bucket_start_ms: int,
+    bucket_seconds: int,
+    bucket: Mapping[str, float | int],
+    aggregation_mode: str,
+) -> Iterator[dict[str, Any]]:
+    total_volume = float(bucket["total_volume"])
+    total_quote = float(bucket["total_quote_volume"])
+    if total_volume <= 0 or int(bucket["trade_count"]) <= 0:
+        return
+    row = _base_feature_row(
+        metadata,
+        feature_family="orderflow",
+        bucket_start_ms=bucket_start_ms,
+        bucket_end_ms=bucket_start_ms + bucket_seconds * 1000,
+        bucket_seconds=bucket_seconds,
+    )
+    buy_volume = float(bucket["buy_volume"])
+    sell_volume = float(bucket["sell_volume"])
+    buy_quote = float(bucket["buy_quote_volume"])
+    sell_quote = float(bucket["sell_quote_volume"])
+    row.update(
+        {
+            "aggregation_mode": aggregation_mode,
+            "source_row_count": int(bucket["source_row_count"]),
+            "trade_count": int(bucket["trade_count"]),
+            "total_volume": _round_float(total_volume),
+            "total_quote_volume": _round_float(total_quote),
+            "buy_volume": _round_float(buy_volume),
+            "sell_volume": _round_float(sell_volume),
+            "unknown_side_volume": _round_float(float(bucket["unknown_side_volume"])),
+            "buy_quote_volume": _round_float(buy_quote),
+            "sell_quote_volume": _round_float(sell_quote),
+            "unknown_side_quote_volume": _round_float(float(bucket["unknown_side_quote_volume"])),
+            "vwap": _round_float(total_quote / total_volume),
+            "trade_imbalance": _round_float(_imbalance(buy_volume, sell_volume)),
+            "quote_trade_imbalance": _round_float(_imbalance(buy_quote, sell_quote)),
+        }
+    )
+    yield _with_row_hash(row)
+
+
+def _source_bucket_order_is_monotonic(path: Path, *, family: str, bucket_seconds: int) -> bool:
+    last_bucket_start: int | None = None
+    for record in _zip_csv_dict_rows(path, family=family):
+        bucket_start_ms = _bucket_start_for_record(record, family=family, bucket_seconds=bucket_seconds)
+        if bucket_start_ms is None:
+            continue
+        if last_bucket_start is not None and bucket_start_ms < last_bucket_start:
+            return False
+        last_bucket_start = bucket_start_ms
+    return True
+
+
+def _bucket_start_for_record(record: Mapping[str, Any], *, family: str, bucket_seconds: int) -> int | None:
+    if family in TRADE_FAMILIES:
         ts = _to_int(record.get("transact_time") if family == "aggTrades" else record.get("time"))
-        if price is None or quantity is None or ts is None or price <= 0:
-            continue
-        quote_quantity = _to_float(record.get("quote_qty"))
-        if quote_quantity is None:
-            quote_quantity = price * quantity
-        side = _side_from_buyer_maker(record.get("is_buyer_maker"))
-        bucket_start_ms = _bucket_start_ms(ts, bucket_seconds)
-        bucket = buckets[bucket_start_ms]
-        bucket["source_row_count"] = int(bucket["source_row_count"]) + 1
-        bucket["trade_count"] = int(bucket["trade_count"]) + 1
-        bucket["total_volume"] = float(bucket["total_volume"]) + quantity
-        bucket["total_quote_volume"] = float(bucket["total_quote_volume"]) + quote_quantity
-        bucket[f"{side}_volume"] = float(bucket[f"{side}_volume"]) + quantity
-        bucket[f"{side}_quote_volume"] = float(bucket[f"{side}_quote_volume"]) + quote_quantity
-    rows: list[dict[str, Any]] = []
-    for bucket_start_ms in sorted(buckets):
-        bucket = buckets[bucket_start_ms]
-        total_volume = float(bucket["total_volume"])
-        total_quote = float(bucket["total_quote_volume"])
-        if total_volume <= 0 or int(bucket["trade_count"]) <= 0:
-            continue
-        row = _base_feature_row(
-            metadata,
-            feature_family="orderflow",
-            bucket_start_ms=bucket_start_ms,
-            bucket_end_ms=bucket_start_ms + bucket_seconds * 1000,
-            bucket_seconds=bucket_seconds,
-        )
-        buy_volume = float(bucket["buy_volume"])
-        sell_volume = float(bucket["sell_volume"])
-        buy_quote = float(bucket["buy_quote_volume"])
-        sell_quote = float(bucket["sell_quote_volume"])
-        row.update(
-            {
-                "source_row_count": int(bucket["source_row_count"]),
-                "trade_count": int(bucket["trade_count"]),
-                "total_volume": _round_float(total_volume),
-                "total_quote_volume": _round_float(total_quote),
-                "buy_volume": _round_float(buy_volume),
-                "sell_volume": _round_float(sell_volume),
-                "unknown_side_volume": _round_float(float(bucket["unknown_side_volume"])),
-                "buy_quote_volume": _round_float(buy_quote),
-                "sell_quote_volume": _round_float(sell_quote),
-                "unknown_side_quote_volume": _round_float(float(bucket["unknown_side_quote_volume"])),
-                "vwap": _round_float(total_quote / total_volume),
-                "trade_imbalance": _round_float(_imbalance(buy_volume, sell_volume)),
-                "quote_trade_imbalance": _round_float(_imbalance(buy_quote, sell_quote)),
-            }
-        )
-        rows.append(_with_row_hash(row))
-    return rows
-
-
-def _book_ticker_rows(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> list[dict[str, Any]]:
-    buckets: dict[int, dict[str, Any]] = defaultdict(
-        lambda: {
-            "source_row_count": 0,
-            "sum_mid": 0.0,
-            "sum_spread": 0.0,
-            "sum_spread_bps": 0.0,
-            "sum_bid_size": 0.0,
-            "sum_ask_size": 0.0,
-            "last_ts": -1,
-            "last_bid": 0.0,
-            "last_ask": 0.0,
-            "last_bid_size": 0.0,
-            "last_ask_size": 0.0,
-        }
-    )
-    for record in _zip_csv_dict_rows(path, family="bookTicker"):
-        bid = _to_float(record.get("best_bid_price"))
-        ask = _to_float(record.get("best_ask_price"))
-        bid_size = _to_float(record.get("best_bid_qty")) or 0.0
-        ask_size = _to_float(record.get("best_ask_qty")) or 0.0
+    elif family == "bookTicker":
         ts = _to_int(record.get("event_time")) or _to_int(record.get("transaction_time"))
-        if bid is None or ask is None or ts is None or bid <= 0 or ask <= 0 or ask < bid:
+    elif family == "bookDepth":
+        ts = _timestamp_ms(record.get("timestamp"))
+    else:
+        return None
+    if ts is None:
+        return None
+    return _bucket_start_ms(ts, bucket_seconds)
+
+
+def _book_ticker_rows(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> Iterator[dict[str, Any]]:
+    if _source_bucket_order_is_monotonic(path, family="bookTicker", bucket_seconds=bucket_seconds):
+        yield from _book_ticker_rows_streaming(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        return
+    yield from _book_ticker_rows_full_sort(path, metadata=metadata, bucket_seconds=bucket_seconds)
+
+
+def _book_ticker_rows_streaming(
+    path: Path,
+    *,
+    metadata: Mapping[str, Any],
+    bucket_seconds: int,
+) -> Iterator[dict[str, Any]]:
+    current_bucket_start: int | None = None
+    current_bucket: dict[str, Any] | None = None
+    for record in _zip_csv_dict_rows(path, family="bookTicker"):
+        parsed = _parse_book_ticker_record(record, bucket_seconds=bucket_seconds)
+        if parsed is None:
             continue
-        mid = (bid + ask) / 2.0
-        spread = ask - bid
-        bucket_start_ms = _bucket_start_ms(ts, bucket_seconds)
-        bucket = buckets[bucket_start_ms]
-        count = int(bucket["source_row_count"]) + 1
-        bucket["source_row_count"] = count
-        bucket["sum_mid"] = float(bucket["sum_mid"]) + mid
-        bucket["sum_spread"] = float(bucket["sum_spread"]) + spread
-        bucket["sum_spread_bps"] = float(bucket["sum_spread_bps"]) + (spread / mid * 10000.0)
-        bucket["sum_bid_size"] = float(bucket["sum_bid_size"]) + bid_size
-        bucket["sum_ask_size"] = float(bucket["sum_ask_size"]) + ask_size
-        if ts >= int(bucket["last_ts"]):
-            bucket["last_ts"] = ts
-            bucket["last_bid"] = bid
-            bucket["last_ask"] = ask
-            bucket["last_bid_size"] = bid_size
-            bucket["last_ask_size"] = ask_size
-    rows: list[dict[str, Any]] = []
-    for bucket_start_ms in sorted(buckets):
-        bucket = buckets[bucket_start_ms]
-        count = int(bucket["source_row_count"])
-        if count <= 0:
-            continue
-        row = _base_feature_row(
+        bucket_start_ms, ts, bid, ask, bid_size, ask_size = parsed
+        if current_bucket_start is None:
+            current_bucket_start = bucket_start_ms
+            current_bucket = _new_book_ticker_bucket()
+        elif bucket_start_ms != current_bucket_start:
+            if current_bucket is not None:
+                yield from _book_ticker_feature_row_from_bucket(
+                    metadata,
+                    bucket_start_ms=current_bucket_start,
+                    bucket_seconds=bucket_seconds,
+                    bucket=current_bucket,
+                    aggregation_mode=STREAMING_BUCKET_AGGREGATION_MODE,
+                )
+            current_bucket_start = bucket_start_ms
+            current_bucket = _new_book_ticker_bucket()
+        _accumulate_book_ticker_bucket(
+            current_bucket,
+            ts=ts,
+            bid=bid,
+            ask=ask,
+            bid_size=bid_size,
+            ask_size=ask_size,
+        )
+    if current_bucket_start is not None and current_bucket is not None:
+        yield from _book_ticker_feature_row_from_bucket(
             metadata,
-            feature_family="bbo_spread",
-            bucket_start_ms=bucket_start_ms,
-            bucket_end_ms=bucket_start_ms + bucket_seconds * 1000,
+            bucket_start_ms=current_bucket_start,
             bucket_seconds=bucket_seconds,
+            bucket=current_bucket,
+            aggregation_mode=STREAMING_BUCKET_AGGREGATION_MODE,
         )
-        last_bid = float(bucket["last_bid"])
-        last_ask = float(bucket["last_ask"])
-        last_bid_size = float(bucket["last_bid_size"])
-        last_ask_size = float(bucket["last_ask_size"])
-        row.update(
-            {
-                "source_row_count": count,
-                "book_ticker_count": count,
-                "mean_mid": _round_float(float(bucket["sum_mid"]) / count),
-                "mean_spread": _round_float(float(bucket["sum_spread"]) / count),
-                "mean_spread_bps": _round_float(float(bucket["sum_spread_bps"]) / count),
-                "mean_bid_size": _round_float(float(bucket["sum_bid_size"]) / count),
-                "mean_ask_size": _round_float(float(bucket["sum_ask_size"]) / count),
-                "last_bid": _round_float(last_bid),
-                "last_ask": _round_float(last_ask),
-                "last_mid": _round_float((last_bid + last_ask) / 2.0),
-                "last_bid_size": _round_float(last_bid_size),
-                "last_ask_size": _round_float(last_ask_size),
-                "top_of_book_size_imbalance": _round_float(_imbalance(last_bid_size, last_ask_size)),
-            }
-        )
-        rows.append(_with_row_hash(row))
-    return rows
 
 
-def _book_depth_rows(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> list[dict[str, Any]]:
-    buckets: dict[int, dict[str, Any]] = defaultdict(
-        lambda: {
-            "source_row_count": 0,
-            "timestamps": set(),
-            "bid_depth_total": 0.0,
-            "ask_depth_total": 0.0,
-            "bid_notional_total": 0.0,
-            "ask_notional_total": 0.0,
-            "inside_depth_rows": 0,
-            "outside_depth_rows": 0,
+def _book_ticker_rows_full_sort(
+    path: Path,
+    *,
+    metadata: Mapping[str, Any],
+    bucket_seconds: int,
+) -> Iterator[dict[str, Any]]:
+    buckets: dict[int, dict[str, Any]] = defaultdict(_new_book_ticker_bucket)
+    spill_paths: list[Path] = []
+    row_sequence = 0
+    with tempfile.TemporaryDirectory(prefix="of_style_book_ticker_spill_") as spill_root:
+        spill_dir = Path(spill_root)
+        for record in _zip_csv_dict_rows(path, family="bookTicker"):
+            parsed = _parse_book_ticker_record(record, bucket_seconds=bucket_seconds)
+            if parsed is None:
+                continue
+            bucket_start_ms, ts, bid, ask, bid_size, ask_size = parsed
+            _accumulate_book_ticker_bucket(
+                buckets[bucket_start_ms],
+                ts=ts,
+                bid=bid,
+                ask=ask,
+                bid_size=bid_size,
+                ask_size=ask_size,
+                row_sequence=row_sequence,
+            )
+            row_sequence += 1
+            if len(buckets) >= NON_MONOTONIC_BUCKET_SPILL_BUCKET_LIMIT:
+                spill_paths.append(
+                    _write_bucket_spill(
+                        spill_dir,
+                        spill_index=len(spill_paths),
+                        buckets=buckets,
+                        serializer=_serialize_book_ticker_bucket,
+                    )
+                )
+                buckets.clear()
+        if buckets:
+            spill_paths.append(
+                _write_bucket_spill(
+                    spill_dir,
+                    spill_index=len(spill_paths),
+                    buckets=buckets,
+                    serializer=_serialize_book_ticker_bucket,
+                )
+            )
+            buckets.clear()
+        for bucket_start_ms, bucket in _merge_bucket_spills(
+            spill_paths,
+            new_bucket=_new_book_ticker_bucket,
+            deserializer=_deserialize_book_ticker_bucket,
+            merge_bucket=_merge_book_ticker_bucket,
+        ):
+            yield from _book_ticker_feature_row_from_bucket(
+                metadata,
+                bucket_start_ms=bucket_start_ms,
+                bucket_seconds=bucket_seconds,
+                bucket=bucket,
+                aggregation_mode=SPILL_BUCKET_MERGE_AGGREGATION_MODE,
+            )
+
+
+def _new_book_ticker_bucket() -> dict[str, Any]:
+    return {
+        "source_row_count": 0,
+        "sum_mid": 0.0,
+        "sum_spread": 0.0,
+        "sum_spread_bps": 0.0,
+        "sum_bid_size": 0.0,
+        "sum_ask_size": 0.0,
+        "last_ts": -1,
+        "last_bid": 0.0,
+        "last_ask": 0.0,
+        "last_bid_size": 0.0,
+        "last_ask_size": 0.0,
+        "_last_sequence": -1,
+    }
+
+
+def _parse_book_ticker_record(
+    record: Mapping[str, Any],
+    *,
+    bucket_seconds: int,
+) -> tuple[int, int, float, float, float, float] | None:
+    bid = _to_float(record.get("best_bid_price"))
+    ask = _to_float(record.get("best_ask_price"))
+    bid_size = _to_float(record.get("best_bid_qty")) or 0.0
+    ask_size = _to_float(record.get("best_ask_qty")) or 0.0
+    ts = _to_int(record.get("event_time")) or _to_int(record.get("transaction_time"))
+    if bid is None or ask is None or ts is None or bid <= 0 or ask <= 0 or ask < bid:
+        return None
+    return _bucket_start_ms(ts, bucket_seconds), ts, bid, ask, bid_size, ask_size
+
+
+def _accumulate_book_ticker_bucket(
+    bucket: dict[str, Any] | None,
+    *,
+    ts: int,
+    bid: float,
+    ask: float,
+    bid_size: float,
+    ask_size: float,
+    row_sequence: int | None = None,
+) -> None:
+    if bucket is None:
+        return
+    mid = (bid + ask) / 2.0
+    spread = ask - bid
+    count = int(bucket["source_row_count"]) + 1
+    bucket["source_row_count"] = count
+    bucket["sum_mid"] = float(bucket["sum_mid"]) + mid
+    bucket["sum_spread"] = float(bucket["sum_spread"]) + spread
+    bucket["sum_spread_bps"] = float(bucket["sum_spread_bps"]) + (spread / mid * 10000.0)
+    bucket["sum_bid_size"] = float(bucket["sum_bid_size"]) + bid_size
+    bucket["sum_ask_size"] = float(bucket["sum_ask_size"]) + ask_size
+    sequence = count if row_sequence is None else row_sequence
+    if ts > int(bucket["last_ts"]) or (
+        ts == int(bucket["last_ts"]) and sequence >= int(bucket.get("_last_sequence", -1))
+    ):
+        bucket["last_ts"] = ts
+        bucket["last_bid"] = bid
+        bucket["last_ask"] = ask
+        bucket["last_bid_size"] = bid_size
+        bucket["last_ask_size"] = ask_size
+        bucket["_last_sequence"] = sequence
+
+
+def _book_ticker_feature_row_from_bucket(
+    metadata: Mapping[str, Any],
+    *,
+    bucket_start_ms: int,
+    bucket_seconds: int,
+    bucket: Mapping[str, Any],
+    aggregation_mode: str,
+) -> Iterator[dict[str, Any]]:
+    count = int(bucket["source_row_count"])
+    if count <= 0:
+        return
+    row = _base_feature_row(
+        metadata,
+        feature_family="bbo_spread",
+        bucket_start_ms=bucket_start_ms,
+        bucket_end_ms=bucket_start_ms + bucket_seconds * 1000,
+        bucket_seconds=bucket_seconds,
+    )
+    last_bid = float(bucket["last_bid"])
+    last_ask = float(bucket["last_ask"])
+    last_bid_size = float(bucket["last_bid_size"])
+    last_ask_size = float(bucket["last_ask_size"])
+    row.update(
+        {
+            "aggregation_mode": aggregation_mode,
+            "source_row_count": count,
+            "book_ticker_count": count,
+            "mean_mid": _round_float(float(bucket["sum_mid"]) / count),
+            "mean_spread": _round_float(float(bucket["sum_spread"]) / count),
+            "mean_spread_bps": _round_float(float(bucket["sum_spread_bps"]) / count),
+            "mean_bid_size": _round_float(float(bucket["sum_bid_size"]) / count),
+            "mean_ask_size": _round_float(float(bucket["sum_ask_size"]) / count),
+            "last_bid": _round_float(last_bid),
+            "last_ask": _round_float(last_ask),
+            "last_mid": _round_float((last_bid + last_ask) / 2.0),
+            "last_bid_size": _round_float(last_bid_size),
+            "last_ask_size": _round_float(last_ask_size),
+            "top_of_book_size_imbalance": _round_float(_imbalance(last_bid_size, last_ask_size)),
         }
     )
+    yield _with_row_hash(row)
+
+
+def _book_depth_rows(path: Path, *, metadata: Mapping[str, Any], bucket_seconds: int) -> Iterator[dict[str, Any]]:
+    if _source_bucket_order_is_monotonic(path, family="bookDepth", bucket_seconds=bucket_seconds):
+        yield from _book_depth_rows_streaming(path, metadata=metadata, bucket_seconds=bucket_seconds)
+        return
+    yield from _book_depth_rows_full_sort(path, metadata=metadata, bucket_seconds=bucket_seconds)
+
+
+def _book_depth_rows_streaming(
+    path: Path,
+    *,
+    metadata: Mapping[str, Any],
+    bucket_seconds: int,
+) -> Iterator[dict[str, Any]]:
+    current_bucket_start: int | None = None
+    current_bucket: dict[str, Any] | None = None
     for record in _zip_csv_dict_rows(path, family="bookDepth"):
-        ts = _timestamp_ms(record.get("timestamp"))
-        percentage = _to_float(record.get("percentage"))
-        depth = _to_float(record.get("depth"))
-        notional = _to_float(record.get("notional"))
-        if ts is None or percentage is None or depth is None or notional is None:
+        parsed = _parse_book_depth_record(record, bucket_seconds=bucket_seconds)
+        if parsed is None:
             continue
-        bucket_start_ms = _bucket_start_ms(ts, bucket_seconds)
-        bucket = buckets[bucket_start_ms]
-        bucket["source_row_count"] = int(bucket["source_row_count"]) + 1
-        bucket["timestamps"].add(ts)
-        if percentage < 0:
-            bucket["bid_depth_total"] = float(bucket["bid_depth_total"]) + depth
-            bucket["bid_notional_total"] = float(bucket["bid_notional_total"]) + notional
-            bucket["inside_depth_rows"] = int(bucket["inside_depth_rows"]) + (1 if percentage >= -1 else 0)
-            bucket["outside_depth_rows"] = int(bucket["outside_depth_rows"]) + (1 if percentage < -1 else 0)
-        elif percentage > 0:
-            bucket["ask_depth_total"] = float(bucket["ask_depth_total"]) + depth
-            bucket["ask_notional_total"] = float(bucket["ask_notional_total"]) + notional
-            bucket["inside_depth_rows"] = int(bucket["inside_depth_rows"]) + (1 if percentage <= 1 else 0)
-            bucket["outside_depth_rows"] = int(bucket["outside_depth_rows"]) + (1 if percentage > 1 else 0)
-    rows: list[dict[str, Any]] = []
-    for bucket_start_ms in sorted(buckets):
-        bucket = buckets[bucket_start_ms]
-        count = int(bucket["source_row_count"])
-        if count <= 0:
-            continue
-        bid_depth = float(bucket["bid_depth_total"])
-        ask_depth = float(bucket["ask_depth_total"])
-        bid_notional = float(bucket["bid_notional_total"])
-        ask_notional = float(bucket["ask_notional_total"])
-        row = _base_feature_row(
+        bucket_start_ms, ts, percentage, depth, notional = parsed
+        if current_bucket_start is None:
+            current_bucket_start = bucket_start_ms
+            current_bucket = _new_book_depth_bucket()
+        elif bucket_start_ms != current_bucket_start:
+            if current_bucket is not None:
+                yield from _book_depth_feature_row_from_bucket(
+                    metadata,
+                    bucket_start_ms=current_bucket_start,
+                    bucket_seconds=bucket_seconds,
+                    bucket=current_bucket,
+                    aggregation_mode=STREAMING_BUCKET_AGGREGATION_MODE,
+                )
+            current_bucket_start = bucket_start_ms
+            current_bucket = _new_book_depth_bucket()
+        _accumulate_book_depth_bucket(
+            current_bucket,
+            ts=ts,
+            percentage=percentage,
+            depth=depth,
+            notional=notional,
+        )
+    if current_bucket_start is not None and current_bucket is not None:
+        yield from _book_depth_feature_row_from_bucket(
             metadata,
-            feature_family="l2_depth",
-            bucket_start_ms=bucket_start_ms,
-            bucket_end_ms=bucket_start_ms + bucket_seconds * 1000,
+            bucket_start_ms=current_bucket_start,
             bucket_seconds=bucket_seconds,
+            bucket=current_bucket,
+            aggregation_mode=STREAMING_BUCKET_AGGREGATION_MODE,
         )
-        row.update(
-            {
-                "source_row_count": count,
-                "snapshot_count": len(bucket["timestamps"]),
-                "bid_depth_total": _round_float(bid_depth),
-                "ask_depth_total": _round_float(ask_depth),
-                "bid_notional_total": _round_float(bid_notional),
-                "ask_notional_total": _round_float(ask_notional),
-                "depth_imbalance": _round_float(_imbalance(bid_depth, ask_depth)),
-                "notional_imbalance": _round_float(_imbalance(bid_notional, ask_notional)),
-                "inside_depth_rows": int(bucket["inside_depth_rows"]),
-                "outside_depth_rows": int(bucket["outside_depth_rows"]),
+
+
+def _book_depth_rows_full_sort(
+    path: Path,
+    *,
+    metadata: Mapping[str, Any],
+    bucket_seconds: int,
+) -> Iterator[dict[str, Any]]:
+    buckets: dict[int, dict[str, Any]] = defaultdict(_new_book_depth_bucket)
+    spill_paths: list[Path] = []
+    with tempfile.TemporaryDirectory(prefix="of_style_book_depth_spill_") as spill_root:
+        spill_dir = Path(spill_root)
+        for record in _zip_csv_dict_rows(path, family="bookDepth"):
+            parsed = _parse_book_depth_record(record, bucket_seconds=bucket_seconds)
+            if parsed is None:
+                continue
+            bucket_start_ms, ts, percentage, depth, notional = parsed
+            _accumulate_book_depth_bucket(
+                buckets[bucket_start_ms],
+                ts=ts,
+                percentage=percentage,
+                depth=depth,
+                notional=notional,
+            )
+            if len(buckets) >= NON_MONOTONIC_BUCKET_SPILL_BUCKET_LIMIT:
+                spill_paths.append(
+                    _write_bucket_spill(
+                        spill_dir,
+                        spill_index=len(spill_paths),
+                        buckets=buckets,
+                        serializer=_serialize_book_depth_bucket,
+                    )
+                )
+                buckets.clear()
+        if buckets:
+            spill_paths.append(
+                _write_bucket_spill(
+                    spill_dir,
+                    spill_index=len(spill_paths),
+                    buckets=buckets,
+                    serializer=_serialize_book_depth_bucket,
+                )
+            )
+            buckets.clear()
+        for bucket_start_ms, bucket in _merge_bucket_spills(
+            spill_paths,
+            new_bucket=_new_book_depth_bucket,
+            deserializer=_deserialize_book_depth_bucket,
+            merge_bucket=_merge_book_depth_bucket,
+        ):
+            yield from _book_depth_feature_row_from_bucket(
+                metadata,
+                bucket_start_ms=bucket_start_ms,
+                bucket_seconds=bucket_seconds,
+                bucket=bucket,
+                aggregation_mode=SPILL_BUCKET_MERGE_AGGREGATION_MODE,
+            )
+
+
+def _new_book_depth_bucket() -> dict[str, Any]:
+    return {
+        "source_row_count": 0,
+        "timestamps": set(),
+        "bid_depth_total": 0.0,
+        "ask_depth_total": 0.0,
+        "bid_notional_total": 0.0,
+        "ask_notional_total": 0.0,
+        "inside_depth_rows": 0,
+        "outside_depth_rows": 0,
+    }
+
+
+def _parse_book_depth_record(
+    record: Mapping[str, Any],
+    *,
+    bucket_seconds: int,
+) -> tuple[int, int, float, float, float] | None:
+    ts = _timestamp_ms(record.get("timestamp"))
+    percentage = _to_float(record.get("percentage"))
+    depth = _to_float(record.get("depth"))
+    notional = _to_float(record.get("notional"))
+    if ts is None or percentage is None or depth is None or notional is None:
+        return None
+    return _bucket_start_ms(ts, bucket_seconds), ts, percentage, depth, notional
+
+
+def _accumulate_book_depth_bucket(
+    bucket: dict[str, Any] | None,
+    *,
+    ts: int,
+    percentage: float,
+    depth: float,
+    notional: float,
+) -> None:
+    if bucket is None:
+        return
+    bucket["source_row_count"] = int(bucket["source_row_count"]) + 1
+    bucket["timestamps"].add(ts)
+    if percentage < 0:
+        bucket["bid_depth_total"] = float(bucket["bid_depth_total"]) + depth
+        bucket["bid_notional_total"] = float(bucket["bid_notional_total"]) + notional
+        bucket["inside_depth_rows"] = int(bucket["inside_depth_rows"]) + (1 if percentage >= -1 else 0)
+        bucket["outside_depth_rows"] = int(bucket["outside_depth_rows"]) + (1 if percentage < -1 else 0)
+    elif percentage > 0:
+        bucket["ask_depth_total"] = float(bucket["ask_depth_total"]) + depth
+        bucket["ask_notional_total"] = float(bucket["ask_notional_total"]) + notional
+        bucket["inside_depth_rows"] = int(bucket["inside_depth_rows"]) + (1 if percentage <= 1 else 0)
+        bucket["outside_depth_rows"] = int(bucket["outside_depth_rows"]) + (1 if percentage > 1 else 0)
+
+
+def _book_depth_feature_row_from_bucket(
+    metadata: Mapping[str, Any],
+    *,
+    bucket_start_ms: int,
+    bucket_seconds: int,
+    bucket: Mapping[str, Any],
+    aggregation_mode: str,
+) -> Iterator[dict[str, Any]]:
+    count = int(bucket["source_row_count"])
+    if count <= 0:
+        return
+    bid_depth = float(bucket["bid_depth_total"])
+    ask_depth = float(bucket["ask_depth_total"])
+    bid_notional = float(bucket["bid_notional_total"])
+    ask_notional = float(bucket["ask_notional_total"])
+    row = _base_feature_row(
+        metadata,
+        feature_family="l2_depth",
+        bucket_start_ms=bucket_start_ms,
+        bucket_end_ms=bucket_start_ms + bucket_seconds * 1000,
+        bucket_seconds=bucket_seconds,
+    )
+    row.update(
+        {
+            "aggregation_mode": aggregation_mode,
+            "source_row_count": count,
+            "snapshot_count": len(bucket["timestamps"]),
+            "bid_depth_total": _round_float(bid_depth),
+            "ask_depth_total": _round_float(ask_depth),
+            "bid_notional_total": _round_float(bid_notional),
+            "ask_notional_total": _round_float(ask_notional),
+            "depth_imbalance": _round_float(_imbalance(bid_depth, ask_depth)),
+            "notional_imbalance": _round_float(_imbalance(bid_notional, ask_notional)),
+            "inside_depth_rows": int(bucket["inside_depth_rows"]),
+            "outside_depth_rows": int(bucket["outside_depth_rows"]),
+        }
+    )
+    yield _with_row_hash(row)
+
+
+def _write_bucket_spill(
+    spill_dir: Path,
+    *,
+    spill_index: int,
+    buckets: Mapping[int, Mapping[str, Any]],
+    serializer,
+) -> Path:
+    spill_path = spill_dir / f"bucket-spill-{spill_index:06d}.jsonl"
+    with spill_path.open("w", encoding="utf-8", newline="\n") as handle:
+        for bucket_start_ms in sorted(buckets):
+            payload = {
+                "bucket_start_ms": int(bucket_start_ms),
+                "bucket": serializer(buckets[bucket_start_ms]),
             }
-        )
-        rows.append(_with_row_hash(row))
-    return rows
+            handle.write(json.dumps(payload, sort_keys=True, ensure_ascii=True, allow_nan=False) + "\n")
+    return spill_path
 
 
-def _metrics_rows(path: Path, *, metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def _merge_bucket_spills(
+    spill_paths: Sequence[Path],
+    *,
+    new_bucket,
+    deserializer,
+    merge_bucket,
+) -> Iterator[tuple[int, dict[str, Any]]]:
+    heap: list[tuple[int, int, dict[str, Any]]] = []
+    iterators = [_iter_bucket_spill(path, deserializer=deserializer) for path in spill_paths]
+    for index, iterator in enumerate(iterators):
+        try:
+            bucket_start_ms, bucket = next(iterator)
+        except StopIteration:
+            continue
+        heapq.heappush(heap, (bucket_start_ms, index, bucket))
+
+    current_bucket_start: int | None = None
+    current_bucket: dict[str, Any] | None = None
+    while heap:
+        bucket_start_ms, iterator_index, bucket = heapq.heappop(heap)
+        if current_bucket_start is None:
+            current_bucket_start = bucket_start_ms
+            current_bucket = new_bucket()
+        elif bucket_start_ms != current_bucket_start:
+            if current_bucket is not None:
+                yield current_bucket_start, current_bucket
+            current_bucket_start = bucket_start_ms
+            current_bucket = new_bucket()
+        merge_bucket(current_bucket, bucket)
+        try:
+            next_bucket_start_ms, next_bucket = next(iterators[iterator_index])
+        except StopIteration:
+            continue
+        heapq.heappush(heap, (next_bucket_start_ms, iterator_index, next_bucket))
+    if current_bucket_start is not None and current_bucket is not None:
+        yield current_bucket_start, current_bucket
+
+
+def _iter_bucket_spill(path: Path, *, deserializer) -> Iterator[tuple[int, dict[str, Any]]]:
+    with path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            yield int(payload["bucket_start_ms"]), deserializer(payload["bucket"])
+
+
+def _serialize_trade_bucket(bucket: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: bucket[key] for key in sorted(bucket)}
+
+
+def _deserialize_trade_bucket(payload: Mapping[str, Any]) -> dict[str, Any]:
+    bucket = _new_trade_bucket()
+    for key in bucket:
+        bucket[key] = payload.get(key, bucket[key])
+    return bucket
+
+
+def _merge_trade_bucket(target: dict[str, Any] | None, source: Mapping[str, Any]) -> None:
+    if target is None:
+        return
+    for key in _new_trade_bucket():
+        if key in {"source_row_count", "trade_count"}:
+            target[key] = int(target[key]) + int(source.get(key, 0))
+        else:
+            target[key] = float(target[key]) + float(source.get(key, 0.0))
+
+
+def _serialize_book_ticker_bucket(bucket: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: bucket[key] for key in sorted(bucket)}
+
+
+def _deserialize_book_ticker_bucket(payload: Mapping[str, Any]) -> dict[str, Any]:
+    bucket = _new_book_ticker_bucket()
+    for key in bucket:
+        bucket[key] = payload.get(key, bucket[key])
+    return bucket
+
+
+def _merge_book_ticker_bucket(target: dict[str, Any] | None, source: Mapping[str, Any]) -> None:
+    if target is None:
+        return
+    for key in ("source_row_count",):
+        target[key] = int(target[key]) + int(source.get(key, 0))
+    for key in ("sum_mid", "sum_spread", "sum_spread_bps", "sum_bid_size", "sum_ask_size"):
+        target[key] = float(target[key]) + float(source.get(key, 0.0))
+    source_last_ts = int(source.get("last_ts", -1))
+    source_sequence = int(source.get("_last_sequence", -1))
+    if source_last_ts > int(target["last_ts"]) or (
+        source_last_ts == int(target["last_ts"])
+        and source_sequence >= int(target.get("_last_sequence", -1))
+    ):
+        target["last_ts"] = source_last_ts
+        target["last_bid"] = float(source.get("last_bid", 0.0))
+        target["last_ask"] = float(source.get("last_ask", 0.0))
+        target["last_bid_size"] = float(source.get("last_bid_size", 0.0))
+        target["last_ask_size"] = float(source.get("last_ask_size", 0.0))
+        target["_last_sequence"] = source_sequence
+
+
+def _serialize_book_depth_bucket(bucket: Mapping[str, Any]) -> dict[str, Any]:
+    payload = {key: bucket[key] for key in sorted(bucket) if key != "timestamps"}
+    payload["timestamps"] = sorted(int(value) for value in bucket.get("timestamps", ()))
+    return payload
+
+
+def _deserialize_book_depth_bucket(payload: Mapping[str, Any]) -> dict[str, Any]:
+    bucket = _new_book_depth_bucket()
+    for key in bucket:
+        if key == "timestamps":
+            bucket[key] = set(int(value) for value in payload.get(key, ()))
+        else:
+            bucket[key] = payload.get(key, bucket[key])
+    return bucket
+
+
+def _merge_book_depth_bucket(target: dict[str, Any] | None, source: Mapping[str, Any]) -> None:
+    if target is None:
+        return
+    for key in ("source_row_count", "inside_depth_rows", "outside_depth_rows"):
+        target[key] = int(target[key]) + int(source.get(key, 0))
+    for key in ("bid_depth_total", "ask_depth_total", "bid_notional_total", "ask_notional_total"):
+        target[key] = float(target[key]) + float(source.get(key, 0.0))
+    target["timestamps"].update(int(value) for value in source.get("timestamps", ()))
+
+
+def _metrics_rows(path: Path, *, metadata: Mapping[str, Any]) -> Iterator[dict[str, Any]]:
     for record in _zip_csv_dict_rows(path, family="metrics"):
         ts = _timestamp_ms(record.get("create_time"))
         if ts is None:
@@ -730,17 +1357,16 @@ def _metrics_rows(path: Path, *, metadata: Mapping[str, Any]) -> list[dict[str, 
         )
         row.update(
             {
+                "aggregation_mode": DIRECT_ROW_AGGREGATION_MODE,
                 "feature_timestamp_ms": ts,
                 "source_row_count": 1,
                 "numeric_features": {key: _round_float(value) for key, value in sorted(numeric_features.items())},
             }
         )
-        rows.append(_with_row_hash(row))
-    return rows
+        yield _with_row_hash(row)
 
 
-def _kline_context_rows(path: Path, *, metadata: Mapping[str, Any]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
+def _kline_context_rows(path: Path, *, metadata: Mapping[str, Any]) -> Iterator[dict[str, Any]]:
     for record in _zip_csv_dict_rows(path, family=str(metadata["family"])):
         open_time = _to_int(record.get("open_time"))
         close_time = _to_int(record.get("close_time"))
@@ -770,6 +1396,7 @@ def _kline_context_rows(path: Path, *, metadata: Mapping[str, Any]) -> list[dict
         )
         row.update(
             {
+                "aggregation_mode": DIRECT_ROW_AGGREGATION_MODE,
                 "source_row_count": 1,
                 "open": _round_float(open_price),
                 "high": _round_float(high),
@@ -782,8 +1409,7 @@ def _kline_context_rows(path: Path, *, metadata: Mapping[str, Any]) -> list[dict
                 "taker_buy_quote_volume": _round_float(_to_float(record.get("taker_buy_quote_volume")) or 0.0),
             }
         )
-        rows.append(_with_row_hash(row))
-    return rows
+        yield _with_row_hash(row)
 
 
 def _base_feature_row(
@@ -1131,6 +1757,48 @@ def _write_jsonl_with_sha(path: Path, rows: Sequence[Mapping[str, Any]]) -> None
     _write_text_sha(path)
 
 
+def _write_jsonl_stream_with_sha(
+    path: Path,
+    rows: Iterable[Mapping[str, Any]],
+) -> _FeatureWriteResult:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    row_digest = hashlib.sha256()
+    input_row_count = 0
+    feature_row_count = 0
+    with tmp.open("w", encoding="utf-8", newline="\n") as handle:
+        for row in rows:
+            materialized = dict(row)
+            _update_ordered_manifest_hash(row_digest, materialized)
+            input_row_count += int(materialized.get("source_row_count", 0))
+            feature_row_count += 1
+            handle.write(json.dumps(materialized, sort_keys=True, ensure_ascii=True, allow_nan=False) + "\n")
+    tmp.replace(path)
+    _write_text_sha(path)
+    return _FeatureWriteResult(
+        output_sha256=_sha256_file(path),
+        output_bytes=path.stat().st_size,
+        input_row_count=input_row_count,
+        feature_row_count=feature_row_count,
+        row_manifest_hash=row_digest.hexdigest(),
+    )
+
+
+def _write_empty_feature_output(
+    *,
+    output_path: Path,
+    output_format: Literal["jsonl", "parquet_parts"],
+) -> _FeatureWriteResult:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("", encoding="utf-8")
+    _write_text_sha(output_path)
+    return _FeatureWriteResult(
+        output_sha256=_sha256_file(output_path),
+        output_bytes=0,
+        row_manifest_hash=hashlib.sha256().hexdigest(),
+    )
+
+
 def _write_json_with_sha(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
@@ -1145,8 +1813,7 @@ def _write_parquet_parts_with_index(
     index_ref: str,
     metadata: Mapping[str, Any],
     feature_family: str,
-    rows: Sequence[Mapping[str, Any]],
-    row_manifest_hash: str,
+    rows: Iterable[Mapping[str, Any]],
     chunk_row_limit: int,
 ) -> dict[str, Any]:
     if chunk_row_limit < 1:
@@ -1161,8 +1828,16 @@ def _write_parquet_parts_with_index(
     parts_dir = index_path.parent
     parts_dir.mkdir(parents=True, exist_ok=True)
     part_rows: list[dict[str, Any]] = []
-    for part_index, start in enumerate(range(0, len(rows), chunk_row_limit)):
-        chunk = [dict(row) for row in rows[start : start + chunk_row_limit]]
+    row_digest = hashlib.sha256()
+    input_row_count = 0
+    feature_row_count = 0
+    part_index = 0
+    chunk: list[dict[str, Any]] = []
+
+    def flush_chunk() -> None:
+        nonlocal part_index, chunk
+        if not chunk:
+            return
         part_path = parts_dir / f"part-{part_index:06d}.parquet"
         table = pa.Table.from_pylist(chunk)
         pq.write_table(table, part_path)
@@ -1180,12 +1855,26 @@ def _write_parquet_parts_with_index(
                 "last_row_hash": row_hashes[-1] if row_hashes else None,
             }
         )
+        part_index += 1
+        chunk = []
+
+    for row in rows:
+        materialized = dict(row)
+        _update_ordered_manifest_hash(row_digest, materialized)
+        input_row_count += int(materialized.get("source_row_count", 0))
+        feature_row_count += 1
+        chunk.append(materialized)
+        if len(chunk) >= chunk_row_limit:
+            flush_chunk()
+    flush_chunk()
 
     part_manifest_hash = manifest_rows_hash(part_rows)
     part_refs = tuple(str(row["part_ref"]) for row in part_rows)
+    row_manifest_hash = row_digest.hexdigest()
     payload = {
         "schema_version": V2_SCHEMA_VERSION,
         "manifest_type": "of_style_feature_part_index_v1",
+        "writer": "streaming_feature_rows_v1",
         "output_format": "parquet_parts",
         "feature_family": feature_family,
         "source_family": str(metadata["family"]),
@@ -1203,8 +1892,8 @@ def _write_parquet_parts_with_index(
         "parts": tuple(part_rows),
         "part_manifest_hash": part_manifest_hash,
         "row_manifest_hash": row_manifest_hash,
-        "feature_row_count": len(rows),
-        "input_row_count": sum(int(row.get("source_row_count", 0)) for row in rows),
+        "feature_row_count": feature_row_count,
+        "input_row_count": input_row_count,
         "accepted_historical_coverage_proof": False,
         **dict(RESEARCH_BOUNDARY),
     }
@@ -1214,7 +1903,15 @@ def _write_parquet_parts_with_index(
         "output_bytes": index_path.stat().st_size + sum(int(row["part_bytes"]) for row in part_rows),
         "part_refs": part_refs,
         "part_manifest_hash": part_manifest_hash,
+        "row_manifest_hash": row_manifest_hash,
+        "input_row_count": input_row_count,
+        "feature_row_count": feature_row_count,
     }
+
+
+def _update_ordered_manifest_hash(digest: "hashlib._Hash", row: Mapping[str, Any]) -> None:
+    digest.update(canonical_json_bytes(dict(row)))
+    digest.update(b"\n")
 
 
 def _write_text_sha(path: Path) -> None:

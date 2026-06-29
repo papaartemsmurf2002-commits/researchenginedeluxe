@@ -43,13 +43,30 @@ class ArchiveManifestStore:
         return self.layout.resolve("manifests", "archive_snapshots.parquet")
 
     def append_ingestion_run(self, record: IngestionRunRecord) -> None:
+        self.append_ingestion_runs((record,))
+
+    def append_ingestion_runs(self, records: Iterable[IngestionRunRecord]) -> None:
+        incoming_by_id = {record.ingestion_run_id: record for record in records}
+        incoming = list(incoming_by_id.values())
+        if not incoming:
+            return
         records = self.load_ingestion_runs()
-        records.append(record)
+        records = [record for record in records if record.ingestion_run_id not in incoming_by_id]
+        records.extend(incoming)
+        records.sort(key=lambda item: (item.venue, item.datatype, item.start_ts, item.end_ts, item.ingestion_run_id))
         self._write_models(self.ingestion_runs_path, records)
 
     def upsert_file_manifest(self, row: FileManifestRow) -> None:
-        records = [record for record in self.load_file_manifest() if record.file_id != row.file_id]
-        records.append(row)
+        self.upsert_file_manifests((row,))
+
+    def upsert_file_manifests(self, rows: Iterable[FileManifestRow]) -> None:
+        incoming_by_id = {row.file_id: row for row in rows}
+        if not incoming_by_id:
+            return
+        by_file_id = {record.file_id: record for record in self.load_file_manifest()}
+        for row in incoming_by_id.values():
+            by_file_id[row.file_id] = row
+        records = list(by_file_id.values())
         records.sort(key=lambda item: (item.layer.value, item.path, item.file_id))
         self._write_models(self.file_manifest_path, records)
 

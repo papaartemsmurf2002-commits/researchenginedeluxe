@@ -8,6 +8,7 @@ from pathlib import Path
 import pyarrow.parquet as pq
 import pytest
 
+from tradingbotsuite.v2.cli.main import main
 from tradingbotsuite.v2.archive.hashing import file_sha256
 from tradingbotsuite.v2.ledger import (
     LedgerAppendRequest,
@@ -159,12 +160,41 @@ def test_ledger_append_maintains_sidecar_index(tmp_path) -> None:
     assert payload["storage_mode"] == "append_parts"
     assert payload["row_count"] == 2
     assert payload["run_ids"] == {"indexed-run-a": 0, "indexed-run-b": 1}
-    assert len(payload["parts"]) == 2
+    assert len(payload["parts"]) == 1
+    assert payload["parts"][0]["row_count"] == 2
+    assert payload["parts"][0]["run_ids"] == ["indexed-run-a", "indexed-run-b"]
     assert ledger_path.exists()
     assert pq.read_table(ledger_path).num_rows == 0
     assert append_log.exists()
     assert len(append_log.read_text(encoding="utf-8").strip().splitlines()) == 2
     assert [row.run_id for row in rows] == ["indexed-run-a", "indexed-run-b"]
+
+
+def test_ledger_part_batch_respects_max_part_rows(tmp_path) -> None:
+    first = _write_run_manifest(tmp_path, "part-cap-run-a")
+    second = _write_run_manifest(tmp_path, "part-cap-run-b")
+    ledger_path = tmp_path / "ledger.parquet"
+
+    append_run_to_ledger(
+        LedgerAppendRequest(
+            run_manifest_path=str(first),
+            ledger_path=str(ledger_path),
+            max_part_rows=1,
+        )
+    )
+    append_run_to_ledger(
+        LedgerAppendRequest(
+            run_manifest_path=str(second),
+            ledger_path=str(ledger_path),
+            max_part_rows=1,
+        )
+    )
+    payload = json.loads(ledger_path.with_suffix(".index.json").read_text(encoding="utf-8"))
+    rows = read_ledger(ledger_path)
+
+    assert len(payload["parts"]) == 2
+    assert [part["row_count"] for part in payload["parts"]] == [1, 1]
+    assert [row.run_id for row in rows] == ["part-cap-run-a", "part-cap-run-b"]
 
 
 def test_ledger_parts_compact_to_current_parquet_and_keep_appending(tmp_path) -> None:
@@ -185,6 +215,96 @@ def test_ledger_parts_compact_to_current_parquet_and_keep_appending(tmp_path) ->
     assert payload["row_count"] == 3
     assert len(payload["parts"]) == 1
     assert [row.run_id for row in rows] == ["compact-run-a", "compact-run-b", "compact-run-c"]
+
+
+def test_ledger_rejects_part_index_run_id_drift(tmp_path) -> None:
+    run_manifest = _write_run_manifest(tmp_path, "index-drift-run")
+    ledger_path = tmp_path / "ledger.parquet"
+    append_run_to_ledger(
+        LedgerAppendRequest(run_manifest_path=str(run_manifest), ledger_path=str(ledger_path))
+    )
+    index_path = ledger_path.with_suffix(".index.json")
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["run_ids"] = {"forged-run": 0}
+    payload["parts"][0]["run_ids"] = ["forged-run"]
+    index_path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+
+    with pytest.raises(LedgerError, match="ledger_part_index_append_log_mismatch"):
+        append_run_to_ledger(
+            LedgerAppendRequest(run_manifest_path=str(run_manifest), ledger_path=str(ledger_path))
+        )
+
+
+def test_ledger_read_rejects_part_index_that_disagrees_with_rows(tmp_path) -> None:
+    run_manifest = _write_run_manifest(tmp_path, "row-index-drift-run")
+    ledger_path = tmp_path / "ledger.parquet"
+    append_run_to_ledger(
+        LedgerAppendRequest(run_manifest_path=str(run_manifest), ledger_path=str(ledger_path))
+    )
+    append_log = ledger_path.with_suffix(".parts") / "append_log.jsonl"
+    append_log.unlink()
+    index_path = ledger_path.with_suffix(".index.json")
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    payload["run_ids"] = {"forged-row-run": 0}
+    payload["parts"][0]["run_ids"] = ["forged-row-run"]
+    index_path.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding="utf-8")
+
+    with pytest.raises(LedgerError, match="ledger_part_index_run_ids_mismatch"):
+        read_ledger(ledger_path)
+
+
+def test_ledger_part_hash_drift_fails_closed_without_rewriting_placeholder(tmp_path) -> None:
+    first = _write_run_manifest(tmp_path, "hash-drift-run-a")
+    second = _write_run_manifest(tmp_path, "hash-drift-run-b")
+    ledger_path = tmp_path / "ledger.parquet"
+    append_run_to_ledger(
+        LedgerAppendRequest(run_manifest_path=str(first), ledger_path=str(ledger_path))
+    )
+    payload = json.loads(ledger_path.with_suffix(".index.json").read_text(encoding="utf-8"))
+    part_path = Path(payload["parts"][0]["path"])
+    part_path.write_bytes(b"corrupt-part")
+
+    with pytest.raises(LedgerError, match="ledger_part_hash_mismatch"):
+        append_run_to_ledger(
+            LedgerAppendRequest(run_manifest_path=str(second), ledger_path=str(ledger_path))
+        )
+
+    assert pq.read_table(ledger_path).num_rows == 0
+
+
+def test_ledger_cli_compact_writes_current_parquet(tmp_path, capsys) -> None:
+    first = _write_run_manifest(tmp_path, "cli-compact-run-a")
+    second = _write_run_manifest(tmp_path, "cli-compact-run-b")
+    ledger_path = tmp_path / "ledger.parquet"
+    append_run_to_ledger(LedgerAppendRequest(run_manifest_path=str(first), ledger_path=str(ledger_path)))
+    append_run_to_ledger(LedgerAppendRequest(run_manifest_path=str(second), ledger_path=str(ledger_path)))
+
+    exit_code = main(["ledger", "compact", "--ledger", str(ledger_path)])
+    output = capsys.readouterr().out
+    payload = json.loads(ledger_path.with_suffix(".index.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert "ledger_compacted=" in output
+    assert "generated_from_canonical=true" in output
+    assert Path(payload["compacted_path"]).exists()
+    assert payload["compacted_sha256"] == file_sha256(Path(payload["compacted_path"]))
+    assert [row.run_id for row in read_ledger(ledger_path)] == [
+        "cli-compact-run-a",
+        "cli-compact-run-b",
+    ]
+
+
+def test_ledger_rejects_compacted_hash_drift(tmp_path) -> None:
+    first = _write_run_manifest(tmp_path, "compact-hash-run-a")
+    second = _write_run_manifest(tmp_path, "compact-hash-run-b")
+    ledger_path = tmp_path / "ledger.parquet"
+    append_run_to_ledger(LedgerAppendRequest(run_manifest_path=str(first), ledger_path=str(ledger_path)))
+    append_run_to_ledger(LedgerAppendRequest(run_manifest_path=str(second), ledger_path=str(ledger_path)))
+    compacted = compact_ledger_parts(ledger_path)
+    compacted.write_bytes(b"corrupt-compacted")
+
+    with pytest.raises(LedgerError, match="ledger_compacted_hash_mismatch"):
+        read_ledger(ledger_path)
 
 
 def test_xlsx_export_is_generated_from_canonical_ledger(tmp_path) -> None:

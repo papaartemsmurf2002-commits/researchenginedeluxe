@@ -11,5 +11,15 @@ from tradingbotsuite.v2.collectors.jobs import (
     CollectorJobStatus,
     run_collector_job,
 )
+from tradingbotsuite.v2.collectors.templates import (
+    ResearchCollectorAdapterTemplate,
+    collector_template_from_gap_request,
+)
 
-__all__ = ["CollectorJobRecord", "CollectorJobStatus", "run_collector_job"]
+__all__ = [
+    "CollectorJobRecord",
+    "CollectorJobStatus",
+    "ResearchCollectorAdapterTemplate",
+    "collector_template_from_gap_request",
+    "run_collector_job",
+]

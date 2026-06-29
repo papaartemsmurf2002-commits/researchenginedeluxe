@@ -15,6 +15,21 @@ from tradingbotsuite.v2.config.schemas import V2_SCHEMA_VERSION
 from tradingbotsuite.v2.config.time import ensure_utc, utc_now
 from tradingbotsuite.v2.costs.models import CostModelConfig, CostStressScenario
 from tradingbotsuite.v2.security.boundary import require_research_boundary
+from tradingbotsuite.v2.archive_inventory.schemas import ArtifactMode
+
+_SPEEDUP_CLAIM_REQUIRED_OBSERVATIONS: frozenset[str] = frozenset(
+    {
+        "speedup_ratio",
+        "reference_runtime_seconds",
+        "fast_runtime_seconds",
+        "reference_data_load_seconds",
+        "fast_data_load_seconds",
+        "reference_artifact_write_seconds",
+        "fast_artifact_write_seconds",
+        "reference_memory_peak_bytes",
+        "fast_memory_peak_bytes",
+    }
+)
 
 
 class EngineLane(str, Enum):
@@ -130,6 +145,13 @@ class BacktestRunConfig(BaseModel):
         CostStressScenario.STRESS_2X,
         CostStressScenario.STRESS_3X,
     )
+    artifact_mode: ArtifactMode = ArtifactMode.FULL
+    benchmark_enabled: bool = False
+    benchmark_observations: dict[str, float] = Field(default_factory=dict)
+    fast_lane_policy_id: str = "fast_lane_reference_authority_v1"
+    reference_engine_authority: bool = True
+    reference_audit_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    speedup_claimed: bool = False
     require_net_metrics: bool = True
     lockbox_policy_id: str = "dynamic_full_calendar_months_v1"
     lockbox_start: datetime | None = None
@@ -166,6 +188,14 @@ class BacktestRunConfig(BaseModel):
         }
         if not required_scenarios.issubset(set(self.cost_stress_scenarios)):
             raise ValueError("backtest config must include base, stress_2x, and stress_3x scenarios")
+        if any(value < 0.0 for value in self.benchmark_observations.values()):
+            raise ValueError("benchmark observations must be non-negative")
+        missing_speedup_evidence = _missing_speedup_claim_observations(self.benchmark_observations)
+        if self.speedup_claimed and missing_speedup_evidence:
+            raise ValueError(
+                "speedup claims require measured benchmark evidence: "
+                + ",".join(missing_speedup_evidence)
+            )
         return self
 
 
@@ -252,6 +282,14 @@ class RunManifest(BaseModel):
     validation_status: ValidationStatus
     missing_data_policy: MissingDataPolicy
     price_basis: str = Field(min_length=1)
+    artifact_mode: ArtifactMode = ArtifactMode.FULL
+    replayable_to_full_artifacts: bool = True
+    replay_identity_hash: str | None = Field(default=None, min_length=64, max_length=64)
+    fast_lane_policy_id: str = "fast_lane_reference_authority_v1"
+    reference_engine_authority: bool = True
+    reference_audit_sample_rate: float = Field(default=0.0, ge=0.0, le=1.0)
+    speedup_claimed: bool = False
+    benchmark_observations: dict[str, float] = Field(default_factory=dict)
     failure_reason: str | None = None
     metrics: BacktestMetrics | None = None
     artifacts: dict[str, RunArtifactRef] = Field(default_factory=dict)
@@ -281,6 +319,14 @@ class RunManifest(BaseModel):
             raise ValueError("failed run manifests require failure_reason")
         if self.status == RunStatus.SUCCEEDED and self.metrics is None:
             raise ValueError("succeeded run manifests require metrics")
+        if any(value < 0.0 for value in self.benchmark_observations.values()):
+            raise ValueError("benchmark observations must be non-negative")
+        missing_speedup_evidence = _missing_speedup_claim_observations(self.benchmark_observations)
+        if self.speedup_claimed and missing_speedup_evidence:
+            raise ValueError(
+                "speedup claims require measured benchmark evidence: "
+                + ",".join(missing_speedup_evidence)
+            )
         require_research_boundary(self, context="run manifest")
         required = {
             "strategy_spec",
@@ -288,16 +334,34 @@ class RunManifest(BaseModel):
             "data_manifest",
             "validation_manifest",
             "cost_manifest",
-            "cost_stress",
             "metrics",
-            "equity_curve",
-            "daily_returns",
-            "trades",
-            "positions",
-            "per_instrument_metrics",
-            "fold_metrics",
             "log",
         }
+        if self.artifact_mode == ArtifactMode.FULL:
+            required.update(
+                {
+                    "cost_stress",
+                    "equity_curve",
+                    "daily_returns",
+                    "trades",
+                    "positions",
+                    "per_instrument_metrics",
+                    "fold_metrics",
+                }
+            )
+        elif self.artifact_mode == ArtifactMode.SUMMARY:
+            required.update(
+                {
+                    "cost_stress",
+                    "equity_curve",
+                    "daily_returns",
+                    "per_instrument_metrics",
+                    "fold_metrics",
+                    "replay_manifest",
+                }
+            )
+        elif self.artifact_mode == ArtifactMode.METRICS_ONLY:
+            required.add("replay_manifest")
         missing = sorted(required - set(self.artifacts))
         if missing:
             raise ValueError("run manifest missing artifact refs: " + ",".join(missing))
@@ -310,3 +374,7 @@ class BacktestRunResult(BaseModel):
     run_dir: str = Field(min_length=1)
     manifest: RunManifest
     metrics: BacktestMetrics | None = None
+
+
+def _missing_speedup_claim_observations(observations: dict[str, float]) -> tuple[str, ...]:
+    return tuple(sorted(_SPEEDUP_CLAIM_REQUIRED_OBSERVATIONS - set(observations)))

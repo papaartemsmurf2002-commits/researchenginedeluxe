@@ -10,11 +10,13 @@ from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
 import re
+import time
 from typing import Any
 
 from tradingbotsuite.v2.archive.hashing import canonical_json_hash, file_sha256
 from tradingbotsuite.v2.backtest_data.schemas import BacktestDataRequest, BacktestEvidenceMode
 from tradingbotsuite.v2.backtest_data.service import BacktestDataService
+from tradingbotsuite.v2.archive_inventory import ArtifactMode
 from tradingbotsuite.v2.backtest_engine.artifacts import BacktestRunConfig, EngineLane
 from tradingbotsuite.v2.backtest_engine.engine import run_vectorized_backtest
 from tradingbotsuite.v2.config.time import utc_isoformat
@@ -67,6 +69,8 @@ def _run_vectorized_backtest_job(
     data_request = _data_request(spec, strategy_spec=strategy_spec, cost_model=cost_model)
     asof_date = _optional_date(spec.get("asof_date"))
     data_service = BacktestDataService(data_request.archive_root)
+    benchmark_enabled = bool(spec.get("benchmark_enabled", False))
+    data_load_start = time.perf_counter()
     if requested_lane == EngineLane.FAST_VECTORIZED:
         data_slice = data_service.load_panel_columnar(
             data_request,
@@ -83,6 +87,7 @@ def _run_vectorized_backtest_job(
         )
         panel_rows = _json_safe_rows(data_slice.rows)
         panel_table = None
+    data_load_seconds = max(0.0, time.perf_counter() - data_load_start)
     data_manifest = data_slice.data_manifest.model_dump(mode="json")
     data_manifest_hash = canonical_json_hash(data_manifest)
     _verify_expected_data_refs(
@@ -102,6 +107,16 @@ def _run_vectorized_backtest_job(
         data_manifest=data_manifest,
         engine_lane=requested_lane,
     )
+    if benchmark_enabled:
+        run_config = run_config.model_copy(
+            update={
+                "benchmark_enabled": True,
+                "benchmark_observations": {
+                    **run_config.benchmark_observations,
+                    "data_load_seconds": data_load_seconds,
+                },
+            }
+        )
     result = run_vectorized_backtest(
         config=run_config,
         strategy_spec=strategy_spec,
@@ -123,6 +138,7 @@ def _run_vectorized_backtest_job(
         gross_return=None if result.metrics is None else result.metrics.gross_return,
         net_return=None if result.metrics is None else result.metrics.net_return,
         strategy_source_refs=strategy_source_refs,
+        benchmark_observations=result.manifest.benchmark_observations,
     )
     archive_refs = (
         f"archive_snapshot_id={data_slice.archive_snapshot_id}",
@@ -217,6 +233,13 @@ def _run_config(
         cost_model_id=cost_model.cost_model_id,
         cost_model=cost_model,
         engine_lane=engine_lane,
+        artifact_mode=ArtifactMode(str(spec.get("artifact_mode", ArtifactMode.FULL.value))),
+        benchmark_enabled=bool(spec.get("benchmark_enabled", False)),
+        benchmark_observations=_benchmark_observations(spec),
+        fast_lane_policy_id=str(spec.get("fast_lane_policy_id", "fast_lane_reference_authority_v1")),
+        reference_engine_authority=bool(spec.get("reference_engine_authority", True)),
+        reference_audit_sample_rate=float(spec.get("reference_audit_sample_rate", 0.0)),
+        speedup_claimed=bool(spec.get("speedup_claimed", False)),
         lockbox_policy_id=data_request.validation_config.lockbox_policy.policy_id,
         lockbox_start=None if data_manifest.get("lockbox_start_ts") is None else _parse_datetime(str(data_manifest["lockbox_start_ts"])),
         lockbox_end=None if data_manifest.get("lockbox_end_ts") is None else _parse_datetime(str(data_manifest["lockbox_end_ts"])),
@@ -351,10 +374,12 @@ def _output_refs(
     gross_return: float | None,
     net_return: float | None,
     strategy_source_refs: tuple[str, ...],
+    benchmark_observations: Mapping[str, float] | None = None,
 ) -> tuple[str, ...]:
     refs = [
         "job_kind=vectorized_backtest",
-        "engine_lane=vectorized",
+        f"engine_lane={run_config.engine_lane.value}",
+        f"artifact_mode={run_config.artifact_mode.value}",
         f"job_id={job.job_id}",
         f"run_id={run_config.run_id}",
         f"run_status={status}",
@@ -380,7 +405,24 @@ def _output_refs(
         refs.append(f"net_return={net_return:.12f}")
     if failure_reason:
         refs.append(f"run_failure_reason={failure_reason}")
+    for name, value in sorted((benchmark_observations or {}).items()):
+        refs.append(f"benchmark_{name}={float(value):.12f}")
     return tuple(refs)
+
+
+def _benchmark_observations(spec: Mapping[str, Any]) -> dict[str, float]:
+    raw = spec.get("benchmark_observations", {})
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ValueError("benchmark_observations must be an object when provided")
+    observations: dict[str, float] = {}
+    for key, value in raw.items():
+        numeric = float(value)
+        if numeric < 0.0:
+            raise ValueError("benchmark_observations values must be non-negative")
+        observations[str(key)] = numeric
+    return observations
 
 
 def _json_safe_rows(rows: tuple[dict[str, Any], ...]) -> list[dict[str, Any]]:

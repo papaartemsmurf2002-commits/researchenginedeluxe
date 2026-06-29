@@ -111,6 +111,49 @@ def test_file_manifest_has_sha256_size_rows_schema_version(tmp_path) -> None:
     assert runs[0].byte_count == manifest_row.size_bytes
 
 
+def test_archive_manifest_store_batch_upsert_dedupes_and_orders_file_rows(tmp_path) -> None:
+    layout = ArchiveLayout(tmp_path / "archive")
+    layout.initialize()
+    store = ArchiveManifestStore(layout)
+    first = write_parquet_rows(
+        layout=layout,
+        store=store,
+        rows=[{"ts": "2026-01-01T00:00:00Z", "close": 1.0}],
+        layer=ArchiveLayer.SILVER,
+        dataset="bars",
+        venue="hyperliquid",
+        datatype="bars",
+        date="2026-01-01",
+        timeframe="1m",
+        job_id="job-first",
+        source_file_ids=("source-a",),
+        filename="part-b",
+    )
+    second = write_parquet_rows(
+        layout=layout,
+        store=store,
+        rows=[{"ts": "2026-01-01T00:01:00Z", "close": 2.0}],
+        layer=ArchiveLayer.SILVER,
+        dataset="bars",
+        venue="hyperliquid",
+        datatype="bars",
+        date="2026-01-01",
+        timeframe="1m",
+        job_id="job-second",
+        source_file_ids=("source-b",),
+        filename="part-a",
+    )
+
+    replacement = first.model_copy(update={"created_by_job_id": "job-first-replacement"})
+    store.upsert_file_manifests((second, first, replacement))
+
+    rows = store.load_file_manifest()
+    assert [row.path for row in rows] == sorted(row.path for row in rows)
+    assert len(rows) == 2
+    assert {row.file_id for row in rows} == {first.file_id, second.file_id}
+    assert next(row for row in rows if row.file_id == first.file_id).created_by_job_id == "job-first-replacement"
+
+
 def test_bronze_to_silver_rebuild_is_deterministic(tmp_path) -> None:
     first = _build_bronze_silver_fixture(tmp_path / "one")
     second = _build_bronze_silver_fixture(tmp_path / "two")

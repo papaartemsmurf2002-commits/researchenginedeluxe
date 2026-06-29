@@ -26,6 +26,14 @@ work.
   changes.
 - Write a work packet before coding.
 - Keep changes inside the allowed paths listed by the work packet.
+- Before collecting data, writing a collector, materializing a feature slice, or
+  adding venue support, query the archive inventory and strategy
+  data-requirement resolver. Use existing archive refs when they satisfy the
+  request; collect or materialize only the exact missing
+  instrument/family/time range described by a `DataGapRequest`.
+- Collector templates remain template-only. Venue probes require a
+  `DataGapRequest` with checked archive refs or coverage-report evidence; bare
+  hand-written gaps are not sufficient.
 - Update `docs/KNOWN_ISSUES.md` when a blocking risk is discovered.
 - Do not advance a stage while any P0 issue is open or four or more P1 issues are unresolved.
 - BTC and ETH are fixture, smoke-test, reference, and legacy evidence symbols;
@@ -41,6 +49,11 @@ work.
   trade-ready, order-ready, sizing-ready, signal-ready, candidate-pack-ready,
   or promotion-ready status.
 - Performance claims require reproducible manifests and validation evidence.
+- Fast-lane or artifact-light sweep output is triage evidence until replayed or
+  sampled under the Python/reference engine. Do not claim speedup without
+  benchmark evidence. Use fast-lane parity reports and reference rerun plans
+  for suspicious or promising fast results before treating them as durable
+  research evidence.
 
 ## Validation baseline
 

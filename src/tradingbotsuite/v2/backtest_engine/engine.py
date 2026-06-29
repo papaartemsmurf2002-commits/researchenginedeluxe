@@ -13,6 +13,8 @@ import platform
 import re
 import subprocess
 import sys
+import time
+import tracemalloc
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from datetime import UTC, date, datetime, timedelta
@@ -75,40 +77,48 @@ def run_vectorized_backtest(
     parsed_spec = parse_strategy_spec(strategy_spec)
     if panel_rows is None and panel_table is None:
         raise BacktestEngineError("panel_rows_or_panel_table_required")
-    materialized_panel: list[dict[str, Any]] | None = None
-    normalized_table: pa.Table | None = None
-    if panel_table is not None:
-        normalized_table = _normalize_panel_table(panel_table)
-    if panel_rows is not None:
-        materialized_panel = [dict(row) for row in panel_rows]
-    elif parsed_config.engine_lane != EngineLane.FAST_VECTORIZED or signal_frame is None:
-        assert normalized_table is not None
-        materialized_panel = _table_to_rows(normalized_table)
-    panel_identity = (
-        _table_hash(normalized_table)
-        if normalized_table is not None and materialized_panel is None
-        else _canonical_json_hash(materialized_panel or [])
-    )
-    panel_row_count = (
-        normalized_table.num_rows
-        if normalized_table is not None and materialized_panel is None
-        else len(materialized_panel or [])
-    )
-    run_id = parsed_config.run_id or _deterministic_run_id(
-        parsed_config,
-        parsed_spec,
-        params or {},
-        panel_identity,
-    )
-    run_dir = _run_dir(parsed_config.output_root, run_id)
-    run_dir.mkdir(parents=True, exist_ok=True)
+    benchmark_observations = dict(parsed_config.benchmark_observations)
+    memory_tracing_started = _start_benchmark_memory(parsed_config)
+    run_start = _benchmark_start(parsed_config)
     try:
+        materialized_panel: list[dict[str, Any]] | None = None
+        normalized_table: pa.Table | None = None
+        panel_prepare_start = _benchmark_start(parsed_config)
+        if panel_table is not None:
+            normalized_table = _normalize_panel_table(panel_table)
+        if panel_rows is not None:
+            materialized_panel = [dict(row) for row in panel_rows]
+        elif parsed_config.engine_lane != EngineLane.FAST_VECTORIZED or signal_frame is None:
+            assert normalized_table is not None
+            materialized_panel = _table_to_rows(normalized_table)
+        _record_benchmark(benchmark_observations, "panel_prepare_seconds", panel_prepare_start)
+        panel_identity = (
+            _table_hash(normalized_table)
+            if normalized_table is not None and materialized_panel is None
+            else _canonical_json_hash(materialized_panel or [])
+        )
+        panel_row_count = (
+            normalized_table.num_rows
+            if normalized_table is not None and materialized_panel is None
+            else len(materialized_panel or [])
+        )
+        run_id = parsed_config.run_id or _deterministic_run_id(
+            parsed_config,
+            parsed_spec,
+            params or {},
+            panel_identity,
+        )
+        run_dir = _run_dir(parsed_config.output_root, run_id)
+        run_dir.mkdir(parents=True, exist_ok=True)
         if parsed_config.engine_lane not in {EngineLane.VECTORIZED, EngineLane.FAST_VECTORIZED}:
             raise BacktestEngineError(f"unsupported vectorized lane: {parsed_config.engine_lane.value}")
         if parsed_config.require_net_metrics is not True:
             raise BacktestEngineError("gross_only_metrics_rejected")
         if signal_frame is None:
+            signal_compile_start = _benchmark_start(parsed_config)
             signal_frame = compile_signal_frame(parsed_spec, materialized_panel or _table_to_rows(normalized_table))
+            _record_benchmark(benchmark_observations, "signal_compile_seconds", signal_compile_start)
+        simulation_start = _benchmark_start(parsed_config)
         if parsed_config.engine_lane == EngineLane.FAST_VECTORIZED:
             if normalized_table is None:
                 normalized_table = _normalize_panel_table(pa.Table.from_pylist(materialized_panel or []))
@@ -120,6 +130,7 @@ def run_vectorized_backtest(
                 run_id=run_id,
                 cost_scenario=CostStressScenario.BASE,
             )
+            _record_benchmark(benchmark_observations, "fast_runtime_seconds", simulation_start)
         else:
             if materialized_panel is None:
                 materialized_panel = _table_to_rows(normalized_table)
@@ -131,6 +142,7 @@ def run_vectorized_backtest(
                 run_id=run_id,
                 cost_scenario=CostStressScenario.BASE,
             )
+            _record_benchmark(benchmark_observations, "reference_runtime_seconds", simulation_start)
         stress_rows = _cost_stress_rows(
             config=parsed_config,
             base_simulation=simulation,
@@ -146,8 +158,28 @@ def run_vectorized_backtest(
             run_dir=run_dir,
             status=RunStatus.SUCCEEDED,
             simulation=simulation,
+            benchmark_observations=benchmark_observations,
+            run_start=run_start,
         )
     except Exception as exc:
+        if "materialized_panel" not in locals():
+            materialized_panel = None
+        if "normalized_table" not in locals():
+            normalized_table = None
+        if "panel_identity" not in locals():
+            panel_identity = _table_hash(normalized_table) if normalized_table is not None else _canonical_json_hash(materialized_panel or [])
+        if "panel_row_count" not in locals():
+            panel_row_count = normalized_table.num_rows if normalized_table is not None else len(materialized_panel or [])
+        if "run_id" not in locals():
+            run_id = parsed_config.run_id or _deterministic_run_id(
+                parsed_config,
+                parsed_spec,
+                params or {},
+                panel_identity,
+            )
+        if "run_dir" not in locals():
+            run_dir = _run_dir(parsed_config.output_root, run_id)
+            run_dir.mkdir(parents=True, exist_ok=True)
         return _write_failure_artifacts(
             config=parsed_config,
             strategy_spec=parsed_spec,
@@ -160,7 +192,12 @@ def run_vectorized_backtest(
             run_dir=run_dir,
             engine_lane=parsed_config.engine_lane,
             failure_reason=str(exc),
+            benchmark_observations=benchmark_observations,
+            run_start=run_start,
         )
+    finally:
+        if memory_tracing_started and tracemalloc.is_tracing():
+            tracemalloc.stop()
 
 
 def run_event_driven_placeholder(
@@ -245,6 +282,8 @@ def run_event_driven_backtest(
             run_dir=run_dir,
             status=RunStatus.SUCCEEDED,
             simulation=simulation,
+            benchmark_observations=dict(parsed_config.benchmark_observations),
+            run_start=None,
         )
     except Exception as exc:
         return _write_failure_artifacts(
@@ -1598,6 +1637,40 @@ def _daily_returns(equity_curve: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return daily
 
 
+def _benchmark_start(config: BacktestRunConfig) -> float | None:
+    if not config.benchmark_enabled:
+        return None
+    return time.perf_counter()
+
+
+def _record_benchmark(
+    observations: dict[str, float],
+    name: str,
+    start: float | None,
+) -> None:
+    if start is None:
+        return
+    observations[name] = max(0.0, time.perf_counter() - start)
+
+
+def _start_benchmark_memory(config: BacktestRunConfig) -> bool:
+    if not config.benchmark_enabled or tracemalloc.is_tracing():
+        return False
+    tracemalloc.start()
+    return True
+
+
+def _capture_benchmark_memory(
+    observations: dict[str, float],
+    *,
+    config: BacktestRunConfig,
+) -> None:
+    if not config.benchmark_enabled or not tracemalloc.is_tracing():
+        return
+    _current, peak = tracemalloc.get_traced_memory()
+    observations["memory_peak_bytes"] = float(max(0, peak))
+
+
 def _write_run_artifacts(
     *,
     config: BacktestRunConfig,
@@ -1609,9 +1682,14 @@ def _write_run_artifacts(
     run_dir: Path,
     status: RunStatus,
     simulation: _SimulationResult,
+    benchmark_observations: dict[str, float],
+    run_start: float | None,
 ) -> BacktestRunResult:
+    artifact_write_start = _benchmark_start(config)
     artifacts = _write_common_artifacts(
+        config=config,
         run_dir=run_dir,
+        run_id=run_id,
         strategy_spec=strategy_spec,
         params=params,
         panel_row_count=panel_row_count,
@@ -1632,6 +1710,9 @@ def _write_run_artifacts(
         cost_stress=simulation.cost_stress,
         log_lines=[f"run_id={run_id}", "status=succeeded", f"engine_lane={config.engine_lane.value}"],
     )
+    _record_benchmark(benchmark_observations, "artifact_write_seconds", artifact_write_start)
+    _record_benchmark(benchmark_observations, "total_run_seconds", run_start)
+    _capture_benchmark_memory(benchmark_observations, config=config)
     manifest = _manifest(
         config=config,
         strategy_spec=strategy_spec,
@@ -1642,6 +1723,7 @@ def _write_run_artifacts(
         metrics=simulation.metrics,
         artifacts=artifacts,
         failure_reason=None,
+        benchmark_observations=benchmark_observations,
     )
     _write_json(run_dir / "run_manifest.json", manifest.model_dump(mode="json"))
     artifacts["run_manifest"] = _artifact_ref(run_dir, run_dir / "run_manifest.json", "run_manifest")
@@ -1665,7 +1747,10 @@ def _write_failure_artifacts(
     run_dir: Path,
     engine_lane: EngineLane,
     failure_reason: str,
+    benchmark_observations: dict[str, float] | None = None,
+    run_start: float | None = None,
 ) -> BacktestRunResult:
+    observations = dict(benchmark_observations or {})
     timestamps = _panel_timestamps(panel_rows=panel_rows, panel_table=panel_table) or [datetime.now(tz=UTC)]
     instruments = _panel_instruments(panel_rows=panel_rows, panel_table=panel_table) or ["unknown"]
     resolved_panel_hash = panel_hash or _canonical_json_hash(panel_rows or [])
@@ -1680,8 +1765,11 @@ def _write_failure_artifacts(
         "observe_only": True,
         "promotion_ready": False,
     }
+    artifact_write_start = _benchmark_start(config)
     artifacts = _write_common_artifacts(
+        config=config,
         run_dir=run_dir,
+        run_id=run_id,
         strategy_spec=strategy_spec,
         params=params,
         panel_row_count=resolved_panel_row_count,
@@ -1698,6 +1786,9 @@ def _write_failure_artifacts(
         cost_stress=[],
         log_lines=[f"run_id={run_id}", f"status=failed", f"failure_reason={failure_reason}", f"engine_lane={engine_lane.value}"],
     )
+    _record_benchmark(observations, "artifact_write_seconds", artifact_write_start)
+    _record_benchmark(observations, "total_run_seconds", run_start)
+    _capture_benchmark_memory(observations, config=config)
     context = StrategyContext(
         run_id=run_id,
         experiment_id=config.experiment_id,
@@ -1728,6 +1819,7 @@ def _write_failure_artifacts(
         metrics=None,
         artifacts=artifacts,
         failure_reason=failure_reason,
+        benchmark_observations=observations,
     )
     _write_json(run_dir / "run_manifest.json", manifest.model_dump(mode="json"))
     return BacktestRunResult(run_dir=str(run_dir), manifest=manifest, metrics=None)
@@ -1735,7 +1827,9 @@ def _write_failure_artifacts(
 
 def _write_common_artifacts(
     *,
+    config: BacktestRunConfig,
     run_dir: Path,
+    run_id: str,
     strategy_spec: StrategySpec,
     params: dict[str, Any],
     panel_row_count: int,
@@ -1761,13 +1855,28 @@ def _write_common_artifacts(
     artifacts["validation_manifest"] = _write_json_artifact(run_dir, "validation_manifest.json", validation_manifest, "validation_manifest")
     artifacts["cost_manifest"] = _write_json_artifact(run_dir, "cost_manifest.json", cost_manifest, "cost_manifest")
     artifacts["metrics"] = _write_json_artifact(run_dir, "metrics.json", metrics, "metrics")
-    artifacts["equity_curve"] = _write_parquet_artifact(run_dir, "equity_curve.parquet", equity_curve, "equity_curve", _equity_schema())
-    artifacts["daily_returns"] = _write_parquet_artifact(run_dir, "daily_returns.parquet", daily_returns, "daily_returns", _daily_schema())
-    artifacts["trades"] = _write_parquet_artifact(run_dir, "trades.parquet", trades, "trades", _trades_schema())
-    artifacts["positions"] = _write_parquet_artifact(run_dir, "positions.parquet", positions, "positions", _positions_schema())
-    artifacts["per_instrument_metrics"] = _write_parquet_artifact(run_dir, "per_instrument_metrics.parquet", per_instrument_metrics, "per_instrument_metrics", _per_instrument_schema())
-    artifacts["fold_metrics"] = _write_parquet_artifact(run_dir, "fold_metrics.parquet", fold_metrics, "fold_metrics", _fold_schema())
-    artifacts["cost_stress"] = _write_parquet_artifact(run_dir, "cost_stress.parquet", cost_stress, "cost_stress", _cost_stress_schema())
+    artifacts["replay_manifest"] = _write_json_artifact(
+        run_dir,
+        "replay_manifest.json",
+        _replay_manifest(
+            config=config,
+            run_id=run_id,
+            strategy_spec=strategy_spec,
+            params=params,
+            panel_row_count=panel_row_count,
+            panel_hash=panel_hash,
+        ),
+        "replay_manifest",
+    )
+    if config.artifact_mode.value in {"full", "summary"}:
+        artifacts["equity_curve"] = _write_parquet_artifact(run_dir, "equity_curve.parquet", equity_curve, "equity_curve", _equity_schema())
+        artifacts["daily_returns"] = _write_parquet_artifact(run_dir, "daily_returns.parquet", daily_returns, "daily_returns", _daily_schema())
+        artifacts["per_instrument_metrics"] = _write_parquet_artifact(run_dir, "per_instrument_metrics.parquet", per_instrument_metrics, "per_instrument_metrics", _per_instrument_schema())
+        artifacts["fold_metrics"] = _write_parquet_artifact(run_dir, "fold_metrics.parquet", fold_metrics, "fold_metrics", _fold_schema())
+        artifacts["cost_stress"] = _write_parquet_artifact(run_dir, "cost_stress.parquet", cost_stress, "cost_stress", _cost_stress_schema())
+    if config.artifact_mode.value == "full":
+        artifacts["trades"] = _write_parquet_artifact(run_dir, "trades.parquet", trades, "trades", _trades_schema())
+        artifacts["positions"] = _write_parquet_artifact(run_dir, "positions.parquet", positions, "positions", _positions_schema())
     log_path = logs_dir / "log.txt"
     log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
     artifacts["log"] = _artifact_ref(run_dir, log_path, "log")
@@ -1785,6 +1894,7 @@ def _manifest(
     metrics: BacktestMetrics | None,
     artifacts: dict[str, RunArtifactRef],
     failure_reason: str | None,
+    benchmark_observations: dict[str, float],
 ) -> RunManifest:
     params_hash = _canonical_json_hash(params)
     return RunManifest(
@@ -1825,10 +1935,61 @@ def _manifest(
         validation_status=ValidationStatus.PASS if status == RunStatus.SUCCEEDED else ValidationStatus.FAIL,
         missing_data_policy=config.missing_data_policy,
         price_basis=strategy_spec.execution.price_basis.value,
+        artifact_mode=config.artifact_mode,
+        replayable_to_full_artifacts=True,
+        replay_identity_hash=None if artifacts.get("replay_manifest") is None else artifacts["replay_manifest"].sha256,
+        fast_lane_policy_id=config.fast_lane_policy_id,
+        reference_engine_authority=config.reference_engine_authority,
+        reference_audit_sample_rate=config.reference_audit_sample_rate,
+        speedup_claimed=config.speedup_claimed,
+        benchmark_observations=dict(sorted(benchmark_observations.items())),
         failure_reason=failure_reason,
         metrics=metrics,
         artifacts=artifacts,
     )
+
+
+def _replay_manifest(
+    *,
+    config: BacktestRunConfig,
+    run_id: str,
+    strategy_spec: StrategySpec,
+    params: dict[str, Any],
+    panel_row_count: int,
+    panel_hash: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": V2_SCHEMA_VERSION,
+        "manifest_type": "backtest_replay_manifest_v1",
+        "run_id": run_id,
+        "artifact_mode": config.artifact_mode.value,
+        "replayable_to_full_artifacts": True,
+        "strategy_id": strategy_spec.strategy_id,
+        "strategy_spec_hash": strategy_spec.spec_hash,
+        "params_hash": _canonical_json_hash(params),
+        "archive_snapshot_id": config.archive_snapshot_id,
+        "universe_snapshot_id": config.universe_snapshot_id,
+        "data_manifest_id": config.data_manifest_id,
+        "data_manifest_hash": config.data_manifest_hash,
+        "validation_manifest_hash": config.validation_manifest_hash,
+        "cost_manifest_hash": config.cost_manifest_hash,
+        "engine_lane": config.engine_lane.value,
+        "cost_model_id": config.cost_model_id,
+        "cost_model_hash": _effective_cost_model(config).config_hash,
+        "panel_row_count": panel_row_count,
+        "panel_hash": panel_hash,
+        "full_replay_requires_same_spec_data_config": True,
+        "research_only": True,
+        "observe_only": True,
+        "promotion_ready": False,
+        "candidate_evidence": False,
+        "candidate_pack_eligible": False,
+        "live_signal": False,
+        "paper_signal": False,
+        "sizing_instruction": False,
+        "order_placement_instruction": False,
+        "runtime_mode_change": False,
+    }
 
 
 def _data_manifest(panel_row_count: int, panel_hash: str) -> dict[str, Any]:
