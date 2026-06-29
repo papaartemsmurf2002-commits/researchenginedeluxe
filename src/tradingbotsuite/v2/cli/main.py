@@ -40,6 +40,8 @@ from tradingbotsuite.v2.autonomy import (
     AutopilotPublicCandleCycleConfig,
     AutopilotSchedulerError,
     StrategyQueueScanConfig,
+    agent_context_to_json,
+    build_autonomous_research_agent_context,
     load_autopilot_cycle_spec,
     plan_autopilot_research_cycle,
     run_autopilot_cycle_plan,
@@ -48,6 +50,7 @@ from tradingbotsuite.v2.autonomy import (
     AutonomyLoopError,
     run_autonomy_dry_run,
     scan_strategy_queue,
+    write_autonomous_research_agent_context,
     write_autopilot_archive_cycle_spec,
     write_autopilot_fixture_cycle_spec,
     write_autopilot_public_candle_cycle_spec,
@@ -540,8 +543,8 @@ def build_parser() -> argparse.ArgumentParser:
             "against operator-supplied accepted archive refs."
         ),
     )
-    autopilot_archive_cycle.add_argument("--lead-avg-trades-per-month", type=float, default=6.0)
-    autopilot_archive_cycle.add_argument("--lead-total-trades", type=int, default=42)
+    autopilot_archive_cycle.add_argument("--lead-avg-trades-per-month", type=float, default=10.0)
+    autopilot_archive_cycle.add_argument("--lead-total-trades", type=int, default=60)
     autopilot_archive_cycle.add_argument("--lead-usable-months", type=int, default=6)
     autopilot_archive_cycle.add_argument("--lead-losing-months-12m", type=int, default=0)
     autopilot_archive_cycle.add_argument("--lead-positive-months-12m", type=int, default=6)
@@ -610,6 +613,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["archive_fixture", "manifest_fixture"],
     )
     autonomy_dry_run.add_argument("--created-by-id", default="codex-manager-agent")
+    autonomy_agent_context = autonomy_subparsers.add_parser(
+        "agent-context",
+        help="print a read-only JSON handoff map for autonomous research agents",
+    )
+    autonomy_agent_context.add_argument("--repo-root", default=".")
+    autonomy_agent_context.add_argument("--run-id", default="autonomous-research-agent-context")
+    autonomy_agent_context.add_argument("--asof-date")
+    autonomy_agent_context.add_argument("--output-path")
     worker = subparsers.add_parser(
         "worker",
         help="durable local worker/job-store commands; no ASGI in-process execution",
@@ -1667,6 +1678,20 @@ def _handle_autonomy(args: argparse.Namespace, parser: argparse.ArgumentParser) 
         print(f"status={result.status.value}")
         print("evidence_mode=sandbox_diagnostic")
         print("promotion_ready=false")
+        return 0
+    if args.autonomy_command == "agent-context":
+        try:
+            context = build_autonomous_research_agent_context(
+                repo_root=args.repo_root,
+                run_id=args.run_id,
+                asof_date=date.fromisoformat(args.asof_date) if args.asof_date else None,
+            )
+            if args.output_path:
+                write_autonomous_research_agent_context(context, args.output_path)
+        except (ValueError, ValidationError) as exc:
+            print(f"autonomy_agent_context_rejected={exc}")
+            return 1
+        print(agent_context_to_json(context), end="")
         return 0
     parser.error(f"unsupported autonomy command: {args.autonomy_command}")
     return 2

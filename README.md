@@ -56,13 +56,22 @@ files, 81,093,159 parsed input rows, 256,523 compact feature rows, and zero
 blocked materialized sources across all nine requested families.
 
 WPR106-553 completes the final repo audit and marks this state ready for
-research-only agentic iteration strategy testing under scoped packets. Legacy
-blockers that require unavailable requester-pays or native Hyperliquid
-historical official data are out of scope for this branch's current data
-readiness. Future autonomous-readiness claims still require real evidence
-paths, authoritative validation, and a passing readiness report.
+research-only agentic iteration strategy testing under scoped packets.
+WPR106-556 then records a blocker-free archive-ref bounded cycle and a formal
+manager readiness report with `autonomous_research_ready=true` and
+`blocker_count=0`. Legacy blockers that require unavailable requester-pays or
+native Hyperliquid historical official data are out of scope for this branch's
+current data readiness. WPR106-558 adds `docs/RESEARCH_AGENT_QUICKSTART.md` as
+the concise current handoff for autonomous research agents. WPR106-557 adds a
+read-only agent-context JSON command for the current instrument/data/path/policy
+map:
+
+```powershell
+python -m tradingbotsuite.v2.cli.main autonomy agent-context --repo-root .
+```
+
 No output is candidate-ready, paper-ready, live-ready, order-ready,
-sizing-ready, runtime-ready, or promotion-ready.
+sizing-ready, runtime-ready, promotion-ready, or a production trading claim.
 
 The local static status page is `docs/index.html`; `.github/workflows/pages.yml`
 publishes the same docs entrypoint through GitHub Pages after the branch is
@@ -176,8 +185,10 @@ before changing shared infrastructure.
 
 ## Rules
 
-- Read `docs/ACTIVE_INDEX.md` before starting work.
-- Read `docs/PRODUCT_SCOPE.md` and `docs/V2_NO_TOUCH_PATHS.md` before v2 work.
+- Read `AGENTS.md` and `docs/RESEARCH_AGENT_QUICKSTART.md` before starting
+  research-agent work.
+- Read `docs/PRODUCT_SCOPE.md` before v2 work and `docs/V2_NO_TOUCH_PATHS.md`
+  before touching protected areas.
 - Do not treat research outputs as live signals.
 - Do not weaken evidence controls; zero eligible candidates is useful rejection
   evidence.

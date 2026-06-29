@@ -1,0 +1,67 @@
+{
+  "candidate_evidence": false,
+  "candidate_pack_eligible": false,
+  "execution": {
+    "fee_model": "conservative_hyperliquid_taker_v1",
+    "price_basis": "next_bar_open",
+    "slippage_model": "conservative_bps_v1"
+  },
+  "inputs": {
+    "fields": [
+      "close",
+      "volume",
+      "coverage_ratio"
+    ],
+    "timeframe": "1h"
+  },
+  "live_signal": false,
+  "logic": {
+    "filters": {
+      "min_coverage": 0.98,
+      "min_volume": 1000
+    },
+    "long_top_quantile": 0.5,
+    "lookback_bars": 480,
+    "rank_direction": "momentum",
+    "rank_metric": "return",
+    "signal_type": "cross_sectional_rank"
+  },
+  "market_scope": {
+    "market_type": "perp",
+    "universe_rule": "wpr106_556_binance_usdm_asof_panel",
+    "venue": "binance_usdm"
+  },
+  "metadata": {
+    "atlas_strategy_id": "S24/S54/S65",
+    "atlas_theme_id": "cross_sectional_momentum",
+    "rank_metric": "return",
+    "side_mode": "long_only"
+  },
+  "observe_only": true,
+  "order_placement_instruction": false,
+  "owner": "codex-manager-agent",
+  "paper_signal": false,
+  "parameters": {
+    "worst_case_slippage_bps_reference": 20
+  },
+  "promotion_ready": false,
+  "research_only": true,
+  "risk": {
+    "max_gross_leverage": 0.05,
+    "max_instrument_weight": 0.025,
+    "rebalance": "1h"
+  },
+  "runtime_mode_change": false,
+  "schema_version": "strategy_spec_v1",
+  "sizing_instruction": false,
+  "strategy_family": "cross_sectional_momentum",
+  "strategy_id": "wpr106556_fast_2664",
+  "validation": {
+    "earliest_start": "2024-01-01",
+    "evidence_mode": "accepted_research",
+    "exclude_lockbox": true,
+    "min_backtest_months": 6,
+    "universe_mode": "as_of"
+  },
+  "version": "0.1.0"
+}

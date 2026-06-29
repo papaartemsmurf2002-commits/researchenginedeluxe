@@ -164,7 +164,7 @@ def test_autopilot_fixture_cycle_executes_real_worker_chain_and_reports_blockers
     assert report["status"] == "completed_with_blockers"
     assert report["accepted_research_ready"] is False
     assert expected_blockers.issubset(set(report["blocker_reasons"]))
-    assert "minimum_five_trades_per_month_failed" in report["blocker_reasons"]
+    assert "minimum_ten_trades_per_usable_month_failed" in report["blocker_reasons"]
     assert set(execution.blocker_reasons) == set(report["blocker_reasons"])
 
     ledger_rows = read_ledger(Path(result.ledger_path))
@@ -180,7 +180,7 @@ def test_autopilot_fixture_cycle_executes_real_worker_chain_and_reports_blockers
     assert lead.promotion_ready is False
     assert lead.candidate_evidence is False
     assert "fixture_cycle_non_evidence" in lead.known_blockers
-    assert "minimum_five_trades_per_month_failed" in lead.known_blockers
+    assert "minimum_ten_trades_per_usable_month_failed" in lead.known_blockers
     assert "real_hyperliquid_archive_operation" in lead.missing_evidence
     assert lead.source_artifact_path == str(Path(result.ledger_path).resolve())
 

@@ -1,6 +1,6 @@
 # V2 Data Catalog And Agentic Research Pointers
 
-Status: WPR106-553 final-audited free-venue data and agentic testing handoff catalog  
+Status: WPR106-558 final-audited free-venue data details for the quickstart handoff
 Last updated: 2026-06-27  
 Scope: research-only data readiness and testing-agent navigation
 
@@ -28,11 +28,23 @@ required for this data pass; the WPR106-552 materializer provides the compact
 feature path and the WPR106-549 validation report remains the raw completeness
 authority.
 
-WPR106-553 completes the final repo audit. The repo is ready for
-research-only agentic iteration strategy testing under scoped packets. This is
-not autonomous readiness, accepted research readiness, candidate-pack
-readiness, paper/live readiness, order/sizing/runtime readiness, promotion
-readiness, production trading readiness, or a strategy-performance claim.
+WPR106-553 completes the final repo audit for research-only agentic iteration
+strategy testing. WPR106-556 later adds the first blocker-free archive-ref
+strategy cycle and the formal manager readiness report now returns
+`autonomous_research_ready=true` with `blocker_count=0`.
+
+That manager status is narrow. It means autonomous research agents may run
+scoped research-only iteration through the existing bounded loop and current
+authoritative data lanes. It is still not accepted research readiness,
+candidate-pack readiness, paper/live readiness, order/sizing/runtime readiness,
+promotion readiness, production trading readiness, or a strategy-performance
+claim.
+
+For a machine-readable handoff, run:
+
+```powershell
+python -m tradingbotsuite.v2.cli.main autonomy agent-context --repo-root .
+```
 
 ## Boundary Invariant
 
@@ -252,23 +264,28 @@ Controlling interpretation:
 
 ## Testing-Agent Rules
 
-1. Start with this file, then read `docs/PRODUCT_SCOPE.md`,
-   `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`, `docs/KNOWN_ISSUES.md`, and the
-   latest work packet before running strategy tests.
-2. For bar-only tests over the 29 project symbols, use the WPR106-546 report as
+1. Start with `AGENTS.md` and `docs/RESEARCH_AGENT_QUICKSTART.md`. Use this
+   catalog for data-lane details, then read `docs/PRODUCT_SCOPE.md`,
+   `docs/KNOWN_ISSUES.md`, and the latest relevant work packet before running
+   strategy tests.
+2. For a machine-readable start state, run
+   `python -m tradingbotsuite.v2.cli.main autonomy agent-context --repo-root .`
+   and use the returned report refs, instrument map, lockbox month, no-paid
+   data rules, and self-repair policy as the local handoff context.
+3. For bar-only tests over the 29 project symbols, use the WPR106-546 report as
    the source of allowed symbols/windows and enforce the dynamic lockbox.
-3. For any strategy needing raw trades, aggregate trades, BBO, depth, mark
+4. For any strategy needing raw trades, aggregate trades, BBO, depth, mark
    price, index price, premium, or metrics, start with the WPR106-552
    materialization report. If the required symbol/window is outside the compact
    proof pack, open a scoped compute/materialization packet rather than
    treating data collection as missing.
-4. Do not silently substitute 1m bars for missing OF/L2/trade inputs.
-5. Do not relabel current-public Hyperliquid data or external venue rows as
+5. Do not silently substitute 1m bars for missing OF/L2/trade inputs.
+6. Do not relabel current-public Hyperliquid data or external venue rows as
    native Hyperliquid historical data.
-6. Keep failed data gates, partial coverage, budget blockers, and out-of-scope
+7. Keep failed data gates, partial coverage, budget blockers, and out-of-scope
    source states explicit. Do not let out-of-scope requester-pays Hyperliquid
    history block the free-venue data lane.
-7. Append or derive new artifacts only through scoped packets with manifests,
+8. Append or derive new artifacts only through scoped packets with manifests,
    hashes, row counts, quality reports, and boundary flags.
 
 ## Final-Audit Checklist
@@ -307,10 +324,19 @@ Windows host.
 
 - WPR106-553 clears the final-audit wait for research-only agentic iteration
   strategy testing under scoped packets.
+- WPR106-556 clears the current formal manager autonomous-readiness gate with
+  `autonomous_research_ready=true` and `blocker_count=0`, while preserving the
+  research-only/non-promotable boundary.
+- WPR106-557 adds the read-only `autonomy agent-context` JSON handoff so agents
+  can discover instruments, data paths, no-paid collection rules, lockbox
+  state, and self-repair limits directly from the repo.
+- WPR106-558 adds `docs/RESEARCH_AGENT_QUICKSTART.md` and makes that concise
+  guide the default first-read path for research agents; this catalog remains
+  the data detail authority.
 - No open P0/P1 data-source blocker remains for the strict-free/free-venue
   baseline.
 - WPR106-552 resolves the normalization/feature-materialization proof gap for
   strict-free OF-style data. Full all-file feature-panel expansion is a
   compute-scope choice for a later packet, not a data-source blocker.
-- No candidate pack, no accepted autonomous-readiness report, and no
-  paper/live/order/sizing/runtime/promotion artifact exists.
+- No candidate pack, paper/live/order/sizing/runtime/promotion artifact, or
+  production-trading claim exists.

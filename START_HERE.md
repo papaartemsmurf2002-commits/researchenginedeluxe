@@ -21,11 +21,24 @@ work only. The live runtime branch referenced by older docs is
 
 Current data/catalog handoff:
 
+- `docs/RESEARCH_AGENT_QUICKSTART.md` is the current concise operating guide
+  for research agents. Start there after `AGENTS.md`.
+- `docs/work_packets/WPR106-557-v2-agent-context-cleanup-and-handoff.md`
+  adds the read-only machine-readable agent context handoff. Run
+  `python -m tradingbotsuite.v2.cli.main autonomy agent-context --repo-root .`
+  to print the current instrument map, data paths, no-paid collection rules,
+  lockbox state, self-repair policy, and WPR106-556 manager readiness status.
+- `docs/work_packets/WPR106-556-v2-autonomous-readiness-atlas-strategy-pass.md`
+  is the current autonomous-readiness strategy verdict. The formal manager
+  readiness report returns `autonomous_research_ready=true` with
+  `blocker_count=0`, while all artifacts remain research-only and
+  non-promotable.
 - `docs/work_packets/WPR106-553-v2-final-repo-audit-agentic-iteration-testing-readiness.md`
   is the final repo audit packet. It marks the repo ready for research-only
-  agentic iteration strategy testing under scoped packets, not for autonomous,
-  candidate-pack, paper/live, order/sizing/runtime, promotion, or production
-  trading use.
+  agentic iteration strategy testing under scoped packets. It was superseded
+  for manager autonomous-readiness status by WPR106-556, but candidate-pack,
+  paper/live, order/sizing/runtime, promotion, and production trading use
+  remain forbidden.
 - `docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md` is the compact
   testing-agent entrypoint for WPR106-552.
 - `docs/index.html` is the read-only local/GitHub Pages status page rendered
@@ -42,18 +55,21 @@ Current data/catalog handoff:
 ## First files to read
 
 1. `AGENTS.md`
-2. `docs/ACTIVE_INDEX.md`
+2. `docs/RESEARCH_AGENT_QUICKSTART.md`
 3. `docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md`
 4. `docs/PRODUCT_SCOPE.md`
-5. `docs/V2_DECISION_REGISTER.md`
-6. `docs/V2_NO_TOUCH_PATHS.md`
-7. `docs/audit/V2_AUDIT_INDEX.md`
-8. `docs/ORCHESTRATOR_STAGE_LEDGER.md`
-9. `docs/KNOWN_ISSUES.md`
-10. `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`
-11. `docs/BRANCH_PURPOSE.md`
-12. `docs/contracts/README.md`
-13. `docs/repo_cartography/REPO_INVENTORY.md`
+5. `docs/KNOWN_ISSUES.md`
+6. the latest work packet for your task
+
+Read long reference files only when your packet needs them:
+
+- `docs/ORCHESTRATOR_STAGE_LEDGER.md` for stage history or packet IDs;
+- `docs/audit/V2_AUDIT_INDEX.md` for audit ownership/evidence;
+- `docs/V2_DECISION_REGISTER.md` for scope-decision conflicts;
+- `docs/V2_NO_TOUCH_PATHS.md` before touching protected areas;
+- `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md` before broad shared-package,
+  dependency, data, feature, backtest, artifact, or live-boundary changes;
+- `docs/contracts/README.md` before changing contracts.
 
 ## Research knowledge
 

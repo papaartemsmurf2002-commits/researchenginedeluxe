@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -116,7 +117,9 @@ def test_valid_request_loads_only_requested_fields_and_writes_manifest(tmp_path)
     first = BacktestDataService().load_panel(request, asof_date=date(2026, 6, 21))
     second = BacktestDataService().load_panel(request, asof_date=date(2026, 6, 21))
     manifest_path = fixture.archive_root / "manifests" / "backtest_data_requests.parquet"
+    manifest_index_path = fixture.archive_root / "manifests" / "backtest_data_requests.index.json"
     manifest_rows = pq.read_table(manifest_path).to_pylist()
+    manifest_index = json.loads(manifest_index_path.read_text(encoding="utf-8"))
 
     assert len(first.rows) == 182
     assert first.reported_row_count == 182
@@ -127,6 +130,9 @@ def test_valid_request_loads_only_requested_fields_and_writes_manifest(tmp_path)
     assert first.data_manifest.data_manifest_id == second.data_manifest.data_manifest_id
     assert len(manifest_rows) == 1
     assert manifest_rows[0]["data_manifest_id"] == first.data_manifest.data_manifest_id
+    assert manifest_index["schema_version"] == "backtest_data_request_index_v1"
+    assert manifest_index["row_count"] == 1
+    assert manifest_index["data_manifest_ids"] == {first.data_manifest.data_manifest_id: 0}
 
 
 def test_multi_instrument_request_loads_panel_with_coverage_provenance(tmp_path) -> None:

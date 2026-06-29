@@ -52,9 +52,9 @@ def test_validation_gate_worker_writes_pass_manifest(tmp_path) -> None:
     assert any(ref.startswith("validation_manifest_id=") for ref in loaded.archive_manifest_refs)
     assert report["validation_status"] == "pass"
     assert report["blocker_reasons"] == []
-    assert report["fold_count"] == 3
-    assert report["positive_fold_count"] == 2
-    assert report["fold_stability_score"] == 2 / 3
+    assert report["fold_count"] == 4
+    assert report["positive_fold_count"] == 3
+    assert report["fold_stability_score"] == 3 / 4
     assert set(report["cost_stress_scenarios"]) == {"base", "stress_2x", "stress_3x"}
     assert report["research_only"] is True
     assert report["observe_only"] is True
@@ -126,6 +126,45 @@ def test_validation_gate_worker_reports_blockers_without_worker_failure(tmp_path
     assert "cost_dependent_failure" in blockers
 
 
+def test_validation_gate_rejects_full_window_only_when_monthly_folds_expected(tmp_path) -> None:
+    run_manifest_path = _write_run_artifacts(
+        tmp_path / "runs" / "validation-full-window-only",
+        fold_rows=[
+            _fold_row(
+                "full_window",
+                0.03,
+                fold_family="diagnostic",
+                start_ts="2024-01-01T00:00:00Z",
+                end_ts="2024-08-01T00:00:00Z",
+            )
+        ],
+    )
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    store.enqueue(
+        kind=WorkerJobKind.VALIDATION_GATE,
+        job_id="JOB-validation-full-window-only",
+        input_spec={
+            "run_manifest_path": str(run_manifest_path),
+            "evidence_mode": "accepted_research",
+        },
+    )
+
+    result = run_one_job(
+        store=store,
+        kind=WorkerJobKind.VALIDATION_GATE,
+        worker_id="worker-validation-full-window-only",
+    )
+    report = json.loads(
+        (run_manifest_path.parent / "validation_gate_manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert result is not None
+    assert result.status == WorkerJobStatus.SUCCEEDED
+    assert report["validation_status"] == "fail"
+    assert report["fold_count"] == 0
+    assert "monthly_validation_folds_below_expected" in report["blocker_reasons"]
+
+
 def test_validation_gate_worker_rejects_secret_like_report_path_before_write(tmp_path) -> None:
     run_manifest_path = _write_run_artifacts(tmp_path / "runs" / "validation-secret")
     store = WorkerJobStore(tmp_path / "jobs.sqlite")
@@ -165,6 +204,7 @@ def _write_run_artifacts(
         _fold_row("fold-0", 0.02),
         _fold_row("fold-1", 0.01),
         _fold_row("fold-2", -0.005),
+        _fold_row("fold-3", 0.004),
     ]
     cost_rows = cost_rows or [
         _cost_row("base", 0.03),
@@ -306,11 +346,19 @@ def _metrics_payload(*, run_id: str) -> dict[str, Any]:
     }
 
 
-def _fold_row(fold_id: str, net_return: float) -> dict[str, Any]:
+def _fold_row(
+    fold_id: str,
+    net_return: float,
+    *,
+    fold_family: str = "monthly_validation",
+    start_ts: str = "2024-01-01T00:00:00Z",
+    end_ts: str = "2024-02-01T00:00:00Z",
+) -> dict[str, Any]:
     return {
         "fold_id": fold_id,
-        "start_ts": "2024-01-01T00:00:00Z",
-        "end_ts": "2024-02-01T00:00:00Z",
+        "fold_family": fold_family,
+        "start_ts": start_ts,
+        "end_ts": end_ts,
         "gross_return": net_return + 0.001,
         "net_return": net_return,
         "research_only": True,

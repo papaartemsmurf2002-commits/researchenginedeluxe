@@ -35,6 +35,17 @@ from tradingbotsuite.v2.autonomy.cycle_scheduler import (
     AutopilotSchedulerError,
     run_autopilot_scheduler_tick,
 )
+from tradingbotsuite.v2.autonomy.agent_context import (
+    AgentCollectionRule,
+    AgentContextReportRef,
+    AgentDataLane,
+    AgentInstrumentContext,
+    AgentSelfRepairPolicy,
+    AutonomousResearchAgentContext,
+    agent_context_to_json,
+    build_autonomous_research_agent_context,
+    write_autonomous_research_agent_context,
+)
 from tradingbotsuite.v2.autonomy.runner import AutonomyLoopError, run_autonomy_dry_run
 from tradingbotsuite.v2.autonomy.schemas import (
     AutopilotCycleExecutionManifest,
@@ -73,6 +84,11 @@ from tradingbotsuite.v2.autonomy.strategy_queue import (
 )
 
 __all__ = [
+    "AgentCollectionRule",
+    "AgentContextReportRef",
+    "AgentDataLane",
+    "AgentInstrumentContext",
+    "AgentSelfRepairPolicy",
     "AutopilotCycleExecutionManifest",
     "AutopilotCycleExecutionResult",
     "AutopilotCycleExecutionStatus",
@@ -108,10 +124,13 @@ __all__ = [
     "AutonomyLoopStatus",
     "AutonomyStepResult",
     "AutonomyStepStatus",
+    "AutonomousResearchAgentContext",
     "StrategyQueueItem",
     "StrategyQueueManifest",
     "StrategyQueueScanConfig",
     "StrategyQueueScanResult",
+    "agent_context_to_json",
+    "build_autonomous_research_agent_context",
     "load_autopilot_cycle_plan",
     "load_autopilot_cycle_spec",
     "plan_autopilot_research_cycle",
@@ -120,6 +139,7 @@ __all__ = [
     "run_autonomy_dry_run",
     "run_strategy_queue_job",
     "scan_strategy_queue",
+    "write_autonomous_research_agent_context",
     "write_autopilot_archive_cycle_spec",
     "write_autopilot_fixture_cycle_spec",
     "write_autopilot_public_candle_cycle_spec",

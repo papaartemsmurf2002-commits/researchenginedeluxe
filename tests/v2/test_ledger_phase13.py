@@ -136,6 +136,28 @@ def test_ledger_rejects_duplicate_run_id(tmp_path) -> None:
         append_run_to_ledger(request)
 
 
+def test_ledger_append_maintains_sidecar_index(tmp_path) -> None:
+    first = _write_run_manifest(tmp_path, "indexed-run-a")
+    second = _write_run_manifest(tmp_path, "indexed-run-b")
+    ledger_path = tmp_path / "ledger.parquet"
+
+    append_run_to_ledger(
+        LedgerAppendRequest(run_manifest_path=str(first), ledger_path=str(ledger_path))
+    )
+    append_run_to_ledger(
+        LedgerAppendRequest(run_manifest_path=str(second), ledger_path=str(ledger_path))
+    )
+
+    index_path = ledger_path.with_suffix(".index.json")
+    payload = json.loads(index_path.read_text(encoding="utf-8"))
+    rows = read_ledger(ledger_path)
+
+    assert payload["schema_version"] == "ledger_index_v1"
+    assert payload["row_count"] == 2
+    assert payload["run_ids"] == {"indexed-run-a": 0, "indexed-run-b": 1}
+    assert [row.run_id for row in rows] == ["indexed-run-a", "indexed-run-b"]
+
+
 def test_xlsx_export_is_generated_from_canonical_ledger(tmp_path) -> None:
     ledger_path = tmp_path / "ledger.parquet"
     run_manifest = _write_run_manifest(tmp_path, "xlsx-source")

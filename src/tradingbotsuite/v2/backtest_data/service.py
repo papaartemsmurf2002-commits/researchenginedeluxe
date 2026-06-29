@@ -7,12 +7,15 @@
 from __future__ import annotations
 
 import calendar
+import json
 from collections.abc import Mapping
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
+import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from pydantic import BaseModel
 
@@ -315,16 +318,19 @@ class BacktestDataService:
             path = layout.resolve(file_row.path)
             if not path.exists():
                 raise BacktestDataError(f"archive_snapshot_file_missing: {file_row.path}")
-            parquet_file = pq.ParquetFile(path)
-            available_fields = set(parquet_file.schema.names)
+            available_fields = set(pq.ParquetFile(path).schema.names)
             missing_fields = sorted(read_fields - available_fields)
             if missing_fields:
                 raise BacktestDataError(
                     "requested_field_not_found: " + ",".join(missing_fields)
                 )
-            table = parquet_file.read(columns=sorted(read_fields))
             file_had_rows = False
-            for row in table.to_pylist():
+            for row in _scan_parquet_rows(
+                path,
+                columns=tuple(sorted(read_fields)),
+                request=request,
+                load_start=load_start,
+            ):
                 ts = parse_timestamp(row["ts"])
                 if load_start <= ts < request.end_ts:
                     file_had_rows = True
@@ -412,14 +418,34 @@ class BacktestDataService:
         manifest: BacktestDataManifest,
     ) -> None:
         path = layout.resolve("manifests", "backtest_data_requests.parquet")
+        index = _read_valid_data_manifest_index(path)
+        if index is not None and manifest.data_manifest_id in index["data_manifest_ids"]:
+            return
+        manifest_row = _model_row(manifest)
+        if index is not None and path.exists():
+            try:
+                table = pq.read_table(path)
+                if table.num_rows == int(index["row_count"]):
+                    table = pa.concat_tables(
+                        [table, pa.Table.from_pylist([manifest_row])],
+                        promote_options="default",
+                    )
+                    table = _sort_table(table, "data_manifest_id")
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    pq.write_table(table, path, compression="zstd")
+                    _write_data_manifest_index_from_table(path, table)
+                    return
+            except Exception:
+                pass
         records = []
         if path.exists():
             records = pq.read_table(path).to_pylist()
         by_id = {row["data_manifest_id"]: row for row in records}
-        by_id[manifest.data_manifest_id] = _model_row(manifest)
+        by_id[manifest.data_manifest_id] = manifest_row
         ordered = sorted(by_id.values(), key=lambda row: row["data_manifest_id"])
         path.parent.mkdir(parents=True, exist_ok=True)
         pq.write_table(pa.Table.from_pylist(ordered), path, compression="zstd")
+        _write_data_manifest_index_from_rows(path, ordered)
 
 
 def _add_calendar_months(value: datetime, months: int) -> datetime:
@@ -428,6 +454,140 @@ def _add_calendar_months(value: datetime, months: int) -> datetime:
     month = (month_index % 12) + 1
     day = min(value.day, calendar.monthrange(year, month)[1])
     return value.replace(year=year, month=month, day=day)
+
+
+def _scan_parquet_rows(
+    path: Path,
+    *,
+    columns: tuple[str, ...],
+    request: BacktestDataRequest,
+    load_start: datetime,
+) -> list[dict[str, Any]]:
+    try:
+        dataset = ds.dataset(path, format="parquet")
+        filter_expr = _scanner_filter(dataset.schema, request=request, load_start=load_start)
+        rows: list[dict[str, Any]] = []
+        scanner = dataset.scanner(columns=list(columns), filter=filter_expr)
+        for batch in scanner.to_batches():
+            rows.extend(batch.to_pylist())
+        return rows
+    except Exception:
+        return pq.read_table(path, columns=list(columns)).to_pylist()
+
+
+def _scanner_filter(
+    schema: pa.Schema,
+    *,
+    request: BacktestDataRequest,
+    load_start: datetime,
+) -> ds.Expression | None:
+    expressions: list[ds.Expression] = []
+    names = set(schema.names)
+    if "ts" in names:
+        field = schema.field("ts")
+        if pa.types.is_timestamp(field.type):
+            start_scalar = pa.scalar(load_start, type=field.type)
+            end_scalar = pa.scalar(request.end_ts, type=field.type)
+        else:
+            start_scalar = utc_isoformat(load_start)
+            end_scalar = utc_isoformat(request.end_ts)
+        expressions.append(ds.field("ts") >= start_scalar)
+        expressions.append(ds.field("ts") < end_scalar)
+    if "instrument_id" in names:
+        expressions.append(ds.field("instrument_id").isin(list(request.instrument_ids)))
+    if "timeframe" in names:
+        expressions.append(ds.field("timeframe") == request.timeframe)
+    if not expressions:
+        return None
+    combined = expressions[0]
+    for expression in expressions[1:]:
+        combined = combined & expression
+    return combined
+
+
+def _read_valid_data_manifest_index(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    index_path = _data_manifest_index_path(path)
+    if not index_path.exists():
+        return None
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != "backtest_data_request_index_v1":
+            return None
+        stat = path.stat()
+        if int(payload.get("parquet_size_bytes", -1)) != stat.st_size:
+            return None
+        if int(payload.get("parquet_mtime_ns", -1)) != stat.st_mtime_ns:
+            return None
+        row_count = int(payload["row_count"])
+        data_manifest_ids = {
+            str(data_manifest_id): int(row_index)
+            for data_manifest_id, row_index in dict(payload["data_manifest_ids"]).items()
+        }
+    except Exception:
+        return None
+    if row_count < 0 or any(index < 0 for index in data_manifest_ids.values()):
+        return None
+    return {"row_count": row_count, "data_manifest_ids": data_manifest_ids}
+
+
+def _write_data_manifest_index_from_rows(path: Path, rows: list[dict[str, Any]]) -> None:
+    _write_data_manifest_index(
+        path,
+        row_count=len(rows),
+        data_manifest_ids={
+            str(row["data_manifest_id"]): index
+            for index, row in enumerate(rows)
+        },
+    )
+
+
+def _write_data_manifest_index_from_table(path: Path, table: pa.Table) -> None:
+    ids = [str(value) for value in table.column("data_manifest_id").to_pylist()]
+    _write_data_manifest_index(
+        path,
+        row_count=table.num_rows,
+        data_manifest_ids={data_manifest_id: index for index, data_manifest_id in enumerate(ids)},
+    )
+
+
+def _write_data_manifest_index(
+    path: Path,
+    *,
+    row_count: int,
+    data_manifest_ids: dict[str, int],
+) -> None:
+    if not path.exists():
+        return
+    stat = path.stat()
+    payload = {
+        "schema_version": "backtest_data_request_index_v1",
+        "manifest_path": str(path),
+        "row_count": row_count,
+        "data_manifest_ids": dict(sorted(data_manifest_ids.items(), key=lambda item: item[1])),
+        "parquet_size_bytes": stat.st_size,
+        "parquet_mtime_ns": stat.st_mtime_ns,
+    }
+    _write_json_atomic(_data_manifest_index_path(path), payload)
+
+
+def _data_manifest_index_path(path: Path) -> Path:
+    return path.with_suffix(".index.json")
+
+
+def _sort_table(table: pa.Table, column: str) -> pa.Table:
+    if table.num_rows <= 1:
+        return table
+    order = pc.sort_indices(table, sort_keys=[(column, "ascending")])
+    return table.take(order)
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
 
 
 def _model_row(record: BaseModel) -> dict[str, Any]:

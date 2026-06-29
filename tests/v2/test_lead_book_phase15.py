@@ -74,13 +74,13 @@ def test_roi_projection_marked_not_claim(tmp_path) -> None:
         LeadBookRow.model_validate(payload)
 
 
-def test_six_losing_months_fails_lead_gate(tmp_path) -> None:
-    lead = _lead(_source_artifact(tmp_path), monthly={"usable_months": 12, "losing_months_12m": 6})
+def test_five_losing_months_fails_lead_gate(tmp_path) -> None:
+    lead = _lead(_source_artifact(tmp_path), monthly={"usable_months": 12, "losing_months_12m": 5})
 
     result = evaluate_lead_gates(lead)
 
     assert result.status.value == "fail"
-    assert "six_losing_months_in_year_failed" in result.failures
+    assert "max_four_losing_months_per_year_failed" in result.failures
 
 
 def test_profit_concentration_warning_and_fail_thresholds(tmp_path) -> None:
@@ -102,13 +102,31 @@ def test_profit_concentration_warning_and_fail_thresholds(tmp_path) -> None:
     assert "top_2_trades_profit_share_failed" in failure.failures
 
 
-def test_minimum_five_trades_per_month_gate(tmp_path) -> None:
-    lead = _lead(_source_artifact(tmp_path), trades={"avg_trades_per_month": 4.9, "total_trades": 30})
+def test_minimum_ten_trades_per_usable_month_gate(tmp_path) -> None:
+    lead = _lead(
+        _source_artifact(tmp_path),
+        trades={"avg_trades_per_month": 99.0, "total_trades": 59},
+        monthly={"usable_months": 6, "losing_months_12m": 1},
+    )
 
     result = evaluate_lead_gates(lead)
 
     assert result.status.value == "fail"
-    assert "minimum_five_trades_per_month_failed" in result.failures
+    assert result.avg_trades_per_month == pytest.approx(59 / 6)
+    assert "minimum_ten_trades_per_usable_month_failed" in result.failures
+
+
+def test_four_losing_months_passes_losing_month_gate(tmp_path) -> None:
+    lead = _lead(
+        _source_artifact(tmp_path),
+        trades={"avg_trades_per_month": 1.0, "total_trades": 120},
+        monthly={"usable_months": 12, "losing_months_12m": 4},
+    )
+
+    result = evaluate_lead_gates(lead)
+
+    assert "max_four_losing_months_per_year_failed" not in result.failures
+    assert result.status.value == "pass"
 
 
 def test_diminishing_returns_warning_is_recorded(tmp_path) -> None:
@@ -159,7 +177,7 @@ def _lead(
         roi_projected=0.08,
         roi_projection_assumptions="same costed regime, not a claim",
         why_interesting="costed return with follow-up validation gap",
-        trade_count_summary=trades or {"avg_trades_per_month": 6.0, "total_trades": 36},
+        trade_count_summary=trades or {"avg_trades_per_month": 10.0, "total_trades": 60},
         monthly_stability_summary=monthly or {"usable_months": 6, "losing_months_12m": 2},
         pnl_concentration_summary=pnl or {
             "top_2_trades_profit_share": 0.2,

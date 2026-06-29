@@ -1531,6 +1531,29 @@ candidate-pack, paper/live, order/sizing/runtime, promotion, production
 trading, or live-signal claim is created. After the clean pushed baseline, the
 formal autonomous-readiness manager report returns
 `autonomous_research_ready=true` with `blocker_count=0`.
+Current WPR106-557 v2 agent context handoff update: WPR106-557 resolves the
+stale WPR106-553/WPR106-556 handoff wording conflict and adds a read-only
+machine-readable `redx autonomy agent-context` command. The command emits an
+`autonomous_research_agent_context_v1` JSON map of current project
+instruments, authoritative data/report paths, strict-free/no-paid collection
+rules, dynamic lockbox state, bounded self-repair policy, first-read docs, and
+the current WPR106-556 manager readiness status. It performs no venue fetch,
+worker run, strategy execution, generated-evidence rewrite, ledger/Lead Book
+mutation, or live/runtime action. The packet preserves the research-only,
+observe-only, non-promotable boundary and creates no candidate-pack,
+paper/live, order/sizing/runtime, promotion, production-trading, or strategy-
+performance claim.
+Current WPR106-558 v2 research-agent doc handoff simplification update:
+WPR106-558 adds `docs/RESEARCH_AGENT_QUICKSTART.md` as the concise current
+operating guide for autonomous research agents, updates first-read pointers in
+entry docs, and narrows the machine-readable agent-context `first_files_to_read`
+list to the current useful handoff path. Long ledgers, audit files, decision
+registers, and roadmap/status documents remain authoritative references, but
+agents should search them for relevant stage, audit, or decision facts instead
+of treating them as default end-to-end reading. This packet is documentation
+and read-only context hygiene only; it performs no data collection, strategy
+execution, generated-evidence rewrite, ledger/Lead Book mutation, live/runtime
+action, or candidate/paper/live/order/sizing/promotion claim.
 Current WPR106-46 update: WPR106-46 supersedes the prior decision-packet note
 in the stage status line and is closed as the Option A exact
 replay-overlay domain and bounded cycle-smoke implementation. Exact `1h`

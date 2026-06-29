@@ -38,6 +38,28 @@ def test_cost_model_applies_fees_to_turnover() -> None:
     assert breakdown.total_transaction_cost == pytest.approx(0.0004)
 
 
+def test_cost_model_defaults_account_notional_and_five_bps_spread() -> None:
+    config = CostModelConfig()
+
+    assert config.account_notional_usd == pytest.approx(10_000.0)
+    assert config.spread_bps == pytest.approx(5.0)
+
+
+def test_capacity_participation_uses_usd_account_notional_regression() -> None:
+    config = CostModelConfig(account_notional_usd=10_000.0)
+
+    breakdown = calculate_cost_breakdown(
+        config=config,
+        weight_delta=0.025,
+        applied_weight=0.0,
+        funding_rate=0.0,
+        volume_notional=92_487_298.3102,
+    )
+
+    assert breakdown.trade_notional_usd == pytest.approx(250.0)
+    assert breakdown.participation_rate == pytest.approx(0.025 * 10_000.0 / 92_487_298.3102)
+
+
 def test_maker_assumption_requires_queue_model() -> None:
     with pytest.raises(ValidationError, match="maker_assumption_requires_queue_model"):
         CostModelConfig(cost_model_id="mixed_maker_taker_research_v1", fee_side="maker")
@@ -123,6 +145,30 @@ def test_spread_slippage_and_impact_reduce_net_return(tmp_path) -> None:
     assert costed_result.metrics.net_return < zero_result.metrics.net_return
 
 
+def test_explicit_spread_units_preferred_over_fraction_inference(tmp_path) -> None:
+    cost_model = CostModelConfig(
+        cost_model_id="explicit_spread_units_research_v1",
+        fee_bps=0.0,
+        spread_bps=0.0,
+        slippage_bps=0.0,
+        impact_bps=0.0,
+    )
+    panel = _panel_rows(funding_scale=0.0, spread=0.5)
+    for row in panel:
+        row["spread_units"] = "bps"
+
+    result = run_vectorized_backtest(
+        config=_config(tmp_path / "runs", run_id="explicit-spread-units", cost_model=cost_model),
+        strategy_spec=_short_spec("hl_cross_sectional_momentum_v1"),
+        panel_rows=panel,
+    )
+
+    assert result.metrics is not None
+    assert result.metrics.total_spread_cost == pytest.approx(
+        result.metrics.total_turnover * 0.5 / 10_000.0
+    )
+
+
 def test_stress_2x_and_3x_costs_are_reported(tmp_path) -> None:
     result = run_vectorized_backtest(
         config=_config(tmp_path / "runs", run_id="stress-matrix"),
@@ -161,6 +207,13 @@ def test_cost_manifest_records_model_hash_and_cost_sensitivity(tmp_path) -> None
 
     assert manifest["cost_model_hash"] == cost_manifest["cost_model_hash"]
     assert cost_manifest["schema_version"] == "cost_manifest_v1"
+    assert manifest["account_notional_usd"] == pytest.approx(10_000.0)
+    assert cost_manifest["cost_model_config"]["account_notional_usd"] == pytest.approx(10_000.0)
+    assert cost_manifest["spread_model"]["configured_spread_bps"] == pytest.approx(5.0)
+    assert cost_manifest["spread_model"]["default_fallback_bps"] == pytest.approx(5.0)
+    assert cost_manifest["spread_model"]["explicit_spread_bps_preferred"] is True
+    assert cost_manifest["funding_model"]["rate_units"] == "interval_return_fraction"
+    assert cost_manifest["funding_model"]["positive_rate_sign_convention"] == "positive_funding_longs_pay_shorts"
     assert cost_manifest["stress_matrix"]["base"]["reported"] is True
     assert cost_manifest["stress_matrix"]["stress_2x"]["reported"] is True
     assert cost_manifest["stress_matrix"]["stress_3x"]["reported"] is True

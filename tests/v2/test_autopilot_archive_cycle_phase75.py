@@ -81,6 +81,10 @@ def test_archive_cycle_spec_runs_existing_ref_bounded_chain(tmp_path) -> None:
     assert "strategy_spec" not in jobs["vectorized_backtest"]["input_spec"]
     assert jobs["lead_book_upsert"]["input_spec"]["known_blockers"] == []
     assert jobs["lead_book_upsert"]["input_spec"]["missing_evidence"] == []
+    assert jobs["lead_book_upsert"]["input_spec"]["trade_count_summary"] == {
+        "avg_trades_per_month": 10.0,
+        "total_trades": 60,
+    }
     serialized_jobs = json.dumps(spec["jobs"], sort_keys=True)
     assert "public_api" not in serialized_jobs
     assert "payload_file" not in serialized_jobs
@@ -207,6 +211,8 @@ def test_archive_cycle_runs_cross_sectional_reversion_panel_with_user_costs(tmp_
     assert run_manifest["instrument_count"] == 2
     assert cost_manifest["cost_model_config"]["fee_bps"] == 4.32
     assert cost_manifest["cost_model_config"]["slippage_bps"] == 8.0
+    assert cost_manifest["cost_model_config"]["spread_bps"] == 5.0
+    assert cost_manifest["cost_model_config"]["account_notional_usd"] == 10_000.0
     assert cost_manifest["cost_model_config"]["fee_side"] == "taker"
     assert cost_manifest["cost_model_config"]["slippage_model_id"] == "conservative_bps_v1"
 

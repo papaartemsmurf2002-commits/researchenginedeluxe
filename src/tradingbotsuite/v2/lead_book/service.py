@@ -256,14 +256,18 @@ def request_deep_validation(lead: LeadBookRow) -> LeadBookRow:
 def evaluate_lead_gates(lead: LeadBookRow) -> LeadGateResult:
     warnings: list[str] = []
     failures: list[str] = []
-    avg_trades = lead.trade_count_summary.avg_trades_per_month
     usable_months = lead.monthly_stability_summary.usable_months
-    if avg_trades < 5.0:
-        failures.append("minimum_five_trades_per_month_failed")
+    avg_trades = _avg_trades_per_usable_month(
+        total_trades=lead.trade_count_summary.total_trades,
+        usable_months=usable_months,
+        fallback=lead.trade_count_summary.avg_trades_per_month,
+    )
+    if avg_trades < 10.0:
+        failures.append("minimum_ten_trades_per_usable_month_failed")
     if usable_months < 6:
         failures.append("minimum_six_usable_months_failed")
-    if lead.monthly_stability_summary.losing_months_12m >= 6:
-        failures.append("six_losing_months_in_year_failed")
+    if lead.monthly_stability_summary.losing_months_12m > 4:
+        failures.append("max_four_losing_months_per_year_failed")
     top_share = lead.pnl_concentration_summary.top_2_trades_profit_share
     month_share = lead.pnl_concentration_summary.best_month_profit_share
     if top_share > 0.50:
@@ -287,6 +291,17 @@ def evaluate_lead_gates(lead: LeadBookRow) -> LeadGateResult:
         avg_trades_per_month=avg_trades,
         usable_months=usable_months,
     )
+
+
+def _avg_trades_per_usable_month(
+    *,
+    total_trades: int,
+    usable_months: int,
+    fallback: float,
+) -> float:
+    if usable_months > 0 and total_trades > 0:
+        return total_trades / usable_months
+    return fallback
 
 
 def scan_lead_book_queue(

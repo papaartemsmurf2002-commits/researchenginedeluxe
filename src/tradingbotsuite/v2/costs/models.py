@@ -40,9 +40,11 @@ class CostModelConfig(BaseModel):
     cost_model_id: str = "conservative_hyperliquid_taker_v1"
     fee_side: str = "taker"
     fee_bps: float = Field(default=6.0, ge=0.0)
-    spread_bps: float = Field(default=2.0, ge=0.0)
+    spread_bps: float = Field(default=5.0, ge=0.0)
+    spread_units: str = "bps"
     slippage_bps: float = Field(default=3.0, ge=0.0)
     impact_bps: float = Field(default=1.0, ge=0.0)
+    account_notional_usd: float = Field(default=10_000.0, gt=0.0)
     max_volume_participation: float = Field(default=0.05, gt=0.0, le=1.0)
     slippage_model_id: str = "volume_participation_v1"
     impact_model_id: str = "impact_v1"
@@ -77,6 +79,14 @@ class CostModelConfig(BaseModel):
             raise ValueError("funding_missing_policy must be fail or explicit_zero")
         return normalized
 
+    @field_validator("spread_units")
+    @classmethod
+    def _known_spread_units(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"bps", "basis_points"}:
+            raise ValueError("spread_units must be bps or basis_points")
+        return "bps"
+
     @model_validator(mode="after")
     def _validate_cost_model(self) -> "CostModelConfig":
         required_scenarios = {
@@ -110,6 +120,8 @@ class CostBreakdown(BaseModel):
     weight_delta: float = Field(ge=0.0)
     applied_weight: float
     funding_rate: float
+    account_notional_usd: float = Field(gt=0.0)
+    trade_notional_usd: float = Field(ge=0.0)
     volume_notional: float | None = Field(default=None, ge=0.0)
     max_volume_participation: float = Field(gt=0.0, le=1.0)
     participation_rate: float = Field(ge=0.0)
@@ -164,7 +176,7 @@ def calculate_cost_breakdown(
             capacity_blocked = config.liquidity_stress_required
             capacity_reason = "volume_notional_missing_for_turnover"
         else:
-            participation_rate = turnover / volume
+            participation_rate = (turnover * config.account_notional_usd) / volume
             if participation_rate > config.max_volume_participation:
                 capacity_blocked = True
                 capacity_reason = "liquidity_participation_cap_exceeded"
@@ -187,6 +199,8 @@ def calculate_cost_breakdown(
         weight_delta=turnover,
         applied_weight=applied_weight,
         funding_rate=funding,
+        account_notional_usd=config.account_notional_usd,
+        trade_notional_usd=turnover * config.account_notional_usd,
         volume_notional=volume,
         max_volume_participation=config.max_volume_participation,
         participation_rate=participation_rate,
@@ -228,6 +242,17 @@ def build_cost_manifest(
             "source": config.funding_source,
             "missing_policy": config.funding_missing_policy,
             "required": config.funding_required,
+            "rate_units": "interval_return_fraction",
+            "positive_rate_sign_convention": "positive_funding_longs_pay_shorts",
+            "pnl_formula": "-applied_weight * funding_rate",
+        },
+        "spread_model": {
+            "configured_spread_bps": config.spread_bps,
+            "configured_spread_units": config.spread_units,
+            "default_fallback_bps": 5.0,
+            "explicit_spread_bps_preferred": True,
+            "observed_field_precedence": ("spread_bps", "spread_with_explicit_units", "spread_lenient"),
+            "lenient_raw_spread_policy": "fraction_when_abs_lte_1_else_bps",
         },
         "slippage_model": {
             "id": config.slippage_model_id,
@@ -244,6 +269,9 @@ def build_cost_manifest(
         "capacity_model": {
             "liquidity_stress_required": config.liquidity_stress_required,
             "max_volume_participation": config.max_volume_participation,
+            "account_notional_usd": config.account_notional_usd,
+            "trade_notional_formula": "abs(weight_delta) * account_notional_usd",
+            "participation_rate_formula": "trade_notional_usd / volume_notional",
         },
         "stress_matrix": {
             scenario.value: {

@@ -60,20 +60,29 @@ def append_run_to_ledger(request: LedgerAppendRequest | dict[str, Any]) -> Ledge
             manifest=manifest,
             manifest_path=manifest_path,
         )
-    rows = read_ledger(ledger_path)
-    if any(row.run_id == manifest.run_id for row in rows):
+    ledger_index = _read_valid_ledger_index(ledger_path)
+    if ledger_index is not None and manifest.run_id in ledger_index["run_ids"]:
         raise LedgerError(f"duplicate_run_id: {manifest.run_id}")
+    rows: list[LedgerRow] = []
+    if ledger_index is None:
+        rows = read_ledger(ledger_path)
+        if any(row.run_id == manifest.run_id for row in rows):
+            raise LedgerError(f"duplicate_run_id: {manifest.run_id}")
+        next_index = len(rows)
+    else:
+        next_index = int(ledger_index["row_count"])
     row = ledger_row_from_manifest(
         manifest=manifest,
         manifest_path=manifest_path,
         validation_manifest=validation_manifest,
         validation_manifest_path=validation_manifest_path,
-        ledger_index=len(rows),
+        ledger_index=next_index,
         evidence_mode=parsed_request.evidence_mode,
         notes=parsed_request.notes,
     )
     row = row.model_copy(update={"row_hash": ledger_row_hash(row)})
-    _write_ledger_rows(ledger_path, [*rows, row])
+    if ledger_index is None or not _append_ledger_row_with_index(ledger_path, row, ledger_index):
+        _write_ledger_rows(ledger_path, [*rows, row])
     return row
 
 
@@ -329,6 +338,92 @@ def _write_ledger_rows(path: Path, rows: list[LedgerRow]) -> None:
     payloads = [row.model_dump(mode="json") for row in rows]
     table = pa.Table.from_pylist(payloads, schema=_ledger_schema())
     pq.write_table(table, path, compression="zstd")
+    _write_ledger_index(
+        path,
+        row_count=len(rows),
+        run_ids={row.run_id: row.ledger_index for row in rows},
+    )
+
+
+def _append_ledger_row_with_index(
+    path: Path,
+    row: LedgerRow,
+    index: dict[str, Any],
+) -> bool:
+    try:
+        row_count = int(index["row_count"])
+        if row.ledger_index != row_count:
+            return False
+        row_table = pa.Table.from_pylist([row.model_dump(mode="json")], schema=_ledger_schema())
+        if path.exists():
+            table = pq.read_table(path)
+            if table.num_rows != row_count:
+                return False
+            table = pa.concat_tables([table, row_table], promote_options="default")
+        else:
+            if row_count != 0:
+                return False
+            table = row_table
+        path.parent.mkdir(parents=True, exist_ok=True)
+        pq.write_table(table, path, compression="zstd")
+        run_ids = dict(index["run_ids"])
+        run_ids[row.run_id] = row.ledger_index
+        _write_ledger_index(path, row_count=row_count + 1, run_ids=run_ids)
+        return True
+    except Exception:
+        return False
+
+
+def _read_valid_ledger_index(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    index_path = _ledger_index_path(path)
+    if not index_path.exists():
+        return None
+    try:
+        payload = json.loads(index_path.read_text(encoding="utf-8"))
+        if payload.get("schema_version") != "ledger_index_v1":
+            return None
+        if int(payload.get("parquet_size_bytes", -1)) != path.stat().st_size:
+            return None
+        if int(payload.get("parquet_mtime_ns", -1)) != path.stat().st_mtime_ns:
+            return None
+        row_count = int(payload["row_count"])
+        run_ids = {
+            str(run_id): int(ledger_index)
+            for run_id, ledger_index in dict(payload["run_ids"]).items()
+        }
+    except Exception:
+        return None
+    if row_count < 0 or any(index < 0 for index in run_ids.values()):
+        return None
+    return {"row_count": row_count, "run_ids": run_ids}
+
+
+def _write_ledger_index(path: Path, *, row_count: int, run_ids: dict[str, int]) -> None:
+    if not path.exists():
+        return
+    stat = path.stat()
+    payload = {
+        "schema_version": "ledger_index_v1",
+        "ledger_path": str(path),
+        "row_count": row_count,
+        "run_ids": dict(sorted(run_ids.items(), key=lambda item: item[1])),
+        "parquet_size_bytes": stat.st_size,
+        "parquet_mtime_ns": stat.st_mtime_ns,
+    }
+    _write_json_atomic(_ledger_index_path(path), payload)
+
+
+def _ledger_index_path(path: Path) -> Path:
+    return path.with_suffix(".index.json")
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
 
 
 def _write_csv(path: Path, rows: list[LedgerRow]) -> None:
@@ -461,6 +556,7 @@ def _fold_summary(root: Path, manifest: RunManifest) -> tuple[int, float | None]
     if not path.exists():
         return 0, None
     rows = pq.read_table(path).to_pylist()
+    rows = _monthly_validation_rows(rows)
     if not rows:
         return 0, None
     net_returns = [float(row["net_return"]) for row in rows if row.get("net_return") is not None]
@@ -468,6 +564,15 @@ def _fold_summary(root: Path, manifest: RunManifest) -> tuple[int, float | None]
         return len(rows), None
     positive = sum(1 for value in net_returns if value > 0.0)
     return len(rows), positive / len(net_returns)
+
+
+def _monthly_validation_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if str(row.get("fold_family", "monthly_validation")).strip().lower() == "monthly_validation"
+        and str(row.get("fold_id", "")).strip().lower() != "full_window"
+    ]
 
 
 def _max_drawdown(root: Path, manifest: RunManifest) -> float | None:

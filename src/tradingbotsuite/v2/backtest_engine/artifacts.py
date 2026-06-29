@@ -118,9 +118,10 @@ class BacktestRunConfig(BaseModel):
     missing_data_policy: MissingDataPolicy = MissingDataPolicy.FAIL_CLOSED
     initial_equity: float = Field(default=1.0, gt=0.0)
     fee_bps: float = Field(default=6.0, ge=0.0)
-    spread_bps: float = Field(default=2.0, ge=0.0)
+    spread_bps: float = Field(default=5.0, ge=0.0)
     slippage_bps: float = Field(default=3.0, ge=0.0)
     impact_bps: float = Field(default=1.0, ge=0.0)
+    account_notional_usd: float = Field(default=10_000.0, gt=0.0)
     max_volume_participation: float = Field(default=0.05, gt=0.0, le=1.0)
     cost_stress_scenarios: tuple[CostStressScenario, ...] = (
         CostStressScenario.BASE,
@@ -236,6 +237,7 @@ class RunManifest(BaseModel):
     data_coverage_min: float = Field(ge=0.0, le=1.0)
     cost_model_id: str = Field(min_length=1)
     cost_model_hash: str = Field(min_length=64, max_length=64)
+    account_notional_usd: float = Field(default=10_000.0, gt=0.0)
     validation_policy_id: str = Field(min_length=1)
     validation_status: ValidationStatus
     missing_data_policy: MissingDataPolicy

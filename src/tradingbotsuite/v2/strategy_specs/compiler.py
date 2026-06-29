@@ -59,6 +59,7 @@ class _PanelRow:
         self.raw = raw
         self.ts = ts
         self.instrument_id = instrument_id
+        self.history_index = -1
 
     def value(self, field: str) -> Any:
         return self.raw.get(field)
@@ -88,10 +89,13 @@ def _history_by_instrument(rows: list[_PanelRow]) -> dict[str, list[_PanelRow]]:
     by_instrument: dict[str, list[_PanelRow]] = defaultdict(list)
     for row in rows:
         by_instrument[row.instrument_id].append(row)
-    return {
-        instrument_id: sorted(instrument_rows, key=lambda row: row.ts)
-        for instrument_id, instrument_rows in by_instrument.items()
-    }
+    sorted_history: dict[str, list[_PanelRow]] = {}
+    for instrument_id, instrument_rows in by_instrument.items():
+        ordered = sorted(instrument_rows, key=lambda row: row.ts)
+        for index, row in enumerate(ordered):
+            row.history_index = index
+        sorted_history[instrument_id] = ordered
+    return sorted_history
 
 
 def _lookback_bars(spec: StrategySpec) -> int:
@@ -342,7 +346,10 @@ def _metric_score(
 ) -> float | None:
     metric = spec.logic.rank_metric or "return"
     if metric == "funding":
-        return _numeric(row.value("funding")) or _numeric(row.value("funding_rate"))
+        funding = _numeric(row.value("funding"))
+        if funding is not None:
+            return funding
+        return _numeric(row.value("funding_rate"))
     if metric == "volume":
         return _numeric(row.value("volume"))
     if metric == "volatility":
@@ -409,6 +416,9 @@ def _average_true_range(row: _PanelRow, history: list[_PanelRow], lookback: int)
 
 
 def _prior_rows(row: _PanelRow, history: list[_PanelRow], lookback: int) -> list[_PanelRow]:
+    if row.history_index >= 0:
+        start = max(0, row.history_index - lookback)
+        return history[start:row.history_index]
     prior = [item for item in history if item.ts < row.ts]
     return prior[-lookback:]
 

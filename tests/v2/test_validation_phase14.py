@@ -18,6 +18,7 @@ from tradingbotsuite.v2.validation import (
     require_complete_sweep,
     trial_family_report,
 )
+from tradingbotsuite.v2.validation.walk_forward import expected_monthly_validation_fold_count
 
 
 HEX_A = "a" * 64
@@ -75,6 +76,21 @@ def test_embargo_gap_excludes_boundary_rows() -> None:
     assert first.validation_indices == (8, 9)
     assert set(first.embargo_indices).isdisjoint(first.train_indices)
     assert set(first.embargo_indices).isdisjoint(first.validation_indices)
+
+
+def test_expected_monthly_validation_folds_use_complete_calendar_months() -> None:
+    assert expected_monthly_validation_fold_count(
+        datetime(2024, 1, 1, tzinfo=UTC),
+        datetime(2024, 8, 1, tzinfo=UTC),
+    ) == 4
+    assert expected_monthly_validation_fold_count(
+        datetime(2024, 1, 15, tzinfo=UTC),
+        datetime(2024, 3, 1, tzinfo=UTC),
+    ) == 1
+    assert expected_monthly_validation_fold_count(
+        datetime(2024, 1, 15, tzinfo=UTC),
+        datetime(2024, 2, 15, tzinfo=UTC),
+    ) == 0
 
 
 def test_leaderboard_warns_when_best_result_is_from_many_trials() -> None:
@@ -204,6 +220,7 @@ def _write_run_manifest_with_fold_metrics(
             [
                 {
                     "fold_id": f"fold-{index}",
+                    "fold_family": "monthly_validation",
                     "start_ts": f"2024-0{index + 1}-01T00:00:00Z",
                     "end_ts": f"2024-0{index + 2}-01T00:00:00Z",
                     "gross_return": value,

@@ -42,6 +42,7 @@ SECRET_LIKE_PATH_TOKENS = frozenset(
         "token",
     }
 )
+_STRATEGY_FILE_CACHE: dict[tuple[str, int, int, str], dict[str, Any]] = {}
 
 
 class StrategyQueueScanConfig(BaseModel):
@@ -332,6 +333,14 @@ def _scan_strategy_file(
 
     try:
         source_hash = file_sha256(path)
+        cache_key = _strategy_file_cache_key(path, source_hash)
+        cached = _STRATEGY_FILE_CACHE.get(cache_key)
+        if cached is not None:
+            return _cached_strategy_queue_item(
+                cached,
+                common=common,
+                normalized_root=normalized_root,
+            )
         payload = load_strategy_spec_file(path)
     except Exception as exc:  # noqa: BLE001 - loader errors must become manifest blockers.
         return StrategyQueueItem(
@@ -343,6 +352,11 @@ def _scan_strategy_file(
 
     validation = validate_strategy_spec(payload)
     if not validation.ok:
+        _STRATEGY_FILE_CACHE[cache_key] = {
+            "status": "rejected",
+            "source_sha256": source_hash,
+            "blocker_reasons": tuple(f"strategy_spec_validation_failed:{error}" for error in validation.errors),
+        }
         return StrategyQueueItem(
             **common,
             source_sha256=source_hash,
@@ -357,6 +371,13 @@ def _scan_strategy_file(
         json.dumps(normalized_payload, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
     )
+    _STRATEGY_FILE_CACHE[cache_key] = {
+        "status": "accepted",
+        "source_sha256": source_hash,
+        "strategy_id": spec.strategy_id,
+        "spec_hash": spec.spec_hash,
+        "normalized_payload": normalized_payload,
+    }
     return StrategyQueueItem(
         **common,
         source_sha256=source_hash,
@@ -370,6 +391,41 @@ def _scan_strategy_file(
 def _strategy_queue_files(root: Path) -> tuple[Path, ...]:
     files = [path for path in root.rglob("*") if path.is_file()]
     return tuple(sorted(files, key=lambda path: path.relative_to(root).as_posix()))
+
+
+def _strategy_file_cache_key(path: Path, source_hash: str) -> tuple[str, int, int, str]:
+    stat = path.stat()
+    return (str(path.resolve(strict=False)), int(stat.st_size), int(stat.st_mtime_ns), source_hash)
+
+
+def _cached_strategy_queue_item(
+    cached: dict[str, Any],
+    *,
+    common: dict[str, str],
+    normalized_root: Path,
+) -> StrategyQueueItem:
+    if cached["status"] == "rejected":
+        return StrategyQueueItem(
+            **common,
+            source_sha256=str(cached["source_sha256"]),
+            status="rejected",
+            blocker_reasons=tuple(cached.get("blocker_reasons", ())),
+        )
+    strategy_id = str(cached["strategy_id"])
+    spec_hash = str(cached["spec_hash"])
+    normalized_path = normalized_root / f"{_safe_filename(strategy_id)}-{spec_hash[:12]}.json"
+    normalized_path.write_text(
+        json.dumps(cached["normalized_payload"], sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return StrategyQueueItem(
+        **common,
+        source_sha256=str(cached["source_sha256"]),
+        status="accepted",
+        strategy_id=strategy_id,
+        spec_hash=spec_hash,
+        normalized_spec_path=str(normalized_path),
+    )
 
 
 def _aggregate_blockers(items: tuple[StrategyQueueItem, ...]) -> tuple[str, ...]:

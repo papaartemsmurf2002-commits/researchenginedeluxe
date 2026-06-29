@@ -188,6 +188,36 @@ def test_cross_sectional_rank_reversion_longs_bottom_and_shorts_top() -> None:
     }
 
 
+def test_cross_sectional_funding_metric_preserves_zero_score() -> None:
+    payload = _base_payload()
+    payload["strategy_id"] = "funding_rank_zero_score_v1"
+    payload["inputs"]["fields"] = ["close", "volume", "funding", "coverage_ratio"]
+    payload["logic"] = {
+        "signal_type": "cross_sectional_rank",
+        "lookback_bars": 1,
+        "rank_metric": "funding",
+        "rank_direction": "momentum",
+        "long_top_quantile": 0.5,
+        "short_bottom_quantile": 0.5,
+        "filters": {"min_coverage": 0.98},
+    }
+
+    frame = compile_signal_frame(
+        payload,
+        [
+            _panel_row("2024-01-01T00:00:00Z", "hyperliquid:perp:BTC", close=100.0, volume=1000.0),
+            {
+                **_panel_row("2024-01-01T00:00:00Z", "hyperliquid:perp:ETH", close=100.0, volume=1000.0),
+                "funding": 0.001,
+            },
+        ],
+    )
+
+    btc = next(row for row in frame.rows if row.instrument_id == "hyperliquid:perp:BTC")
+    assert btc.score == pytest.approx(0.0)
+    assert btc.reason != "insufficient_history"
+
+
 def test_vol_adjusted_trend_scales_portfolio_weights_by_realized_volatility() -> None:
     payload = _base_payload()
     payload["strategy_id"] = "hl_vol_adjusted_trend_test_v1"

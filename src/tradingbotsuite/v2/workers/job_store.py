@@ -199,9 +199,10 @@ class WorkerJobStore:
         self.initialize()
         job_kind = WorkerJobKind(kind)
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
                 """
-                SELECT record_json FROM worker_jobs
+                SELECT job_id, record_json FROM worker_jobs
                 WHERE kind = ? AND status = ?
                 ORDER BY queued_at, job_id
                 LIMIT 1
@@ -435,7 +436,7 @@ class WorkerJobStore:
         cutoff = utc_now() - stale_after
         stale_records: list[WorkerJobRecord] = []
         for job in self.list_jobs():
-            if job.status != WorkerJobStatus.RUNNING:
+            if job.status not in {WorkerJobStatus.CLAIMED, WorkerJobStatus.RUNNING}:
                 continue
             heartbeat_at = job.heartbeat_at or job.started_at or job.claimed_at
             if heartbeat_at is None or ensure_utc(heartbeat_at) > cutoff:
@@ -451,7 +452,7 @@ class WorkerJobStore:
                         "failure_reason": reason,
                         "terminal_state": False,
                     },
-                    allowed_from={WorkerJobStatus.RUNNING},
+                    allowed_from={job.status},
                 )
             )
         return stale_records

@@ -14,6 +14,9 @@ work.
 
 ## Active stage rules
 
+- Use `docs/RESEARCH_AGENT_QUICKSTART.md` as the concise current research-agent
+  handoff. Long ledgers and audit files remain authority, but search them for
+  the relevant packet or rule instead of reading them end to end by default.
 - Check `docs/ORCHESTRATOR_STAGE_LEDGER.md` before starting work.
 - Read `docs/PRODUCT_SCOPE.md`, `docs/V2_DECISION_REGISTER.md`,
   `docs/V2_NO_TOUCH_PATHS.md`, and `docs/audit/V2_AUDIT_INDEX.md` before v2

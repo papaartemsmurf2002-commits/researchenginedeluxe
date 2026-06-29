@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -208,12 +208,53 @@ def fold_rows_for_artifact(folds: Iterable[WalkForwardFold]) -> list[dict[str, A
     ]
 
 
+def monthly_validation_fold_windows(
+    start: datetime,
+    end: datetime,
+    *,
+    max_folds: int = 4,
+) -> tuple[tuple[datetime, datetime], ...]:
+    """Return complete tested calendar-month windows, capped for validation."""
+
+    start = ensure_utc(start)
+    end = ensure_utc(end)
+    if end <= start or max_folds <= 0:
+        return ()
+    current = datetime(start.year, start.month, 1, tzinfo=UTC)
+    if start > current:
+        current = _add_months(current, 1)
+    windows: list[tuple[datetime, datetime]] = []
+    while len(windows) < max_folds:
+        next_month = _add_months(current, 1)
+        if next_month > end:
+            break
+        windows.append((current, next_month))
+        current = next_month
+    return tuple(windows)
+
+
+def expected_monthly_validation_fold_count(
+    start: datetime,
+    end: datetime,
+    *,
+    max_folds: int = 4,
+) -> int:
+    return len(monthly_validation_fold_windows(start, end, max_folds=max_folds))
+
+
 def _parse_timestamp(value: Any) -> datetime:
     if isinstance(value, datetime):
         return ensure_utc(value)
     if isinstance(value, str):
         return ensure_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     raise ValueError(f"unsupported timestamp value: {value!r}")
+
+
+def _add_months(value: datetime, months: int) -> datetime:
+    month_index = value.year * 12 + (value.month - 1) + months
+    year = month_index // 12
+    month = (month_index % 12) + 1
+    return value.replace(year=year, month=month)
 
 
 def _median(values: list[float]) -> float:

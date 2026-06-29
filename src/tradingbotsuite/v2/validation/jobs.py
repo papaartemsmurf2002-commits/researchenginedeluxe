@@ -19,6 +19,7 @@ from tradingbotsuite.v2.archive.hashing import canonical_json_hash, file_sha256
 from tradingbotsuite.v2.backtest_engine.artifacts import RunManifest, RunStatus
 from tradingbotsuite.v2.config.schemas import RESEARCH_BOUNDARY, V2_SCHEMA_VERSION
 from tradingbotsuite.v2.security.boundary import require_research_boundary
+from tradingbotsuite.v2.validation.walk_forward import expected_monthly_validation_fold_count
 from tradingbotsuite.v2.workers.job_store import WorkerJobStore
 from tradingbotsuite.v2.workers.models import WorkerJobKind, WorkerJobRecord, WorkerRunResult
 
@@ -192,10 +193,20 @@ def _validation_blockers(
     ):
         blockers.append("lockbox_overlap")
 
-    fold_count, _positive_fold_count, fold_score = _fold_stability(fold_rows)
+    monthly_rows = _monthly_validation_rows(fold_rows)
+    expected_fold_count = expected_monthly_validation_fold_count(
+        manifest.backtest_start,
+        manifest.backtest_end,
+    )
+    fold_count, _positive_fold_count, fold_score = _fold_stability(monthly_rows)
     if fold_count == 0:
-        blockers.append("fold_metrics_missing")
-    elif fold_score is not None and fold_score < 0.5:
+        if not fold_rows:
+            blockers.append("fold_metrics_missing")
+        if expected_fold_count > 0:
+            blockers.append("monthly_validation_folds_below_expected")
+    elif fold_count < expected_fold_count:
+        blockers.append("monthly_validation_folds_below_expected")
+    if fold_score is not None and fold_score < 0.5:
         blockers.append("fold_stability_below_min_share")
 
     scenarios = {str(row.get("scenario_id", "")) for row in cost_rows}
@@ -208,11 +219,21 @@ def _validation_blockers(
 
 
 def _fold_stability(rows: list[dict[str, Any]]) -> tuple[int, int, float | None]:
-    if not rows:
+    validation_rows = _monthly_validation_rows(rows)
+    if not validation_rows:
         return 0, 0, None
-    returns = [float(row.get("net_return", 0.0)) for row in rows]
+    returns = [float(row.get("net_return", 0.0)) for row in validation_rows]
     positive = sum(1 for value in returns if value > 0.0)
     return len(returns), positive, positive / len(returns)
+
+
+def _monthly_validation_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        row
+        for row in rows
+        if str(row.get("fold_family", "monthly_validation")).strip().lower() == "monthly_validation"
+        and str(row.get("fold_id", "")).strip().lower() != "full_window"
+    ]
 
 
 def _required_run_manifest_path(spec: dict[str, Any]) -> Path:

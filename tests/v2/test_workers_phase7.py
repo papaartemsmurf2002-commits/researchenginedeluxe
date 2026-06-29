@@ -125,6 +125,24 @@ def test_stale_running_job_becomes_retryable_evidence(tmp_path) -> None:
     assert retried.terminal_state is False
 
 
+def test_stale_claimed_job_becomes_retryable_evidence(tmp_path) -> None:
+    store = WorkerJobStore(tmp_path / "jobs.sqlite")
+    queued = store.enqueue(
+        kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP,
+        input_spec={"instrument_id": "hyperliquid:perp:BTC"},
+    )
+    claimed = store.claim_next(kind=WorkerJobKind.RECENT_CANDLE_BOOTSTRAP, worker_id="worker-a")
+    assert claimed is not None
+
+    stale = store.mark_stale_jobs(stale_after=timedelta(seconds=0))
+
+    assert [record.job_id for record in stale] == [queued.job_id]
+    assert stale[0].status == WorkerJobStatus.STALE
+    retried = store.retry_job(queued.job_id, worker_id="operator")
+    assert retried.status == WorkerJobStatus.QUEUED
+    assert retried.lock_owner is None
+
+
 def test_universe_refresh_worker_outputs_archive_manifest_refs(tmp_path) -> None:
     archive_root = tmp_path / "archive"
     payload_file = tmp_path / "payload.json"

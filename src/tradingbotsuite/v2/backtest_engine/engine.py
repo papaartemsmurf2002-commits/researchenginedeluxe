@@ -49,6 +49,7 @@ from tradingbotsuite.v2.strategy_specs import (
     compile_signal_frame,
     parse_strategy_spec,
 )
+from tradingbotsuite.v2.validation.walk_forward import monthly_validation_fold_windows
 
 _SAFE_RUN_ID = re.compile(r"^[A-Za-z0-9_.-]+$")
 
@@ -93,11 +94,7 @@ def run_vectorized_backtest(
         )
         stress_rows = _cost_stress_rows(
             config=parsed_config,
-            strategy_spec=parsed_spec,
-            signal_frame=signal_frame,
-            panel_rows=materialized_panel,
-            run_id=run_id,
-            base_metrics=simulation.metrics,
+            base_simulation=simulation,
         )
         simulation.cost_stress = stress_rows
         return _write_run_artifacts(
@@ -192,11 +189,7 @@ def run_event_driven_backtest(
         )
         stress_rows = _cost_stress_rows(
             config=parsed_config,
-            strategy_spec=parsed_spec,
-            signal_frame=signal_frame,
-            panel_rows=materialized_panel,
-            run_id=run_id,
-            base_metrics=simulation.metrics,
+            base_simulation=simulation,
         )
         simulation.cost_stress = stress_rows
         return _write_run_artifacts(
@@ -244,6 +237,7 @@ def recompute_metrics_from_run_manifest(
         cost_manifest_hash=manifest.cost_manifest_hash,
         validation_policy_id=manifest.validation_policy_id,
         cost_model_id=manifest.cost_model_id,
+        account_notional_usd=manifest.account_notional_usd,
         engine_lane=manifest.engine_lane,
         missing_data_policy=manifest.missing_data_policy,
         lockbox_policy_id=manifest.lockbox_policy_id,
@@ -404,6 +398,8 @@ def _simulate_vectorized(
                 "gross_pnl": gross_pnl,
                 "funding_pnl": funding_pnl,
                 "funding_rate": funding_rate,
+                "account_notional_usd": cost_breakdown.account_notional_usd,
+                "trade_notional_usd": cost_breakdown.trade_notional_usd,
                 "fee_cost": fee_cost,
                 "spread_cost": spread_cost,
                 "slippage_cost": slippage_cost,
@@ -435,6 +431,8 @@ def _simulate_vectorized(
                         "from_weight": previous_weight,
                         "to_weight": target_weight,
                         "turnover": weight_turnover,
+                        "account_notional_usd": cost_breakdown.account_notional_usd,
+                        "trade_notional_usd": cost_breakdown.trade_notional_usd,
                         "side": "long" if target_weight > 0 else "short" if target_weight < 0 else "flat",
                         "price_basis": strategy_spec.execution.price_basis.value,
                         "fee_cost": fee_cost,
@@ -520,18 +518,13 @@ def _simulate_vectorized(
         }
         for instrument_id, totals in sorted(per_instrument_totals.items())
     ]
-    fold_metrics = [
-        {
-            "fold_id": "full_window",
-            "start_ts": utc_isoformat(timestamps[0]),
-            "end_ts": utc_isoformat(timestamps[-1]),
-            "gross_return": gross_equity - config.initial_equity,
-            "net_return": net_equity - config.initial_equity,
-            "research_only": True,
-            "observe_only": True,
-            "promotion_ready": False,
-        }
-    ]
+    fold_metrics = _fold_metrics(
+        equity_curve=equity_curve,
+        full_window_start=timestamps[0],
+        full_window_end=timestamps[-1],
+        gross_return=gross_equity - config.initial_equity,
+        net_return=net_equity - config.initial_equity,
+    )
     total_fee = sum(row["fee_cost"] for row in positions)
     total_spread = sum(row["spread_cost"] for row in positions)
     total_slippage = sum(row["slippage_cost"] for row in positions)
@@ -592,29 +585,22 @@ def _simulate_vectorized(
 def _cost_stress_rows(
     *,
     config: BacktestRunConfig,
-    strategy_spec: StrategySpec,
-    signal_frame: SignalFrame,
-    panel_rows: list[dict[str, Any]],
-    run_id: str,
-    base_metrics: BacktestMetrics,
+    base_simulation: _SimulationResult,
 ) -> list[dict[str, Any]]:
     cost_model = _effective_cost_model(config)
     rows: list[dict[str, Any]] = []
     simulations_by_scenario: dict[CostStressScenario, BacktestMetrics] = {
-        CostStressScenario.BASE: base_metrics
+        CostStressScenario.BASE: base_simulation.metrics
     }
     for scenario in config.cost_stress_scenarios:
         if scenario == CostStressScenario.BASE:
             continue
-        simulations_by_scenario[scenario] = _simulate_vectorized(
-            config,
-            strategy_spec,
-            signal_frame,
-            panel_rows,
-            run_id=run_id,
-            cost_scenario=scenario,
-        ).metrics
-    base_net = base_metrics.net_return
+        simulations_by_scenario[scenario] = _stress_metrics_from_base(
+            base_simulation,
+            scenario=scenario,
+            run_id=base_simulation.metrics.run_id,
+        )
+    base_net = base_simulation.metrics.net_return
     for scenario in config.cost_stress_scenarios:
         metrics = simulations_by_scenario[scenario]
         cost_fragile_warning = scenario != CostStressScenario.BASE and base_net > 0.0 and metrics.net_return <= 0.0
@@ -645,6 +631,101 @@ def _cost_stress_rows(
             }
         )
     return rows
+
+
+def _stress_metrics_from_base(
+    base_simulation: _SimulationResult,
+    *,
+    scenario: CostStressScenario,
+    run_id: str,
+) -> BacktestMetrics:
+    multiplier = scenario_multiplier(scenario)
+    base = base_simulation.metrics
+    initial_equity = (
+        base.gross_equity_final / (1.0 + base.gross_return)
+        if base.gross_return > -1.0
+        else 1.0
+    )
+    gross_equity = initial_equity
+    net_equity = initial_equity
+    for row in base_simulation.equity_curve:
+        gross_return = float(row["gross_return"])
+        funding_pnl = float(row["funding_pnl"])
+        transaction_cost = float(row["transaction_cost"]) * multiplier
+        gross_equity *= 1.0 + gross_return
+        net_equity *= 1.0 + gross_return + funding_pnl - transaction_cost
+    return BacktestMetrics(
+        run_id=run_id,
+        status=RunStatus.SUCCEEDED,
+        gross_return=gross_equity - initial_equity,
+        net_return=net_equity - initial_equity,
+        gross_equity_final=gross_equity,
+        net_equity_final=net_equity,
+        total_fee_cost=base.total_fee_cost * multiplier,
+        total_spread_cost=base.total_spread_cost * multiplier,
+        total_slippage_cost=base.total_slippage_cost * multiplier,
+        total_impact_cost=base.total_impact_cost * multiplier,
+        total_transaction_cost=base.total_transaction_cost * multiplier,
+        total_funding_pnl=base.total_funding_pnl,
+        total_turnover=base.total_turnover,
+        trade_count=base.trade_count,
+        position_row_count=base.position_row_count,
+        capacity_blocked_count=base.capacity_blocked_count,
+        gross_only=False,
+    )
+
+
+def _fold_metrics(
+    *,
+    equity_curve: list[dict[str, Any]],
+    full_window_start: datetime,
+    full_window_end: datetime,
+    gross_return: float,
+    net_return: float,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for start, end in monthly_validation_fold_windows(full_window_start, full_window_end):
+        fold_rows = [
+            row
+            for row in equity_curve
+            if start <= _parse_timestamp(row["ts"]) < end
+        ]
+        if not fold_rows:
+            continue
+        rows.append(
+            {
+                "fold_id": f"month-{start.year:04d}-{start.month:02d}",
+                "fold_family": "monthly_validation",
+                "start_ts": utc_isoformat(start),
+                "end_ts": utc_isoformat(end),
+                "gross_return": _compound_return(fold_rows, "gross_return"),
+                "net_return": _compound_return(fold_rows, "net_return"),
+                "research_only": True,
+                "observe_only": True,
+                "promotion_ready": False,
+            }
+        )
+    rows.append(
+        {
+            "fold_id": "full_window",
+            "fold_family": "diagnostic",
+            "start_ts": utc_isoformat(full_window_start),
+            "end_ts": utc_isoformat(full_window_end),
+            "gross_return": gross_return,
+            "net_return": net_return,
+            "research_only": True,
+            "observe_only": True,
+            "promotion_ready": False,
+        }
+    )
+    return rows
+
+
+def _compound_return(rows: list[dict[str, Any]], field: str) -> float:
+    equity = 1.0
+    for row in rows:
+        equity *= 1.0 + float(row[field])
+    return equity - 1.0
 
 
 def _normalize_microstructure_events(
@@ -780,9 +861,29 @@ def _observed_spread_bps(row: _PanelRow) -> float | None:
     spread = row.numeric("spread")
     if spread is None:
         return None
+    units = _spread_units(row)
+    if units in {"bps", "bp", "basis_point", "basis_points"}:
+        return spread
+    if units in {"fraction", "decimal", "ratio", "return_fraction"}:
+        return spread * 10_000.0
+    if units in {"price", "quote", "absolute", "usd"}:
+        close = row.numeric("close") or row.numeric("mark_price") or row.numeric("oracle_price")
+        if close is not None and close > 0.0:
+            return (spread / close) * 10_000.0
+        return None
     if spread <= 1.0:
         return spread * 10_000.0
     return spread
+
+
+def _spread_units(row: _PanelRow) -> str | None:
+    for field in ("spread_units", "spread_unit", "spread_value_units"):
+        value = row.row.get(field)
+        if value is not None:
+            normalized = str(value).strip().lower()
+            if normalized:
+                return normalized
+    return None
 
 
 def _effective_cost_model(config: BacktestRunConfig) -> CostModelConfig:
@@ -794,6 +895,7 @@ def _effective_cost_model(config: BacktestRunConfig) -> CostModelConfig:
         spread_bps=config.spread_bps,
         slippage_bps=config.slippage_bps,
         impact_bps=config.impact_bps,
+        account_notional_usd=config.account_notional_usd,
         max_volume_participation=config.max_volume_participation,
         stress_scenarios=config.cost_stress_scenarios,
     )
@@ -1043,6 +1145,7 @@ def _manifest(
         data_coverage_min=config.data_coverage_min,
         cost_model_id=config.cost_model_id,
         cost_model_hash=_effective_cost_model(config).config_hash,
+        account_notional_usd=_effective_cost_model(config).account_notional_usd,
         validation_policy_id=config.validation_policy_id,
         validation_status=ValidationStatus.PASS if status == RunStatus.SUCCEEDED else ValidationStatus.FAIL,
         missing_data_policy=config.missing_data_policy,
@@ -1269,6 +1372,8 @@ def _trades_schema() -> pa.Schema:
             ("from_weight", pa.float64()),
             ("to_weight", pa.float64()),
             ("turnover", pa.float64()),
+            ("account_notional_usd", pa.float64()),
+            ("trade_notional_usd", pa.float64()),
             ("side", pa.string()),
             ("price_basis", pa.string()),
             ("fee_cost", pa.float64()),
@@ -1308,6 +1413,8 @@ def _positions_schema() -> pa.Schema:
             ("gross_pnl", pa.float64()),
             ("funding_pnl", pa.float64()),
             ("funding_rate", pa.float64()),
+            ("account_notional_usd", pa.float64()),
+            ("trade_notional_usd", pa.float64()),
             ("fee_cost", pa.float64()),
             ("spread_cost", pa.float64()),
             ("slippage_cost", pa.float64()),
@@ -1359,6 +1466,7 @@ def _fold_schema() -> pa.Schema:
     return pa.schema(
         [
             ("fold_id", pa.string()),
+            ("fold_family", pa.string()),
             ("start_ts", pa.string()),
             ("end_ts", pa.string()),
             ("gross_return", pa.float64()),

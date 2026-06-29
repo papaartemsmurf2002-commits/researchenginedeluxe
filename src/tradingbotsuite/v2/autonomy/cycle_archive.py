@@ -65,10 +65,10 @@ class AutopilotArchiveCycleConfig(BaseModel):
     maker_fee_bps: float = Field(default=1.44, ge=0.0)
     slippage_bps: float = Field(default=8.0, ge=0.0)
     worst_case_slippage_bps: float = Field(default=20.0, ge=0.0)
-    spread_bps: float = Field(default=0.0, ge=0.0)
+    spread_bps: float = Field(default=5.0, ge=0.0)
     impact_bps: float = Field(default=0.0, ge=0.0)
-    lead_avg_trades_per_month: float = Field(default=6.0, ge=0.0)
-    lead_total_trades: int = Field(default=42, ge=0)
+    lead_avg_trades_per_month: float = Field(default=10.0, ge=0.0)
+    lead_total_trades: int = Field(default=60, ge=0)
     lead_usable_months: int = Field(default=6, ge=0)
     lead_losing_months_12m: int = Field(default=0, ge=0, le=12)
     lead_positive_months_12m: int = Field(default=6, ge=0, le=12)
@@ -602,6 +602,7 @@ def _archive_cost_model(config: AutopilotArchiveCycleConfig) -> dict[str, Any]:
         "spread_bps": config.spread_bps,
         "slippage_bps": config.slippage_bps,
         "impact_bps": config.impact_bps,
+        "account_notional_usd": 10_000.0,
         "max_volume_participation": 0.05,
         "slippage_model_id": "conservative_bps_v1",
         "impact_model_id": "impact_v1",

@@ -2,9 +2,19 @@
 
 Last updated: 2026-06-27
 
-This is the first file to read after `AGENTS.md`.
+For current research-agent work, read `docs/RESEARCH_AGENT_QUICKSTART.md`
+after `AGENTS.md`. This index is a historical stage/reference map; search it
+for relevant packet IDs and stage decisions instead of reading it end to end by
+default.
 
 ## Immediate Next-Agent Handoff
+
+- WPR106-558 is the current documentation handoff simplification. It adds
+  `docs/RESEARCH_AGENT_QUICKSTART.md` as the compact operating guide for
+  autonomous research agents and updates the machine-readable agent context to
+  prefer that short first-read path. Long ledgers, audit indices, roadmap
+  status files, and old packet summaries remain authority for historical
+  evidence, but they are conditional references, not the default start path.
 
 - WPR106-556 is the current autonomous-readiness strategy verdict. After the
   WPR106-555 S31/S54 failures, WPR106-556 used the uploaded combined strategy
@@ -36,35 +46,22 @@ This is the first file to read after `AGENTS.md`.
   data-source interpretation of `ISSUE-R106-032` are resolved. No open P0/P1
   data-source or OF-style materialization proof blocker remains; future
   strategy work must still use scoped materialized windows or open compute
-  packets and real readiness evidence before making autonomous, candidate,
-  paper/live, order/sizing/runtime, or promotion claims.
+  packets. WPR106-556 is the current manager autonomous-readiness authority;
+  future strategy work still must provide real evidence before extending that
+  status to new loops and must not make candidate, paper/live,
+  order/sizing/runtime, or promotion claims.
 
-- Read `docs/audit/V2_COMPLETION_AUDIT_ISSUES_AND_HOLES_2026_06_21.md`,
-  `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`,
-  `docs/V2_FUTURE_UI_DEFERRAL.md`, `docs/PRODUCT_SCOPE.md`,
+- For v2 implementation work, use the quickstart default path first:
+  `AGENTS.md`, `docs/RESEARCH_AGENT_QUICKSTART.md`,
+  `docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md`,
+  `docs/PRODUCT_SCOPE.md`, `docs/KNOWN_ISSUES.md`, and the latest relevant
+  work packet. Use `docs/audit/V2_AUDIT_INDEX.md`,
   `docs/V2_DECISION_REGISTER.md`, `docs/V2_NO_TOUCH_PATHS.md`,
-  `docs/audit/V2_AUDIT_INDEX.md`, and
-  `docs/V2_READY_TO_USE_IMPLEMENTATION_ROADMAP.md` before v2 implementation
-  work. WPR106-391 through WPR106-416 implement the v2 roadmap phases, map M0
-  through M5, and add Phase 22 as a read-only static visibility UI rather than
-  a legacy GUI rewrite or job-running UI process. WPR106-417 records the
-  follow-up completion-audit issues, holes, validation limitations, and
-  concerns; it does not change the research-only boundary or stage-gate status.
-  WPR106-418 stabilizes the v2 foundation baseline at
-  `9bea1b87025fb8b17df54362101b6d3ffb0213d6` after WPR106-419 closes two P1
-  boundary findings in official-file source handling and signal-bearing
-  artifact invariants. The foundation is committed but is not autonomous-ready:
-  WPR106-420 installs local Python 3.11 dev dependencies, proves 3.11 v2 and
-  contract suites pass, and fixes deterministic v2 worker transition ordering.
-  WPR106-472 later resolves `ISSUE-R106-026` with Python 3.11 monolithic
-  full-suite evidence: 2235 passed and 2 skipped. WPR106-524 records the
-  final-audit handoff: the WPR106-472 through WPR106-523 foundation was ready
-  for independent final audit after clean validation and remote-roadmap
-  accounting. WPR106-553 completes the final repo audit and clears the narrow
-  research-only agentic iteration strategy testing gate while leaving
-  accepted research readiness, autonomous readiness, candidate packs,
-  paper/live/order/sizing/runtime behavior, and promotion blocked until
-  separate evidence passes. WPR106-555 updates the uploaded-strategy
+  `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`, and older roadmap/status files
+  only when the packet actually needs their authority. Historical packet detail
+  below remains useful for evidence lookup but may describe intermediate states
+  superseded by WPR106-553, WPR106-556, WPR106-557, and WPR106-558.
+  WPR106-555 updates the uploaded-strategy
   autonomous-readiness pass with the 8 bps base/20 bps worst-case slippage
   policy, adds S31, skips untestable S59 with evidence, and records the
   strategy-validation blocker later resolved by WPR106-556. WPR106-556 finds
@@ -1498,14 +1495,16 @@ facts.
 
 ## Active Stage
 
-- Current stage: Stage R106 centralized historical data catalog complete,
-  fail-closed no-candidate decision.
+- Current stage: WPR106-558 research-agent handoff simplification on top of
+  the WPR106-556 blocker-free autonomous-research manager readiness verdict.
+  The branch remains research-only, non-promotable, and not candidate,
+  paper/live, order/sizing, runtime, or production-trading ready.
 - Current stage owner: Codex Research Agent.
-- Latest local v2 roadmap status packet:
+- Historical v2 roadmap status packet:
   `docs/work_packets/WPR106-414-v2-roadmap-milestone-status-closeout.md`.
-- Latest local v2 control-doc sync packet:
+- Historical v2 control-doc sync packet:
   `docs/work_packets/WPR106-415-v2-control-doc-sync-and-completion-audit.md`.
-- V2 roadmap status:
+- Historical v2 roadmap status:
   `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md` records Phases 0 through 22 and
   M0 through M5. This is a research-only platform foundation status, not a
   candidate-ready, paper/live, order, sizing, runtime-mode, or promotion claim.
@@ -2319,27 +2318,25 @@ See `docs/KNOWN_ISSUES.md` for the blocking source of truth.
 
 ## Required Read Order
 
+Default current research-agent path:
+
 1. `AGENTS.md`
-2. `docs/ACTIVE_INDEX.md`
-3. `docs/PRODUCT_SCOPE.md`
-4. `docs/V2_DECISION_REGISTER.md`
-5. `docs/V2_NO_TOUCH_PATHS.md`
-6. `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`
-7. `docs/V2_FUTURE_UI_DEFERRAL.md`
-8. `docs/audit/V2_AUDIT_INDEX.md`
-9. `docs/ORCHESTRATOR_STAGE_LEDGER.md`
-10. `docs/KNOWN_ISSUES.md`
-11. `docs/REPO_STRUCTURE_AND_DEPENDENCY_FUSE.md`
-12. Latest relevant `docs/stage_reports/STAGE_R106_*.md`
-13. Relevant source and tests for the scoped packet
+2. `docs/RESEARCH_AGENT_QUICKSTART.md`
+3. `docs/V2_DATA_CATALOG_AND_AGENTIC_RESEARCH_POINTERS.md`
+4. `docs/PRODUCT_SCOPE.md`
+5. `docs/KNOWN_ISSUES.md`
+6. the latest relevant work packet
+
+Use the ledger, audit index, decision register, no-touch paths, dependency
+fuse, roadmap status, and stage reports only when the packet needs their
+specific authority.
 
 ## Near-Term Work Order
 
-Active v2 work should follow `docs/V2_READY_TO_USE_IMPLEMENTATION_ROADMAP.md`
-and `docs/V2_ROADMAP_IMPLEMENTATION_STATUS.md`. WPR106-391 through WPR106-416
-implement the roadmap foundation through Phase 22 as a research-only v2
-platform. Do not rerun early v2 foundation phases unless a new audit finds a
-concrete gap. Future v2 work should be one of:
+Active v2 work should follow the quickstart, current work packet, product
+scope, data catalog, and known-issues gate. The older roadmap files remain
+historical implementation references; do not rerun early v2 foundation phases
+unless a new audit finds a concrete gap. Future v2 work should be one of:
 
 - an explicitly scoped independent audit/fix packet for existing v2 behavior;
 - a later UI extension packet that preserves the `V2-AUD-UI-001` read-only
